@@ -1,1 +1,9 @@
-{"$schema":"node_modules/wrangler/config-schema.json","name":"sandbox-website-template","compatibility_date":"2025-10-08","compatibility_flags":["nodejs_compat"],"main":"./src/api/index.ts","observability":{"enabled":true},"upload_source_maps":true,"assets":{"directory":"./dist/client","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},"d1_databases":[{"binding":"DB","database_name":"ejtdb8ondtqjyvilrrumkdqjxrsyazw1","database_id":"f087ecca-74e6-4a52-bcbe-1e3b33923650","migrations_dir":"src/api/migrations"}],"r2_buckets":[{"bucket_name":"ejtdb8ondtqjyvilrrumkdqjxrsyazw1","binding":"BUCKET"}]}
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "sandbox-website-template",
+	"compatibility_date": "2025-10-08",
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "single-page-application"
+	}
+}

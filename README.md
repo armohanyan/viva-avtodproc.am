@@ -1,11 +1,10 @@
 # Website
 
-React + Vite + Hono + Tailwind + Cloudflare Workers
+React + Vite + Tailwind. The API/backend will be attached later.
 
 ## Project Structure
 
-- `src/web/` — React frontend: pages, components, styles, hooks
-- `src/api/` — Hono API server (`/api/*`), database schema and migrations
+- `src/web/` — React frontend: pages, components, styles, routing
 - `public/` — Static assets (favicon, og-image, logo)
 
 ## Quick Start
@@ -13,11 +12,7 @@ React + Vite + Hono + Tailwind + Cloudflare Workers
 ```bash
 # Install dependencies
 bun install
-
-# Generate types and run migrations
-bun cf-typegen
-bun db:generate
-bun db:migrate
+# or: yarn install
 
 # Start dev server
 bun dev
@@ -52,25 +47,6 @@ import { Route, Switch } from "wouter";
 </Switch>
 ```
 
-## Database
-
-Uses [Drizzle ORM](https://orm.drizzle.team/) with Cloudflare D1.
-
-```bash
-bun db:generate       # Generate migrations from schema
-bun db:migrate        # Apply migrations locally
-```
-
-Schema is in `src/api/database/schema.ts`, migrations in `src/api/migrations/`.
-
-## API
-
-Backend uses [Hono](https://hono.dev/) on Cloudflare Workers. All routes are under `/api/*` in `src/api/index.ts`.
-
-```ts
-app.get('/api/hello', (c) => c.json({ message: 'Hello' }));
-```
-
 ## Config
 
 `website.config.json` contains the site name, description, and URL — use it as the source of truth for site-wide values.
@@ -78,5 +54,3 @@ app.get('/api/hello', (c) => c.json({ message: 'Hello' }));
 ## Agent Rules
 
 **CRITICAL: This project uses Tailwind CSS v4.** No `tailwind.config.js`, no `postcss.config.js`, no `@tailwind` directives. All configuration is CSS-first via `@theme` in `src/web/styles.css` and the `@tailwindcss/vite` plugin. Do NOT use Tailwind v3 syntax.
-
-**IMPORTANT: Don't assume how a package works from memory.** Check the installed version in `package.json` and read docs in `node_modules/<pkg>/` before using any package. APIs change between major versions — guessing leads to broken code.

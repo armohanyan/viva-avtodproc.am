@@ -25,21 +25,24 @@
 		"noUncheckedSideEffectImports": true,
 		"baseUrl": ".",
 		"paths": {
+			"src/*": [
+				"./src/*"
+			],
 			"@/*": [
-				"./src/web/*"
+				"./src/*"
 			],
 			"@core/*": [
-				"./src/web/core/*"
+				"./src/core/*"
 			],
 			"@modules/*": [
-				"./src/web/modules/*"
+				"./src/modules/*"
 			],
 			"@shared/*": [
-				"./src/web/shared/*"
+				"./src/shared/*"
 			]
 		}
 	},
 	"include": [
-		"src/web"
+		"src"
 	]
 }
