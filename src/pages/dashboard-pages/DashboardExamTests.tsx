@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { Reveal } from "src/lib/motion";
 import DashboardLayout from "src/components/DashboardLayout";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
@@ -46,40 +47,46 @@ export default function DashboardExamTests() {
           <p className="text-slate-500 mt-1">{t("examTestsHubSub")}</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-          <Card className="p-5 border-slate-100">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{t("examTestsStatAttempts")}</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">—</p>
-          </Card>
-          <Card className="p-5 border-slate-100">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{t("examTestsStatBest")}</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">—</p>
-          </Card>
-          <Card className="p-5 border-slate-100">
-            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{t("examTestsStatLast")}</p>
-            <p className="text-2xl font-bold text-slate-900 mt-1">—</p>
-          </Card>
-        </div>
+        <Reveal delay={0.06}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+            <Card className="p-5 border-slate-100">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{t("examTestsStatAttempts")}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">—</p>
+            </Card>
+            <Card className="p-5 border-slate-100">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{t("examTestsStatBest")}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">—</p>
+            </Card>
+            <Card className="p-5 border-slate-100">
+              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{t("examTestsStatLast")}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">—</p>
+            </Card>
+          </div>
+        </Reveal>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {modes.map((m) => (
-            <Card key={m.href} className={`p-6 border ${m.border} shadow-sm flex flex-col`}>
-              <div className={`w-12 h-12 ${m.bg} rounded-xl flex items-center justify-center mb-4`}>
-                <m.icon className={`w-6 h-6 ${m.color}`} />
-              </div>
-              <h3 className="font-bold text-slate-900 mb-2">{m.title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed flex-1 mb-6">{m.desc}</p>
-              <Link href={m.href}>
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
-                  {t("examTestsStart")}
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </Link>
-            </Card>
+          {modes.map((m, i) => (
+            <Reveal key={m.href} delay={i * 0.06}>
+              <Card className={`p-6 border ${m.border} shadow-sm flex flex-col`}>
+                <div className={`w-12 h-12 ${m.bg} rounded-xl flex items-center justify-center mb-4`}>
+                  <m.icon className={`w-6 h-6 ${m.color}`} />
+                </div>
+                <h3 className="font-bold text-slate-900 mb-2">{m.title}</h3>
+                <p className="text-sm text-slate-500 leading-relaxed flex-1 mb-6">{m.desc}</p>
+                <Link href={m.href}>
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                    {t("examTestsStart")}
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              </Card>
+            </Reveal>
           ))}
         </div>
 
-        <p className="text-xs text-slate-400 mt-8 text-center">{t("examTestsHubNote")}</p>
+        <Reveal delay={0.18}>
+          <p className="text-xs text-slate-400 mt-8 text-center">{t("examTestsHubNote")}</p>
+        </Reveal>
       </div>
     </DashboardLayout>
   );

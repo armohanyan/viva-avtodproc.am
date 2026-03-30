@@ -5,6 +5,7 @@ import { CheckCircle2, X } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
 import { Link } from "wouter";
+import { CountUpText, Reveal } from "src/lib/motion";
 
 export default function Packages() {
   const { t } = useLang();
@@ -56,66 +57,81 @@ export default function Packages() {
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="bg-slate-900 text-white py-20">
+      <section className="bg-hero text-hero-foreground py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <p className="text-blue-400 font-semibold text-sm uppercase tracking-wider mb-3">Pricing</p>
+            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
+              {t("packagesEyebrow")}
+            </p>
             <h1 className="text-4xl sm:text-5xl font-bold mb-6">{t("packagesTitle")}</h1>
-            <p className="text-slate-300 text-lg">{t("packagesSub")}</p>
+            <p className="text-hero-foreground/80 text-lg">{t("packagesSub")}</p>
           </div>
         </div>
       </section>
 
-      <section className="py-20 bg-white">
+      <section className="py-20 bg-background">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {packages.map((pkg, i) => (
-              <div
+              <Reveal
                 key={i}
-                className={`relative rounded-2xl border-2 ${pkg.popular ? "border-blue-600 shadow-xl" : "border-slate-200 shadow-sm"} p-8`}
+                className={`relative rounded-2xl border-2 ${pkg.popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-8 flex flex-col h-full`}
+                delay={i * 0.06}
               >
                 {pkg.popular && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-blue-600 text-white px-4 py-1">{t("mostPopular")}</Badge>
+                    <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                   </div>
                 )}
-                <h3 className="font-bold text-xl text-slate-900 mb-2">{pkg.name}</h3>
+                <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
                 <div className="flex items-baseline gap-1 mb-1">
-                  <span className="text-4xl font-bold text-slate-900">{pkg.price}</span>
-                  <span className="text-slate-500">֏</span>
+                  <span className="text-4xl font-bold text-foreground">
+                    <CountUpText value={pkg.price} />
+                  </span>
+                  <span className="text-muted-foreground">֏</span>
                 </div>
-                <p className="text-sm text-slate-500 mb-7">{pkg.lessons} {t("lessons")} included</p>
+                <p className="text-sm text-muted-foreground mb-7">
+                  <CountUpText value={pkg.lessons} /> {t("lessons")} included
+                </p>
                 <ul className="space-y-3 mb-8">
                   {pkg.features.map((f, j) => (
                     <li key={j} className="flex items-center gap-2.5 text-sm">
                       {f.inc
-                        ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                        : <X className="w-4 h-4 text-slate-300 shrink-0" />}
-                      <span className={f.inc ? "text-slate-700" : "text-slate-400"}>{f.text}</span>
+                        ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                        : <X className="w-4 h-4 text-muted-foreground shrink-0" />}
+                      <span className={f.inc ? "text-foreground" : "text-muted-foreground"}>{f.text}</span>
                     </li>
                   ))}
                 </ul>
-                <Link href="/register">
-                  <Button className={`w-full ${pkg.popular ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-slate-100 hover:bg-slate-200 text-slate-800"}`}>
-                    {t("choosePackage")}
-                  </Button>
-                </Link>
-              </div>
+                <div className="mt-auto">
+                  <Link href="/register">
+                    <Button
+                      className={`w-full ${
+                        pkg.popular
+                          ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                          : "bg-accent hover:bg-accent/80 text-foreground"
+                      }`}
+                    >
+                      {t("choosePackage")}
+                    </Button>
+                  </Link>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
       {/* FAQ */}
-      <section className="py-20 bg-slate-50">
+      <section className="py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-slate-900 mb-12 text-center">Frequently Asked Questions</h2>
+          <h2 className="text-3xl font-bold text-foreground mb-12 text-center">Frequently Asked Questions</h2>
           <div className="space-y-4">
             {faqs.map((faq, i) => (
-              <div key={i} className="bg-white rounded-xl p-6 border border-slate-100 shadow-sm">
-                <h4 className="font-semibold text-slate-900 mb-2">{faq.q}</h4>
-                <p className="text-slate-500 text-sm leading-relaxed">{faq.a}</p>
-              </div>
+              <Reveal key={i} delay={i * 0.06} className="bg-card rounded-xl p-6 border border-border shadow-sm">
+                <h4 className="font-semibold text-foreground mb-2">{faq.q}</h4>
+                <p className="text-muted-foreground text-sm leading-relaxed">{faq.a}</p>
+              </Reveal>
             ))}
           </div>
         </div>

@@ -20,9 +20,10 @@ export default function ConfirmDialog({ open, onClose, onConfirm, title, descrip
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="flex gap-3 mt-2">
-          <Button variant="outline" className="flex-1 border-slate-200" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button
-            className={`flex-1 ${danger ? "bg-red-600 hover:bg-red-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}`}
+            variant={danger ? "destructive" : "default"}
+            className="flex-1"
             onClick={() => { onConfirm(); onClose(); }}
           >
             {confirmLabel}

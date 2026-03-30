@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { Search, Plus, Edit2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Reveal } from "src/lib/motion";
 
 type Booking = { id: string; student: string; instructor: string; date: string; time: string; type: string; status: string; };
 
@@ -55,19 +56,20 @@ export default function AdminBookings() {
     if (!editBooking) return;
     setBookings(b => b.map(x => x.id === editBooking.id ? editBooking : x));
     setEditBooking(null);
-    showToast("Booking updated.", "success");
+    showToast(t("bookingUpdatedToast"), "success");
   };
 
   return (
     <AdminLayout>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h2 className="text-2xl font-bold text-slate-900">{t("bookings")}</h2>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2" onClick={() => showToast("Add booking — coming soon.", "info")}>
+        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2" onClick={() => showToast(t("addBookingComingSoonToast"), "info")}>
           <Plus className="w-4 h-4" />{t("addNew")}
         </Button>
       </div>
 
-      <Card className="border-slate-100">
+      <Reveal delay={0.06}>
+        <Card className="border-slate-100">
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -116,7 +118,8 @@ export default function AdminBookings() {
         <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
           Showing {filtered.length} of {bookings.length} bookings
         </div>
-      </Card>
+        </Card>
+      </Reveal>
 
       <Dialog open={!!editBooking} onOpenChange={() => setEditBooking(null)}>
         <DialogContent className="max-w-md">

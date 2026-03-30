@@ -4,4 +4,5 @@ export const AUTH_ROUTE_META: readonly AuthRouteMeta[] = [
   { path: "/login", translationKey: "login" },
   { path: "/register", translationKey: "register" },
   { path: "/forgot-password", translationKey: "forgotPassword" },
+  { path: "/auth/callback", translationKey: "authCallback" },
 ];

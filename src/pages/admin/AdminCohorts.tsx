@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { Plus, Calendar, Users, Video, Edit2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { CountUpText, Reveal } from "src/lib/motion";
 
 type Cohort = { id: string; name: string; startDate: string; endDate: string; schedule: string; seats: number; enrolled: number; instructor: string; meetLink: string; status: string; };
 
@@ -43,7 +44,7 @@ export default function AdminCohorts() {
     if (!editCohort) return;
     setCohorts(c => c.map(x => x.id === editCohort.id ? editCohort : x));
     setEditCohort(null);
-    showToast("Cohort updated.", "success");
+    showToast(t("cohortUpdatedToast"), "success");
   };
 
   const handleAdd = (e: React.FormEvent) => {
@@ -55,15 +56,15 @@ export default function AdminCohorts() {
     };
     setCohorts(c => [cohort, ...c]);
     setAddOpen(false);
-    showToast("Cohort created!", "success");
+    showToast(t("cohortCreatedToast"), "success");
   };
 
   const handleJoinMeeting = (link: string) => {
     window.open(link, "_blank");
-    showToast("Opening meeting link...", "info");
+    showToast(t("openingMeetingLinkToast"), "info");
   };
 
-  const handleViewStudents = () => showToast("Student list — coming soon.", "info");
+  const handleViewStudents = () => showToast(t("studentListComingSoonToast"), "info");
 
   return (
     <AdminLayout>
@@ -76,36 +77,37 @@ export default function AdminCohorts() {
 
       <div className="space-y-5">
         {cohorts.map((c, i) => (
-          <Card key={i} className="p-6 border-slate-100">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-bold text-lg text-slate-900">{c.name}</h3>
-                <span className="text-xs text-slate-400 font-mono">{c.id}</span>
-                <Badge className={`text-xs ${statusColor[c.status]}`}>{c.status}</Badge>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-              <div className="bg-slate-50 rounded-lg p-3">
-                <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1"><Calendar className="w-3.5 h-3.5" />Schedule</div>
-                <p className="text-sm font-medium text-slate-900">{c.schedule}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{c.startDate} – {c.endDate}</p>
-              </div>
-              <div className="bg-slate-50 rounded-lg p-3">
-                <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1"><Users className="w-3.5 h-3.5" />Enrollment</div>
-                <p className="text-sm font-medium text-slate-900">{c.enrolled} / {c.seats}</p>
-                <div className="mt-1.5 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(c.enrolled / c.seats) * 100}%` }} />
+          <Reveal key={i} delay={i * 0.06}>
+            <Card className="p-6 border-slate-100">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-bold text-lg text-slate-900">{c.name}</h3>
+                  <span className="text-xs text-slate-400 font-mono">{c.id}</span>
+                  <Badge className={`text-xs ${statusColor[c.status]}`}>{c.status}</Badge>
                 </div>
               </div>
-              <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-xs text-slate-500 mb-1">Instructor</p>
-                <p className="text-sm font-medium text-slate-900">{c.instructor}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1"><Calendar className="w-3.5 h-3.5" />Schedule</div>
+                  <p className="text-sm font-medium text-slate-900">{c.schedule}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{c.startDate} – {c.endDate}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1"><Users className="w-3.5 h-3.5" />Enrollment</div>
+                  <p className="text-sm font-medium text-slate-900"><CountUpText value={c.enrolled} /> / {c.seats}</p>
+                  <div className="mt-1.5 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(c.enrolled / c.seats) * 100}%` }} />
+                  </div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">Instructor</p>
+                  <p className="text-sm font-medium text-slate-900">{c.instructor}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 mb-1">{t("seats")}</p>
+                  <p className="text-sm font-medium text-slate-900"><CountUpText value={c.seats - c.enrolled} /> left</p>
+                </div>
               </div>
-              <div className="bg-slate-50 rounded-lg p-3">
-                <p className="text-xs text-slate-500 mb-1">{t("seats")}</p>
-                <p className="text-sm font-medium text-slate-900">{c.seats - c.enrolled} left</p>
-              </div>
-            </div>
             <div className="flex gap-3 mt-5 pt-4 border-t border-slate-100 flex-wrap">
               {c.meetLink && (
                 <Button size="sm" onClick={() => handleJoinMeeting(c.meetLink)} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5">
@@ -122,7 +124,8 @@ export default function AdminCohorts() {
                 <Trash2 className="w-3.5 h-3.5" />{t("delete")}
               </Button>
             </div>
-          </Card>
+            </Card>
+          </Reveal>
         ))}
       </div>
 
@@ -166,7 +169,7 @@ export default function AdminCohorts() {
             <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("name")} *</label>
               <Input value={newCohort.name} onChange={e => setNewCohort({ ...newCohort, name: e.target.value })} placeholder="Theory Cohort 14" className="h-10" /></div>
             <div><label className="block text-sm font-medium text-slate-700 mb-1">Instructor</label>
-              <Input value={newCohort.instructor} onChange={e => setNewCohort({ ...newCohort, instructor: e.target.value })} placeholder="Narine H." className="h-10" /></div>
+              <Input value={newCohort.instructor} onChange={e => setNewCohort({ ...newCohort, instructor: e.target.value })} placeholder="Instructor" className="h-10" /></div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-sm font-medium text-slate-700 mb-1">Start *</label>
                 <Input value={newCohort.startDate} onChange={e => setNewCohort({ ...newCohort, startDate: e.target.value })} placeholder="Apr 15, 2026" className="h-10" /></div>

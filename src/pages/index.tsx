@@ -28,9 +28,9 @@ function Index() {
 	}, []);
 
 	return (
-		<div className="min-h-screen bg-[#f5f5f5] flex flex-col items-center justify-center p-8">
+		<div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-8">
 
-			<h1 className="text-[clamp(2.5rem,10vw,6rem)] font-black tracking-[-0.03em] text-black leading-none mb-10 text-center">
+			<h1 className="text-[clamp(2.5rem,10vw,6rem)] font-black tracking-[-0.03em] text-foreground leading-none mb-10 text-center">
 				Under
 				<br />
 				Construction

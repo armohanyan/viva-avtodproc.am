@@ -4,11 +4,11 @@ import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
   LayoutDashboard, Calendar, ShoppingBag, CreditCard, User, ClipboardCheck,
-  Car, Bell, LogOut, Menu
+  Bell, LogOut, Menu
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
-import LangToggle from "./LangToggle";
+import ThemeToggle from "./ThemeToggle";
 import { DASHBOARD_NAV_LINKS } from "src/modules/dashboard/dashboard.consts";
 
 interface Props { children: ReactNode; }
@@ -47,16 +47,18 @@ export default function DashboardLayout({ children }: Props) {
 
   const Sidebar = () => (
     <div className="flex flex-col h-full">
-      <div className="p-6 border-b border-slate-100">
-        <Link href="/public" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Car className="w-4 h-4 text-white" />
+      <div className="p-6 border-b border-border">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+            <img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
           </div>
-          <span className="font-bold text-slate-900">Viva Drive</span>
+          <span className="font-bold text-foreground">{t("brandName")}</span>
         </Link>
       </div>
       <div className="p-4 flex-1 overflow-y-auto">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-3">Navigation</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-3">
+          Navigation
+        </p>
         <nav className="space-y-1">
           {nav.map((item) => (
             <Link
@@ -65,8 +67,8 @@ export default function DashboardLayout({ children }: Props) {
               onClick={() => setOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isNavActive(item.href)
-                  ? "bg-blue-600 text-white"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
             >
               <item.icon className="w-4 h-4 shrink-0" />
@@ -75,17 +77,19 @@ export default function DashboardLayout({ children }: Props) {
           ))}
         </nav>
       </div>
-      <div className="p-4 border-t border-slate-100">
+      <div className="p-4 border-t border-border">
         <div className="flex items-center gap-3 px-3 py-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm shrink-0">A</div>
+          <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm shrink-0">
+            A
+          </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-900 truncate">Armen P.</p>
-            <p className="text-xs text-slate-400 truncate">armen@example.com</p>
+            <p className="text-sm font-medium text-foreground truncate">Armen P.</p>
+            <p className="text-xs text-muted-foreground truncate">armen@example.com</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-500 hover:bg-slate-100 w-full"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent w-full"
         >
           <LogOut className="w-4 h-4" />
           {t("logout")}
@@ -95,32 +99,38 @@ export default function DashboardLayout({ children }: Props) {
   );
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      <div className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col shrink-0">
+    <div className="flex h-screen bg-background">
+      <div className="hidden lg:flex w-64 bg-card border-r border-border flex-col shrink-0">
         <Sidebar />
       </div>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200 px-6 h-16 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="bg-card border-b border-border px-6 h-16 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild className="lg:hidden">
                 <Button variant="ghost" size="sm"><Menu className="w-5 h-5" /></Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-64 p-0"><Sidebar /></SheetContent>
             </Sheet>
-            <h1 className="font-semibold text-slate-900 hidden sm:block">
+            <h1 className="font-semibold text-foreground hidden sm:block">
               {location.startsWith("/dashboard/exam-tests")
                 ? t("examTests")
                 : nav.find((n) => n.href === location)?.label || t("dashboard")}
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <LangToggle />
-            <button className="relative w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center">
-              <Bell className="w-4 h-4 text-slate-600" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
+            <ThemeToggle />
+            <button
+              type="button"
+              className="relative w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center"
+              onClick={() => showToast(t("notifications") + " coming soon.", "info")}
+            >
+              <Bell className="w-4 h-4 text-muted-foreground" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-sm">A</div>
+            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm">
+              A
+            </div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>

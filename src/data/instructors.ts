@@ -1,0 +1,47 @@
+export type Instructor = {
+  name: string;
+  years: number;
+  students: number;
+  rating: number;
+  location: string;
+  car: string;
+  transmission: string;
+  imageSrc: string;
+  specialties: string[];
+};
+
+export const instructors: Instructor[] = [
+  {
+    name: "Armen Petrosyan",
+    years: 12,
+    students: 340,
+    rating: 4.9,
+    location: "Yerevan",
+    car: "Toyota Corolla",
+    transmission: "Manual",
+    imageSrc: "/logo.jpg",
+    specialties: ["City Driving", "Highway", "Night Driving"],
+  },
+  {
+    name: "Narine Hovhannisyan",
+    years: 8,
+    students: 210,
+    rating: 4.8,
+    location: "Yerevan",
+    car: "Kia Rio",
+    transmission: "Automatic",
+    imageSrc: "/logo.jpg",
+    specialties: ["Beginners", "Theory", "Exam Prep"],
+  },
+  {
+    name: "Vardan Grigoryan",
+    years: 15,
+    students: 420,
+    rating: 5.0,
+    location: "Yerevan",
+    car: "Kia Cerato",
+    transmission: "Automatic",
+    imageSrc: "/logo.jpg",
+    specialties: ["All Levels", "Night Driving", "Refresher"],
+  }
+];

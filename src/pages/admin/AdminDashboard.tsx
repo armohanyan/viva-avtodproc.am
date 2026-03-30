@@ -3,6 +3,8 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Users, Calendar, TrendingUp, Car, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { CountUpText } from "src/lib/motion";
+import { useToast } from "src/lib/toast";
 
 const recentBookings = [
   { student: "Ani Karapetyan", instructor: "Armen P.", date: "Mar 28", time: "10:00", status: "confirmed" },
@@ -14,6 +16,7 @@ const recentBookings = [
 
 export default function AdminDashboard() {
   const { t } = useLang();
+  const { showToast } = useToast();
 
   const stats = [
     { label: t("totalUsers"), value: "3,245", change: "+12%", up: true, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
@@ -32,7 +35,7 @@ export default function AdminDashboard() {
     <AdminLayout>
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-slate-900">{t("adminDashboard")}</h2>
-        <p className="text-slate-500 text-sm mt-1">Welcome back, Admin.</p>
+        <p className="text-slate-500 text-sm mt-1">{t("adminWelcomeBack")}</p>
       </div>
 
       {/* Stats */}
@@ -42,7 +45,9 @@ export default function AdminDashboard() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs text-slate-500 mb-1">{s.label}</p>
-                <p className="text-2xl font-bold text-slate-900">{s.value}</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  <CountUpText value={s.value} />
+                </p>
                 <div className="flex items-center gap-1 mt-1">
                   {s.up ? (
                     <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500" />
@@ -90,8 +95,20 @@ export default function AdminDashboard() {
                     </Badge>
                   </td>
                   <td className="px-5 py-3.5">
-                    <button className="text-blue-600 hover:underline text-xs mr-3">{t("edit")}</button>
-                    <button className="text-red-500 hover:underline text-xs">{t("delete")}</button>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline text-xs mr-3"
+                      onClick={() => showToast(`Edit booking for ${b.student}`, "info")}
+                    >
+                      {t("edit")}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-red-500 hover:underline text-xs"
+                      onClick={() => showToast(`Delete booking for ${b.student}`, "info")}
+                    >
+                      {t("delete")}
+                    </button>
                   </td>
                 </tr>
               ))}

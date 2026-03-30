@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { Plus, Edit2, Trash2, Users } from "lucide-react";
 import { useState } from "react";
+import { CountUpText, Reveal } from "src/lib/motion";
 
 type Pkg = { id: string; name: string; price: string; lessons: number; enrolled: number; status: string; features: string[]; };
 
@@ -38,7 +39,7 @@ export default function AdminPackages() {
     if (!editPkg) return;
     setPackages(p => p.map(x => x.id === editPkg.id ? editPkg : x));
     setEditPkg(null);
-    showToast("Package updated.", "success");
+    showToast(t("packageUpdatedToast"), "success");
   };
 
   const handleAdd = (e: React.FormEvent) => {
@@ -48,7 +49,7 @@ export default function AdminPackages() {
     setPackages(p => [...p, pkg]);
     setAddOpen(false);
     setNewPkg({ name: "", price: "", lessons: 10 });
-    showToast("Package created!", "success");
+    showToast(t("packageCreatedToast"), "success");
   };
 
   return (
@@ -62,22 +63,26 @@ export default function AdminPackages() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {packages.map((pkg, i) => (
-          <Card key={i} className="p-6 border-slate-100">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-bold text-lg text-slate-900">{pkg.name}</h3>
-                  <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("active")}</Badge>
+          <Reveal key={i} delay={i * 0.06}>
+            <Card className="p-6 border-slate-100">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-bold text-lg text-slate-900">{pkg.name}</h3>
+                    <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("active")}</Badge>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-600">
+                    <CountUpText value={pkg.price} /> ֏
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    <CountUpText value={pkg.lessons} /> {t("lessons")}
+                  </p>
                 </div>
-                <p className="text-2xl font-bold text-blue-600">{pkg.price} ֏</p>
-                <p className="text-sm text-slate-500">{pkg.lessons} {t("lessons")}</p>
+                <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                  <Users className="w-4 h-4" />
+                  <CountUpText value={pkg.enrolled} className="font-semibold text-slate-700" /> <span>enrolled</span>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 text-sm text-slate-500">
-                <Users className="w-4 h-4" />
-                <span className="font-semibold text-slate-700">{pkg.enrolled}</span>
-                <span>enrolled</span>
-              </div>
-            </div>
             <ul className="space-y-1.5 mb-5">
               {pkg.features.map((f, j) => (
                 <li key={j} className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -93,7 +98,8 @@ export default function AdminPackages() {
                 <Trash2 className="w-3.5 h-3.5" />{t("delete")}
               </Button>
             </div>
-          </Card>
+            </Card>
+          </Reveal>
         ))}
       </div>
 

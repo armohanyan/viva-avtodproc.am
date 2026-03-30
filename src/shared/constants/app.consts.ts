@@ -1,1 +1,1 @@
-export const APP_NAME = "Viva Drive";
+export const APP_NAME = "Viva Autoschool";

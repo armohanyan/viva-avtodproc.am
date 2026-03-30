@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { Search, Plus, Edit2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Reveal } from "src/lib/motion";
 
 type User = { id: string; name: string; email: string; phone: string; package: string; lessons: string; status: string; joined: string; };
 
@@ -66,7 +67,7 @@ export default function AdminUsers() {
     setUsers(u => [user, ...u]);
     setAddOpen(false);
     setNewUser({ name: "", email: "", phone: "", package: "Basic", status: "active" });
-    showToast("User added!", "success");
+    showToast(t("userAddedToast"), "success");
   };
 
   return (
@@ -78,7 +79,8 @@ export default function AdminUsers() {
         </Button>
       </div>
 
-      <Card className="border-slate-100">
+      <Reveal delay={0.06}>
+        <Card className="border-slate-100">
         <div className="p-4 border-b border-slate-100">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -124,7 +126,8 @@ export default function AdminUsers() {
         <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
           Showing {filtered.length} of {users.length} users
         </div>
-      </Card>
+        </Card>
+      </Reveal>
 
       {/* Edit Dialog */}
       <Dialog open={!!editUser} onOpenChange={() => setEditUser(null)}>

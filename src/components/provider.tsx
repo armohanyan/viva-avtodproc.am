@@ -1,7 +1,6 @@
-interface ProviderProps {
-  children: React.ReactNode;
-}
+import type { PropsWithChildren } from "react";
+import { ThemeProvider } from "src/lib/theme";
 
-export function Provider({ children }: ProviderProps) {
-  return <>{children}</>;
+export function Provider({ children }: PropsWithChildren) {
+  return <ThemeProvider>{children}</ThemeProvider>;
 }

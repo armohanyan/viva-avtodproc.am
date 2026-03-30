@@ -10,6 +10,7 @@ import {
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
 import { CheckCircle2, XCircle } from "lucide-react";
+import { CountUpText, Reveal } from "src/lib/motion";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -90,22 +91,24 @@ export default function DashboardExamQuiz() {
     return (
       <DashboardLayout>
         <div className="max-w-lg mx-auto">
-          <Card className="p-8 border-slate-100 text-center">
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">{t("examQuizResultsTitle")}</h2>
-            <p className="text-slate-500 mb-6">{t("examQuizScoreLabel")}</p>
-            <p className="text-5xl font-bold text-blue-600 mb-2">
-              {correctCount}/{total}
-            </p>
-            <p className="text-sm text-slate-400 mb-8">{pct}%</p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button onClick={restart} variant="outline" className="w-full sm:w-auto">
-                {t("examQuizRetake")}
-              </Button>
-              <Link href="/dashboard/exam-tests">
-                <Button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white">{t("examQuizBackToList")}</Button>
-              </Link>
-            </div>
-          </Card>
+          <Reveal delay={0.06}>
+            <Card className="p-8 border-slate-100 text-center">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{t("examQuizResultsTitle")}</h2>
+              <p className="text-slate-500 mb-6">{t("examQuizScoreLabel")}</p>
+              <p className="text-5xl font-bold text-blue-600 mb-2">
+                <CountUpText value={correctCount} />/{total}
+              </p>
+              <p className="text-sm text-slate-400 mb-8">{pct}%</p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button onClick={restart} variant="outline" className="w-full sm:w-auto">
+                  {t("examQuizRetake")}
+                </Button>
+                <Link href="/dashboard/exam-tests">
+                  <Button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white">{t("examQuizBackToList")}</Button>
+                </Link>
+              </div>
+            </Card>
+          </Reveal>
 
           <div className="mt-8 space-y-3">
             <h3 className="text-sm font-semibold text-slate-700 px-1">{t("examQuizReview")}</h3>
@@ -114,24 +117,26 @@ export default function DashboardExamQuiz() {
               const ok = userAns === question.correctIndex;
               const loc = getQuestionInLang(question, lang);
               return (
-                <Card key={`${question.id}-${i}`} className="p-4 border-slate-100 text-left">
-                  <div className="flex gap-2 items-start mb-2">
-                    {ok ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                    )}
-                    <p className="text-sm text-slate-800 font-medium">{loc.text}</p>
-                  </div>
-                  <p className="text-xs text-slate-500 ml-7">
-                    {t("examQuizYourAnswer")}: {userAns !== null && userAns !== undefined ? loc.options[userAns] : "—"}
-                  </p>
-                  {!ok && (
-                    <p className="text-xs text-emerald-700 ml-7 mt-1">
-                      {t("examQuizCorrectAnswer")}: {loc.options[question.correctIndex]}
+                <Reveal key={`${question.id}-${i}`} delay={i * 0.04}>
+                  <Card className="p-4 border-slate-100 text-left">
+                    <div className="flex gap-2 items-start mb-2">
+                      {ok ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                      )}
+                      <p className="text-sm text-slate-800 font-medium">{loc.text}</p>
+                    </div>
+                    <p className="text-xs text-slate-500 ml-7">
+                      {t("examQuizYourAnswer")}: {userAns !== null && userAns !== undefined ? loc.options[userAns] : "—"}
                     </p>
-                  )}
-                </Card>
+                    {!ok && (
+                      <p className="text-xs text-emerald-700 ml-7 mt-1">
+                        {t("examQuizCorrectAnswer")}: {loc.options[question.correctIndex]}
+                      </p>
+                    )}
+                  </Card>
+                </Reveal>
               );
             })}
           </div>
@@ -156,34 +161,36 @@ export default function DashboardExamQuiz() {
           </Link>
         </div>
 
-        <Card className="p-8 border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900 mb-6 leading-snug">{current.text}</h2>
-          <div className="space-y-2">
-            {current.options.map((opt, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setSelected(i)}
-                className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                  selected === i
-                    ? "border-blue-600 bg-blue-50 text-slate-900"
-                    : "border-slate-200 hover:border-slate-300 text-slate-700"
-                }`}
+        <Reveal delay={0.06}>
+          <Card className="p-8 border-slate-100">
+            <h2 className="text-lg font-semibold text-slate-900 mb-6 leading-snug">{current.text}</h2>
+            <div className="space-y-2">
+              {current.options.map((opt, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setSelected(i)}
+                  className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                    selected === i
+                      ? "border-blue-600 bg-blue-50 text-slate-900"
+                      : "border-slate-200 hover:border-slate-300 text-slate-700"
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+            <div className="mt-8 flex justify-end">
+              <Button
+                onClick={goNext}
+                disabled={selected === null}
+                className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
               >
-                {opt}
-              </button>
-            ))}
-          </div>
-          <div className="mt-8 flex justify-end">
-            <Button
-              onClick={goNext}
-              disabled={selected === null}
-              className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
-            >
-              {isLast ? t("examQuizFinish") : t("examQuizNext")}
-            </Button>
-          </div>
-        </Card>
+                {isLast ? t("examQuizFinish") : t("examQuizNext")}
+              </Button>
+            </div>
+          </Card>
+        </Reveal>
       </div>
     </DashboardLayout>
   );

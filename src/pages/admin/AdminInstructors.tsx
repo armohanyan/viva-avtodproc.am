@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { Plus, Star, Clock, Edit2, Trash2, Calendar } from "lucide-react";
 import { useState } from "react";
+import { CountUpText, Reveal } from "src/lib/motion";
 
 type Instructor = { name: string; email: string; phone: string; years: number; students: number; rating: number; status: string; schedule: string; };
 
@@ -43,7 +44,7 @@ export default function AdminInstructors() {
     if (editIdx === null || !editIns) return;
     setInstructors(ins => ins.map((x, i) => i === editIdx ? editIns : x));
     setEditIdx(null);
-    showToast("Instructor updated.", "success");
+    showToast(t("instructorUpdatedToast"), "success");
   };
 
   const handleAdd = (e: React.FormEvent) => {
@@ -52,7 +53,7 @@ export default function AdminInstructors() {
     setInstructors(ins => [...ins, { ...newIns, students: 0, rating: 5.0, status: "active" }]);
     setAddOpen(false);
     setNewIns({ name: "", email: "", phone: "", years: 1, schedule: "Mon–Fri" });
-    showToast("Instructor added!", "success");
+    showToast(t("instructorAddedToast"), "success");
   };
 
   const updateEdit = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -71,7 +72,8 @@ export default function AdminInstructors() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {instructors.map((ins, i) => (
-          <Card key={i} className="p-6 border-slate-100 hover:shadow-md transition-shadow">
+          <Reveal key={i} delay={i * 0.06}>
+            <Card className="p-6 border-slate-100 hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className={`w-12 h-12 ${colors[i % colors.length]} rounded-xl flex items-center justify-center text-white font-bold text-lg`}>
@@ -90,16 +92,16 @@ export default function AdminInstructors() {
               <div className="text-center bg-slate-50 rounded-lg p-2">
                 <div className="flex items-center justify-center gap-0.5">
                   <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  <span className="text-sm font-bold text-slate-900">{ins.rating}</span>
+                  <CountUpText value={ins.rating} decimals={1} className="text-sm font-bold text-slate-900" />
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">Rating</p>
               </div>
               <div className="text-center bg-slate-50 rounded-lg p-2">
-                <span className="text-sm font-bold text-slate-900">{ins.years}</span>
+                <CountUpText value={ins.years} className="text-sm font-bold text-slate-900" />
                 <p className="text-xs text-slate-400 mt-0.5">Years</p>
               </div>
               <div className="text-center bg-slate-50 rounded-lg p-2">
-                <span className="text-sm font-bold text-slate-900">{ins.students}</span>
+                <CountUpText value={ins.students} className="text-sm font-bold text-slate-900" />
                 <p className="text-xs text-slate-400 mt-0.5">Students</p>
               </div>
             </div>
@@ -117,7 +119,8 @@ export default function AdminInstructors() {
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
             </div>
-          </Card>
+            </Card>
+          </Reveal>
         ))}
       </div>
 
