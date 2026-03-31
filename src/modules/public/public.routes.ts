@@ -7,6 +7,7 @@ import {
   InstructorsPage,
   ContactPage,
   ExamTestsPage,
+  ExamQuizPage,
 } from "src/pages/public";
 
 export const publicRoutes: readonly AppRoute[] = [
@@ -17,4 +18,5 @@ export const publicRoutes: readonly AppRoute[] = [
   { path: "/instructors", component: InstructorsPage },
   { path: "/contact", component: ContactPage },
   { path: "/exam-tests", component: ExamTestsPage },
+  { path: "/exam-tests/quiz/:mode", component: ExamQuizPage },
 ];

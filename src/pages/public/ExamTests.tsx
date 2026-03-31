@@ -1,38 +1,97 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
-import { ClipboardCheck, Layers, Signpost, CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Lock } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
+import { Card } from "src/components/ui/card";
 
 export default function ExamTests() {
   const { t } = useLang();
 
-  const modes = [
+  const signInRedirectHref = "/login?redirect=/exam-tests";
+
+  const topics = [
     {
-      icon: ClipboardCheck,
-      title: t("examTestsFullTitle"),
-      desc: t("examTestsFullDesc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-      border: "border-primary/20",
+      iconSrc: "/topic-icons/varir-theme-5.svg",
+      title: "Маневрирование, расположение транспортных средств на проезжей части, преимущество при движении",
+      done: 0,
+      total: 147,
+      isFree: true,
+      href: "/exam-tests/quiz/topics",
     },
     {
-      icon: Layers,
-      title: t("examTestsTopicsTitle"),
-      desc: t("examTestsTopicsDesc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-      border: "border-primary/20",
+      iconSrc: "/topic-icons/varir-theme-3.svg",
+      title: "Закон РА „Об обеспечении безопасности дорожного движения\"",
+      done: 0,
+      total: 72,
+      isFree: false,
+      href: signInRedirectHref,
     },
     {
-      icon: Signpost,
-      title: t("examTestsSignsTitle"),
-      desc: t("examTestsSignsDesc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-      border: "border-primary/20",
+      iconSrc: "/topic-icons/varir-theme-2.svg",
+      title: "Эксплуатация ТС",
+      done: 0,
+      total: 78,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-6.svg",
+      title: "Дорожные знаки и дорожная разметка",
+      done: 0,
+      total: 176,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-8.svg",
+      title: "Перекресток (со знаками, без знаков)",
+      done: 0,
+      total: 135,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-7.svg",
+      title: "Перекресток (регулируемый, со светофором )",
+      done: 0,
+      total: 95,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-10.svg",
+      title: "Дорожная разметка, остановка, парковка",
+      done: 0,
+      total: 134,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-4.svg",
+      title: "Скорость, буксировка, перевозка людей и грузов",
+      done: 0,
+      total: 80,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-9.svg",
+      title: "Предупреждающие знаки, специальные знаки, обгон",
+      done: 0,
+      total: 126,
+      isFree: false,
+      href: signInRedirectHref,
+    },
+    {
+      iconSrc: "/topic-icons/varir-theme-1.svg",
+      title: "Первая медицинская помощь",
+      done: 0,
+      total: 51,
+      isFree: false,
+      href: signInRedirectHref,
     },
   ];
 
@@ -56,20 +115,61 @@ export default function ExamTests() {
         </div>
       </section>
 
-      <section className="py-20 bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {modes.map((m, i) => (
-              <Reveal
-                key={i}
-                className={`rounded-2xl border ${m.border} bg-card shadow-sm p-8 flex flex-col`}
-                delay={i * 0.06}
-              >
-                <div className={`w-14 h-14 ${m.bg} rounded-2xl flex items-center justify-center mb-6`}>
-                  <m.icon className={`w-7 h-7 ${m.color}`} />
-                </div>
-                <h2 className="text-xl font-bold text-foreground mb-3">{m.title}</h2>
-                <p className="text-muted-foreground leading-relaxed flex-1">{m.desc}</p>
+      <section className="py-14 bg-background">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-foreground">Թեմաներ</h2>
+          </div>
+
+          <Card className="rounded-xl border border-border p-4 sm:p-5 mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-muted-foreground">Իմ պրոգրեսը</p>
+              <p className="text-xs text-muted-foreground">0%</p>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-accent mb-3">
+              <div className="h-1.5 w-[2%] rounded-full bg-amber-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-accent/40 p-3">
+                <p className="text-emerald-600 font-semibold text-sm">0 / 1094</p>
+                <p className="text-xs text-muted-foreground">Դրական արդյունք</p>
+              </div>
+              <div className="rounded-lg bg-accent/40 p-3">
+                <p className="text-rose-500 font-semibold text-sm">0 / 1094</p>
+                <p className="text-xs text-muted-foreground">Բացասական արդյունք</p>
+              </div>
+            </div>
+          </Card>
+
+          <div className="flex justify-end mb-3">
+            <p className="text-xs text-muted-foreground">Քննության արդյունքը:</p>
+          </div>
+
+          <div className="space-y-3">
+            {topics.map((topic, i) => (
+              <Reveal key={`${topic.title}-${i}`} delay={i * 0.05}>
+                <Card className="rounded-xl border border-border bg-card/90">
+                  <Link href={topic.href} className="block p-3 sm:p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-md bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                        <img src={topic.iconSrc} alt={topic.title} className="w-6 h-6" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-foreground truncate">{topic.title}</p>
+                      </div>
+                      <div className="text-xs text-muted-foreground shrink-0">
+                        {topic.done}/{topic.total}
+                      </div>
+                    </div>
+                    <div className="mt-3 h-1 w-full rounded-full bg-accent" />
+                    {!topic.isFree && (
+                      <div className="mt-2 flex items-center justify-end text-xs text-muted-foreground gap-1">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Sign in to continue</span>
+                      </div>
+                    )}
+                  </Link>
+                </Card>
               </Reveal>
             ))}
           </div>
