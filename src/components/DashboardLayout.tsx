@@ -46,8 +46,8 @@ export default function DashboardLayout({ children }: Props) {
   };
 
   const Sidebar = () => (
-    <div className="flex flex-col h-full">
-      <div className="p-6 border-b border-border">
+    <div className="flex flex-col h-full bg-card">
+      <div className="p-5 border-b border-border">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
@@ -55,7 +55,7 @@ export default function DashboardLayout({ children }: Props) {
           <span className="font-bold text-foreground">{t("brandName")}</span>
         </Link>
       </div>
-      <div className="p-4 flex-1 overflow-y-auto">
+      <div className="px-3 py-4 flex-1 overflow-y-auto">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-3">
           Navigation
         </p>
@@ -77,7 +77,7 @@ export default function DashboardLayout({ children }: Props) {
           ))}
         </nav>
       </div>
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-border bg-background/60">
         <div className="flex items-center gap-3 px-3 py-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm shrink-0">
             A
@@ -104,13 +104,17 @@ export default function DashboardLayout({ children }: Props) {
         <Sidebar />
       </div>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-card border-b border-border px-6 h-16 flex items-center justify-between shrink-0">
+        <header className="bg-card border-b border-border px-4 sm:px-6 h-16 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild className="lg:hidden">
                 <Button variant="ghost" size="sm"><Menu className="w-5 h-5" /></Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0"><Sidebar /></SheetContent>
+              <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0">
+                <div className="h-full pt-12">
+                  <Sidebar />
+                </div>
+              </SheetContent>
             </Sheet>
             <h1 className="font-semibold text-foreground hidden sm:block">
               {location.startsWith("/dashboard/exam-tests")
@@ -133,7 +137,7 @@ export default function DashboardLayout({ children }: Props) {
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

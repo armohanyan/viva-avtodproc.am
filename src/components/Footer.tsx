@@ -93,19 +93,19 @@ export default function Footer() {
           <div>
             <h4 className="font-semibold text-hero-foreground mb-4">{t("newsletter")}</h4>
             <p className="text-sm text-hero-foreground/80 mb-4">{t("subscribeText")}</p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
                 placeholder={t("yourEmail")}
-                className="h-11 basis-0 grow min-w-[220px] bg-background/90 text-foreground placeholder:text-muted-foreground border-border"
+                className="h-11 w-full min-w-0 bg-background/90 text-foreground placeholder:text-muted-foreground border-border sm:flex-1"
               />
               <Button
                 type="button"
                 onClick={handleSubscribe}
-                className="h-11 px-4 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="h-11 w-full px-4 bg-primary hover:bg-primary/90 text-primary-foreground sm:w-auto sm:shrink-0"
               >
                 {t("subscribe")}
               </Button>

@@ -14,12 +14,11 @@ export default function About() {
   ];
 
   const milestones = [
-    { year: "2010", event: t("aboutMilestone2010") },
-    { year: "2013", event: t("aboutMilestone2013") },
-    { year: "2016", event: t("aboutMilestone2016") },
-    { year: "2019", event: t("aboutMilestone2019") },
     { year: "2022", event: t("aboutMilestone2022") },
+    { year: "2023", event: t("aboutMilestone2023") },
     { year: "2024", event: t("aboutMilestone2024") },
+    { year: "2025", event: t("aboutMilestone2025") },
+    { year: "2026", event: t("aboutMilestone2026") },
   ];
 
   return (
@@ -42,7 +41,7 @@ export default function About() {
       {/* Story */}
       <section className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center">
             <div>
             <h2 className="text-3xl font-bold text-foreground mb-6">{t("aboutOurStoryTitle")}</h2>
               <p className="text-muted-foreground leading-relaxed mb-4">{t("aboutText")}</p>
@@ -58,10 +57,10 @@ export default function About() {
                 ))}
               </ul>
             </div>
-            <div className="bg-gradient-to-br from-primary to-primary/60 rounded-2xl p-10 text-primary-foreground">
+            <div className="bg-gradient-to-br from-primary to-primary/60 rounded-2xl p-6 sm:p-8 md:p-10 text-primary-foreground">
               <h3 className="text-2xl font-bold mb-4">{t("ourMission")}</h3>
               <p className="text-primary-foreground/80 leading-relaxed text-lg">{t("missionText")}</p>
-              <div className="mt-8 grid grid-cols-2 gap-6">
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                 {[
                   { v: "3,200+", l: t("aboutStatGraduates") },
                   { v: "94%", l: t("aboutStatPassRate") },

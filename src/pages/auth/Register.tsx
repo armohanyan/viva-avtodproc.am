@@ -139,7 +139,7 @@ export default function Register() {
           </div>
 
           <form onSubmit={handleRegister} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("firstName")} *</label>
                 <Input value={form.firstName} onChange={set("firstName")} placeholder={t("firstName")} className="h-11" />

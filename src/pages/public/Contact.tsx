@@ -4,6 +4,7 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "src/lib/motion";
@@ -11,9 +12,24 @@ import { Reveal } from "src/lib/motion";
 export default function Contact() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const branches = [
+    {
+      name: "Գարեգին Նժդեհ 8",
+      mapUrl: "https://maps.google.com/maps?q=%D4%B3%D5%A1%D6%80%D5%A5%D5%A3%D5%AB%D5%B6%20%D5%86%D5%AA%D5%A4%D5%A5%D5%B0%208%2C%20Yerevan&z=16&output=embed",
+    },
+    {
+      name: "Ազատամարտիկների 75/1",
+      mapUrl: "https://maps.google.com/maps?q=%D4%B1%D5%A6%D5%A1%D5%BF%D5%A1%D5%B4%D5%A1%D6%80%D5%BF%D5%AB%D5%AF%D5%B6%D5%A5%D6%80%D5%AB%2075%2F1%2C%20Yerevan&z=16&output=embed",
+    },
+    {
+      name: "Ք.Մասիս Երևանյան 125",
+      mapUrl: "https://maps.google.com/maps?q=%D5%94.%D5%84%D5%A1%D5%BD%D5%AB%D5%BD%20%D4%B5%D6%80%D6%87%D5%A1%D5%B6%D5%B5%D5%A1%D5%B6%20125&z=16&output=embed",
+    },
+  ];
 
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", subject: "", message: "" });
   const [loading, setLoading] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState<(typeof branches)[number] | null>(null);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -52,7 +68,7 @@ export default function Contact() {
 
       <section className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16">
             <Reveal>
               <h2 className="text-2xl font-bold text-foreground mb-8">{t("contactSendMessageTitle")}</h2>
               <form onSubmit={handleSubmit} className="space-y-5">
@@ -103,7 +119,6 @@ export default function Contact() {
                 <h2 className="text-2xl font-bold text-foreground mb-8">{t("contactInformationTitle")}</h2>
                 <div className="space-y-6">
                   {[
-                    { icon: MapPin, label: t("address"), value: "Mashtots Ave, 45, Yerevan, Armenia 0002", color: "bg-primary/10 text-primary" },
                     { icon: Phone, label: t("phone"), value: "+374 10 123 456\n+374 99 123 456", color: "bg-primary/10 text-primary" },
                     { icon: Mail, label: t("email"), value: "info@vivadrive.am\nsupport@vivadrive.am", color: "bg-primary/10 text-primary" },
                     { icon: Clock, label: t("workHours"), value: `${t("monFri")}\n${t("sat")}`, color: "bg-primary/10 text-primary" },
@@ -122,17 +137,56 @@ export default function Contact() {
                   ))}
                 </div>
               </div>
-              <div className="rounded-2xl bg-accent border border-border h-64 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <MapPin className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">{t("interactiveMapLabel")}</p>
-                  <p className="text-xs">Mashtots Ave 45, Yerevan</p>
+              <div className="rounded-2xl border border-border p-5 space-y-4 bg-accent/40">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-primary" />
+                  <h3 className="text-lg font-semibold text-foreground">Մասնաճյուղերը</h3>
+                </div>
+                <div className="space-y-3">
+                  {branches.map((branch) => (
+                    <div
+                      key={branch.name}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
+                    >
+                      <p className="text-sm text-foreground">{branch.name}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setSelectedBranch(branch)}
+                        aria-label={`Open map for ${branch.name}`}
+                      >
+                        <MapPin className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               </div>
             </Reveal>
           </div>
         </div>
       </section>
+
+      <Dialog open={!!selectedBranch} onOpenChange={(open) => !open && setSelectedBranch(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden">
+          {selectedBranch && (
+            <>
+              <DialogHeader className="px-6 pt-6 pb-3">
+                <DialogTitle>{selectedBranch.name}</DialogTitle>
+              </DialogHeader>
+              <div className="px-6 pb-6">
+                <iframe
+                  title={`Map for ${selectedBranch.name}`}
+                  src={selectedBranch.mapUrl}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="w-full h-[420px] rounded-xl border border-border"
+                />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Footer />
     </div>

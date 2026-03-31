@@ -3,6 +3,7 @@ export type Instructor = {
   years: number;
   students: number;
   rating: number;
+  hourlyPrice: number;
   location: string;
   car: string;
   transmission: string;
@@ -16,6 +17,7 @@ export const instructors: Instructor[] = [
     years: 12,
     students: 340,
     rating: 4.9,
+    hourlyPrice: 7000,
     location: "Yerevan",
     car: "Toyota Corolla",
     transmission: "Manual",
@@ -27,6 +29,7 @@ export const instructors: Instructor[] = [
     years: 8,
     students: 210,
     rating: 4.8,
+    hourlyPrice: 6500,
     location: "Yerevan",
     car: "Kia Rio",
     transmission: "Automatic",
@@ -38,6 +41,7 @@ export const instructors: Instructor[] = [
     years: 15,
     students: 420,
     rating: 5.0,
+    hourlyPrice: 8000,
     location: "Yerevan",
     car: "Kia Cerato",
     transmission: "Automatic",

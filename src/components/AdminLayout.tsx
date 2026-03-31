@@ -44,7 +44,7 @@ export default function AdminLayout({ children }: Props) {
 
   const Sidebar = () => (
     <div className="flex flex-col h-full bg-hero">
-      <div className="p-6 border-b border-border">
+      <div className="p-5 border-b border-border">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
@@ -58,7 +58,10 @@ export default function AdminLayout({ children }: Props) {
           </div>
         </Link>
       </div>
-      <div className="p-4 flex-1 overflow-y-auto">
+      <div className="px-3 py-4 flex-1 overflow-y-auto">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-3 mb-3">
+          Navigation
+        </p>
         <nav className="space-y-1">
           {nav.map((item) => (
             <Link
@@ -77,7 +80,7 @@ export default function AdminLayout({ children }: Props) {
           ))}
         </nav>
       </div>
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-border bg-black/10">
         <div className="flex items-center gap-3 px-3 py-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm shrink-0">
             SA
@@ -102,13 +105,17 @@ export default function AdminLayout({ children }: Props) {
     <div className="flex h-screen bg-background">
       <div className="hidden lg:flex w-64 shrink-0"><Sidebar /></div>
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-card border-b border-border px-6 h-16 flex items-center justify-between shrink-0">
+        <header className="bg-card border-b border-border px-4 sm:px-6 h-16 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild className="lg:hidden">
                 <Button variant="ghost" size="sm"><Menu className="w-5 h-5" /></Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0 bg-hero"><Sidebar /></SheetContent>
+              <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0 bg-hero">
+                <div className="h-full pt-12">
+                  <Sidebar />
+                </div>
+              </SheetContent>
             </Sheet>
             <h1 className="font-semibold text-foreground text-sm">
               {nav.find(n => n.href === location)?.label || "Admin"}
@@ -126,7 +133,7 @@ export default function AdminLayout({ children }: Props) {
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

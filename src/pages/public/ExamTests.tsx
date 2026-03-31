@@ -78,7 +78,7 @@ export default function ExamTests() {
 
       <section className="py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-foreground mb-10 text-center">{t("examTestsHowTitle")}</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-10 text-center">{t("examTestsHowTitle")}</h2>
           <ol className="space-y-6">
             {steps.map((text, i) => (
               <li key={i} className="flex gap-4">

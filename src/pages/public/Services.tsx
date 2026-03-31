@@ -55,7 +55,7 @@ export default function Services() {
                 className={`mx-auto w-full max-w-5xl bg-card rounded-2xl border ${s.border} shadow-sm overflow-hidden`}
                 delay={i * 0.06}
               >
-                <div className="p-8 md:p-10">
+                <div className="p-6 sm:p-8 md:p-10">
                   <div className="flex flex-col md:flex-row gap-8">
                     <div className="md:w-1/3">
                       <div className={`w-14 h-14 ${s.bg} rounded-2xl flex items-center justify-center mb-5`}>
@@ -63,7 +63,7 @@ export default function Services() {
                       </div>
                       <h2 className="text-2xl font-bold text-foreground mb-3">{s.title}</h2>
                       <p className="text-muted-foreground leading-relaxed mb-5">{s.desc}</p>
-                      <div className="flex gap-4 text-sm text-muted-foreground">
+                      <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-4">
                         <div className="flex items-center gap-1.5">
                           <Clock className={`w-4 h-4 ${s.color}`} />
                           <CountUpText value={s.duration} />

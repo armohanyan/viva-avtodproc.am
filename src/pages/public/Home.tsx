@@ -148,7 +148,7 @@ export default function Home() {
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">{t("servicesSub")}</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {services.map((s, i) => (
               <Link key={i} href={s.href} className="block">
                 <Card className="p-6 hover:shadow-lg transition-shadow border-border group cursor-pointer flex flex-col h-full">
@@ -181,7 +181,7 @@ export default function Home() {
             {packages.map((pkg, i) => (
               <div
                 key={i}
-                className={`relative bg-card rounded-2xl border-2 ${pkg.color} p-8 ${pkg.popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
+                className={`relative bg-card rounded-2xl border-2 ${pkg.color} p-6 sm:p-8 ${pkg.popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
               >
                 {pkg.popular && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">

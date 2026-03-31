@@ -99,9 +99,9 @@ export default function DashboardBookings() {
           {/* Calendar */}
           <Reveal delay={0.12}>
             <Card className="p-5 border-border">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
                 <h3 className="font-semibold text-foreground">{t("selectDate")} & {t("selectTime")}</h3>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 self-start sm:self-auto">
                   <button
                     onClick={() => setWeekOffset(w => Math.max(0, w - 1))}
                     disabled={weekOffset === 0}
@@ -166,7 +166,7 @@ export default function DashboardBookings() {
             </div>
 
             {/* Legend */}
-            <div className="flex gap-5 mt-4">
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
               {[
                 { color: "bg-card border border-border", label: t("available") },
                 { color: "bg-primary/10 border border-primary/20", label: t("myBooking") },

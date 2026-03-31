@@ -63,7 +63,7 @@ export default function AdminInstructors() {
 
   return (
     <AdminLayout>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h2 className="text-2xl font-bold text-slate-900">{t("instructors")}</h2>
         <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
           <Plus className="w-4 h-4" />{t("addNew")}
@@ -79,9 +79,9 @@ export default function AdminInstructors() {
                 <div className={`w-12 h-12 ${colors[i % colors.length]} rounded-xl flex items-center justify-center text-white font-bold text-lg`}>
                   {ins.name.split(" ").map(n => n[0]).join("")}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="font-semibold text-slate-900">{ins.name}</h3>
-                  <p className="text-xs text-slate-500">{ins.email}</p>
+                  <p className="text-xs text-slate-500 break-all">{ins.email}</p>
                 </div>
               </div>
               <Badge className={`text-xs ${ins.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
@@ -105,10 +105,10 @@ export default function AdminInstructors() {
                 <p className="text-xs text-slate-400 mt-0.5">Students</p>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-4">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mb-4">
               <Clock className="w-3.5 h-3.5" />{ins.schedule} · {ins.phone}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => setEditIdx(i)} className="flex-1 border-slate-200 gap-1.5 text-xs">
                 <Edit2 className="w-3.5 h-3.5" />{t("edit")}
               </Button>

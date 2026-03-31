@@ -150,7 +150,7 @@ export default function DashboardExamQuiz() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-slate-500">
             {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
           </p>
@@ -184,7 +184,7 @@ export default function DashboardExamQuiz() {
               <Button
                 onClick={goNext}
                 disabled={selected === null}
-                className="bg-blue-600 hover:bg-blue-700 text-white min-w-[120px]"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white sm:w-auto sm:min-w-[120px]"
               >
                 {isLast ? t("examQuizFinish") : t("examQuizNext")}
               </Button>

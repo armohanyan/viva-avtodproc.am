@@ -181,8 +181,21 @@ export default function Navbar() {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-72">
-              <div className="flex flex-col gap-1 mt-6">
+            <SheetContent side="right" className="w-[86vw] max-w-[22rem] p-0">
+              <div className="flex h-full flex-col pt-12">
+                <div className="border-b border-border px-4 pb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+                      <img src="/logo.jpg" alt={t("brandName")} className="w-6 h-6 object-contain" />
+                    </div>
+                    <span className="font-semibold text-foreground">{t("brandName")}</span>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-3 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-3 pb-2">
+                    Navigation
+                  </div>
+                  <div className="flex flex-col gap-1">
                 {isPublic ? (
                   <>
                     {publicRootLinks.slice(0, 2).map((l) => (
@@ -190,7 +203,7 @@ export default function Navbar() {
                         key={l.href}
                         href={l.href}
                         onClick={() => setOpen(false)}
-                        className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                         }`}
                       >
@@ -198,13 +211,12 @@ export default function Navbar() {
                       </Link>
                     ))}
 
-                    <div className="px-4 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("offer")}</div>
                     {offerLinks.map((l) => (
                       <Link
                         key={l.href}
                         href={l.href}
                         onClick={() => setOpen(false)}
-                        className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                         }`}
                       >
@@ -212,13 +224,12 @@ export default function Navbar() {
                       </Link>
                     ))}
 
-                    <div className="px-4 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("learn")}</div>
                     {learnLinks.map((l) => (
                       <Link
                         key={l.href}
                         href={l.href}
                         onClick={() => setOpen(false)}
-                        className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                         }`}
                       >
@@ -231,7 +242,7 @@ export default function Navbar() {
                         key={l.href}
                         href={l.href}
                         onClick={() => setOpen(false)}
-                        className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                           location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                         }`}
                       >
@@ -245,7 +256,7 @@ export default function Navbar() {
                       key={l.href}
                       href={l.href}
                       onClick={() => setOpen(false)}
-                      className={`px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                      className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                         location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                       }`}
                     >
@@ -253,20 +264,22 @@ export default function Navbar() {
                     </Link>
                   ))
                 )}
-                <div className="mt-4 pt-4 border-t border-border space-y-3">
-                  <div className="flex items-center gap-2">
+                  </div>
+                </div>
+                <div className="border-t border-border p-4 space-y-3 bg-background/60">
+                  <div className="flex items-center gap-2 rounded-lg bg-accent/50 p-2">
                     <LangToggle />
                     <ThemeToggle />
                   </div>
                   {!isDashboard && !isAdmin && (
-                    <>
+                    <div className="flex flex-col gap-3">
                       <Link href="/login" onClick={() => setOpen(false)}>
                         <Button variant="outline" className="w-full">{t("login")}</Button>
                       </Link>
                       <Link href="/register" onClick={() => setOpen(false)}>
                         <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">{t("register")}</Button>
                       </Link>
-                    </>
+                    </div>
                   )}
                 </div>
               </div>

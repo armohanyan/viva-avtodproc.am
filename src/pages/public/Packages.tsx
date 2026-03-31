@@ -75,7 +75,7 @@ export default function Packages() {
             {packages.map((pkg, i) => (
               <Reveal
                 key={i}
-                className={`relative rounded-2xl border-2 ${pkg.popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-8 flex flex-col h-full`}
+                className={`relative rounded-2xl border-2 ${pkg.popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-6 sm:p-8 flex flex-col h-full`}
                 delay={i * 0.06}
               >
                 {pkg.popular && (
@@ -125,7 +125,7 @@ export default function Packages() {
       {/* FAQ */}
       <section className="py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-foreground mb-12 text-center">Frequently Asked Questions</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-12 text-center">Frequently Asked Questions</h2>
           <div className="space-y-4">
             {faqs.map((faq, i) => (
               <Reveal key={i} delay={i * 0.06} className="bg-card rounded-xl p-6 border border-border shadow-sm">

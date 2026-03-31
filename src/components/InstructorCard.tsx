@@ -33,7 +33,7 @@ export default function InstructorCard({
       </div>
       <div className="p-6">
         <div className="flex items-start justify-between gap-3 mb-5">
-          <h3 className="font-bold text-lg text-foreground">{instructor.name}</h3>
+          <h3 className="min-w-0 font-bold text-lg text-foreground break-words">{instructor.name}</h3>
           <div className="flex items-center gap-1 mt-0.5 shrink-0">
             {Array.from({ length: 5 }).map((_, j) => (
               <Star
@@ -53,14 +53,22 @@ export default function InstructorCard({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm text-muted-foreground mb-5">
-          <div className="flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-primary shrink-0" />
-            <span>{instructor.location}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm text-muted-foreground mb-5">
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="w-4 h-4 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold">
+              ֏
+            </span>
+            <span className="break-words">
+              {t("lessonPrice")}: <CountUpText value={instructor.hourlyPrice} /> ֏ / {t("perHour")}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="min-w-0 flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-primary shrink-0" />
+            <span className="break-words">{instructor.location}</span>
+          </div>
+          <div className="min-w-0 flex items-center gap-2">
             <Car className="w-4 h-4 text-primary shrink-0" />
-            <span>{instructor.car}</span>
+            <span className="break-words">{instructor.car}</span>
           </div>
           <div className="flex items-center gap-2">
             <Gauge className="w-4 h-4 text-primary shrink-0" />
