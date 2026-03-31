@@ -17,6 +17,8 @@ export const publicRoutes: readonly AppRoute[] = [
   { path: "/packages", component: PackagesPage },
   { path: "/instructors", component: InstructorsPage },
   { path: "/contact", component: ContactPage },
+  { path: "/thematic-questions", component: ExamTestsPage },
+  { path: "/thematic-questions/quiz/:mode", component: ExamQuizPage },
   { path: "/exam-tests", component: ExamTestsPage },
   { path: "/exam-tests/quiz/:mode", component: ExamQuizPage },
 ];

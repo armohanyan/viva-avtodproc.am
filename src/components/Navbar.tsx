@@ -23,7 +23,7 @@ export default function Navbar() {
   const navLinks = PUBLIC_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
   const publicRootLinks = navLinks.filter((link) => link.href === "/" || link.href === "/about" || link.href === "/contact");
   const offerLinks = navLinks.filter((link) => link.href === "/packages" || link.href === "/services");
-  const learnLinks = navLinks.filter((link) => link.href === "/exam-tests" || link.href === "/instructors");
+  const learnLinks = navLinks.filter((link) => link.href === "/thematic-questions" || link.href === "/instructors");
 
   const dashLinks = DASHBOARD_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
 

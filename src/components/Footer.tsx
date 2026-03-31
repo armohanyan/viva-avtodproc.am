@@ -58,7 +58,7 @@ export default function Footer() {
               {[
                 { href: "/about", label: t("about") },
                 { href: "/services", label: t("services") },
-                { href: "/exam-tests", label: t("examTests") },
+                { href: "/thematic-questions", label: t("examTests") },
                 { href: "/packages", label: t("packages") },
                 { href: "/instructors", label: t("instructors") },
                 { href: "/contact", label: t("contact") },

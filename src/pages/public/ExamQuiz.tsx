@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Redirect, useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
@@ -12,6 +12,7 @@ import {
 } from "src/data/examSampleQuestions";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
+import { addExamAttempt, updateActiveSession } from "src/lib/examStats";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -21,9 +22,12 @@ function isExamMode(s: string): s is ExamQuizMode {
 
 export default function ExamQuiz() {
   const { t, lang } = useLang();
-  const [match, params] = useRoute("/exam-tests/quiz/:mode");
-  const modeParam = params?.mode ?? "";
+  const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
+  const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
+  const match = newMatch || oldMatch;
+  const modeParam = newParams?.mode ?? oldParams?.mode ?? "";
   const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
+  const topicId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") || "5" : "5";
 
   const [round, setRound] = useState(0);
   const questions = useMemo(() => {
@@ -45,9 +49,64 @@ export default function ExamQuiz() {
       return acc + (a === question.correctIndex ? 1 : 0);
     }, 0);
   }, [finished, questions, answers]);
+  const statsSavedRef = useRef(false);
+  const updateSessionProgress = (attemptAnswers: (number | null)[]) => {
+    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
+    if (answered === 0) return;
+    const correct = questions.reduce((acc, question, i) => {
+      const userAns = attemptAnswers[i];
+      if (userAns === null || userAns === undefined) return acc;
+      return acc + (userAns === question.correctIndex ? 1 : 0);
+    }, 0);
+    updateActiveSession({
+      topicId,
+      answered,
+      correct,
+      wrong: Math.max(0, answered - correct),
+    });
+  };
+  const saveAttemptStats = (attemptAnswers: (number | null)[]) => {
+    if (questions.length === 0 || statsSavedRef.current) return;
+    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
+    if (answered === 0) return;
+    const correct = questions.reduce((acc, question, i) => {
+      const userAns = attemptAnswers[i];
+      if (userAns === null || userAns === undefined) return acc;
+      return acc + (userAns === question.correctIndex ? 1 : 0);
+    }, 0);
+    const wrong = Math.max(0, answered - correct);
+    const questionOutcomes = questions
+      .map((question, i) => {
+        const userAns = attemptAnswers[i];
+        if (userAns === null || userAns === undefined) return null;
+        return {
+          questionId: question.id,
+          isCorrect: userAns === question.correctIndex,
+        };
+      })
+      .filter((v): v is { questionId: string; isCorrect: boolean } => Boolean(v));
+    addExamAttempt({ topicId, answered, correct, wrong, questionOutcomes });
+    statsSavedRef.current = true;
+  };
+
+  useEffect(() => {
+    if (!finished) return;
+    saveAttemptStats(answers);
+  }, [finished, questions.length, answers, correctCount, topicId]);
+
+  useEffect(() => {
+    if (finished) return;
+    updateSessionProgress(answers);
+  }, [answers, finished, topicId, questions]);
+
+  useEffect(() => {
+    return () => {
+      saveAttemptStats(answers);
+    };
+  }, [answers, topicId, questions]);
 
   if (!match || !mode) {
-    return <Redirect to="/exam-tests" />;
+    return <Redirect to="/thematic-questions" />;
   }
 
   const q = questions[index];
@@ -68,6 +127,7 @@ export default function ExamQuiz() {
   };
 
   const restart = () => {
+    statsSavedRef.current = false;
     setRound((r) => r + 1);
     setIndex(0);
     setSelected(null);
@@ -82,7 +142,7 @@ export default function ExamQuiz() {
           {questions.length === 0 ? (
             <div className="max-w-lg mx-auto text-center py-12">
               <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-              <Link href="/exam-tests">
+              <Link href="/thematic-questions">
                 <Button variant="outline">{t("examQuizBackToList")}</Button>
               </Link>
             </div>
@@ -102,7 +162,7 @@ export default function ExamQuiz() {
                     <Button onClick={restart} variant="outline" className="w-full sm:w-auto">
                       {t("examQuizRetake")}
                     </Button>
-                    <Link href="/exam-tests">
+                    <Link href="/thematic-questions">
                       <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
                         {t("examQuizBackToList")}
                       </Button>
@@ -148,7 +208,7 @@ export default function ExamQuiz() {
                 <p className="text-sm text-muted-foreground">
                   {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
                 </p>
-                <Link href="/exam-tests">
+                <Link href="/thematic-questions">
                   <Button variant="ghost" size="sm" className="text-muted-foreground">
                     {t("examQuizBackToList")}
                   </Button>
