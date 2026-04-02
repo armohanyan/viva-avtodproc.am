@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Redirect, useRoute } from "wouter";
 import DashboardLayout from "src/components/DashboardLayout";
 import { useLang } from "src/lib/i18n";
@@ -9,7 +9,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
@@ -33,6 +33,7 @@ export default function DashboardExamQuiz() {
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
+  const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
 
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
@@ -57,7 +58,6 @@ export default function DashboardExamQuiz() {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
-    setSelected(null);
     if (isLast) {
       setIndex(questions.length);
     } else {
@@ -65,12 +65,26 @@ export default function DashboardExamQuiz() {
     }
   };
 
+  const goBack = () => {
+    if (index === 0 || !q) return;
+    const nextAnswers = [...answers];
+    nextAnswers[index] = selected;
+    setAnswers(nextAnswers);
+    setIndex((i) => Math.max(0, i - 1));
+  };
+
   const restart = () => {
     setRound((r) => r + 1);
     setIndex(0);
     setSelected(null);
     setAnswers([]);
+    setOpenExplanations({});
   };
+
+  useEffect(() => {
+    if (finished) return;
+    setSelected(answers[index] ?? null);
+  }, [index, answers, finished]);
 
   if (questions.length === 0) {
     return (
@@ -127,14 +141,46 @@ export default function DashboardExamQuiz() {
                       )}
                       <p className="text-sm text-slate-800 font-medium">{loc.text}</p>
                     </div>
-                    <p className="text-xs text-slate-500 ml-7">
-                      {t("examQuizYourAnswer")}: {userAns !== null && userAns !== undefined ? loc.options[userAns] : "—"}
-                    </p>
-                    {!ok && (
-                      <p className="text-xs text-emerald-700 ml-7 mt-1">
-                        {t("examQuizCorrectAnswer")}: {loc.options[question.correctIndex]}
-                      </p>
-                    )}
+                    <div className="ml-7 mt-3 space-y-2">
+                      {loc.options.map((opt, optionIndex) => {
+                        const isSelectedOption = userAns === optionIndex;
+                        const explanation = loc.optionExplanations[optionIndex];
+                        const explanationKey = `${question.id}-${optionIndex}`;
+                        const isOpen = Boolean(openExplanations[explanationKey]);
+                        return (
+                          <div
+                            key={explanationKey}
+                            className={`rounded-lg border px-3 py-2 text-xs ${
+                              isSelectedOption
+                                ? ok
+                                  ? "border-emerald-600 text-slate-800"
+                                  : "border-red-600 text-slate-800"
+                                : "border-slate-200 text-slate-500"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{opt}</span>
+                              {explanation ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenExplanations((prev) => ({
+                                      ...prev,
+                                      [explanationKey]: !prev[explanationKey],
+                                    }))
+                                  }
+                                  className="inline-flex items-center text-blue-600 hover:text-blue-700"
+                                  aria-label={t("examQuizShowExplanation")}
+                                >
+                                  <CircleHelp className="w-3.5 h-3.5" />
+                                </button>
+                              ) : null}
+                            </div>
+                            {explanation && isOpen ? <p className="mt-2 text-slate-500">{explanation}</p> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </Card>
                 </Reveal>
               );
@@ -166,21 +212,52 @@ export default function DashboardExamQuiz() {
             <h2 className="text-lg font-semibold text-slate-900 mb-6 leading-snug">{current.text}</h2>
             <div className="space-y-2">
               {current.options.map((opt, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setSelected(i)}
-                  className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                    selected === i
-                      ? "border-blue-600 bg-blue-50 text-slate-900"
-                      : "border-slate-200 hover:border-slate-300 text-slate-700"
-                  }`}
-                >
-                  {opt}
-                </button>
+                <div key={i} className="rounded-xl border border-transparent">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(i)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                      selected === null
+                        ? selected === i
+                          ? "border-blue-600 bg-blue-50 text-slate-900"
+                          : "border-slate-200 hover:border-slate-300 text-slate-700"
+                        : i === q.correctIndex
+                          ? "border-emerald-600 text-slate-700"
+                          : selected === i
+                            ? "border-red-600 text-slate-700"
+                            : "border-slate-200 text-slate-700"
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                  {selected !== null && current.optionExplanations[i] ? (
+                    <div className="mt-1 ml-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                        onClick={() =>
+                          setOpenExplanations((prev) => ({
+                            ...prev,
+                            [`q-${index}-${i}`]: !prev[`q-${index}-${i}`],
+                          }))
+                        }
+                        aria-label={t("examQuizShowExplanation")}
+                      >
+                        <CircleHelp className="w-3.5 h-3.5" />
+                        <span>{t("examQuizShowExplanation")}</span>
+                      </button>
+                      {openExplanations[`q-${index}-${i}`] ? (
+                        <p className="mt-1 text-xs text-slate-500">{current.optionExplanations[i]}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               ))}
             </div>
-            <div className="mt-8 flex justify-end">
+            <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">
+                {t("examQuizPrevious")}
+              </Button>
               <Button
                 onClick={goNext}
                 disabled={selected === null}

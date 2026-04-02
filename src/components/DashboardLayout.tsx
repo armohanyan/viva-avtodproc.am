@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -19,6 +19,13 @@ export default function DashboardLayout({ children }: Props) {
   const [location, setLocation] = useLocation();
   
   const [open, setOpen] = useState(false);
+  const mainRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    // Dashboard pages render into a scrollable <main> container.
+    // Reset it on route changes so the user doesn't land at the previous page's bottom.
+    mainRef.current?.scrollTo(0, 0);
+  }, [location]);
 
   const iconByPath = {
     "/dashboard": LayoutDashboard,
@@ -108,7 +115,7 @@ export default function DashboardLayout({ children }: Props) {
             <div className="flex items-center gap-3">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="sm"><Menu className="w-5 h-5" /></Button>
+                <Button variant="ghost" size="icon-lg"><Menu className="h-6 w-6" /></Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0">
                 <div className="h-full pt-12">
@@ -137,7 +144,7 @@ export default function DashboardLayout({ children }: Props) {
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

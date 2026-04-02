@@ -23,8 +23,8 @@ const en = {
   brandName: "Viva Autoschool",
 
   // Hero
-  heroTitle: "Learn to Drive with Confidence",
-  heroSub: "Professional driving lessons with certified instructors. Book your first lesson today.",
+  heroTitle: "Driving Lessons & Theory at Viva Autoschool",
+  heroSub: "Learn to drive step-by-step with certified instructors. Start your first lesson today.",
   getStarted: "Get Started",
   learnMore: "Learn More",
   bookLesson: "Book a Lesson",
@@ -110,6 +110,16 @@ const en = {
   priorityBooking: "Priority booking",
   choosePackage: "Choose Package",
   mostPopular: "Most Popular",
+  packagesFaqTitle: "Frequently Asked Questions",
+  packagesFaqUpgradeQ: "Can I upgrade my package later?",
+  packagesFaqUpgradeA: "Yes, you can upgrade at any time by paying the difference.",
+  packagesFaqLessonsExpireQ: "Do lessons expire?",
+  packagesFaqLessonsExpireA: "Lessons are valid for 12 months from the date of purchase.",
+  packagesFaqFailExamQ: "What if I fail the exam?",
+  packagesFaqFailExamA:
+    "Standard and Premium packages include additional exam prep support at no extra cost.",
+  packagesFaqInstallmentsQ: "Are payments installable?",
+  packagesFaqInstallmentsA: "Yes, we offer monthly installment plans for Standard and Premium packages.",
 
   // Instructors
   instructorsTitle: "Meet Our Instructors",
@@ -137,6 +147,7 @@ const en = {
   workHours: "Working Hours",
   monFri: "Mon–Fri: 9:00–18:00",
   sat: "Sat: 9:00–15:00",
+  branches: "Branches",
 
   // Exam tests
   examTestsEyebrow: "Theory & exam prep",
@@ -197,8 +208,10 @@ const en = {
   examQuizCorrectAnswer: "Correct",
   examQuizQuestion: "Question",
   examQuizOf: "of",
+  examQuizPrevious: "Back",
   examQuizNext: "Next",
   examQuizFinish: "Finish",
+  examQuizShowExplanation: "Show explanation",
 
   // Auth
   welcomeBack: "Welcome Back",
@@ -411,8 +424,8 @@ const ru: typeof en = {
   language: "Язык",
   brandName: "Viva автошкола",
 
-  heroTitle: "Научитесь водить уверенно",
-  heroSub: "Профессиональные уроки вождения с сертифицированными инструкторами. Запишитесь на первый урок сегодня.",
+  heroTitle: "Уроки вождения и теория в автошколе Viva",
+  heroSub: "Учитесь вождению по шагам с сертифицированными инструкторами. Запишитесь на первое занятие сегодня.",
   getStarted: "Начать",
   learnMore: "Подробнее",
   bookLesson: "Записаться",
@@ -494,6 +507,16 @@ const ru: typeof en = {
   priorityBooking: "Приоритетная запись",
   choosePackage: "Выбрать пакет",
   mostPopular: "Самый популярный",
+  packagesFaqTitle: "Часто задаваемые вопросы",
+  packagesFaqUpgradeQ: "Могу ли я обновить пакет позже?",
+  packagesFaqUpgradeA: "Да, вы можете повысить пакет в любое время, оплатив разницу.",
+  packagesFaqLessonsExpireQ: "Истекает ли срок действия уроков?",
+  packagesFaqLessonsExpireA: "Уроки действуют 12 месяцев со дня покупки.",
+  packagesFaqFailExamQ: "Что если я не сдам экзамен?",
+  packagesFaqFailExamA:
+    "Стандартный и Премиум пакеты включают дополнительную подготовку к экзамену без доплаты.",
+  packagesFaqInstallmentsQ: "Можно ли оплачивать частями?",
+  packagesFaqInstallmentsA: "Да, мы предлагаем ежемесячные рассрочки для пакетов Стандарт и Премиум.",
 
   instructorsTitle: "Наши инструкторы",
   instructorsSub: "Сертифицированные профессионалы, преданные вашему успеху",
@@ -519,6 +542,7 @@ const ru: typeof en = {
   workHours: "Рабочие часы",
   monFri: "Пн–Пт: 9:00–18:00",
   sat: "Сб: 9:00–15:00",
+  branches: "Филиалы",
 
   examTestsEyebrow: "Теория и подготовка к экзамену",
   examTestsTitle: "Пробные теоретические экзамены",
@@ -578,8 +602,10 @@ const ru: typeof en = {
   examQuizCorrectAnswer: "Верно",
   examQuizQuestion: "Вопрос",
   examQuizOf: "из",
+  examQuizPrevious: "Назад",
   examQuizNext: "Далее",
   examQuizFinish: "Завершить",
+  examQuizShowExplanation: "Показать объяснение",
 
   welcomeBack: "С возвращением",
   signInContinue: "Войдите, чтобы продолжить",
@@ -784,8 +810,8 @@ const am: typeof en = {
   language: "Լեզու",
   brandName: "Վիվա ավտոդպրոց",
 
-  heroTitle: "Սովորեք վարել վստահությամբ",
-  heroSub: "Պրոֆեսիոնալ վարորդական դասեր հավաստագրված ուսուցիչների հետ։ Ամրագրեք ձեր առաջին դասը այսօր։",
+  heroTitle: "Viva ավտոդպրոցում վարորդական դասեր և տեսություն",
+  heroSub: "Սովորեք վարել քայլ առ քայլ՝ հավաստագրված ուսուցիչների հետ։ Ամրագրեք ձեր առաջին դասը այսօր։",
   getStarted: "Սկսել",
   learnMore: "Իմանալ ավելին",
   bookLesson: "Ամրագրել դաս",
@@ -867,6 +893,16 @@ const am: typeof en = {
   priorityBooking: "Առաջնային ամրագրում",
   choosePackage: "Ընտրել փաթեթը",
   mostPopular: "Ամենատարածված",
+  packagesFaqTitle: "Հաճախ տրվող հարցեր",
+  packagesFaqUpgradeQ: "Կարո՞ղ եմ հետագայում թարմացնել իմ փաթեթը։",
+  packagesFaqUpgradeA: "Այո, կարող եք ցանկացած պահի բարձրացնել փաթեթը՝ վճարելով տարբերությունը։",
+  packagesFaqLessonsExpireQ: "Արդյո՞ք դասերը ունեն գործողության ժամկետ։",
+  packagesFaqLessonsExpireA: "Դասերը ուժի մեջ են գնումից հետո 12 ամիս։",
+  packagesFaqFailExamQ: "Ի՞նչ կլինի, եթե քննությունից չանցնեմ։",
+  packagesFaqFailExamA:
+    "Ստանդարտ և Պրեմիում փաթեթները ներառում են լրացուցիչ նախապատրաստություն քննությանը՝ առանց լրացուցիչ վճարի։",
+  packagesFaqInstallmentsQ: "Կարո՞ղ եմ վճարումը կատարել մաս-մաս։",
+  packagesFaqInstallmentsA: "Այո, մենք առաջարկում ենք ամսական ապառիկ պլաններ Ստանդարտ և Պրեմիում փաթեթների համար։",
 
   instructorsTitle: "Շտապեք ամրագրել դաս",
   instructorsSub: "Հավաստագրված մասնագետներ, նվիրված ձեր հաջողությանը",
@@ -892,6 +928,7 @@ const am: typeof en = {
   workHours: "Աշխատանքային ժամեր",
   monFri: "Երկ–Ուրբ: 9:00–18:00",
   sat: "Շաբ: 9:00–15:00",
+  branches: "Մասնաճյուղերը",
 
   examTestsEyebrow: "Տեսություն և քննության նախապատրաստում",
   examTestsTitle: "Վարորդական տեսական քննության թեստեր",
@@ -951,8 +988,10 @@ const am: typeof en = {
   examQuizCorrectAnswer: "Ճիշտ է",
   examQuizQuestion: "Հարց",
   examQuizOf: "ից",
+  examQuizPrevious: "Հետ",
   examQuizNext: "Հաջորդը",
   examQuizFinish: "Ավարտել",
+  examQuizShowExplanation: "Ցույց տալ բացատրությունը",
 
   welcomeBack: "Բարի վերադարձ",
   signInContinue: "Մուտք գործեք ձեր հաշիվ",
@@ -962,7 +1001,8 @@ const am: typeof en = {
   noAccount: "Հաշիվ չունե՞ք",
   signUp: "Գրանցվել",
   createAccount: "Ստեղծել հաշիվ",
-  joinViva: "Միացեք Viva Driving School-ին",
+  // Removed from Armenian UI (see Register page)
+  joinViva: "",
   firstName: "Անուն",
   lastName: "Ազգանուն",
   alreadyAccount: "Արդեն հաշիվ ունե՞ք",

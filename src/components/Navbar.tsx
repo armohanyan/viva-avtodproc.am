@@ -46,7 +46,7 @@ export default function Navbar() {
 
           <div className="hidden lg:flex flex-1 min-w-0 items-center gap-3 lg:gap-4">
             <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain scroll-pl-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <div className="flex min-h-16 w-max max-w-none items-center justify-start gap-1 pr-2">
+              <div className="flex min-h-16 w-full items-center justify-end gap-1 pr-2">
                 {isPublic ? (
                   <>
                     {publicRootLinks.slice(0, 2).map((l) => (
@@ -177,8 +177,8 @@ export default function Navbar() {
 
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild className="lg:hidden ml-auto shrink-0">
-              <Button variant="ghost" size="sm" aria-label={t("openMenu")}>
-                <Menu className="h-5 w-5" />
+              <Button variant="ghost" size="icon-lg" aria-label={t("openMenu")}>
+                <Menu className="h-6 w-6" />
               </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[86vw] max-w-[22rem] p-0">

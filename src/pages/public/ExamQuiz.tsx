@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Redirect, useRoute } from "wouter";
+import { Link, Redirect, useLocation, useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
@@ -10,9 +10,9 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
-import { addExamAttempt, updateActiveSession } from "src/lib/examStats";
+import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -22,6 +22,7 @@ function isExamMode(s: string): s is ExamQuizMode {
 
 export default function ExamQuiz() {
   const { t, lang } = useLang();
+  const [, setLocation] = useLocation();
   const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
   const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
   const match = newMatch || oldMatch;
@@ -38,11 +39,13 @@ export default function ExamQuiz() {
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
+  const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
 
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
   const correctCount = useMemo(() => {
     if (!finished) return 0;
+
     return questions.reduce((acc, question, i) => {
       const a = answers[i];
       if (a === null || a === undefined) return acc;
@@ -50,14 +53,18 @@ export default function ExamQuiz() {
     }, 0);
   }, [finished, questions, answers]);
   const statsSavedRef = useRef(false);
+  const discardSessionRef = useRef(false);
+
   const updateSessionProgress = (attemptAnswers: (number | null)[]) => {
     const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
     if (answered === 0) return;
+
     const correct = questions.reduce((acc, question, i) => {
       const userAns = attemptAnswers[i];
       if (userAns === null || userAns === undefined) return acc;
       return acc + (userAns === question.correctIndex ? 1 : 0);
     }, 0);
+
     updateActiveSession({
       topicId,
       answered,
@@ -65,15 +72,20 @@ export default function ExamQuiz() {
       wrong: Math.max(0, answered - correct),
     });
   };
+
   const saveAttemptStats = (attemptAnswers: (number | null)[]) => {
     if (questions.length === 0 || statsSavedRef.current) return;
+
     const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
+
     if (answered === 0) return;
+
     const correct = questions.reduce((acc, question, i) => {
       const userAns = attemptAnswers[i];
       if (userAns === null || userAns === undefined) return acc;
       return acc + (userAns === question.correctIndex ? 1 : 0);
     }, 0);
+
     const wrong = Math.max(0, answered - correct);
     const questionOutcomes = questions
       .map((question, i) => {
@@ -90,20 +102,27 @@ export default function ExamQuiz() {
   };
 
   useEffect(() => {
-    if (!finished) return;
-    saveAttemptStats(answers);
-  }, [finished, questions.length, answers, correctCount, topicId]);
-
-  useEffect(() => {
     if (finished) return;
     updateSessionProgress(answers);
   }, [answers, finished, topicId, questions]);
 
   useEffect(() => {
+    if (!finished || discardSessionRef.current) return;
+    saveAttemptStats(answers);
+  }, [finished, answers, topicId, questions]);
+
+  useEffect(() => {
     return () => {
-      saveAttemptStats(answers);
+      if (!discardSessionRef.current && finished) {
+        saveAttemptStats(answers);
+      }
     };
-  }, [answers, topicId, questions]);
+  }, [answers, finished, topicId, questions]);
+
+  useEffect(() => {
+    if (finished) return;
+    setSelected(answers[index] ?? null);
+  }, [index, answers, finished]);
 
   if (!match || !mode) {
     return <Redirect to="/thematic-questions" />;
@@ -118,7 +137,6 @@ export default function ExamQuiz() {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
-    setSelected(null);
     if (isLast) {
       setIndex(questions.length);
     } else {
@@ -126,12 +144,31 @@ export default function ExamQuiz() {
     }
   };
 
+  const goBack = () => {
+    if (index === 0 || !q) return;
+    const nextAnswers = [...answers];
+    nextAnswers[index] = selected;
+    setAnswers(nextAnswers);
+    setIndex((i) => Math.max(0, i - 1));
+  };
+
+  const exitToExamTests = () => {
+    discardSessionRef.current = true;
+    clearActiveSession();
+    setLocation("/thematic-questions");
+  };
+
   const restart = () => {
+    if (finished) {
+      saveAttemptStats(answers);
+    }
     statsSavedRef.current = false;
+    discardSessionRef.current = false;
     setRound((r) => r + 1);
     setIndex(0);
     setSelected(null);
     setAnswers([]);
+    setOpenExplanations({});
   };
 
   return (
@@ -162,11 +199,12 @@ export default function ExamQuiz() {
                     <Button onClick={restart} variant="outline" className="w-full sm:w-auto">
                       {t("examQuizRetake")}
                     </Button>
-                    <Link href="/thematic-questions">
-                      <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <Button
+                      onClick={exitToExamTests}
+                      className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
+                    >
                         {t("examQuizBackToList")}
-                      </Button>
-                    </Link>
+                    </Button>
                   </div>
                 </Card>
               </Reveal>
@@ -188,14 +226,46 @@ export default function ExamQuiz() {
                           )}
                           <p className="text-sm text-foreground font-medium">{loc.text}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground ml-7">
-                          {t("examQuizYourAnswer")}: {userAns !== null && userAns !== undefined ? loc.options[userAns] : "—"}
-                        </p>
-                        {!ok && (
-                          <p className="text-xs text-emerald-700 ml-7 mt-1">
-                            {t("examQuizCorrectAnswer")}: {loc.options[question.correctIndex]}
-                          </p>
-                        )}
+                        <div className="ml-7 mt-3 space-y-2">
+                          {loc.options.map((opt, optionIndex) => {
+                            const isSelectedOption = userAns === optionIndex;
+                            const explanation = loc.optionExplanations[optionIndex];
+                            const explanationKey = `${question.id}-${optionIndex}`;
+                            const isOpen = Boolean(openExplanations[explanationKey]);
+                            return (
+                              <div
+                                key={explanationKey}
+                                className={`rounded-lg border px-3 py-2 text-xs ${
+                                  isSelectedOption
+                                    ? ok
+                                      ? "border-emerald-600 text-foreground"
+                                      : "border-red-600 text-foreground"
+                                    : "border-border text-muted-foreground"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span>{opt}</span>
+                                  {explanation ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setOpenExplanations((prev) => ({
+                                          ...prev,
+                                          [explanationKey]: !prev[explanationKey],
+                                        }))
+                                      }
+                                      className="inline-flex items-center text-primary hover:text-primary/80"
+                                      aria-label={t("examQuizShowExplanation")}
+                                    >
+                                      <CircleHelp className="w-3.5 h-3.5" />
+                                    </button>
+                                  ) : null}
+                                </div>
+                                {explanation && isOpen ? <p className="mt-2 text-muted-foreground">{explanation}</p> : null}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </Card>
                     </Reveal>
                   );
@@ -208,32 +278,61 @@ export default function ExamQuiz() {
                 <p className="text-sm text-muted-foreground">
                   {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
                 </p>
-                <Link href="/thematic-questions">
-                  <Button variant="ghost" size="sm" className="text-muted-foreground">
+                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={exitToExamTests}>
                     {t("examQuizBackToList")}
-                  </Button>
-                </Link>
+                </Button>
               </div>
               <Reveal delay={0.06}>
                 <Card className="p-8 border-border">
                   <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{current?.text ?? ""}</h2>
                   <div className="space-y-2">
                     {current?.options.map((opt, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setSelected(i)}
-                        className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                          selected === i
-                            ? "border-primary bg-primary/10 text-foreground"
-                            : "border-border hover:border-muted-foreground/30 text-foreground"
-                        }`}
-                      >
-                        {opt}
-                      </button>
+                      <div key={i} className="rounded-xl border border-transparent">
+                        <button
+                          type="button"
+                          onClick={() => setSelected(i)}
+                          className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                            selected === null
+                              ? selected === i
+                                ? "border-primary bg-primary/10 text-foreground"
+                                : "border-border hover:border-muted-foreground/30 text-foreground"
+                              : i === q.correctIndex
+                                ? "border-emerald-600 text-foreground"
+                                : selected === i
+                                  ? "border-red-600 text-foreground"
+                                  : "border-border text-foreground"
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                        {selected !== null && current.optionExplanations[i] ? (
+                          <div className="mt-1 ml-2">
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                              onClick={() =>
+                                setOpenExplanations((prev) => ({
+                                  ...prev,
+                                  [`q-${index}-${i}`]: !prev[`q-${index}-${i}`],
+                                }))
+                              }
+                              aria-label={t("examQuizShowExplanation")}
+                            >
+                              <CircleHelp className="w-3.5 h-3.5" />
+                              <span>{t("examQuizShowExplanation")}</span>
+                            </button>
+                            {openExplanations[`q-${index}-${i}`] ? (
+                              <p className="mt-1 text-xs text-muted-foreground">{current.optionExplanations[i]}</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
                     ))}
                   </div>
-                  <div className="mt-8 flex justify-end">
+                  <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">
+                      {t("examQuizPrevious")}
+                    </Button>
                     <Button
                       onClick={goNext}
                       disabled={selected === null}

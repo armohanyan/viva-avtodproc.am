@@ -47,6 +47,8 @@ interface StoredExamStats {
   attempts: number;
   bestPct: number;
   lastPct: number;
+  totalCorrect?: number;
+  totalWrong?: number;
   questionResults: Record<string, boolean>;
   topics: Record<string, StoredTopicStats>;
   activeSession: ActiveSession | null;
@@ -68,16 +70,18 @@ const EMPTY: ExamStats = {
 
 function readStoredStats(): StoredExamStats {
   if (typeof window === "undefined") {
-    return { attempts: 0, bestPct: 0, lastPct: 0, questionResults: {}, topics: {} };
+    return { attempts: 0, bestPct: 0, lastPct: 0, totalCorrect: 0, totalWrong: 0, questionResults: {}, topics: {} };
   }
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (!raw) return { attempts: 0, bestPct: 0, lastPct: 0, questionResults: {}, topics: {}, activeSession: null };
+    if (!raw) return { attempts: 0, bestPct: 0, lastPct: 0, totalCorrect: 0, totalWrong: 0, questionResults: {}, topics: {}, activeSession: null };
     const parsed = JSON.parse(raw) as Partial<StoredExamStats>;
     return {
       attempts: Number(parsed.attempts ?? 0) || 0,
       bestPct: Number(parsed.bestPct ?? 0) || 0,
       lastPct: Number(parsed.lastPct ?? 0) || 0,
+      totalCorrect: Number(parsed.totalCorrect ?? 0) || 0,
+      totalWrong: Number(parsed.totalWrong ?? 0) || 0,
       questionResults: parsed.questionResults && typeof parsed.questionResults === "object" ? (parsed.questionResults as Record<string, boolean>) : {},
       topics: parsed.topics && typeof parsed.topics === "object" ? (parsed.topics as Record<string, StoredTopicStats>) : {},
       activeSession:
@@ -86,7 +90,7 @@ function readStoredStats(): StoredExamStats {
           : null,
     };
   } catch {
-    return { attempts: 0, bestPct: 0, lastPct: 0, questionResults: {}, topics: {}, activeSession: null };
+    return { attempts: 0, bestPct: 0, lastPct: 0, totalCorrect: 0, totalWrong: 0, questionResults: {}, topics: {}, activeSession: null };
   }
 }
 
@@ -124,12 +128,16 @@ export function getExamStats(): ExamStats {
       };
     }
     const answered = Object.keys(questionResults).length;
-    const correct = Object.values(questionResults).filter(Boolean).length;
-    const wrong = Math.max(0, answered - correct);
+    const latestCorrectTotal = Object.values(topicStats).reduce((sum, topic) => sum + Math.max(0, topic.lastCorrect), 0);
+    const latestWrongTotal = Object.values(topicStats).reduce(
+      (sum, topic) => sum + Math.max(0, topic.lastAnswered - topic.lastCorrect),
+      0,
+    );
     return {
       answered,
-      correct,
-      wrong,
+      // Sum of latest attempt per topic (re-attempt replaces previous values).
+      correct: latestCorrectTotal,
+      wrong: latestWrongTotal,
       attempts: Number.isFinite(attempts) ? Math.max(0, attempts) : 0,
       bestPct: Number.isFinite(bestPct) ? Math.max(0, Math.min(100, bestPct)) : 0,
       lastPct: Number.isFinite(lastPct) ? Math.max(0, Math.min(100, lastPct)) : 0,
@@ -176,7 +184,6 @@ export function addExamAttempt(result: {
   const topicWrong = Math.max(0, topicAnswered - topicCorrect);
   const uniqueAnswered = Object.keys(nextQuestionResults).length;
   const uniqueCorrect = Object.values(nextQuestionResults).filter(Boolean).length;
-  const uniqueWrong = Math.max(0, uniqueAnswered - uniqueCorrect);
 
   const nextTopics: Record<string, StoredTopicStats> = { ...stored.topics };
   const prevTopic = nextTopics[topicId];
@@ -191,11 +198,19 @@ export function addExamAttempt(result: {
     lastAnswered: result.answered,
     questionResults: nextTopicQuestionResults,
   };
+  const latestCorrectTotal = Object.values(nextTopics).reduce(
+    (sum, topic) => sum + Math.max(0, Number(topic.lastCorrect ?? 0)),
+    0,
+  );
+  const latestWrongTotal = Object.values(nextTopics).reduce(
+    (sum, topic) => sum + Math.max(0, Number(topic.lastAnswered ?? 0) - Number(topic.lastCorrect ?? 0)),
+    0,
+  );
 
   const next: ExamStats = {
     answered: uniqueAnswered,
-    correct: uniqueCorrect,
-    wrong: uniqueWrong,
+    correct: latestCorrectTotal,
+    wrong: latestWrongTotal,
     attempts: current.attempts + 1,
     bestPct: Math.max(current.bestPct, attemptPct),
     lastPct: attemptPct,
@@ -222,6 +237,8 @@ export function addExamAttempt(result: {
       attempts: next.attempts,
       bestPct: next.bestPct,
       lastPct: next.lastPct,
+      totalCorrect: next.correct,
+      totalWrong: next.wrong,
       questionResults: next.questionResults,
       topics: nextTopics,
       activeSession: null,
@@ -254,6 +271,8 @@ export function updateActiveSession(result: {
     attempts: stored.attempts,
     bestPct: stored.bestPct,
     lastPct: stored.lastPct,
+    totalCorrect: stored.totalCorrect,
+    totalWrong: stored.totalWrong,
     questionResults: stored.questionResults,
     topics: stored.topics,
     activeSession,
@@ -264,5 +283,27 @@ export function updateActiveSession(result: {
   return {
     ...current,
     activeSession,
+  };
+}
+
+export function clearActiveSession(): ExamStats {
+  const current = getExamStats();
+  const stored = readStoredStats();
+  const payload: StoredExamStats = {
+    attempts: stored.attempts,
+    bestPct: stored.bestPct,
+    lastPct: stored.lastPct,
+    totalCorrect: stored.totalCorrect,
+    totalWrong: stored.totalWrong,
+    questionResults: stored.questionResults,
+    topics: stored.topics,
+    activeSession: null,
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(KEY, JSON.stringify(payload));
+  }
+  return {
+    ...current,
+    activeSession: null,
   };
 }

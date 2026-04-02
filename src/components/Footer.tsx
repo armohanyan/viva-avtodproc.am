@@ -2,33 +2,20 @@ import { Link } from "wouter";
 import { Facebook, Instagram, Youtube, Phone, Mail, MapPin } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
-import { useState } from "react";
-import { Input } from "./ui/input";
-import { Button } from "./ui/button";
 
 export default function Footer() {
   const { t } = useLang();
   const { showToast } = useToast();
-  const [email, setEmail] = useState("");
   const socialLinks = [
     { icon: Facebook, href: "https://facebook.com", label: "Facebook" },
     { icon: Instagram, href: "https://instagram.com", label: "Instagram" },
     { icon: Youtube, href: "https://youtube.com", label: "YouTube" },
   ];
 
-  const handleSubscribe = () => {
-    if (!email || !email.includes("@")) {
-      showToast(t("invalidEmail"), "error");
-      return;
-    }
-    setEmail("");
-    showToast(t("subscribed"), "success");
-  };
-
   return (
     <footer className="bg-hero text-hero-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center overflow-hidden">
@@ -88,28 +75,6 @@ export default function Footer() {
                 <span>info@vivadrive.am</span>
               </li>
             </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-hero-foreground mb-4">{t("newsletter")}</h4>
-            <p className="text-sm text-hero-foreground/80 mb-4">{t("subscribeText")}</p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
-                placeholder={t("yourEmail")}
-                className="h-11 w-full min-w-0 bg-background/90 text-foreground placeholder:text-muted-foreground border-border sm:flex-1"
-              />
-              <Button
-                type="button"
-                onClick={handleSubscribe}
-                className="h-11 w-full px-4 bg-primary hover:bg-primary/90 text-primary-foreground sm:w-auto sm:shrink-0"
-              >
-                {t("subscribe")}
-              </Button>
-            </div>
           </div>
         </div>
       </div>

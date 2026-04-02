@@ -7,6 +7,8 @@ import { CountUpText, Reveal } from "src/lib/motion";
 import InstructorCard from "src/components/InstructorCard";
 import { instructors } from "src/data/instructors";
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import {
   Car,
   BookOpen,
@@ -16,7 +18,11 @@ import {
   CheckCircle2,
   Trophy,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Phone,
+  Mail,
+  MapPin,
+  Clock
 } from "lucide-react";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
@@ -62,12 +68,72 @@ export default function Home() {
     { name: "Mariam S.", text: "I was terrified of driving but Viva helped me become confident behind the wheel.", rating: 5 },
   ];
 
+  const branches = [
+    {
+      name: "Գարեգին Նժդեհ 8",
+      mapUrl:
+        "https://maps.google.com/maps?q=%D4%B3%D5%A1%D6%80%D5%A5%D5%A3%D5%AB%D5%B6%20%D5%86%D5%AA%D5%A4%D5%A5%D5%B0%208%2C%20Yerevan&z=16&output=embed",
+    },
+    {
+      name: "Ազատամարտիկների 75/1",
+      mapUrl:
+        "https://maps.google.com/maps?q=%D4%B1%D5%9E%D5%A1%D5%BF%D5%A1%D5%B6%D5%A1%D6%80%D5%BF%D5%AB%D5%AF%D5%B6%D5%A5%D6%80%D5%AB%2075%2F1%2C%20Yerevan&z=16&output=embed",
+    },
+    {
+      name: "Ք.Մասիս Երևանյան 125",
+      mapUrl:
+        "https://maps.google.com/maps?q=%D5%94.%D5%84%D5%A1%D5%BD%D5%AB%D5%BD%20%D4%B5%D6%80%D5%A5%D6%80%D5%A1%D5%B6%D5%B5%D1%8F%D5%B6%20125&z=16&output=embed",
+    },
+  ] as const;
+
+  type Branch = (typeof branches)[number];
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
+
+  const contactTabs = [
+    {
+      key: "phone",
+      icon: Phone,
+      label: t("phone"),
+      lines: ["+374 10 123 456", "+374 99 123 456"],
+      primaryAction: { label: t("phone"), href: "tel:+37410123456" },
+    },
+    {
+      key: "email",
+      icon: Mail,
+      label: t("email"),
+      lines: ["info@vivadrive.am", "support@vivadrive.am"],
+      primaryAction: { label: t("email"), href: "mailto:info@vivadrive.am" },
+    },
+    {
+      key: "address",
+      icon: MapPin,
+      label: t("address"),
+      lines: [],
+      primaryAction: { label: "Open map", href: "#" },
+    },
+    {
+      key: "hours",
+      icon: Clock,
+      label: t("workHours"),
+      lines: [`${t("monFri")}`, `${t("sat")}`],
+      primaryAction: { label: t("workHours"), href: "/contact" },
+    },
+  ] as const;
+
+  type ContactTabKey = (typeof contactTabs)[number]["key"];
+  const [activeContactTab, setActiveContactTab] = useState<ContactTabKey>("phone");
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
     }, 5000);
     return () => window.clearTimeout(timer);
   }, [activeTestimonial, testimonials.length]);
+
+  useEffect(() => {
+    // Keep the address map dialog scoped to the Address tab.
+    if (activeContactTab !== "address") setSelectedBranch(null);
+  }, [activeContactTab]);
 
   const goToPrevTestimonial = () => {
     setActiveTestimonial((prev) => (prev - 1 + testimonials.length) % testimonials.length);
@@ -86,7 +152,7 @@ export default function Home() {
         {/* Background photo */}
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/home-hero.jpg')" }}
+          style={{ backgroundImage: "url('/home-hero-2.svg')" }}
           aria-hidden="true"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-hero/40 to-hero/90" />
@@ -237,7 +303,7 @@ export default function Home() {
               <InstructorCard
                 key={i}
                 instructor={ins}
-                showBookButton={false}
+                showBookButton={true}
                 imageHeightClassName="h-64"
               />
             ))}
@@ -317,6 +383,179 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Contact overview */}
+      <section className="py-20 bg-accent/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {(() => {
+            const activeContact = contactTabs.find((tab) => tab.key === activeContactTab)!;
+            const ActiveIcon = activeContact.icon;
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+                <div>
+                  <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
+                    {t("contact")}
+                  </p>
+                  <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+                    {t("contactTitle")}
+                  </h2>
+                  <p className="text-muted-foreground text-lg leading-relaxed max-w-md">
+                    {t("contactSub")}
+                  </p>
+
+                  <div className="mt-7 flex flex-wrap gap-3 items-center">
+                    <Link href="/contact">
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        className="border-primary/40 text-primary hover:bg-primary/5"
+                      >
+                        {t("contactSendMessageTitle")} <ArrowRight className="ml-2 w-4 h-4" />
+                      </Button>
+                    </Link>
+                    <div className="text-xs text-muted-foreground">
+                      Select info below
+                    </div>
+                  </div>
+
+                  <div className="mt-8 rounded-2xl border border-border/70 bg-card/60 p-2">
+                    <div className="flex flex-wrap gap-2">
+                      {contactTabs.map((tab) => {
+                        const isActive = tab.key === activeContactTab;
+                        const TabIcon = tab.icon;
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setActiveContactTab(tab.key)}
+                            className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                              isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                            }`}
+                            aria-pressed={isActive}
+                          >
+                            <span
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                                isActive ? "bg-primary/15 text-primary" : "bg-accent/40 text-muted-foreground"
+                              }`}
+                            >
+                              <TabIcon className="w-4 h-4" />
+                            </span>
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <div
+                    className="absolute inset-0 -z-10 rounded-3xl"
+                    style={{
+                      background:
+                        "radial-gradient(circle at 20% 20%, rgba(244,134,51,0.25) 0%, transparent 45%), radial-gradient(circle at 80% 30%, rgba(226,141,81,0.20) 0%, transparent 50%), linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.06))",
+                    }}
+                  />
+
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={activeContact.key}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      className="rounded-3xl border border-border/70 bg-background/70 p-7 shadow-sm"
+                    >
+                      <div className="flex items-start gap-5">
+                        <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                          <ActiveIcon className="w-6 h-6" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-primary">{activeContact.label}</p>
+                        {activeContact.key !== "address" ? (
+                          <div className="mt-3 space-y-1">
+                            {activeContact.lines.map((line, idx) => (
+                              <p key={idx} className="text-foreground text-lg font-semibold leading-relaxed">
+                                {line}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-3">
+                            <h3 className="text-sm font-semibold text-primary mb-3">{t("branches")}</h3>
+                            <div className="space-y-3">
+                              {branches.map((branch) => (
+                                <div
+                                  key={branch.name}
+                                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
+                                >
+                                  <p className="text-sm text-foreground">{branch.name}</p>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => setSelectedBranch(branch)}
+                                    aria-label={`Open map for ${branch.name}`}
+                                  >
+                                    <MapPin className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                          <div className="mt-5 flex flex-wrap gap-3 items-center">
+                            {activeContact.key === "phone" && (
+                              <Button
+                                asChild
+                                size="lg"
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                              >
+                                <a href={activeContact.primaryAction.href}>{t("phone")}</a>
+                              </Button>
+                            )}
+                            {activeContact.key === "email" && (
+                              <Button
+                                asChild
+                                size="lg"
+                                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                              >
+                                <a href={activeContact.primaryAction.href}>{t("email")}</a>
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
+
+      <Dialog open={!!selectedBranch} onOpenChange={(open) => !open && setSelectedBranch(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden">
+          {selectedBranch && (
+            <>
+              <DialogHeader className="px-6 pt-6 pb-3">
+                <DialogTitle>{selectedBranch.name}</DialogTitle>
+              </DialogHeader>
+              <div className="px-6 pb-6">
+                <iframe
+                  title={`Map for ${selectedBranch.name}`}
+                  src={selectedBranch.mapUrl}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="w-full h-[420px] rounded-xl border border-border"
+                />
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* CTA */}
       <section className="py-20 bg-primary">

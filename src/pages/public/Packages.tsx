@@ -47,10 +47,22 @@ export default function Packages() {
   ];
 
   const faqs = [
-    { q: "Can I upgrade my package later?", a: "Yes, you can upgrade at any time by paying the difference." },
-    { q: "Do lessons expire?", a: "Lessons are valid for 12 months from the date of purchase." },
-    { q: "What if I fail the exam?", a: "Standard and Premium packages include additional exam prep support at no extra cost." },
-    { q: "Are payments installable?", a: "Yes, we offer monthly installment plans for Standard and Premium packages." },
+    {
+      q: t("packagesFaqUpgradeQ"),
+      a: t("packagesFaqUpgradeA"),
+    },
+    {
+      q: t("packagesFaqLessonsExpireQ"),
+      a: t("packagesFaqLessonsExpireA"),
+    },
+    {
+      q: t("packagesFaqFailExamQ"),
+      a: t("packagesFaqFailExamA"),
+    },
+    {
+      q: t("packagesFaqInstallmentsQ"),
+      a: t("packagesFaqInstallmentsA"),
+    },
   ];
 
   return (
@@ -125,7 +137,9 @@ export default function Packages() {
       {/* FAQ */}
       <section className="py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-12 text-center">Frequently Asked Questions</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-12 text-center">
+            {t("packagesFaqTitle")}
+          </h2>
           <div className="space-y-4">
             {faqs.map((faq, i) => (
               <Reveal key={i} delay={i * 0.06} className="bg-card rounded-xl p-6 border border-border shadow-sm">

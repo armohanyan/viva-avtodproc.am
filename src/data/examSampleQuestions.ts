@@ -6,15 +6,17 @@ export interface ExamQuestion {
   readonly id: string;
   readonly text: Record<Lang, string>;
   readonly options: Record<Lang, readonly string[]>;
+  readonly optionExplanations?: Record<Lang, readonly (string | null)[]>;
   readonly correctIndex: number;
   readonly category: ExamQuestionCategory;
 }
 
 /** Localized copy for the active UI language (same correctIndex across languages). */
-export function getQuestionInLang(q: ExamQuestion, lang: Lang): { text: string; options: string[] } {
+export function getQuestionInLang(q: ExamQuestion, lang: Lang): { text: string; options: string[]; optionExplanations: (string | null)[] } {
   return {
     text: q.text[lang],
     options: [...q.options[lang]],
+    optionExplanations: q.optionExplanations ? [...q.optionExplanations[lang]] : Array.from({ length: q.options[lang].length }, () => null),
   };
 }
 
@@ -32,6 +34,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       ru: ["Транспортное средство на более широкой дороге", "Транспортное средство, приближающееся справа", "Более быстрое транспортное средство", "Более крупное транспортное средство"],
       am: ["Ավելի լայն ճանապարհի վրա գտնվող մեքենան", "Աջից մոտենացող մեքենան", "Ավելի արագ մեքենան", "Ավելի մեծ մեքենան"],
     },
+    optionExplanations: {
+      en: [null, "At uncontrolled intersections, priority is usually given to vehicles approaching from the right.", null, null],
+      ru: [null, "На нерегулируемых перекрёстках обычно действует правило «помехи справа».", null, null],
+      am: [null, "Չկարգավորվող խաչմերուկներում սովորաբար գործում է «աջից եկողին զիջելու» կանոնը։", null, null],
+    },
     correctIndex: 1,
     category: "rules",
   },
@@ -46,6 +53,26 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       en: ["End of restriction", "Warning / give way context", "Mandatory direction", "No stopping"],
       ru: ["Конец ограничения", "Предупреждение / уступить дорогу", "Обязательное направление", "Остановка запрещена"],
       am: ["Սահմանափակման վերջ", "Զգուշացում / զիջել ճանապարհը", "Պարտադիր ուղղություն", "Կանգ առնելն արգելված է"],
+    },
+    optionExplanations: {
+      en: [
+        null,
+        "Triangular red-bordered signs are warning signs; many indicate hazards or yield-related priority rules.",
+        null,
+        null,
+      ],
+      ru: [
+        null,
+        "Треугольные знаки с красной окантовкой относятся к предупреждающим; часто сообщают об опасности или приоритете.",
+        null,
+        null,
+      ],
+      am: [
+        null,
+        "Կարմիր եզրով եռանկյուն նշանները զգուշացնող են․ հաճախ տեղեկացնում են վտանգի կամ երթևեկության առաջնահերթության մասին։",
+        null,
+        null,
+      ],
     },
     correctIndex: 1,
     category: "rules",
@@ -62,6 +89,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       ru: ["Минимальная скорость 40 км/ч", "Максимальная скорость 40 км/ч", "Рекомендуемая скорость", "Конец зоны 40 км/ч"],
       am: ["Նվազագույն արագություն 40 կմ/ժ", "Առավելագույն արագություն 40 կմ/ժ", "Խորհուրդ տրվող արագություն", "40 կմ/ժ գոտու վերջ"],
     },
+    optionExplanations: {
+      en: [null, "A red-bordered speed sign with a number sets the maximum permitted speed.", null, null],
+      ru: [null, "Круглый знак с красной окантовкой и числом указывает максимально допустимую скорость.", null, null],
+      am: [null, "Կարմիր եզրով արագության նշանը սահմանում է առավելագույն թույլատրելի արագությունը։", null, null],
+    },
     correctIndex: 1,
     category: "signs",
   },
@@ -76,6 +108,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       en: ["No entry", "Mandatory direction", "End of lane", "Hospital ahead"],
       ru: ["Въезд запрещён", "Обязательное направление движения", "Конец полосы", "Больница впереди"],
       am: ["Մուտքն արգելված է", "Պարտադիր ուղղություն", "Գոտու վերջ", "Հիվանդանոց՝ առաջ"],
+    },
+    optionExplanations: {
+      en: [null, "Blue circular signs generally indicate mandatory instructions.", null, null],
+      ru: [null, "Синие круглые знаки обычно обозначают обязательные предписания.", null, null],
+      am: [null, "Կապույտ կլոր նշանները սովորաբար նշանակում են պարտադիր հրահանգներ։", null, null],
     },
     correctIndex: 1,
     category: "signs",
@@ -92,6 +129,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       ru: ["Включить аварийку вместо фар", "Увеличить дистанцию и снизить скорость", "Ехать ближе к впереди идущему для обзора", "Постоянно использовать дальний свет"],
       am: ["Փոխարինել լուսարձակները վթարային լույսերով", "Մեծացնել հեռավորությունը և նվազեցնել արագությունը", "Մոտենալ առջևի մեքենային տեսանելիության համար", "Միշտ միացնել երկար լույսը"],
     },
+    optionExplanations: {
+      en: [null, "In rain, tire grip and visibility are reduced; lower speed and larger gap improve safety.", null, null],
+      ru: [null, "Во время дождя сцепление и обзор хуже, поэтому нужно снизить скорость и увеличить дистанцию.", null, null],
+      am: [null, "Անձրևի ժամանակ կպչունությունն ու տեսանելիությունը նվազում են, ուստի պետք է դանդաղել և մեծացնել հեռավորությունը։", null, null],
+    },
     correctIndex: 1,
     category: "safety",
   },
@@ -106,6 +148,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       en: ["Signal for at least 5 seconds then move", "Check mirrors and blind spot, signal, then move when safe", "Move first, then signal", "Sound the horn twice"],
       ru: ["Включить поворотник минимум на 5 секунд и перестроиться", "Проверить зеркала и «слепую» зону, подать сигнал и перестроиться при безопасности", "Сначала перестроиться, потом сигнализировать", "Дважды подать звуковой сигнал"],
       am: ["Նվազագույն 5 վայրկյան ազդանշան տալ, հետո շարժվել", "Ստուգել հայելիներն ու «կույր» գոտին, ազդանշան տալ, անվտանգ լինելու դեպքում շարժվել", "Նախ շարժվել, հետո ազդանշան տալ", "Երկու անգամ հնչեցնել ձայնային ազդանշան"],
+    },
+    optionExplanations: {
+      en: [null, "A safe lane change sequence is observe, signal, then maneuver only when the lane is clear.", null, null],
+      ru: [null, "Безопасное перестроение: оценка обстановки, сигнал и только затем манёвр при свободной полосе.", null, null],
+      am: [null, "Անվտանգ գոտի փոխելը՝ դիտում, ազդանշան և միայն հետո մանևր՝ երբ գոտին ազատ է։", null, null],
     },
     correctIndex: 1,
     category: "safety",
@@ -122,6 +169,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       ru: ["Только на автомагистралях", "На пешеходных переходах и вблизи них", "В жилых зонах", "У любого синего знака"],
       am: ["Միայն արագաչափ ճանապարհներում", "Հետիոտնային անցումների վրա և դրանց մոտ", "Բնակելի գոտիներում", "Ցանկացած կապույտ նշանի մոտ"],
     },
+    optionExplanations: {
+      en: [null, "Stopping near pedestrian crossings blocks visibility and is prohibited for safety reasons.", null, null],
+      ru: [null, "Остановка у пешеходных переходов ограничивает обзор и запрещена по соображениям безопасности.", null, null],
+      am: [null, "Հետիոտնային անցումների մոտ կանգառը սահմանափակում է տեսանելիությունը և արգելված է անվտանգության համար։", null, null],
+    },
     correctIndex: 1,
     category: "rules",
   },
@@ -136,6 +188,11 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
       en: ["Yield", "Stop completely", "No entry", "Give way to pedestrians only"],
       ru: ["Уступить дорогу", "Полная остановка", "Въезд запрещён", "Уступить только пешеходам"],
       am: ["Զիջել ճանապարհը", "Լրիվ կանգ", "Մուտքն արգելված է", "Զիջել միայն հետիոտներին"],
+    },
+    optionExplanations: {
+      en: [null, "The octagonal red sign is the STOP sign and requires a complete stop.", null, null],
+      ru: [null, "Восьмиугольный красный знак — это STOP, он требует полной остановки.", null, null],
+      am: [null, "Ութանկյուն կարմիր նշանը STOP-ն է և պահանջում է լիարժեք կանգառ։", null, null],
     },
     correctIndex: 1,
     category: "signs",
