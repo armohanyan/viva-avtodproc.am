@@ -48,6 +48,7 @@ export default function Footer() {
                 { href: "/thematic-questions", label: t("examTests") },
                 { href: "/packages", label: t("packages") },
                 { href: "/instructors", label: t("instructors") },
+                { href: "/blogs", label: t("blogs") },
                 { href: "/contact", label: t("contact") },
               ].map((l) => (
                 <li key={l.href}>

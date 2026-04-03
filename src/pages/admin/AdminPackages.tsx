@@ -1,15 +1,14 @@
 import AdminLayout from "src/components/AdminLayout";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
-import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
-import { Plus, Edit2, Trash2, Users } from "lucide-react";
-import { useState } from "react";
-import { CountUpText, Reveal } from "src/lib/motion";
+import DataTableToolbar from "src/components/DataTableToolbar";
+import { Plus, Edit2, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 
 type Pkg = { id: string; name: string; price: string; lessons: number; enrolled: number; status: string; features: string[]; };
 
@@ -24,6 +23,8 @@ export default function AdminPackages() {
   const { t } = useLang();
   const { showToast } = useToast();
   const [packages, setPackages] = useState(initialPackages);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editPkg, setEditPkg] = useState<Pkg | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -52,55 +53,78 @@ export default function AdminPackages() {
     showToast(t("packageCreatedToast"), "success");
   };
 
+  const filteredPackages = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return packages.filter((pkg) => {
+      const hay = [pkg.id, pkg.name, pkg.price, String(pkg.lessons), String(pkg.enrolled), pkg.status, pkg.features.join(" ")]
+        .join(" ")
+        .toLowerCase();
+      const matchSearch = !q || hay.includes(q);
+      const matchStatus = statusFilter === "all" || pkg.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [packages, search, statusFilter]);
+
   return (
     <AdminLayout>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">{t("packages")}</h2>
-        <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+        <h2 className="text-2xl font-bold text-foreground">{t("packages")}</h2>
+        <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
           <Plus className="w-4 h-4" />{t("addNew")}
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {packages.map((pkg, i) => (
-          <Reveal key={i} delay={i * 0.06}>
-            <Card className="p-6 border-slate-100">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-bold text-lg text-slate-900">{pkg.name}</h3>
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[8rem]"
+            aria-label={t("filterByStatus")}
+          >
+            <option value="all">{t("filterOptionAll")}</option>
+            <option value="active">{t("active")}</option>
+            <option value="inactive">{t("inactive")}</option>
+          </select>
+        </DataTableToolbar>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40">
+              <tr>
+                {["ID", t("name"), "Price", t("lessons"), "Enrolled", "Features", t("status"), t("actions")].map((h) => (
+                  <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredPackages.map((pkg) => (
+                <tr key={pkg.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{pkg.id}</td>
+                  <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{pkg.name}</td>
+                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.price} ֏</td>
+                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.lessons}</td>
+                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.enrolled}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground min-w-[240px]">{pkg.features.join(", ") || "—"}</td>
+                  <td className="px-4 py-3.5">
                     <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("active")}</Badge>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-600">
-                    <CountUpText value={pkg.price} /> ֏
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    <CountUpText value={pkg.lessons} /> {t("lessons")}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 text-sm text-slate-500">
-                  <Users className="w-4 h-4" />
-                  <CountUpText value={pkg.enrolled} className="font-semibold text-slate-700" /> <span>enrolled</span>
-                </div>
-              </div>
-            <ul className="space-y-1.5 mb-5">
-              {pkg.features.map((f, j) => (
-                <li key={j} className="text-xs text-slate-500 flex items-center gap-1.5">
-                  <div className="w-1 h-1 rounded-full bg-blue-400 shrink-0" />{f}
-                </li>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setEditPkg({ ...pkg })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeleteId(pkg.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ))}
-            </ul>
-            <div className="flex gap-2 pt-4 border-t border-slate-100">
-              <Button size="sm" variant="outline" onClick={() => setEditPkg({ ...pkg })} className="flex-1 border-slate-200 gap-1.5">
-                <Edit2 className="w-3.5 h-3.5" />{t("edit")}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setDeleteId(pkg.id)} className="flex-1 border-red-100 text-red-500 hover:bg-red-50 gap-1.5">
-                <Trash2 className="w-3.5 h-3.5" />{t("delete")}
-              </Button>
-            </div>
-            </Card>
-          </Reveal>
-        ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <Dialog open={!!editPkg} onOpenChange={() => setEditPkg(null)}>
@@ -108,15 +132,15 @@ export default function AdminPackages() {
           <DialogHeader><DialogTitle>Edit Package</DialogTitle></DialogHeader>
           {editPkg && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("name")}</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
                 <Input value={editPkg.name} onChange={e => setEditPkg({ ...editPkg, name: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Price (֏)</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Price (֏)</label>
                 <Input value={editPkg.price} onChange={e => setEditPkg({ ...editPkg, price: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Lessons</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Lessons</label>
                 <Input type="number" value={editPkg.lessons} onChange={e => setEditPkg({ ...editPkg, lessons: +e.target.value })} className="h-10" /></div>
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditPkg(null)}>Cancel</Button>
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">Save</Button>
               </div>
             </form>
           )}
@@ -127,15 +151,15 @@ export default function AdminPackages() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>New Package</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="space-y-3 mt-2">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("name")} *</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
               <Input value={newPkg.name} onChange={e => setNewPkg({ ...newPkg, name: e.target.value })} placeholder="e.g. Silver" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Price (֏) *</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Price (֏) *</label>
               <Input value={newPkg.price} onChange={e => setNewPkg({ ...newPkg, price: e.target.value })} placeholder="45,000" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Lessons</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Lessons</label>
               <Input type="number" value={newPkg.lessons} onChange={e => setNewPkg({ ...newPkg, lessons: +e.target.value })} className="h-10" /></div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">{t("addNew")}</Button>
+              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>
             </div>
           </form>
         </DialogContent>

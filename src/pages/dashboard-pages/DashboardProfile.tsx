@@ -68,12 +68,12 @@ export default function DashboardProfile() {
             </div>
             <h3 className="font-bold text-foreground text-lg">{form.firstName} {form.lastName}</h3>
             <p className="text-muted-foreground text-sm mt-0.5">{form.email}</p>
-            <Badge className="mt-3 bg-primary/10 text-primary">Standard Package</Badge>
+            <Badge className="mt-3 bg-primary/10 text-primary">{t("standardPackageLabel")}</Badge>
             <div className="mt-6 space-y-2.5 text-left">
               {[
-                { label: "Member since", value: "March 2026" },
-                { label: "Lessons completed", value: "4 / 18" },
-                { label: "Instructor", value: "Armen Petrosyan" },
+                { label: t("memberSinceLabel"), value: t("memberSinceDemoValue") },
+                { label: t("lessonsCompletedLabel"), value: "4 / 18" },
+                { label: t("assignedInstructorLabel"), value: t("dashboardProfileInstructorDemo") },
               ].map((r, i) => (
                 <div key={i} className="flex justify-between text-sm border-b border-border pb-2">
                   <span className="text-muted-foreground">{r.label}</span>
@@ -108,7 +108,7 @@ export default function DashboardProfile() {
                     <Input type="tel" value={form.phone} onChange={set("phone")} className="h-10" />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">Date of Birth</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("dateOfBirthLabel")}</label>
                     <Input type="date" value={form.dob} onChange={set("dob")} className="h-10" />
                   </div>
                 </div>
@@ -117,7 +117,7 @@ export default function DashboardProfile() {
                   disabled={savingProfile}
                   className="mt-5 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-70"
                 >
-                  {savingProfile ? "Saving..." : "Save Changes"}
+                  {savingProfile ? t("saving") : t("saveChanges")}
                 </Button>
               </form>
             </Card>
@@ -131,19 +131,19 @@ export default function DashboardProfile() {
               </div>
               <form onSubmit={handlePassword} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Current Password</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("currentPassword")}</label>
                   <Input type="password" value={pass.current} onChange={setP("current")} placeholder="••••••••" className="h-10" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">New Password</label>
-                  <Input type="password" value={pass.next} onChange={setP("next")} placeholder="Min. 8 characters" className="h-10" />
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("newPassword")}</label>
+                  <Input type="password" value={pass.next} onChange={setP("next")} placeholder={t("passwordPlaceholderMinChars")} className="h-10" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Confirm New Password</label>
-                  <Input type="password" value={pass.confirm} onChange={setP("confirm")} placeholder="Repeat new password" className="h-10" />
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("confirmNewPassword")}</label>
+                  <Input type="password" value={pass.confirm} onChange={setP("confirm")} placeholder={t("passwordPlaceholderRepeat")} className="h-10" />
                 </div>
                 <Button type="submit" disabled={savingPass} variant="outline" className="border-border disabled:opacity-70">
-                  {savingPass ? "Updating..." : "Update Password"}
+                  {savingPass ? t("updating") : t("updatePassword")}
                 </Button>
               </form>
             </Card>
@@ -157,10 +157,10 @@ export default function DashboardProfile() {
               </div>
               <div className="space-y-4">
                 {[
-                  "Email reminders before lessons",
-                  "SMS notifications",
-                  "Promotional emails",
-                  "Lesson cancellations",
+                  t("profileNotifEmailLessons"),
+                  t("profileNotifSms"),
+                  t("profileNotifPromo"),
+                  t("profileNotifCancellations"),
                 ].map((opt, i) => (
                   <label key={i} className="flex items-center justify-between cursor-pointer group">
                     <span className="text-sm text-muted-foreground">{opt}</span>

@@ -387,7 +387,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
               <div className="mt-8 pt-6 border-t border-border">
                 <p className="text-xs text-muted-foreground text-center mb-4">{t("orSignInAsLabel")}</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
                     type="button"
                     onClick={() => {
@@ -397,6 +397,16 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
                     className="px-3 py-2 text-xs border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
                   >
                     {t("adminDemoLabel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast(t("loginSuccess"), "success");
+                      setLocation("/instructor/dashboard");
+                    }}
+                    className="px-3 py-2 text-xs border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
+                  >
+                    {t("instructorDemoLabel")}
                   </button>
                   <button
                     type="button"

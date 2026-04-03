@@ -1,28 +1,51 @@
 import DashboardLayout from "src/components/DashboardLayout";
+import DataTableToolbar from "src/components/DataTableToolbar";
 import { useLang } from "src/lib/i18n";
+import type { TranslationKey } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Link } from "wouter";
 import { useToast } from "src/lib/toast";
+import { useMemo, useState } from "react";
 import { Calendar, BookOpen, CheckCircle2, Video, Bell, Clock, ArrowRight, TrendingUp, ClipboardCheck } from "lucide-react";
 import { CountUpText } from "src/lib/motion";
 
-const upcoming = [
-  { date: "Mar 28", time: "10:00", instructor: "Armen Petrosyan", type: "Practical", status: "confirmed" },
-  { date: "Mar 30", time: "14:00", instructor: "Narine H.", type: "Theory", status: "confirmed" },
-  { date: "Apr 2", time: "09:00", instructor: "Armen Petrosyan", type: "Practical", status: "pending" },
+type LessonRow = {
+  date: string;
+  time: string;
+  instructor: string;
+  lessonTypeKey: "lessonTypePractical" | "lessonTypeTheory";
+  status: "confirmed" | "pending";
+};
+
+const upcoming: LessonRow[] = [
+  { date: "Mar 28", time: "10:00", instructor: "Armen Petrosyan", lessonTypeKey: "lessonTypePractical", status: "confirmed" },
+  { date: "Mar 30", time: "14:00", instructor: "Narine H.", lessonTypeKey: "lessonTypeTheory", status: "confirmed" },
+  { date: "Apr 2", time: "09:00", instructor: "Armen Petrosyan", lessonTypeKey: "lessonTypePractical", status: "pending" },
 ];
 
-const notifications = [
-  { text: "Your booking on Mar 28 is confirmed", time: "2h ago", type: "success" },
-  { text: "Theory session starts in 2 days", time: "1d ago", type: "info" },
-  { text: "Payment received for Standard Package", time: "3d ago", type: "success" },
+const notificationKeys: { textKey: TranslationKey; timeKey: TranslationKey }[] = [
+  { textKey: "dashboardNotif1Text", timeKey: "dashboardNotif1Time" },
+  { textKey: "dashboardNotif2Text", timeKey: "dashboardNotif2Time" },
+  { textKey: "dashboardNotif3Text", timeKey: "dashboardNotif3Time" },
 ];
 
 export default function Dashboard() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const [lessonSearch, setLessonSearch] = useState("");
+  const [lessonStatus, setLessonStatus] = useState<"all" | "confirmed" | "pending">("all");
+
+  const filteredUpcoming = useMemo(() => {
+    const q = lessonSearch.trim().toLowerCase();
+    return upcoming.filter((lesson) => {
+      const hay = [lesson.date, lesson.time, lesson.instructor, lesson.lessonTypeKey, lesson.status].join(" ").toLowerCase();
+      const matchSearch = !q || hay.includes(q);
+      const matchSt = lessonStatus === "all" || lesson.status === lessonStatus;
+      return matchSearch && matchSt;
+    });
+  }, [lessonSearch, lessonStatus]);
 
   const stats = [
     { label: t("upcomingLessons"), value: 3, icon: Calendar, color: "text-primary", bg: "bg-primary/10" },
@@ -32,13 +55,13 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      {/* Welcome */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-foreground">{t("welcomeUser")}, Armen! 👋</h2>
-        <p className="text-muted-foreground mt-1">Here's your learning overview.</p>
+        <h2 className="text-2xl font-bold text-foreground">
+          {t("welcomeUser")}, {t("dashboardDemoFirstName")}! 👋
+        </h2>
+        <p className="text-muted-foreground mt-1">{t("dashboardLearningOverview")}</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {stats.map((s, i) => (
           <Card key={i} className="p-6 border-border">
@@ -74,7 +97,6 @@ export default function Dashboard() {
         </Card>
       </Link>
 
-      {/* Progress Bar */}
       <Card className="p-6 mb-8 border-border">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -86,23 +108,41 @@ export default function Dashboard() {
         <div className="h-2.5 bg-accent rounded-full overflow-hidden">
           <div className="h-full bg-primary rounded-full" style={{ width: "22%" }} />
         </div>
-        <p className="text-xs text-muted-foreground mt-2">22% completed — Standard Package</p>
+        <p className="text-xs text-muted-foreground mt-2">{t("dashboardProgressSummary")}</p>
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Upcoming Lessons */}
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-foreground">{t("upcomingLessons")}</h3>
             <Link href="/dashboard/bookings">
-              <button className="text-sm text-primary hover:underline flex items-center gap-1">
+              <button type="button" className="text-sm text-primary hover:underline flex items-center gap-1">
                 {t("viewAll")} <ArrowRight className="w-3 h-3" />
               </button>
             </Link>
           </div>
+          <DataTableToolbar value={lessonSearch} onChange={setLessonSearch} placeholder={`${t("search")}…`} className="rounded-lg border border-border bg-card mb-3">
+            <div className="flex flex-wrap gap-2">
+              {(["all", "confirmed", "pending"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setLessonStatus(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    lessonStatus === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
+                  }`}
+                >
+                  {s === "all" ? t("filterOptionAll") : t(s)}
+                </button>
+              ))}
+            </div>
+          </DataTableToolbar>
           <div className="space-y-3">
-            {upcoming.map((lesson, i) => (
-              <Card key={i} className="p-4 border-border">
+            {filteredUpcoming.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">{t("tableNoMatches")}</p>
+            ) : null}
+            {filteredUpcoming.map((lesson, i) => (
+              <Card key={`${lesson.date}-${lesson.time}-${i}`} className="p-4 border-border">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary/10 rounded-xl flex flex-col items-center justify-center">
@@ -115,7 +155,7 @@ export default function Dashboard() {
                         <Clock className="w-3 h-3 text-muted-foreground" />
                         <span className="text-xs text-muted-foreground">{lesson.time}</span>
                         <Badge variant="secondary" className="text-xs px-2 py-0 bg-accent text-foreground">
-                          {lesson.type}
+                          {t(lesson.lessonTypeKey)}
                         </Badge>
                       </div>
                     </div>
@@ -132,7 +172,6 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Join Online Class CTA */}
           <Card className="mt-4 p-5 bg-primary border-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -140,8 +179,8 @@ export default function Dashboard() {
                   <Video className="w-5 h-5 text-hero-foreground" />
                 </div>
                 <div>
-                  <p className="text-hero-foreground font-medium text-sm">Theory Class — Today 16:00</p>
-                  <p className="text-hero-foreground/80 text-xs">Online • Google Meet</p>
+                  <p className="text-hero-foreground font-medium text-sm">{t("dashboardTheoryClassTitle")}</p>
+                  <p className="text-hero-foreground/80 text-xs">{t("dashboardTheoryClassSub")}</p>
                 </div>
               </div>
               <Button
@@ -149,7 +188,7 @@ export default function Dashboard() {
                 className="bg-background text-primary hover:bg-accent shrink-0"
                 onClick={() => {
                   window.open("https://meet.google.com", "_blank", "noopener,noreferrer");
-                  showToast("Opening meeting link...", "info");
+                  showToast(t("openingMeetingLinkToast"), "info");
                 }}
               >
                 {t("joinOnlineClass")}
@@ -166,24 +205,23 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Notifications */}
         <div>
           <div className="flex items-center gap-2 mb-4">
             <Bell className="w-4 h-4 text-muted-foreground" />
             <h3 className="font-semibold text-foreground">{t("notifications")}</h3>
           </div>
           <div className="space-y-3">
-            {notifications.map((n, i) => (
+            {notificationKeys.map((n, i) => (
               <Card key={i} className="p-4 border-border">
                 <div className="flex items-start gap-3">
                   <div
                     className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                      n.type === "success" ? "bg-emerald-500" : "bg-primary"
+                      i !== 1 ? "bg-emerald-500" : "bg-primary"
                     }`}
                   />
                   <div>
-                    <p className="text-sm text-foreground leading-snug">{n.text}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{n.time}</p>
+                    <p className="text-sm text-foreground leading-snug">{t(n.textKey)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{t(n.timeKey)}</p>
                   </div>
                 </div>
               </Card>

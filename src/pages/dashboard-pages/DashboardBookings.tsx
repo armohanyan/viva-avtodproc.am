@@ -3,8 +3,9 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
+import DataTableToolbar from "src/components/DataTableToolbar";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 
 const instructors = ["All", "Armen Petrosyan", "Narine Hovhannisyan", "Vardan Grigoryan"];
@@ -41,18 +42,40 @@ function fmt(d: Date) {
   return d.toISOString().split("T")[0];
 }
 
-function dayLabel(d: Date) {
-  return d.toLocaleDateString("en", { weekday: "short" });
+function dayLabel(d: Date, locale: string) {
+  return d.toLocaleDateString(locale, { weekday: "short" });
+}
+
+function localeFromLang(lang: "en" | "ru" | "am") {
+  if (lang === "am") return "hy-AM";
+  if (lang === "ru") return "ru-RU";
+  return "en-US";
 }
 
 export default function DashboardBookings() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const locale = localeFromLang(lang);
   const [instructor, setInstructor] = useState("Armen Petrosyan");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selected, setSelected] = useState<{ date: string; time: string } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [slotSearch, setSlotSearch] = useState("");
+  const [periodFilter, setPeriodFilter] = useState<"all" | "morning" | "afternoon">("all");
 
   const days = getWeekDays(weekOffset);
+
+  const visibleTimeSlots = useMemo(() => {
+    return timeSlots.filter((time) => {
+      const q = slotSearch.trim();
+      if (q && !time.replace(":", "").toLowerCase().includes(q.toLowerCase()) && !time.toLowerCase().includes(q.toLowerCase())) {
+        return false;
+      }
+      const hour = parseInt(time.split(":")[0], 10);
+      if (periodFilter === "morning" && hour >= 12) return false;
+      if (periodFilter === "afternoon" && hour < 12) return false;
+      return true;
+    });
+  }, [slotSearch, periodFilter]);
 
   const getStatus = (time: string, date: string): SlotStatus => {
     return slotData[time]?.[date] || "available";
@@ -100,7 +123,7 @@ export default function DashboardBookings() {
           <Reveal delay={0.12}>
             <Card className="p-5 border-border">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                <h3 className="font-semibold text-foreground">{t("selectDate")} & {t("selectTime")}</h3>
+                <h3 className="font-semibold text-foreground">{t("selectDate")} · {t("selectTime")}</h3>
                 <div className="flex items-center gap-2 self-start sm:self-auto">
                   <button
                     onClick={() => setWeekOffset(w => Math.max(0, w - 1))}
@@ -110,7 +133,7 @@ export default function DashboardBookings() {
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <span className="text-sm font-medium text-foreground">
-                    {days[0].toLocaleDateString("en", { month: "short", day: "numeric" })} – {days[4].toLocaleDateString("en", { month: "short", day: "numeric" })}
+                    {days[0].toLocaleDateString(locale, { month: "short", day: "numeric" })} – {days[4].toLocaleDateString(locale, { month: "short", day: "numeric" })}
                   </span>
                   <button
                     onClick={() => setWeekOffset(w => w + 1)}
@@ -121,22 +144,44 @@ export default function DashboardBookings() {
                 </div>
               </div>
 
+              <DataTableToolbar
+                value={slotSearch}
+                onChange={setSlotSearch}
+                placeholder={`${t("filterByHour")}…`}
+                className="border-t border-border bg-muted/20"
+              >
+                <div className="flex flex-wrap gap-2">
+                  {(["all", "morning", "afternoon"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPeriodFilter(p)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        periodFilter === p ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
+                      }`}
+                    >
+                      {p === "all" ? t("bookingSlotFilterAll") : p === "morning" ? t("bookingSlotFilterMorning") : t("bookingSlotFilterAfternoon")}
+                    </button>
+                  ))}
+                </div>
+              </DataTableToolbar>
+
             {/* Grid */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left text-xs text-muted-foreground font-medium pr-4 py-2 w-16">Time</th>
+                    <th className="text-left text-xs text-muted-foreground font-medium pr-4 py-2 w-16">{t("bookingGridTimeLabel")}</th>
                     {days.map((d, i) => (
                       <th key={i} className="text-center py-2 px-1">
-                        <div className="text-xs text-muted-foreground font-medium">{dayLabel(d)}</div>
+                        <div className="text-xs text-muted-foreground font-medium">{dayLabel(d, locale)}</div>
                         <div className="text-sm font-semibold text-foreground">{d.getDate()}</div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {timeSlots.map((time) => (
+                  {visibleTimeSlots.map((time) => (
                     <tr key={time} className="border-t border-border/50">
                       <td className="text-xs text-muted-foreground pr-4 py-1.5 font-medium">{time}</td>
                       {days.map((d, j) => {
@@ -198,7 +243,7 @@ export default function DashboardBookings() {
                   </svg>
                 </div>
                 <p className="font-semibold text-foreground text-sm">{t("bookingConfirmed")}</p>
-                <p className="text-xs text-muted-foreground mt-1">{selected.date} at {selected.time}</p>
+                <p className="text-xs text-muted-foreground mt-1">{selected.date} {t("bookingAt")} {selected.time}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -225,7 +270,7 @@ export default function DashboardBookings() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{t("bookingDurationLabel")}</span>
-                    <span className="font-medium text-foreground text-xs">60 min</span>
+                    <span className="font-medium text-foreground text-xs">{t("bookingDurationMinutes")}</span>
                   </div>
                 </div>
                 <Button

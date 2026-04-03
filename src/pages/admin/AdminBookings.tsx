@@ -7,9 +7,9 @@ import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
-import { Search, Plus, Edit2, Trash2 } from "lucide-react";
+import DataTableToolbar from "src/components/DataTableToolbar";
+import { Plus, Edit2, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Reveal } from "src/lib/motion";
 
 type Booking = { id: string; student: string; instructor: string; date: string; time: string; type: string; status: string; };
 
@@ -40,8 +40,10 @@ export default function AdminBookings() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
 
-  const filtered = bookings.filter(b => {
-    const matchSearch = b.student.toLowerCase().includes(search.toLowerCase()) || b.instructor.toLowerCase().includes(search.toLowerCase());
+  const filtered = bookings.filter((b) => {
+    const q = search.trim().toLowerCase();
+    const hay = [b.id, b.student, b.instructor, b.date, b.time, b.type, b.status].join(" ").toLowerCase();
+    const matchSearch = !q || hay.includes(q);
     const matchStatus = statusFilter === "all" || b.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -62,51 +64,52 @@ export default function AdminBookings() {
   return (
     <AdminLayout>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">{t("bookings")}</h2>
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2" onClick={() => showToast(t("addBookingComingSoonToast"), "info")}>
+        <h2 className="text-2xl font-bold text-foreground">{t("bookings")}</h2>
+        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={() => showToast(t("addBookingComingSoonToast"), "info")}>
           <Plus className="w-4 h-4" />{t("addNew")}
         </Button>
       </div>
 
-      <Reveal delay={0.06}>
-        <Card className="border-slate-100">
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input placeholder={`${t("search")}...`} value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-9" />
-          </div>
+      <Card className="border-border overflow-hidden">
+        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <div className="flex gap-2 flex-wrap">
-            {["all", "confirmed", "pending", "cancelled"].map(s => (
-              <button key={s} onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${statusFilter === s ? "bg-blue-600 text-white border-blue-600" : "border-slate-200 text-slate-600 hover:border-blue-300"}`}>
-                {s === "all" ? "All" : t(s as any)}
+            {["all", "confirmed", "pending", "cancelled"].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${
+                  statusFilter === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                {s === "all" ? t("filterOptionAll") : t(s as "confirmed" | "pending" | "cancelled")}
               </button>
             ))}
           </div>
-        </div>
+        </DataTableToolbar>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+            <thead className="bg-muted/40">
               <tr>
                 {["ID", "Student", "Instructor", t("date"), "Time", "Type", t("status"), t("actions")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-slate-500 px-4 py-3 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-border">
               {filtered.map((b, i) => (
-                <tr key={i} className="hover:bg-slate-50">
-                  <td className="px-4 py-3.5 text-slate-400 text-xs font-mono">{b.id}</td>
-                  <td className="px-4 py-3.5 font-medium text-slate-900 whitespace-nowrap">{b.student}</td>
-                  <td className="px-4 py-3.5 text-slate-600 whitespace-nowrap">{b.instructor}</td>
-                  <td className="px-4 py-3.5 text-slate-600 whitespace-nowrap">{b.date}</td>
-                  <td className="px-4 py-3.5 text-slate-600">{b.time}</td>
+                <tr key={i} className="hover:bg-muted/30">
+                  <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono">{b.id}</td>
+                  <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{b.student}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.instructor}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.date}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground">{b.time}</td>
                   <td className="px-4 py-3.5"><Badge className={`text-xs ${typeColor[b.type]}`}>{b.type}</Badge></td>
                   <td className="px-4 py-3.5"><Badge className={`text-xs ${statusColor[b.status]}`}>{t(b.status as any)}</Badge></td>
                   <td className="px-4 py-3.5">
                     <div className="flex gap-2">
-                      <button onClick={() => setEditBooking({ ...b })} className="p-1.5 rounded hover:bg-blue-50 text-blue-600"><Edit2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => setEditBooking({ ...b })} className="p-1.5 rounded hover:bg-primary/10 text-primary"><Edit2 className="w-3.5 h-3.5" /></button>
                       <button onClick={() => setDeleteId(b.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
@@ -115,37 +118,36 @@ export default function AdminBookings() {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-3 border-t border-slate-100 text-xs text-slate-500">
+        <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
           Showing {filtered.length} of {bookings.length} bookings
         </div>
-        </Card>
-      </Reveal>
+      </Card>
 
       <Dialog open={!!editBooking} onOpenChange={() => setEditBooking(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Edit Booking</DialogTitle></DialogHeader>
           {editBooking && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Student</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Student</label>
                 <Input value={editBooking.student} onChange={e => setEditBooking({ ...editBooking, student: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Instructor</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Instructor</label>
                 <Input value={editBooking.instructor} onChange={e => setEditBooking({ ...editBooking, instructor: e.target.value })} className="h-10" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                <div><label className="block text-sm font-medium text-muted-foreground mb-1">Date</label>
                   <Input value={editBooking.date} onChange={e => setEditBooking({ ...editBooking, date: e.target.value })} className="h-10" /></div>
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">Time</label>
+                <div><label className="block text-sm font-medium text-muted-foreground mb-1">Time</label>
                   <Input value={editBooking.time} onChange={e => setEditBooking({ ...editBooking, time: e.target.value })} className="h-10" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("status")}</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                 <select value={editBooking.status} onChange={e => setEditBooking({ ...editBooking, status: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
                   <option value="confirmed">Confirmed</option>
                   <option value="pending">Pending</option>
                   <option value="cancelled">Cancelled</option>
                 </select></div>
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBooking(null)}>Cancel</Button>
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">Save</Button>
               </div>
             </form>
           )}

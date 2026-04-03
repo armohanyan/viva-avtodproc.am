@@ -1,15 +1,14 @@
 import AdminLayout from "src/components/AdminLayout";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
-import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
+import DataTableToolbar from "src/components/DataTableToolbar";
 import { Plus, Calendar, Users, Video, Edit2, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { CountUpText, Reveal } from "src/lib/motion";
+import { useMemo, useState } from "react";
 
 type Cohort = { id: string; name: string; startDate: string; endDate: string; schedule: string; seats: number; enrolled: number; instructor: string; meetLink: string; status: string; };
 
@@ -29,6 +28,8 @@ export default function AdminCohorts() {
   const { t } = useLang();
   const { showToast } = useToast();
   const [cohorts, setCohorts] = useState(initialCohorts);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editCohort, setEditCohort] = useState<Cohort | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -66,67 +67,87 @@ export default function AdminCohorts() {
 
   const handleViewStudents = () => showToast(t("studentListComingSoonToast"), "info");
 
+  const filteredCohorts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return cohorts.filter((c) => {
+      const hay = [c.id, c.name, c.instructor, c.schedule, c.startDate, c.endDate, c.status, c.meetLink].join(" ").toLowerCase();
+      const matchSearch = !q || hay.includes(q);
+      const matchStatus = statusFilter === "all" || c.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [cohorts, search, statusFilter]);
+
   return (
     <AdminLayout>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">{t("cohorts")}</h2>
-        <Button onClick={() => setAddOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+        <h2 className="text-2xl font-bold text-foreground">{t("adminSidebarGroups")}</h2>
+        <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
           <Plus className="w-4 h-4" />{t("addNew")}
         </Button>
       </div>
 
-      <div className="space-y-5">
-        {cohorts.map((c, i) => (
-          <Reveal key={i} delay={i * 0.06}>
-            <Card className="p-6 border-slate-100">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-bold text-lg text-slate-900">{c.name}</h3>
-                  <span className="text-xs text-slate-400 font-mono">{c.id}</span>
-                  <Badge className={`text-xs ${statusColor[c.status]}`}>{c.status}</Badge>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1"><Calendar className="w-3.5 h-3.5" />Schedule</div>
-                  <p className="text-sm font-medium text-slate-900">{c.schedule}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{c.startDate} – {c.endDate}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 text-slate-500 text-xs mb-1"><Users className="w-3.5 h-3.5" />Enrollment</div>
-                  <p className="text-sm font-medium text-slate-900"><CountUpText value={c.enrolled} /> / {c.seats}</p>
-                  <div className="mt-1.5 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${(c.enrolled / c.seats) * 100}%` }} />
-                  </div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">Instructor</p>
-                  <p className="text-sm font-medium text-slate-900">{c.instructor}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500 mb-1">{t("seats")}</p>
-                  <p className="text-sm font-medium text-slate-900"><CountUpText value={c.seats - c.enrolled} /> left</p>
-                </div>
-              </div>
-            <div className="flex gap-3 mt-5 pt-4 border-t border-slate-100 flex-wrap">
-              {c.meetLink && (
-                <Button size="sm" onClick={() => handleJoinMeeting(c.meetLink)} className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5">
-                  <Video className="w-3.5 h-3.5" />{t("meetLink")}
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => setEditCohort({ ...c })} className="border-slate-200 gap-1.5">
-                <Edit2 className="w-3.5 h-3.5" />{t("edit")}
-              </Button>
-              <Button size="sm" variant="outline" onClick={handleViewStudents} className="border-slate-200 gap-1.5 text-slate-500">
-                <Users className="w-3.5 h-3.5" />View Students
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setDeleteId(c.id)} className="border-red-100 text-red-500 hover:bg-red-50 gap-1.5">
-                <Trash2 className="w-3.5 h-3.5" />{t("delete")}
-              </Button>
-            </div>
-            </Card>
-          </Reveal>
-        ))}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[9rem]"
+            aria-label={t("filterByStatus")}
+          >
+            <option value="all">{t("filterOptionAll")}</option>
+            <option value="active">{t("active")}</option>
+            <option value="upcoming">{t("cohortStatusLabelUpcoming")}</option>
+            <option value="completed">{t("cohortStatusLabelCompleted")}</option>
+          </select>
+        </DataTableToolbar>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40">
+              <tr>
+                {["ID", t("name"), "Instructor", "Schedule", "Period", "Enrollment", t("status"), t("actions")].map((h) => (
+                  <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredCohorts.map((c) => (
+                <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{c.id}</td>
+                  <td className="px-4 py-3.5 font-medium text-foreground min-w-[220px]">{c.name}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.instructor}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.schedule}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.startDate} - {c.endDate}</td>
+                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
+                    {c.enrolled} / {c.seats}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <Badge className={`text-xs ${statusColor[c.status]}`}>{c.status}</Badge>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      {c.meetLink && (
+                        <button onClick={() => handleJoinMeeting(c.meetLink)} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("meetLink")}>
+                          <Video className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => setEditCohort({ ...c })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={handleViewStudents} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label="View Students">
+                        <Users className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Edit */}
@@ -135,26 +156,26 @@ export default function AdminCohorts() {
           <DialogHeader><DialogTitle>Edit Cohort</DialogTitle></DialogHeader>
           {editCohort && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("name")}</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
                 <Input value={editCohort.name} onChange={e => setEditCohort({ ...editCohort, name: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Schedule</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Schedule</label>
                 <Input value={editCohort.schedule} onChange={e => setEditCohort({ ...editCohort, schedule: e.target.value })} className="h-10" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">Start</label>
+                <div><label className="block text-sm font-medium text-muted-foreground mb-1">Start</label>
                   <Input value={editCohort.startDate} onChange={e => setEditCohort({ ...editCohort, startDate: e.target.value })} className="h-10" /></div>
-                <div><label className="block text-sm font-medium text-slate-700 mb-1">End</label>
+                <div><label className="block text-sm font-medium text-muted-foreground mb-1">End</label>
                   <Input value={editCohort.endDate} onChange={e => setEditCohort({ ...editCohort, endDate: e.target.value })} className="h-10" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Meet Link</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Meet Link</label>
                 <Input value={editCohort.meetLink} onChange={e => setEditCohort({ ...editCohort, meetLink: e.target.value })} placeholder="https://meet.google.com/..." className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("status")}</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                 <select value={editCohort.status} onChange={e => setEditCohort({ ...editCohort, status: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
                   <option value="upcoming">Upcoming</option><option value="active">Active</option><option value="completed">Completed</option>
                 </select></div>
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCohort(null)}>Cancel</Button>
-                <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">Save</Button>
               </div>
             </form>
           )}
@@ -166,23 +187,23 @@ export default function AdminCohorts() {
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>New Cohort</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="space-y-3 mt-2">
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">{t("name")} *</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
               <Input value={newCohort.name} onChange={e => setNewCohort({ ...newCohort, name: e.target.value })} placeholder="Theory Cohort 14" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Instructor</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Instructor</label>
               <Input value={newCohort.instructor} onChange={e => setNewCohort({ ...newCohort, instructor: e.target.value })} placeholder="Instructor" className="h-10" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">Start *</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Start *</label>
                 <Input value={newCohort.startDate} onChange={e => setNewCohort({ ...newCohort, startDate: e.target.value })} placeholder="Apr 15, 2026" className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-slate-700 mb-1">End</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">End</label>
                 <Input value={newCohort.endDate} onChange={e => setNewCohort({ ...newCohort, endDate: e.target.value })} placeholder="May 5, 2026" className="h-10" /></div>
             </div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Schedule</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Schedule</label>
               <Input value={newCohort.schedule} onChange={e => setNewCohort({ ...newCohort, schedule: e.target.value })} placeholder="Mon & Wed, 18:00–20:00" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-slate-700 mb-1">Meet Link</label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Meet Link</label>
               <Input value={newCohort.meetLink} onChange={e => setNewCohort({ ...newCohort, meetLink: e.target.value })} placeholder="https://meet.google.com/..." className="h-10" /></div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>Cancel</Button>
-              <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white">{t("addNew")}</Button>
+              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>
             </div>
           </form>
         </DialogContent>

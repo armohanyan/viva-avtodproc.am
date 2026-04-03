@@ -4,23 +4,19 @@ import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
   LayoutDashboard,
-  Car,
   Calendar,
-  Package,
-  BookOpen,
-  Newspaper,
+  GraduationCap,
+  Car,
+  User,
+  Bell,
   LogOut,
   Menu,
-  Bell,
-  Shield,
-  GraduationCap,
-  UserCog,
   Settings,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
-import { ADMIN_NAV_LINKS } from "src/modules/admin/admin.consts";
+import { INSTRUCTOR_NAV_LINKS } from "src/modules/instructor/instructor.consts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,40 +26,35 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-interface Props { children: ReactNode; }
+interface Props {
+  children: ReactNode;
+}
 
-export default function AdminLayout({ children }: Props) {
+export default function InstructorPanelLayout({ children }: Props) {
   const { t } = useLang();
   const { showToast } = useToast();
   const [location, setLocation] = useLocation();
-  
+
   const [open, setOpen] = useState(false);
   const mainRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    // Admin pages render into a scrollable <main> container.
-    // Reset it on route changes so the user doesn't land at the previous page's bottom.
     mainRef.current?.scrollTo(0, 0);
   }, [location]);
 
   const iconByPath = {
-    "/admin/dashboard": LayoutDashboard,
-    "/admin/bookings": Calendar,
-    "/admin/cohorts": BookOpen,
-    "/admin/instructors": Car,
-    "/admin/users": GraduationCap,
-    "/admin/packages": Package,
-    "/admin/blogs": Newspaper,
-    "/admin/accounts": UserCog,
+    "/instructor/dashboard": LayoutDashboard,
+    "/instructor/students": GraduationCap,
+    "/instructor/bookings": Calendar,
+    "/instructor/cars": Car,
+    "/instructor/profile": User,
   } as const;
 
-  const nav = ADMIN_NAV_LINKS.map((link) => {
-    return {
-      href: link.href,
-      icon: iconByPath[link.href as keyof typeof iconByPath],
-      label: t(link.translationKey),
-    };
-  });
+  const nav = INSTRUCTOR_NAV_LINKS.map((link) => ({
+    href: link.href,
+    icon: iconByPath[link.href as keyof typeof iconByPath],
+    label: t(link.translationKey),
+  }));
 
   const handleLogout = () => {
     showToast(t("logoutSuccess"), "info");
@@ -71,18 +62,15 @@ export default function AdminLayout({ children }: Props) {
   };
 
   const Sidebar = () => (
-    <div className="flex flex-col h-full min-h-0 bg-hero">
+    <div className="flex flex-col h-full min-h-0 bg-card">
       <div className="p-5 border-b border-border shrink-0">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
             <img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
           </div>
           <div>
-            <span className="font-bold text-hero-foreground text-sm">{t("brandName")}</span>
-            <div className="flex items-center gap-1">
-              <Shield className="w-3 h-3 text-primary" />
-              <span className="text-xs text-primary font-medium">Admin</span>
-            </div>
+            <span className="font-bold text-foreground">{t("brandName")}</span>
+            <p className="text-xs text-primary font-medium">{t("instructorPanelBadge")}</p>
           </div>
         </Link>
       </div>
@@ -95,7 +83,7 @@ export default function AdminLayout({ children }: Props) {
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               location === item.href
                 ? "bg-primary text-primary-foreground"
-                : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+                : "text-foreground/80 hover:bg-primary/10 hover:text-foreground"
             }`}
           >
             <item.icon className="w-4 h-4 shrink-0" />
@@ -111,20 +99,24 @@ export default function AdminLayout({ children }: Props) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm shrink-0 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm shrink-0 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-hidden"
           aria-label={t("profile")}
         >
-          SA
+          <img
+            src="/logo.jpg"
+            alt=""
+            className="w-full h-full object-cover"
+          />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">
-          <p className="text-sm font-medium text-foreground truncate">Super Admin</p>
-          <p className="text-xs text-muted-foreground truncate">admin@vivadrive.am</p>
+          <p className="text-sm font-medium text-foreground truncate">{t("dashboardProfileInstructorDemo")}</p>
+          <p className="text-xs text-muted-foreground truncate">instructor@vivadrive.am</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
-          <Link href="/admin/profile" className="cursor-pointer" onClick={() => setOpen(false)}>
+          <Link href="/instructor/profile" className="cursor-pointer" onClick={() => setOpen(false)}>
             <Settings className="w-4 h-4" />
             {t("profileSettings")}
           </Link>
@@ -140,7 +132,7 @@ export default function AdminLayout({ children }: Props) {
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">
-      <aside className="hidden lg:flex w-64 shrink-0 fixed inset-y-0 left-0 z-30 border-r border-border bg-hero flex-col">
+      <aside className="hidden lg:flex w-64 shrink-0 fixed inset-y-0 left-0 z-30 border-r border-border bg-card flex-col">
         <Sidebar />
       </aside>
       <div className="flex flex-col flex-1 min-w-0 min-h-0 lg:pl-64">
@@ -148,18 +140,18 @@ export default function AdminLayout({ children }: Props) {
           <div className="flex items-center gap-3">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon-lg"><Menu className="h-6 w-6" /></Button>
+                <Button variant="ghost" size="icon-lg">
+                  <Menu className="h-6 w-6" />
+                </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0 bg-hero">
+              <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0">
                 <div className="h-full pt-12 flex flex-col min-h-0">
                   <Sidebar />
                 </div>
               </SheetContent>
             </Sheet>
-            <h1 className="font-semibold text-foreground text-sm truncate max-w-[45vw] sm:max-w-none">
-              {location === "/admin/profile"
-                ? t("adminProfileTitle")
-                : nav.find((n) => n.href === location)?.label || t("adminDashboard")}
+            <h1 className="font-semibold text-foreground hidden sm:block truncate">
+              {nav.find((n) => n.href === location)?.label || t("instructorDashboardTitle")}
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -175,7 +167,9 @@ export default function AdminLayout({ children }: Props) {
             <UserMenu />
           </div>
         </header>
-        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">{children}</main>
+        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+          {children}
+        </main>
       </div>
     </div>
   );

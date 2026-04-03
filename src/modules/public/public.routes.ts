@@ -8,6 +8,8 @@ import {
   ContactPage,
   ExamTestsPage,
   ExamQuizPage,
+  BlogsPage,
+  BlogPostPage,
 } from "src/pages/public";
 
 export const publicRoutes: readonly AppRoute[] = [
@@ -16,6 +18,8 @@ export const publicRoutes: readonly AppRoute[] = [
   { path: "/services", component: ServicesPage },
   { path: "/packages", component: PackagesPage },
   { path: "/instructors", component: InstructorsPage },
+  { path: "/blogs", component: BlogsPage },
+  { path: "/blogs/:slug", component: BlogPostPage },
   { path: "/contact", component: ContactPage },
   { path: "/thematic-questions", component: ExamTestsPage },
   { path: "/thematic-questions/quiz/:mode", component: ExamQuizPage },

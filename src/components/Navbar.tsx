@@ -23,7 +23,11 @@ export default function Navbar() {
   const navLinks = PUBLIC_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
   const publicRootLinks = navLinks.filter((link) => link.href === "/" || link.href === "/about" || link.href === "/contact");
   const offerLinks = navLinks.filter((link) => link.href === "/packages" || link.href === "/services");
-  const learnLinks = navLinks.filter((link) => link.href === "/thematic-questions" || link.href === "/instructors");
+  const learnLinks = navLinks.filter(
+    (link) => link.href === "/thematic-questions" || link.href === "/instructors",
+  );
+  const blogNav = navLinks.find((link) => link.href === "/blogs");
+  const blogNavActive = location === "/blogs" || location.startsWith("/blogs/");
 
   const dashLinks = DASHBOARD_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
 
@@ -32,7 +36,10 @@ export default function Navbar() {
   const links = isAdmin ? adminLinks : isDashboard ? dashLinks : navLinks;
   const isPublic = !isDashboard && !isAdmin;
   const isOfferActive = offerLinks.some((link) => location === link.href);
-  const isLearnActive = learnLinks.some((link) => location === link.href);
+  const learnLinkActive = (href: string) =>
+    location === href || (href === "/thematic-questions" && location.startsWith("/thematic-questions"));
+
+  const isLearnActive = learnLinks.some((link) => learnLinkActive(link.href));
 
   return (
     <nav className="sticky top-0 z-50 bg-background border-b border-border shadow-sm">
@@ -114,6 +121,19 @@ export default function Navbar() {
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
+
+                    {blogNav ? (
+                      <Link
+                        href={blogNav.href}
+                        className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
+                          blogNavActive
+                            ? "text-primary bg-primary/10"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {blogNav.label}
+                      </Link>
+                    ) : null}
 
                     {publicRootLinks.slice(2).map((l) => (
                       <Link
@@ -230,12 +250,24 @@ export default function Navbar() {
                         href={l.href}
                         onClick={() => setOpen(false)}
                         className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                          learnLinkActive(l.href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                         }`}
                       >
                         {l.label}
                       </Link>
                     ))}
+
+                    {blogNav ? (
+                      <Link
+                        href={blogNav.href}
+                        onClick={() => setOpen(false)}
+                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                          blogNavActive ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {blogNav.label}
+                      </Link>
+                    ) : null}
 
                     {publicRootLinks.slice(2).map((l) => (
                       <Link

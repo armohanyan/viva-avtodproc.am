@@ -7,5 +7,6 @@ export const PUBLIC_NAV_LINKS: readonly PublicNavigationLink[] = [
   { href: "/thematic-questions", translationKey: "examTests" },
   { href: "/packages", translationKey: "packages" },
   { href: "/instructors", translationKey: "instructors" },
+  { href: "/blogs", translationKey: "blogs" },
   { href: "/contact", translationKey: "contact" },
 ];

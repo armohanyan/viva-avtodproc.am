@@ -2,11 +2,12 @@ import AdminLayout from "src/components/AdminLayout";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
+import DataTableToolbar from "src/components/DataTableToolbar";
 import { Users, Calendar, TrendingUp, Car, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import { CountUpText } from "src/lib/motion";
 import { useToast } from "src/lib/toast";
+import { useMemo, useState } from "react";
 
-const recentBookings = [
+const recentBookingsData = [
   { student: "Ani Karapetyan", instructor: "Armen P.", date: "Mar 28", time: "10:00", status: "confirmed" },
   { student: "Tigran Mkhitaryan", instructor: "Vardan G.", date: "Mar 28", time: "14:00", status: "confirmed" },
   { student: "Nare Harutyunyan", instructor: "Narine H.", date: "Mar 29", time: "09:00", status: "pending" },
@@ -17,12 +18,24 @@ const recentBookings = [
 export default function AdminDashboard() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [bookingStatus, setBookingStatus] = useState<string>("all");
+
+  const filteredRecentBookings = useMemo(() => {
+    const q = bookingSearch.trim().toLowerCase();
+    return recentBookingsData.filter((b) => {
+      const hay = [b.student, b.instructor, b.date, b.time, b.status].join(" ").toLowerCase();
+      const matchSearch = !q || hay.includes(q);
+      const matchStatus = bookingStatus === "all" || b.status === bookingStatus;
+      return matchSearch && matchStatus;
+    });
+  }, [bookingSearch, bookingStatus]);
 
   const stats = [
-    { label: t("totalUsers"), value: "3,245", change: "+12%", up: true, icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-    { label: t("totalBookings"), value: "186", change: "+8%", up: true, icon: Calendar, color: "text-purple-600", bg: "bg-purple-50" },
-    { label: t("revenue"), value: "4.2M ֏", change: "+18%", up: true, icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50" },
-    { label: t("activeInstructors"), value: "18", change: "0%", up: true, icon: Car, color: "text-amber-600", bg: "bg-amber-50" },
+    { label: t("totalUsers"), value: "3,245", change: "+12%", up: true, icon: Users, color: "text-primary", bg: "bg-primary/10" },
+    { label: t("totalBookings"), value: "186", change: "+8%", up: true, icon: Calendar, color: "text-primary", bg: "bg-primary/10" },
+    { label: t("revenue"), value: "4.2M ֏", change: "+18%", up: true, icon: TrendingUp, color: "text-primary", bg: "bg-primary/10" },
+    { label: t("activeInstructors"), value: "18", change: "0%", up: true, icon: Car, color: "text-primary", bg: "bg-primary/10" },
   ];
 
   const statusColor: Record<string, string> = {
@@ -34,19 +47,19 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-900">{t("adminDashboard")}</h2>
-        <p className="text-slate-500 text-sm mt-1">{t("adminWelcomeBack")}</p>
+        <h2 className="text-2xl font-bold text-foreground">{t("adminDashboard")}</h2>
+        <p className="text-muted-foreground text-sm mt-1">{t("adminWelcomeBack")}</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         {stats.map((s, i) => (
-          <Card key={i} className="p-5 border-slate-100">
+          <Card key={i} className="p-5 border-border">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs text-slate-500 mb-1">{s.label}</p>
-                <p className="text-2xl font-bold text-slate-900">
-                  <CountUpText value={s.value} />
+                <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {s.value}
                 </p>
                 <div className="flex items-center gap-1 mt-1">
                   {s.up ? (
@@ -68,27 +81,43 @@ export default function AdminDashboard() {
       </div>
 
       {/* Recent Bookings Table */}
-      <Card className="border-slate-100">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Recent Bookings</h3>
-          <a href="/admin/bookings" className="text-sm text-blue-600 hover:underline">{t("viewAll")}</a>
+      <Card className="border-border overflow-hidden">
+        <div className="p-5 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="font-semibold text-foreground">Recent Bookings</h3>
+          <a href="/admin/bookings" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
         </div>
+        <DataTableToolbar value={bookingSearch} onChange={setBookingSearch} placeholder={`${t("search")}…`}>
+          <div className="flex flex-wrap gap-2">
+            {["all", "confirmed", "pending", "cancelled"].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setBookingStatus(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${
+                  bookingStatus === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                {s === "all" ? t("filterOptionAll") : t(s as "confirmed" | "pending" | "cancelled")}
+              </button>
+            ))}
+          </div>
+        </DataTableToolbar>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50">
+            <thead className="bg-muted/40">
               <tr>
                 {["Student", "Instructor", t("date"), "Time", t("status"), t("actions")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-slate-500 px-5 py-3 uppercase tracking-wider">{h}</th>
+                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-5 py-3 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
-              {recentBookings.map((b, i) => (
-                <tr key={i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-slate-900">{b.student}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{b.instructor}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{b.date}</td>
-                  <td className="px-5 py-3.5 text-slate-600">{b.time}</td>
+            <tbody className="divide-y divide-border">
+              {filteredRecentBookings.map((b, i) => (
+                <tr key={i} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-5 py-3.5 font-medium text-foreground">{b.student}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{b.instructor}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{b.date}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{b.time}</td>
                   <td className="px-5 py-3.5">
                     <Badge className={`text-xs ${statusColor[b.status]}`}>
                       {t(b.status as any)}
@@ -97,7 +126,7 @@ export default function AdminDashboard() {
                   <td className="px-5 py-3.5">
                     <button
                       type="button"
-                      className="text-blue-600 hover:underline text-xs mr-3"
+                      className="text-primary hover:underline text-xs mr-3"
                       onClick={() => showToast(`Edit booking for ${b.student}`, "info")}
                     >
                       {t("edit")}
