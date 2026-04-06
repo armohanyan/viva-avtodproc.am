@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLang } from "../lib/i18n";
 import { Button } from "./ui/button";
@@ -31,9 +31,20 @@ export default function Navbar() {
 
   const dashLinks = DASHBOARD_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
 
-  const adminLinks = ADMIN_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
+  const adminNavEntries = useMemo(() => {
+    const out: { href: string; label: string; indent?: boolean }[] = [];
+    for (const link of ADMIN_NAV_LINKS) {
+      out.push({ href: link.href, label: t(link.translationKey) });
+      if (link.children) {
+        for (const c of link.children) {
+          out.push({ href: c.href, label: t(c.translationKey), indent: true });
+        }
+      }
+    }
+    return out;
+  }, [t]);
 
-  const links = isAdmin ? adminLinks : isDashboard ? dashLinks : navLinks;
+  const links = isAdmin ? adminNavEntries : isDashboard ? dashLinks : navLinks;
   const isPublic = !isDashboard && !isAdmin;
   const panelLinkActive = (href: string) =>
     isAdmin && href === "/admin/learn"
@@ -158,11 +169,13 @@ export default function Navbar() {
                     <Link
                       key={l.href}
                       href={l.href}
-                      className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
+                      className={cn(
+                        "shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5",
+                        "indent" in l && l.indent ? "pl-4 text-xs" : "",
                         panelLinkActive(l.href)
                           ? "text-primary bg-primary/10"
-                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                      }`}
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                      )}
                     >
                       {l.label}
                     </Link>
@@ -292,9 +305,11 @@ export default function Navbar() {
                       key={l.href}
                       href={l.href}
                       onClick={() => setOpen(false)}
-                      className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        panelLinkActive(l.href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                      }`}
+                      className={cn(
+                        "px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        "indent" in l && l.indent ? "pl-6 text-xs" : "",
+                        panelLinkActive(l.href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                      )}
                     >
                       {l.label}
                     </Link>

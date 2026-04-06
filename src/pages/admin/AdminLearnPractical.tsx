@@ -7,32 +7,36 @@ import LessonBookingCalendar from "src/components/LessonBookingCalendar";
 import { instructors as instructorRecords } from "src/data/instructors";
 import { Link } from "wouter";
 import { ArrowLeft, CalendarClock } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
-
-const demoStudents = [
-  { id: "USR-001", name: "Ani Karapetyan" },
-  { id: "USR-002", name: "Tigran Mkhitaryan" },
-  { id: "USR-003", name: "Nare Harutyunyan" },
-  { id: "USR-004", name: "Suren Danielyan" },
-  { id: "USR-005", name: "Mane Poghosyan" },
-  { id: "USR-006", name: "Artak Sargsyan" },
-];
+import { DEMO_STUDENTS } from "src/modules/admin/adminPeople";
+import { useAdminLearnSearchParams } from "src/lib/adminLearnSearchParams";
 
 export default function AdminLearnPractical() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
+  const { studentId: studentFromQuery, branchId: branchFromQuery } = useAdminLearnSearchParams();
   const practicalNames = useMemo(
     () => instructorRecords.filter((i) => i.teachesPractical).map((i) => i.name),
     [],
   );
   const [instructor, setInstructor] = useState(practicalNames[0] ?? "");
-  const [studentId, setStudentId] = useState(demoStudents[0]?.id ?? "");
+  const [studentId, setStudentId] = useState(DEMO_STUDENTS[0]?.id ?? "");
   const [branchId, setBranchId] = useState(DEFAULT_PRIMARY_BRANCH_ID);
 
-  const studentName = demoStudents.find((s) => s.id === studentId)?.name ?? "";
+  useEffect(() => {
+    if (studentFromQuery) setStudentId(studentFromQuery);
+  }, [studentFromQuery]);
+
+  useEffect(() => {
+    if (branchFromQuery && branches.some((b) => b.id === branchFromQuery)) {
+      setBranchId(branchFromQuery);
+    }
+  }, [branchFromQuery, branches]);
+
+  const studentName = DEMO_STUDENTS.find((s) => s.id === studentId)?.name ?? "";
 
   return (
     <AdminLayout>
@@ -52,6 +56,11 @@ export default function AdminLearnPractical() {
 
       <Reveal delay={0.05}>
         <Card className="p-5 border-border mb-6">
+          {(studentFromQuery || branchFromQuery) && (
+            <p className="text-xs text-muted-foreground mb-4 rounded-lg bg-muted/50 px-3 py-2 border border-border/60">
+              {t("adminLearnStudentFromQueryHint")}
+            </p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("adminLearnStudentFieldLabel")}</label>
@@ -60,7 +69,7 @@ export default function AdminLearnPractical() {
                 onChange={(e) => setStudentId(e.target.value)}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                {demoStudents.map((s) => (
+                {DEMO_STUDENTS.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>

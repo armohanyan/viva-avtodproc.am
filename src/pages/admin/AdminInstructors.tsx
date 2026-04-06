@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
@@ -139,7 +140,7 @@ export default function AdminInstructors() {
         }
       />
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <div className="flex flex-wrap gap-2 items-center">
             {["all", "active", "inactive"].map((s) => (
@@ -205,8 +206,8 @@ export default function AdminInstructors() {
             />
           </div>
         </DataTableToolbar>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("adminInstructorColInstructor"), t("adminInstructorColTeachingType"), t("phone"), t("cohortColSchedule"), t("adminInstructorColRating"), t("adminInstructorColExperience"), t("adminInstructorColStudents"), t("status"), t("actions")].map((h) => (
@@ -270,7 +271,7 @@ export default function AdminInstructors() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
         <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
           {t("panelShowingLabel")} {filteredInstructors.length} / {instructors.length} {t("adminTableInstructorsFooter")}
         </div>

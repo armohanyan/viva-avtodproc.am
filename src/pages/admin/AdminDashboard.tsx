@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
@@ -80,7 +81,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Recent Bookings Table */}
-      <Card className="border-border overflow-hidden">
+      <Card className="border-border overflow-hidden min-w-0">
         <div className="p-5 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="font-semibold text-foreground">{t("adminRecentBookingsTitle")}</h3>
           <a href="/admin/bookings" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
@@ -112,8 +113,8 @@ export default function AdminDashboard() {
             ])}
           />
         </DataTableToolbar>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[40rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("bookingColStudent"), t("cohortColInstructor"), t("date"), t("bookingColTime"), t("status"), t("actions")].map((h, i) => (
@@ -153,7 +154,7 @@ export default function AdminDashboard() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       </Card>
     </AdminLayout>
   );

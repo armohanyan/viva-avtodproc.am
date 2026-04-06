@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
@@ -236,7 +237,7 @@ export default function AdminCars() {
         }
       />
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
             filename="admin-fleet.csv"
@@ -258,8 +259,8 @@ export default function AdminCars() {
             ])}
           />
         </DataTableToolbar>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[48rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[
@@ -330,7 +331,7 @@ export default function AdminCars() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
         <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
           {filtered.length} / {cars.length}
         </div>
@@ -631,7 +632,8 @@ export default function AdminCars() {
                 </div>
 
                 <div className="rounded-xl border border-border overflow-hidden min-h-0">
-                  <div className="overflow-x-auto overscroll-x-contain max-h-[min(38vh,420px)] sm:max-h-[min(48vh,520px)] lg:max-h-[min(52vh,560px)]">
+                  <div className="max-h-[min(38vh,420px)] sm:max-h-[min(48vh,520px)] lg:max-h-[min(52vh,560px)] overflow-y-auto overscroll-y-contain">
+                    <AdminTableScroll>
                     <table className="w-full min-w-[640px] text-sm">
                       <thead className="bg-muted/40 sticky top-0 z-[1] shadow-[0_1px_0_0_hsl(var(--border))]">
                         <tr>
@@ -691,6 +693,7 @@ export default function AdminCars() {
                         )}
                       </tbody>
                     </table>
+                    </AdminTableScroll>
                   </div>
                 </div>
 

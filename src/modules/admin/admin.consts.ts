@@ -1,15 +1,21 @@
 import type { AdminNavigationLink } from "./admin.types";
 
+/** Sidebar order: overview → day-to-day ops → people & programs → catalog → locations → money → content → access control */
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
-  { href: "/admin/branches", translationKey: "adminSidebarBranches" },
-  { href: "/admin/cars", translationKey: "adminSidebarCars" },
   { href: "/admin/bookings", translationKey: "bookings" },
-  { href: "/admin/learn", translationKey: "adminSidebarLearn" },
-  { href: "/admin/cohorts", translationKey: "adminSidebarGroups" },
-  { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/users", translationKey: "adminSidebarStudents" },
-  { href: "/admin/packages", translationKey: "packages" },
+  {
+    href: "/admin/learn",
+    translationKey: "adminSidebarLearn",
+    children: [
+      { href: "/admin/learn/groups", translationKey: "adminSidebarGroups" },
+      { href: "/admin/learn/packages", translationKey: "packages" },
+    ],
+  },
+  { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
+  { href: "/admin/cars", translationKey: "adminSidebarCars" },
+  { href: "/admin/branches", translationKey: "adminSidebarBranches" },
   { href: "/admin/finance", translationKey: "adminFinance" },
   { href: "/admin/blogs", translationKey: "blogsAdmin" },
   { href: "/admin/accounts", translationKey: "adminAccounts" },

@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
@@ -170,7 +171,7 @@ export default function AdminBlogs() {
         }
       />
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <div className="flex flex-wrap gap-2">
             {(["all", "published", "draft"] as const).map((s) => (
@@ -198,8 +199,8 @@ export default function AdminBlogs() {
             ])}
           />
         </DataTableToolbar>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[48rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("blogColTitle"), t("blogColSlug"), t("blogColExcerpt"), t("date"), t("status"), t("actions")].map(
@@ -269,7 +270,7 @@ export default function AdminBlogs() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       </div>
 
       <Dialog open={!!editBlog} onOpenChange={() => setEditBlog(null)}>

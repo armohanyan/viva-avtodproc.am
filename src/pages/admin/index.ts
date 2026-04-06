@@ -13,3 +13,4 @@ export { default as AdminProfilePage } from "./AdminProfile";
 export { default as AdminLearnHubPage } from "./AdminLearnHub";
 export { default as AdminLearnPracticalPage } from "./AdminLearnPractical";
 export { default as AdminLearnTheoryPage } from "./AdminLearnTheory";
+export { AdminRedirectCohortsToLearn, AdminRedirectPackagesToLearn } from "./AdminLearnLegacyRedirects";

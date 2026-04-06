@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -6,8 +6,6 @@ import {
   LayoutDashboard,
   Car,
   Calendar,
-  Package,
-  BookOpen,
   Newspaper,
   LogOut,
   Menu,
@@ -25,6 +23,7 @@ import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
 import { ADMIN_NAV_LINKS } from "src/modules/admin/admin.consts";
+import type { AdminNavigationLink } from "src/modules/admin/admin.types";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,22 +55,92 @@ export default function AdminLayout({ children }: Props) {
     "/admin/cars": CarFront,
     "/admin/bookings": Calendar,
     "/admin/learn": School,
-    "/admin/cohorts": BookOpen,
     "/admin/instructors": Car,
     "/admin/users": GraduationCap,
-    "/admin/packages": Package,
     "/admin/finance": Landmark,
     "/admin/blogs": Newspaper,
     "/admin/accounts": UserCog,
   } as const;
 
-  const nav = ADMIN_NAV_LINKS.map((link) => {
-    return {
-      href: link.href,
-      icon: iconByPath[link.href as keyof typeof iconByPath],
-      label: t(link.translationKey),
-    };
-  });
+  const adminNavLabels = useMemo(() => {
+    const entries: { href: string; label: string }[] = [];
+    for (const link of ADMIN_NAV_LINKS) {
+      entries.push({ href: link.href, label: t(link.translationKey) });
+      if (link.children) {
+        for (const c of link.children) {
+          entries.push({ href: c.href, label: t(c.translationKey) });
+        }
+      }
+    }
+    return entries;
+  }, [t]);
+
+  const renderAdminNavItem = (link: AdminNavigationLink) => {
+    const Icon = iconByPath[link.href as keyof typeof iconByPath];
+    const onLearnHub = location === "/admin/learn";
+    const underLearn = location.startsWith("/admin/learn/");
+    const hasChildren = Boolean(link.children?.length);
+
+    if (!hasChildren) {
+      const active = location === link.href;
+      return (
+        <Link
+          key={link.href}
+          href={link.href}
+          onClick={() => setOpen(false)}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            active
+              ? "bg-primary text-primary-foreground"
+              : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+          }`}
+        >
+          <Icon className="w-4 h-4 shrink-0" />
+          {t(link.translationKey)}
+        </Link>
+      );
+    }
+
+    const parentSoft = underLearn && !onLearnHub;
+    const parentStrong = onLearnHub;
+
+    return (
+      <div key={link.href} className="space-y-0.5">
+        <Link
+          href={link.href}
+          onClick={() => setOpen(false)}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            parentStrong
+              ? "bg-primary text-primary-foreground"
+              : parentSoft
+                ? "bg-white/10 text-hero-foreground"
+                : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+          }`}
+        >
+          <Icon className="w-4 h-4 shrink-0" />
+          {t(link.translationKey)}
+        </Link>
+        <div className="ml-3 pl-3 border-l border-white/15 space-y-0.5">
+          {link.children!.map((child) => {
+            const childActive = location === child.href;
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                onClick={() => setOpen(false)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  childActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+                }`}
+              >
+                {t(child.translationKey)}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const handleLogout = () => {
     showToast(t("logoutSuccess"), "info");
@@ -95,25 +164,7 @@ export default function AdminLayout({ children }: Props) {
         </Link>
       </div>
       <nav className="px-3 py-4 flex-1 min-h-0 overflow-y-auto space-y-1">
-        {nav.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setOpen(false)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              item.href === "/admin/learn"
-                ? location === item.href || location.startsWith("/admin/learn/")
-                  ? "bg-primary text-primary-foreground"
-                  : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
-                : location === item.href
-                  ? "bg-primary text-primary-foreground"
-                  : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
-            }`}
-          >
-            <item.icon className="w-4 h-4 shrink-0" />
-            {item.label}
-          </Link>
-        ))}
+        {ADMIN_NAV_LINKS.map((link) => renderAdminNavItem(link))}
       </nav>
     </div>
   );
@@ -175,7 +226,11 @@ export default function AdminLayout({ children }: Props) {
                   ? t("adminLearnPracticalTitle")
                   : location === "/admin/learn/theory"
                     ? t("adminLearnTheoryTitle")
-                    : nav.find((n) => n.href === location)?.label || t("adminDashboard")}
+                    : location === "/admin/learn/groups"
+                      ? t("adminSidebarGroups")
+                      : location === "/admin/learn/packages"
+                        ? t("packages")
+                    : adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard")}
             </h1>
           </div>
           <div className="flex items-center gap-3">

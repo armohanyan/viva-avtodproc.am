@@ -1,6 +1,8 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
+import { formatShortDateFromIso, todayIsoDate } from "src/lib/adminFormat";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
@@ -10,9 +12,13 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, Edit2, Trash2, GraduationCap } from "lucide-react";
+import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen } from "lucide-react";
+import { Link } from "wouter";
 import { useState } from "react";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
+import { allInstructorNames } from "src/modules/admin/adminPeople";
+
+const instructorOptions = allInstructorNames();
 
 type User = {
   id: string;
@@ -23,25 +29,18 @@ type User = {
   package: string;
   lessons: string;
   status: string;
-  joined: string;
+  /** YYYY-MM-DD */
+  joinedIso: string;
   branchId: string;
 };
 
-const instructorOptions = [
-  "Armen Petrosyan",
-  "Narine Hovhannisyan",
-  "Vardan Grigoryan",
-  "Lilit Sargsyan",
-  "Hovhannes Mkrtchyan",
-];
-
 const initialUsers: User[] = [
-  { id: "USR-001", name: "Ani Karapetyan", email: "ani@example.com", phone: "+374 99 111 222", instructor: "Armen Petrosyan", package: "Standard", lessons: "4/18", status: "active", joined: "Mar 1, 2026", branchId: "br-garegin-8" },
-  { id: "USR-002", name: "Tigran Mkhitaryan", email: "tigran@example.com", phone: "+374 77 333 444", instructor: "Vardan Grigoryan", package: "Basic", lessons: "10/10", status: "completed", joined: "Feb 10, 2026", branchId: "br-azatamart-75" },
-  { id: "USR-003", name: "Nare Harutyunyan", email: "nare@example.com", phone: "+374 55 555 666", instructor: "Narine Hovhannisyan", package: "Premium", lessons: "2/28", status: "active", joined: "Mar 15, 2026", branchId: "br-masis-125" },
-  { id: "USR-004", name: "Suren Danielyan", email: "suren@example.com", phone: "+374 98 777 888", instructor: "Armen Petrosyan", package: "Standard", lessons: "0/18", status: "inactive", joined: "Jan 20, 2026", branchId: "br-garegin-8" },
-  { id: "USR-005", name: "Mane Poghosyan", email: "mane@example.com", phone: "+374 91 999 000", instructor: "Lilit Sargsyan", package: "Basic", lessons: "6/10", status: "active", joined: "Mar 20, 2026", branchId: "br-azatamart-75" },
-  { id: "USR-006", name: "Artak Sargsyan", email: "artak@example.com", phone: "+374 95 123 456", instructor: "Vardan Grigoryan", package: "Premium", lessons: "15/28", status: "active", joined: "Feb 1, 2026", branchId: "br-masis-125" },
+  { id: "USR-001", name: "Ani Karapetyan", email: "ani@example.com", phone: "+374 99 111 222", instructor: "Armen Petrosyan", package: "Standard", lessons: "4/18", status: "active", joinedIso: "2026-03-01", branchId: "br-garegin-8" },
+  { id: "USR-002", name: "Tigran Mkhitaryan", email: "tigran@example.com", phone: "+374 77 333 444", instructor: "Vardan Grigoryan", package: "Basic", lessons: "10/10", status: "completed", joinedIso: "2026-02-10", branchId: "br-azatamart-75" },
+  { id: "USR-003", name: "Nare Harutyunyan", email: "nare@example.com", phone: "+374 55 555 666", instructor: "Narine Hovhannisyan", package: "Premium", lessons: "2/28", status: "active", joinedIso: "2026-03-15", branchId: "br-masis-125" },
+  { id: "USR-004", name: "Suren Danielyan", email: "suren@example.com", phone: "+374 98 777 888", instructor: "Armen Petrosyan", package: "Standard", lessons: "0/18", status: "inactive", joinedIso: "2026-01-20", branchId: "br-garegin-8" },
+  { id: "USR-005", name: "Mane Poghosyan", email: "mane@example.com", phone: "+374 91 999 000", instructor: "Lilit Sargsyan", package: "Basic", lessons: "6/10", status: "active", joinedIso: "2026-03-20", branchId: "br-azatamart-75" },
+  { id: "USR-006", name: "Artak Sargsyan", email: "artak@example.com", phone: "+374 95 123 456", instructor: "Vardan Grigoryan", package: "Premium", lessons: "15/28", status: "active", joinedIso: "2026-02-01", branchId: "br-masis-125" },
 ];
 
 const statusColor: Record<string, string> = {
@@ -50,8 +49,16 @@ const statusColor: Record<string, string> = {
   inactive: "bg-slate-100 text-slate-500",
 };
 
+function adminLearnPracticalHref(userId: string, branchId: string) {
+  return `/admin/learn/practical?${new URLSearchParams({ student: userId, branch: branchId }).toString()}`;
+}
+
+function adminLearnTheoryHref(userId: string) {
+  return `/admin/learn/theory?${new URLSearchParams({ student: userId }).toString()}`;
+}
+
 export default function AdminUsers() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
   const [users, setUsers] = useState(initialUsers);
@@ -74,7 +81,7 @@ export default function AdminUsers() {
   const filtered = users.filter((u) => {
     const q = search.trim().toLowerCase();
     const branchLabel = branchNameById(branches, u.branchId);
-    const hay = [u.id, u.name, u.email, u.phone, u.instructor, u.package, u.lessons, u.status, u.joined, branchLabel].join(" ").toLowerCase();
+    const hay = [u.id, u.name, u.email, u.phone, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel].join(" ").toLowerCase();
     const matchesSearch = !q || hay.includes(q);
     const matchesInstructor = instructorFilter === "all" || u.instructor === instructorFilter;
     const matchesBranch = branchFilter === "all" || u.branchId === branchFilter;
@@ -88,7 +95,7 @@ export default function AdminUsers() {
     return s;
   };
 
-  const displayJoined = (j: string) => (j === "Now" ? t("dateLabelNow") : j);
+  const displayJoined = (iso: string) => formatShortDateFromIso(iso, lang);
 
   const handleDelete = () => {
     setUsers(u => u.filter(x => x.id !== deleteId));
@@ -115,7 +122,7 @@ export default function AdminUsers() {
       package: newUser.package || "Basic",
       lessons: "0/10",
       status: "active",
-      joined: "Now",
+      joinedIso: todayIsoDate(),
       branchId: newUser.branchId || DEFAULT_PRIMARY_BRANCH_ID,
     };
     setUsers(u => [user, ...u]);
@@ -152,12 +159,12 @@ export default function AdminUsers() {
         }
       />
 
-      <Card className="border-border overflow-hidden">
+      <Card className="border-border overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[11rem]"
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[11rem] sm:w-auto"
             aria-label={t("filterByBranch")}
           >
             <option value="all">{t("adminBranchFilterAll")}</option>
@@ -170,7 +177,7 @@ export default function AdminUsers() {
           <select
             value={instructorFilter}
             onChange={(e) => setInstructorFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[10rem]"
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[10rem] sm:w-auto"
             aria-label={t("bookingInstructorLabel")}
           >
             <option value="all">{t("filterOptionAll")}</option>
@@ -200,13 +207,13 @@ export default function AdminUsers() {
               u.package,
               u.lessons,
               userStatusLabel(u.status),
-              displayJoined(u.joined),
+              displayJoined(u.joinedIso),
             ])}
           />
         </DataTableToolbar>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("name"), t("email"), t("phone"), t("adminColBranch"), t("cohortColInstructor"), t("adminColPackage"), t("adminColLessons"), t("status"), t("adminColJoined"), t("actions")].map((h, i) => (
@@ -232,18 +239,35 @@ export default function AdminUsers() {
                   <td className="px-4 py-3.5 text-muted-foreground">{u.package}</td>
                   <td className="px-4 py-3.5 text-muted-foreground">{u.lessons}</td>
                   <td className="px-4 py-3.5"><Badge className={`text-xs ${statusColor[u.status]}`}>{userStatusLabel(u.status)}</Badge></td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{displayJoined(u.joined)}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{displayJoined(u.joinedIso)}</td>
                   <td className="px-4 py-3.5">
-                    <div className="flex gap-2">
-                      <button onClick={() => setEditUser({ ...u })} className="p-1.5 rounded hover:bg-primary/10 text-primary"><Edit2 className="w-3.5 h-3.5" /></button>
-                      <button onClick={() => setDeleteId(u.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <div className="flex items-center gap-0.5 flex-wrap">
+                      <Link
+                        href={adminLearnPracticalHref(u.id, u.branchId)}
+                        className="p-1.5 rounded-md hover:bg-primary/10 text-primary inline-flex shrink-0"
+                        title={t("adminStudentQuickPractical")}
+                        aria-label={t("adminStudentQuickPractical")}
+                      >
+                        <CalendarClock className="w-3.5 h-3.5" />
+                      </Link>
+                      <Link
+                        href={adminLearnTheoryHref(u.id)}
+                        className="p-1.5 rounded-md hover:bg-primary/10 text-primary inline-flex shrink-0"
+                        title={t("adminStudentQuickTheory")}
+                        aria-label={t("adminStudentQuickTheory")}
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                      </Link>
+                      <span className="w-px h-4 bg-border mx-0.5 shrink-0" aria-hidden />
+                      <button type="button" onClick={() => setEditUser({ ...u })} className="p-1.5 rounded-md hover:bg-primary/10 text-primary" title={t("edit")} aria-label={t("edit")}><Edit2 className="w-3.5 h-3.5" /></button>
+                      <button type="button" onClick={() => setDeleteId(u.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-500" title={t("delete")} aria-label={t("delete")}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
         <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
           {t("panelShowingLabel")} {filtered.length} / {users.length} {t("adminTableUsersFooter")}
         </div>
@@ -251,7 +275,7 @@ export default function AdminUsers() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editUser} onOpenChange={() => setEditUser(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
           <DialogHeader><DialogTitle>{t("userDialogEditTitle")}</DialogTitle></DialogHeader>
           {editUser && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
@@ -282,6 +306,8 @@ export default function AdminUsers() {
                   <option value="inactive">{t("inactive")}</option>
                   <option value="completed">{t("userStatusCompleted")}</option>
                 </select></div>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColJoined")}</label>
+                <Input type="date" value={editUser.joinedIso} onChange={e => setEditUser({ ...editUser, joinedIso: e.target.value })} className="h-10" /></div>
               <div className="flex gap-3 pt-2">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditUser(null)}>{t("cancel")}</Button>
                 <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("save")}</Button>

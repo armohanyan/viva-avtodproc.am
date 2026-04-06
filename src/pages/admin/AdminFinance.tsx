@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import type { TranslationKey } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
@@ -13,6 +14,7 @@ import { Landmark, Wallet, TrendingUp, Clock, AlertCircle, BarChart3, Plus } fro
 import { useCallback, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useToast } from "src/lib/toast";
+import { DEMO_STUDENTS, getStudentById } from "src/modules/admin/adminPeople";
 
 type TxStatus = "completed" | "pending" | "failed" | "refunded";
 type TxChannel = "online" | "pos" | "office" | "bank";
@@ -237,6 +239,8 @@ function netOf(tx: FinanceTx): number {
 }
 
 type ManualForm = {
+  /** When set, customer/email were filled from the student directory */
+  studentDirectoryId: string;
   customer: string;
   email: string;
   description: string;
@@ -260,6 +264,7 @@ export default function AdminFinance() {
   const [statusFilter, setStatusFilter] = useState<"all" | TxStatus>("all");
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState<ManualForm>(() => ({
+    studentDirectoryId: "",
     customer: "",
     email: "",
     description: "",
@@ -276,6 +281,7 @@ export default function AdminFinance() {
   const resetManualForm = useCallback(
     (defaultBranchId: string) => {
       setManualForm({
+        studentDirectoryId: "",
         customer: "",
         email: "",
         description: "",
@@ -464,7 +470,7 @@ export default function AdminFinance() {
         ))}
       </div>
 
-      <Card className="border-border overflow-hidden">
+      <Card className="border-border overflow-hidden min-w-0">
         <div className="p-5 border-b border-border">
           <h3 className="font-semibold text-foreground">{t("adminFinanceTransactionsTitle")}</h3>
         </div>
@@ -472,7 +478,7 @@ export default function AdminFinance() {
           <select
             value={branchFilter}
             onChange={(e) => setBranchFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[11rem]"
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[11rem] sm:w-auto"
             aria-label={t("filterByBranch")}
           >
             <option value="all">{t("adminBranchFilterAll")}</option>
@@ -485,7 +491,7 @@ export default function AdminFinance() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as "all" | TxStatus)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[10rem]"
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[10rem] sm:w-auto"
             aria-label={t("filterByStatus")}
           >
             <option value="all">{t("filterOptionAll")}</option>
@@ -531,7 +537,7 @@ export default function AdminFinance() {
           />
         </DataTableToolbar>
 
-        <div className="overflow-x-auto">
+        <AdminTableScroll>
           <table className="w-full text-sm min-w-[80rem]">
             <thead className="bg-muted/40">
               <tr>
@@ -563,7 +569,7 @@ export default function AdminFinance() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={13} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {t("tableNoMatches")}
                   </td>
                 </tr>
@@ -608,7 +614,7 @@ export default function AdminFinance() {
               )}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
         <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
           {t("panelShowingLabel")} {filtered.length} / {transactions.length}
         </div>
@@ -623,10 +629,38 @@ export default function AdminFinance() {
           <form onSubmit={submitManual} className="space-y-4 mt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualSelectStudentPlaceholder")}</label>
+                <select
+                  value={manualForm.studentDirectoryId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) {
+                      setManualForm((f) => ({ ...f, studentDirectoryId: "" }));
+                      return;
+                    }
+                    const s = getStudentById(id);
+                    setManualForm((f) => ({
+                      ...f,
+                      studentDirectoryId: id,
+                      customer: s?.name ?? "",
+                      email: s?.email ?? "",
+                    }));
+                  }}
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">—</option>
+                  {DEMO_STUDENTS.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColCustomer")}</label>
                 <Input
                   value={manualForm.customer}
-                  onChange={(e) => setManualForm((f) => ({ ...f, customer: e.target.value }))}
+                  onChange={(e) => setManualForm((f) => ({ ...f, customer: e.target.value, studentDirectoryId: "" }))}
                   className="h-10"
                   placeholder={t("placeholderFullName")}
                   autoComplete="name"
@@ -637,7 +671,7 @@ export default function AdminFinance() {
                 <Input
                   type="email"
                   value={manualForm.email}
-                  onChange={(e) => setManualForm((f) => ({ ...f, email: e.target.value }))}
+                  onChange={(e) => setManualForm((f) => ({ ...f, email: e.target.value, studentDirectoryId: "" }))}
                   className="h-10"
                   placeholder={t("placeholderEmailExample")}
                   autoComplete="email"

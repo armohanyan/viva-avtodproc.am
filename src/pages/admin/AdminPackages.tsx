@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
@@ -81,12 +82,12 @@ export default function AdminPackages() {
         }
       />
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-[8rem]"
+            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[8rem] sm:w-auto"
             aria-label={t("filterByStatus")}
           >
             <option value="all">{t("filterOptionAll")}</option>
@@ -115,8 +116,8 @@ export default function AdminPackages() {
             ])}
           />
         </DataTableToolbar>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[40rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("tableColId"), t("name"), t("adminColPrice"), t("lessons"), t("adminColEnrolled"), t("adminColFeatures"), t("status"), t("actions")].map((h) => (
@@ -152,7 +153,7 @@ export default function AdminPackages() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       </div>
 
       <Dialog open={!!editPkg} onOpenChange={() => setEditPkg(null)}>

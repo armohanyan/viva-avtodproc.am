@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
@@ -110,7 +111,7 @@ export default function AdminAccounts() {
         }
       />
 
-      <Card className="border-border overflow-hidden">
+      <Card className="border-border overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <div className="flex gap-2 flex-wrap">
             {(
@@ -154,8 +155,8 @@ export default function AdminAccounts() {
           />
         </DataTableToolbar>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("tableColId"), t("name"), t("accountsColEmail"), t("phoneNumber"), t("accountsColRole"), t("status"), t("accountsColCreated"), t("actions")].map((h, i) => (
@@ -188,7 +189,7 @@ export default function AdminAccounts() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
         {filtered.length === 0 && <p className="p-6 text-sm text-muted-foreground text-center">{t("tableNoMatches")}</p>}
       </Card>
 

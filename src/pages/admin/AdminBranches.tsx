@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
@@ -99,7 +100,7 @@ export default function AdminBranches() {
         }
       />
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
             filename="admin-branches.csv"
@@ -113,8 +114,8 @@ export default function AdminBranches() {
             ])}
           />
         </DataTableToolbar>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[48rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[t("name"), t("phone"), t("email"), t("workHours"), t("branchMapEmbedUrl"), t("actions")].map((h) => (
@@ -166,7 +167,7 @@ export default function AdminBranches() {
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
         <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
           {filtered.length} / {branches.length}
         </div>
