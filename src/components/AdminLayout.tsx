@@ -18,6 +18,8 @@ import {
   Settings,
   MapPin,
   CarFront,
+  Landmark,
+  School,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
@@ -53,10 +55,12 @@ export default function AdminLayout({ children }: Props) {
     "/admin/branches": MapPin,
     "/admin/cars": CarFront,
     "/admin/bookings": Calendar,
+    "/admin/learn": School,
     "/admin/cohorts": BookOpen,
     "/admin/instructors": Car,
     "/admin/users": GraduationCap,
     "/admin/packages": Package,
+    "/admin/finance": Landmark,
     "/admin/blogs": Newspaper,
     "/admin/accounts": UserCog,
   } as const;
@@ -97,9 +101,13 @@ export default function AdminLayout({ children }: Props) {
             href={item.href}
             onClick={() => setOpen(false)}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              location === item.href
-                ? "bg-primary text-primary-foreground"
-                : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+              item.href === "/admin/learn"
+                ? location === item.href || location.startsWith("/admin/learn/")
+                  ? "bg-primary text-primary-foreground"
+                  : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+                : location === item.href
+                  ? "bg-primary text-primary-foreground"
+                  : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
             }`}
           >
             <item.icon className="w-4 h-4 shrink-0" />
@@ -163,7 +171,11 @@ export default function AdminLayout({ children }: Props) {
             <h1 className="font-semibold text-foreground text-sm truncate max-w-[45vw] sm:max-w-none">
               {location === "/admin/profile"
                 ? t("adminProfileTitle")
-                : nav.find((n) => n.href === location)?.label || t("adminDashboard")}
+                : location === "/admin/learn/practical"
+                  ? t("adminLearnPracticalTitle")
+                  : location === "/admin/learn/theory"
+                    ? t("adminLearnTheoryTitle")
+                    : nav.find((n) => n.href === location)?.label || t("adminDashboard")}
             </h1>
           </div>
           <div className="flex items-center gap-3">

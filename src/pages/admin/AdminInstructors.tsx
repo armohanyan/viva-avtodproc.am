@@ -12,14 +12,25 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, Calendar, School } from "lucide-react";
 import { useState } from "react";
 
-type Instructor = { name: string; email: string; phone: string; years: number; students: number; rating: number; status: string; schedule: string; };
+type Instructor = {
+  name: string;
+  email: string;
+  phone: string;
+  years: number;
+  students: number;
+  rating: number;
+  status: string;
+  schedule: string;
+  teachesPractical: boolean;
+  teachesTheory: boolean;
+};
 
 const initialInstructors: Instructor[] = [
-  { name: "Armen Petrosyan", email: "armen.p@vivadrive.am", phone: "+374 99 111 111", years: 12, students: 340, rating: 4.9, status: "active", schedule: "Mon–Sat" },
-  { name: "Narine Hovhannisyan", email: "narine.h@vivadrive.am", phone: "+374 77 222 222", years: 8, students: 210, rating: 4.8, status: "active", schedule: "Mon–Fri" },
-  { name: "Vardan Grigoryan", email: "vardan.g@vivadrive.am", phone: "+374 55 333 333", years: 15, students: 420, rating: 5.0, status: "active", schedule: "Tue–Sun" },
-  { name: "Lilit Sargsyan", email: "lilit.s@vivadrive.am", phone: "+374 91 444 444", years: 6, students: 175, rating: 4.7, status: "active", schedule: "Mon–Fri" },
-  { name: "Hovhannes Mkrtchyan", email: "hov.m@vivadrive.am", phone: "+374 95 555 555", years: 10, students: 290, rating: 4.9, status: "inactive", schedule: "Mon–Sat" },
+  { name: "Armen Petrosyan", email: "armen.p@vivadrive.am", phone: "+374 99 111 111", years: 12, students: 340, rating: 4.9, status: "active", schedule: "Mon–Sat", teachesPractical: true, teachesTheory: false },
+  { name: "Narine Hovhannisyan", email: "narine.h@vivadrive.am", phone: "+374 77 222 222", years: 8, students: 210, rating: 4.8, status: "active", schedule: "Mon–Fri", teachesPractical: true, teachesTheory: true },
+  { name: "Vardan Grigoryan", email: "vardan.g@vivadrive.am", phone: "+374 55 333 333", years: 15, students: 420, rating: 5.0, status: "active", schedule: "Tue–Sun", teachesPractical: true, teachesTheory: false },
+  { name: "Lilit Sargsyan", email: "lilit.s@vivadrive.am", phone: "+374 91 444 444", years: 6, students: 175, rating: 4.7, status: "active", schedule: "Mon–Fri", teachesPractical: false, teachesTheory: true },
+  { name: "Hovhannes Mkrtchyan", email: "hov.m@vivadrive.am", phone: "+374 95 555 555", years: 10, students: 290, rating: 4.9, status: "inactive", schedule: "Mon–Sat", teachesPractical: true, teachesTheory: true },
 ];
 
 export default function AdminInstructors() {
@@ -32,20 +43,42 @@ export default function AdminInstructors() {
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [newIns, setNewIns] = useState({ name: "", email: "", phone: "", years: 1, schedule: "Mon–Fri" });
+  const [teachingFilter, setTeachingFilter] = useState<"all" | "practical_only" | "theory_only" | "both">("all");
+  const [newIns, setNewIns] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    years: 1,
+    schedule: "Mon–Fri",
+    teachesPractical: true,
+    teachesTheory: false,
+  });
 
   const editIns = editIdx !== null ? instructors[editIdx] : null;
   const scheduleOptions = Array.from(new Set(instructors.map((i) => i.schedule)));
 
+  const teachingFilterMatch = (ins: Instructor) => {
+    if (teachingFilter === "all") return true;
+    if (teachingFilter === "practical_only") return ins.teachesPractical && !ins.teachesTheory;
+    if (teachingFilter === "theory_only") return ins.teachesTheory && !ins.teachesPractical;
+    return ins.teachesPractical && ins.teachesTheory;
+  };
+
   const filteredInstructors = instructors.filter((ins) => {
     const q = search.trim().toLowerCase();
-    const hay = [ins.name, ins.email, ins.phone, ins.schedule, ins.status, String(ins.years), String(ins.students), String(ins.rating)]
+    const teachingLabels = [
+      ins.teachesPractical ? t("instructorTeachingPractical") : "",
+      ins.teachesTheory ? t("instructorTeachingTheory") : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const hay = [ins.name, ins.email, ins.phone, ins.schedule, ins.status, teachingLabels, String(ins.years), String(ins.students), String(ins.rating)]
       .join(" ")
       .toLowerCase();
     const matchesSearch = !q || hay.includes(q);
     const matchesStatus = statusFilter === "all" || ins.status === statusFilter;
     const matchesSchedule = scheduleFilter === "all" || ins.schedule === scheduleFilter;
-    return matchesSearch && matchesStatus && matchesSchedule;
+    return matchesSearch && matchesStatus && matchesSchedule && teachingFilterMatch(ins);
   });
 
   const instructorStatusLabel = (s: string) => (s === "active" ? t("active") : t("inactive"));
@@ -58,6 +91,10 @@ export default function AdminInstructors() {
   const handleEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editIdx === null || !editIns) return;
+    if (!editIns.teachesPractical && !editIns.teachesTheory) {
+      showToast(t("instructorTeachingRequired"), "error");
+      return;
+    }
     setInstructors(ins => ins.map((x, i) => i === editIdx ? editIns : x));
     setEditIdx(null);
     showToast(t("instructorUpdatedToast"), "success");
@@ -66,15 +103,26 @@ export default function AdminInstructors() {
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newIns.name || !newIns.email) { showToast(t("fillRequired"), "error"); return; }
+    if (!newIns.teachesPractical && !newIns.teachesTheory) {
+      showToast(t("instructorTeachingRequired"), "error");
+      return;
+    }
     setInstructors(ins => [...ins, { ...newIns, students: 0, rating: 5.0, status: "active" }]);
     setAddOpen(false);
-    setNewIns({ name: "", email: "", phone: "", years: 1, schedule: "Mon–Fri" });
+    setNewIns({ name: "", email: "", phone: "", years: 1, schedule: "Mon–Fri", teachesPractical: true, teachesTheory: false });
     showToast(t("instructorAddedToast"), "success");
   };
 
   const updateEdit = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (editIdx === null) return;
     setInstructors(ins => ins.map((x, i) => i === editIdx ? { ...x, [k]: k === "years" ? +e.target.value : e.target.value } : x));
+  };
+
+  const toggleEditTeaching = (field: "teachesPractical" | "teachesTheory") => () => {
+    if (editIdx === null) return;
+    setInstructors((ins) =>
+      ins.map((x, i) => (i === editIdx ? { ...x, [field]: !x[field] } : x))
+    );
   };
 
   return (
@@ -117,11 +165,23 @@ export default function AdminInstructors() {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            <select
+              value={teachingFilter}
+              onChange={(e) => setTeachingFilter(e.target.value as typeof teachingFilter)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground min-w-[10rem]"
+              aria-label={t("adminInstructorColTeachingType")}
+            >
+              <option value="all">{t("instructorFilterTeachingAll")}</option>
+              <option value="practical_only">{t("instructorFilterTeachingPracticalOnly")}</option>
+              <option value="theory_only">{t("instructorFilterTeachingTheoryOnly")}</option>
+              <option value="both">{t("instructorFilterTeachingBoth")}</option>
+            </select>
             <CsvExportButton
               filename="admin-instructors.csv"
               headers={[
                 t("adminInstructorColInstructor"),
                 t("emailAddress"),
+                t("adminInstructorColTeachingType"),
                 t("phone"),
                 t("cohortColSchedule"),
                 t("adminInstructorColRating"),
@@ -132,6 +192,9 @@ export default function AdminInstructors() {
               rows={filteredInstructors.map((ins) => [
                 ins.name,
                 ins.email,
+                [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
+                  .filter(Boolean)
+                  .join(" + ") || "—",
                 ins.phone,
                 ins.schedule,
                 ins.rating.toFixed(1),
@@ -146,7 +209,7 @@ export default function AdminInstructors() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {[t("adminInstructorColInstructor"), t("phone"), t("cohortColSchedule"), t("adminInstructorColRating"), t("adminInstructorColExperience"), t("adminInstructorColStudents"), t("status"), t("actions")].map((h) => (
+                {[t("adminInstructorColInstructor"), t("adminInstructorColTeachingType"), t("phone"), t("cohortColSchedule"), t("adminInstructorColRating"), t("adminInstructorColExperience"), t("adminInstructorColStudents"), t("status"), t("actions")].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -159,6 +222,20 @@ export default function AdminInstructors() {
                   <td className="px-4 py-3.5 min-w-[220px]">
                     <p className="font-medium text-foreground">{ins.name}</p>
                     <p className="text-xs text-muted-foreground">{ins.email}</p>
+                  </td>
+                  <td className="px-4 py-3.5 align-top">
+                    <div className="flex flex-wrap gap-1 max-w-[220px]">
+                      {ins.teachesPractical && (
+                        <Badge variant="secondary" className="text-[10px] font-medium">
+                          {t("instructorTeachingPractical")}
+                        </Badge>
+                      )}
+                      {ins.teachesTheory && (
+                        <Badge variant="outline" className="text-[10px] font-medium border-primary/30 text-primary">
+                          {t("instructorTeachingTheory")}
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.phone}</td>
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.schedule}</td>
@@ -217,6 +294,30 @@ export default function AdminInstructors() {
                 <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
                   <Input value={editIns.schedule} onChange={updateEdit("schedule")} className="h-10" /></div>
               </div>
+              <div>
+                <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t("instructorTeachingHint")}</p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={editIns.teachesPractical}
+                      onChange={toggleEditTeaching("teachesPractical")}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    {t("instructorTeachingPractical")}
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={editIns.teachesTheory}
+                      onChange={toggleEditTeaching("teachesTheory")}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    {t("instructorTeachingTheory")}
+                  </label>
+                </div>
+              </div>
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                 <select value={editIns.status} onChange={updateEdit("status")}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
@@ -248,6 +349,30 @@ export default function AdminInstructors() {
                 <Input type="number" value={newIns.years} onChange={e => setNewIns({ ...newIns, years: +e.target.value })} className="h-10" /></div>
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
                 <Input value={newIns.schedule} onChange={e => setNewIns({ ...newIns, schedule: e.target.value })} className="h-10" /></div>
+            </div>
+            <div>
+              <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
+              <p className="text-xs text-muted-foreground mb-2">{t("instructorTeachingHint")}</p>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={newIns.teachesPractical}
+                    onChange={() => setNewIns((s) => ({ ...s, teachesPractical: !s.teachesPractical }))}
+                    className="h-4 w-4 rounded border-input accent-primary"
+                  />
+                  {t("instructorTeachingPractical")}
+                </label>
+                <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={newIns.teachesTheory}
+                    onChange={() => setNewIns((s) => ({ ...s, teachesTheory: !s.teachesTheory }))}
+                    className="h-4 w-4 rounded border-input accent-primary"
+                  />
+                  {t("instructorTeachingTheory")}
+                </label>
+              </div>
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>{t("cancel")}</Button>

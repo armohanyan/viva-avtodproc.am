@@ -9,6 +9,10 @@ export type Instructor = {
   transmission: string;
   imageSrc: string;
   specialties: string[];
+  /** Behind-the-wheel / practical driving lessons */
+  teachesPractical: boolean;
+  /** Classroom / online theory instruction */
+  teachesTheory: boolean;
 };
 
 export const instructors: Instructor[] = [
@@ -23,6 +27,8 @@ export const instructors: Instructor[] = [
     transmission: "Manual",
     imageSrc: "/logo.jpg",
     specialties: ["City Driving", "Highway", "Night Driving"],
+    teachesPractical: true,
+    teachesTheory: false,
   },
   {
     name: "Narine Hovhannisyan",
@@ -35,6 +41,8 @@ export const instructors: Instructor[] = [
     transmission: "Automatic",
     imageSrc: "/logo.jpg",
     specialties: ["Beginners", "Theory", "Exam Prep"],
+    teachesPractical: true,
+    teachesTheory: true,
   },
   {
     name: "Vardan Grigoryan",
@@ -47,5 +55,7 @@ export const instructors: Instructor[] = [
     transmission: "Automatic",
     imageSrc: "/logo.jpg",
     specialties: ["All Levels", "Night Driving", "Refresher"],
+    teachesPractical: true,
+    teachesTheory: false,
   }
 ];

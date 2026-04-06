@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "src/components/ui/button";
+import { Badge } from "src/components/ui/badge";
 import { Card } from "src/components/ui/card";
 import { CountUpText } from "src/lib/motion";
 import { useLang } from "src/lib/i18n";
@@ -32,8 +33,24 @@ export default function InstructorCard({
         />
       </div>
       <div className="p-6">
-        <div className="flex items-start justify-between gap-3 mb-5">
-          <h3 className="min-w-0 font-bold text-lg text-foreground break-words">{instructor.name}</h3>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-lg text-foreground break-words">{instructor.name}</h3>
+            {(instructor.teachesPractical || instructor.teachesTheory) && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {instructor.teachesPractical && (
+                  <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0">
+                    {t("instructorTeachingPractical")}
+                  </Badge>
+                )}
+                {instructor.teachesTheory && (
+                  <Badge variant="outline" className="text-[10px] font-medium px-2 py-0 border-primary/30 text-primary">
+                    {t("instructorTeachingTheory")}
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-1 mt-0.5 shrink-0">
             {Array.from({ length: 5 }).map((_, j) => (
               <Star

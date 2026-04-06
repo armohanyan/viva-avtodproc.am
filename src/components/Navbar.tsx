@@ -35,6 +35,10 @@ export default function Navbar() {
 
   const links = isAdmin ? adminLinks : isDashboard ? dashLinks : navLinks;
   const isPublic = !isDashboard && !isAdmin;
+  const panelLinkActive = (href: string) =>
+    isAdmin && href === "/admin/learn"
+      ? location === href || location.startsWith("/admin/learn/")
+      : location === href;
   const isOfferActive = offerLinks.some((link) => location === link.href);
   const learnLinkActive = (href: string) =>
     location === href || (href === "/thematic-questions" && location.startsWith("/thematic-questions"));
@@ -155,7 +159,7 @@ export default function Navbar() {
                       key={l.href}
                       href={l.href}
                       className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
-                        location === l.href
+                        panelLinkActive(l.href)
                           ? "text-primary bg-primary/10"
                           : "text-muted-foreground hover:text-foreground hover:bg-accent"
                       }`}
@@ -289,7 +293,7 @@ export default function Navbar() {
                       href={l.href}
                       onClick={() => setOpen(false)}
                       className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                        panelLinkActive(l.href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                       }`}
                     >
                       {l.label}

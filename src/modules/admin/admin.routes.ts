@@ -10,7 +10,11 @@ import {
   AdminCarsPage,
   AdminBlogsPage,
   AdminAccountsPage,
+  AdminFinancePage,
   AdminProfilePage,
+  AdminLearnHubPage,
+  AdminLearnPracticalPage,
+  AdminLearnTheoryPage,
 } from "src/pages/admin";
 
 export const adminRoutes: readonly AppRoute[] = [
@@ -20,9 +24,13 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/users", component: AdminUsersPage },
   { path: "/admin/instructors", component: AdminInstructorsPage },
   { path: "/admin/bookings", component: AdminBookingsPage },
+  { path: "/admin/learn/practical", component: AdminLearnPracticalPage },
+  { path: "/admin/learn/theory", component: AdminLearnTheoryPage },
+  { path: "/admin/learn", component: AdminLearnHubPage },
   { path: "/admin/packages", component: AdminPackagesPage },
   { path: "/admin/cohorts", component: AdminCohortsPage },
   { path: "/admin/blogs", component: AdminBlogsPage },
+  { path: "/admin/finance", component: AdminFinancePage },
   { path: "/admin/accounts", component: AdminAccountsPage },
   { path: "/admin/profile", component: AdminProfilePage },
 ];

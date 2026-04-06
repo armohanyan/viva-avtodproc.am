@@ -8,4 +8,8 @@ export { default as AdminBranchesPage } from "./AdminBranches";
 export { default as AdminCarsPage } from "./AdminCars";
 export { default as AdminBlogsPage } from "./AdminBlogs";
 export { default as AdminAccountsPage } from "./AdminAccounts";
+export { default as AdminFinancePage } from "./AdminFinance";
 export { default as AdminProfilePage } from "./AdminProfile";
+export { default as AdminLearnHubPage } from "./AdminLearnHub";
+export { default as AdminLearnPracticalPage } from "./AdminLearnPractical";
+export { default as AdminLearnTheoryPage } from "./AdminLearnTheory";
