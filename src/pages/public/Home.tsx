@@ -26,9 +26,12 @@ import {
 } from "lucide-react";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
+import type { Branch } from "src/modules/branches";
+import { useBranches } from "src/modules/branches";
 
 export default function Home() {
   const { t } = useLang();
+  const { branches } = useBranches();
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
   const stats = [
@@ -68,25 +71,6 @@ export default function Home() {
     { name: "Mariam S.", text: "I was terrified of driving but Viva helped me become confident behind the wheel.", rating: 5 },
   ];
 
-  const branches = [
-    {
-      name: "Գարեգին Նժդեհ 8",
-      mapUrl:
-        "https://maps.google.com/maps?q=%D4%B3%D5%A1%D6%80%D5%A5%D5%A3%D5%AB%D5%B6%20%D5%86%D5%AA%D5%A4%D5%A5%D5%B0%208%2C%20Yerevan&z=16&output=embed",
-    },
-    {
-      name: "Ազատամարտիկների 75/1",
-      mapUrl:
-        "https://maps.google.com/maps?q=%D4%B1%D5%9E%D5%A1%D5%BF%D5%A1%D5%B6%D5%A1%D6%80%D5%BF%D5%AB%D5%AF%D5%B6%D5%A5%D6%80%D5%AB%2075%2F1%2C%20Yerevan&z=16&output=embed",
-    },
-    {
-      name: "Ք.Մասիս Երևանյան 125",
-      mapUrl:
-        "https://maps.google.com/maps?q=%D5%94.%D5%84%D5%A1%D5%BD%D5%AB%D5%BD%20%D4%B5%D6%80%D5%A5%D6%80%D5%A1%D5%B6%D5%B5%D1%8F%D5%B6%20125&z=16&output=embed",
-    },
-  ] as const;
-
-  type Branch = (typeof branches)[number];
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
 
   const contactTabs = [
@@ -486,14 +470,20 @@ export default function Home() {
                             <div className="space-y-3">
                               {branches.map((branch) => (
                                 <div
-                                  key={branch.name}
-                                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
+                                  key={branch.id}
+                                  className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
                                 >
-                                  <p className="text-sm text-foreground">{branch.name}</p>
+                                  <div className="min-w-0 space-y-1">
+                                    <p className="text-sm font-medium text-foreground">{branch.name}</p>
+                                    {branch.phone && <p className="text-xs text-muted-foreground">{branch.phone}</p>}
+                                    {branch.email && <p className="text-xs text-muted-foreground">{branch.email}</p>}
+                                    {branch.workHours && <p className="text-xs text-muted-foreground">{branch.workHours}</p>}
+                                  </div>
                                   <Button
                                     type="button"
                                     variant="outline"
                                     size="icon"
+                                    className="shrink-0"
                                     onClick={() => setSelectedBranch(branch)}
                                     aria-label={`Open map for ${branch.name}`}
                                   >

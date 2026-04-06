@@ -7,7 +7,9 @@ import { Input } from "src/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
-import { Plus, Edit2, Trash2, Calendar } from "lucide-react";
+import CsvExportButton from "src/components/CsvExportButton";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Plus, Edit2, Trash2, Calendar, School } from "lucide-react";
 import { useState } from "react";
 
 type Instructor = { name: string; email: string; phone: string; years: number; students: number; rating: number; status: string; schedule: string; };
@@ -46,6 +48,8 @@ export default function AdminInstructors() {
     return matchesSearch && matchesStatus && matchesSchedule;
   });
 
+  const instructorStatusLabel = (s: string) => (s === "active" ? t("active") : t("inactive"));
+
   const handleDelete = () => {
     setInstructors(ins => ins.filter((_, i) => i !== deleteIdx));
     showToast(t("instructorDeleted"), "success");
@@ -75,12 +79,17 @@ export default function AdminInstructors() {
 
   return (
     <AdminLayout>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <h2 className="text-2xl font-bold text-foreground">{t("instructors")}</h2>
-        <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
-          <Plus className="w-4 h-4" />{t("addNew")}
-        </Button>
-      </div>
+      <PanelPageHeader
+        icon={School}
+        title={t("instructors")}
+        subtitle={t("adminInstructorsPageSubtitle")}
+        actions={
+          <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
+            <Plus className="w-4 h-4" />
+            {t("addNew")}
+          </Button>
+        }
+      />
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
@@ -108,13 +117,36 @@ export default function AdminInstructors() {
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>
+            <CsvExportButton
+              filename="admin-instructors.csv"
+              headers={[
+                t("adminInstructorColInstructor"),
+                t("emailAddress"),
+                t("phone"),
+                t("cohortColSchedule"),
+                t("adminInstructorColRating"),
+                t("adminInstructorColExperience"),
+                t("adminInstructorColStudents"),
+                t("status"),
+              ]}
+              rows={filteredInstructors.map((ins) => [
+                ins.name,
+                ins.email,
+                ins.phone,
+                ins.schedule,
+                ins.rating.toFixed(1),
+                `${ins.years} ${t("adminInstructorYearsShort")}`,
+                String(ins.students),
+                instructorStatusLabel(ins.status),
+              ])}
+            />
           </div>
         </DataTableToolbar>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {["Instructor", "Phone", "Schedule", "Rating", "Experience", "Students", t("status"), t("actions")].map((h) => (
+                {[t("adminInstructorColInstructor"), t("phone"), t("cohortColSchedule"), t("adminInstructorColRating"), t("adminInstructorColExperience"), t("adminInstructorColStudents"), t("status"), t("actions")].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -134,14 +166,14 @@ export default function AdminInstructors() {
                     {ins.rating.toFixed(1)}
                   </td>
                   <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
-                    {ins.years} yrs
+                    {ins.years} {t("adminInstructorYearsShort")}
                   </td>
                   <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
                     {ins.students}
                   </td>
                   <td className="px-4 py-3.5">
                     <Badge className={`text-xs ${ins.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                      {ins.status}
+                      {instructorStatusLabel(ins.status)}
                     </Badge>
                   </td>
                   <td className="px-4 py-3.5">
@@ -149,7 +181,7 @@ export default function AdminInstructors() {
                       <button onClick={() => setEditIdx(instructors.findIndex((x) => x.email === ins.email))} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")}>
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => showToast(`${ins.name}'s schedule — coming soon.`, "info")} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label="Schedule">
+                      <button onClick={() => showToast(`${ins.name} — ${t("instructorScheduleSoonToast")}`, "info")} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("ariaScheduleButton")}>
                         <Calendar className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => setDeleteIdx(instructors.findIndex((x) => x.email === ins.email))} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")}>
@@ -163,14 +195,14 @@ export default function AdminInstructors() {
           </table>
         </div>
         <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
-          Showing {filteredInstructors.length} of {instructors.length} instructors
+          {t("panelShowingLabel")} {filteredInstructors.length} / {instructors.length} {t("adminTableInstructorsFooter")}
         </div>
       </div>
 
       {/* Edit */}
       <Dialog open={editIdx !== null} onOpenChange={() => setEditIdx(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Edit Instructor</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("instructorDialogEditTitle")}</DialogTitle></DialogHeader>
           {editIns && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
@@ -180,19 +212,20 @@ export default function AdminInstructors() {
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
                 <Input value={editIns.phone} onChange={updateEdit("phone")} className="h-10" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm font-medium text-muted-foreground mb-1">Years Exp.</label>
+                <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
                   <Input type="number" value={editIns.years} onChange={updateEdit("years")} className="h-10" /></div>
-                <div><label className="block text-sm font-medium text-muted-foreground mb-1">Schedule</label>
+                <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
                   <Input value={editIns.schedule} onChange={updateEdit("schedule")} className="h-10" /></div>
               </div>
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                 <select value={editIns.status} onChange={updateEdit("status")}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                  <option value="active">Active</option><option value="inactive">Inactive</option>
+                  <option value="active">{t("active")}</option>
+                  <option value="inactive">{t("inactive")}</option>
                 </select></div>
               <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditIdx(null)}>Cancel</Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">Save</Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditIdx(null)}>{t("cancel")}</Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("save")}</Button>
               </div>
             </form>
           )}
@@ -202,22 +235,22 @@ export default function AdminInstructors() {
       {/* Add */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Instructor</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("instructorDialogAddTitle")}</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="space-y-3 mt-2">
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-              <Input value={newIns.name} onChange={e => setNewIns({ ...newIns, name: e.target.value })} placeholder="Full name" className="h-10" /></div>
+              <Input value={newIns.name} onChange={e => setNewIns({ ...newIns, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
               <Input type="email" value={newIns.email} onChange={e => setNewIns({ ...newIns, email: e.target.value })} placeholder="name@vivadrive.am" className="h-10" /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
               <Input value={newIns.phone} onChange={e => setNewIns({ ...newIns, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Years Exp.</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
                 <Input type="number" value={newIns.years} onChange={e => setNewIns({ ...newIns, years: +e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Schedule</label>
-                <Input value={newIns.schedule} onChange={e => setNewIns({ ...newIns, schedule: e.target.value })} placeholder="Mon–Fri" className="h-10" /></div>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
+                <Input value={newIns.schedule} onChange={e => setNewIns({ ...newIns, schedule: e.target.value })} className="h-10" /></div>
             </div>
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>{t("cancel")}</Button>
               <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>
             </div>
           </form>
@@ -225,7 +258,7 @@ export default function AdminInstructors() {
       </Dialog>
 
       <ConfirmDialog open={deleteIdx !== null} onClose={() => setDeleteIdx(null)} onConfirm={handleDelete}
-        title="Remove Instructor" description="Are you sure you want to remove this instructor?" confirmLabel={t("delete")} danger />
+        title={t("instructorRemoveTitle")} description={t("instructorRemoveDesc")} confirmLabel={t("delete")} danger />
     </AdminLayout>
   );
 }

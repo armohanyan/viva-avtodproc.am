@@ -16,6 +16,8 @@ import {
   GraduationCap,
   UserCog,
   Settings,
+  MapPin,
+  CarFront,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
@@ -48,6 +50,8 @@ export default function AdminLayout({ children }: Props) {
 
   const iconByPath = {
     "/admin/dashboard": LayoutDashboard,
+    "/admin/branches": MapPin,
+    "/admin/cars": CarFront,
     "/admin/bookings": Calendar,
     "/admin/cohorts": BookOpen,
     "/admin/instructors": Car,
@@ -81,7 +85,7 @@ export default function AdminLayout({ children }: Props) {
             <span className="font-bold text-hero-foreground text-sm">{t("brandName")}</span>
             <div className="flex items-center gap-1">
               <Shield className="w-3 h-3 text-primary" />
-              <span className="text-xs text-primary font-medium">Admin</span>
+              <span className="text-xs text-primary font-medium">{t("adminSidebarRoleBadge")}</span>
             </div>
           </div>
         </Link>
@@ -119,7 +123,7 @@ export default function AdminLayout({ children }: Props) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">
-          <p className="text-sm font-medium text-foreground truncate">Super Admin</p>
+          <p className="text-sm font-medium text-foreground truncate">{t("roleLabelSuperAdmin")}</p>
           <p className="text-xs text-muted-foreground truncate">admin@vivadrive.am</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -167,7 +171,7 @@ export default function AdminLayout({ children }: Props) {
             <button
               type="button"
               className="relative w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center"
-              onClick={() => showToast(t("notifications") + " coming soon.", "info")}
+              onClick={() => showToast(t("panelNotificationsComingSoon"), "info")}
             >
               <Bell className="w-4 h-4 text-muted-foreground" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />

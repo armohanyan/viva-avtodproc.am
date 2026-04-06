@@ -4,7 +4,8 @@ import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
-import { Camera, Shield } from "lucide-react";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Camera, Shield, UserCircle } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "src/lib/motion";
 
@@ -91,8 +92,7 @@ export default function InstructorProfile() {
 
   return (
     <InstructorPanelLayout>
-      <h2 className="text-2xl font-bold text-foreground mb-2">{t("profile")}</h2>
-      <p className="text-muted-foreground text-sm mb-6 max-w-2xl">{t("instructorProfilePublicHint")}</p>
+      <PanelPageHeader icon={UserCircle} title={t("profile")} subtitle={t("instructorProfilePublicHint")} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Reveal delay={0.06}>

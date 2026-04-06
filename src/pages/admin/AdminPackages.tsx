@@ -7,7 +7,9 @@ import { Input } from "src/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
-import { Plus, Edit2, Trash2 } from "lucide-react";
+import CsvExportButton from "src/components/CsvExportButton";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Plus, Edit2, Trash2, Package } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type Pkg = { id: string; name: string; price: string; lessons: number; enrolled: number; status: string; features: string[]; };
@@ -67,12 +69,17 @@ export default function AdminPackages() {
 
   return (
     <AdminLayout>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-foreground">{t("packages")}</h2>
-        <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
-          <Plus className="w-4 h-4" />{t("addNew")}
-        </Button>
-      </div>
+      <PanelPageHeader
+        icon={Package}
+        title={t("packages")}
+        subtitle={t("adminPackagesPageSubtitle")}
+        actions={
+          <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
+            <Plus className="w-4 h-4" />
+            {t("addNew")}
+          </Button>
+        }
+      />
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
@@ -86,12 +93,33 @@ export default function AdminPackages() {
             <option value="active">{t("active")}</option>
             <option value="inactive">{t("inactive")}</option>
           </select>
+          <CsvExportButton
+            filename="admin-packages.csv"
+            headers={[
+              t("tableColId"),
+              t("name"),
+              t("adminColPrice"),
+              t("lessons"),
+              t("adminColEnrolled"),
+              t("adminColFeatures"),
+              t("status"),
+            ]}
+            rows={filteredPackages.map((pkg) => [
+              pkg.id,
+              pkg.name,
+              `${pkg.price} ֏`,
+              String(pkg.lessons),
+              String(pkg.enrolled),
+              pkg.features.join(", ") || "—",
+              t(pkg.status === "active" ? "active" : "inactive"),
+            ])}
+          />
         </DataTableToolbar>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {["ID", t("name"), "Price", t("lessons"), "Enrolled", "Features", t("status"), t("actions")].map((h) => (
+                {[t("tableColId"), t("name"), t("adminColPrice"), t("lessons"), t("adminColEnrolled"), t("adminColFeatures"), t("status"), t("actions")].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -129,18 +157,18 @@ export default function AdminPackages() {
 
       <Dialog open={!!editPkg} onOpenChange={() => setEditPkg(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Edit Package</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("packageDialogEditTitle")}</DialogTitle></DialogHeader>
           {editPkg && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
                 <Input value={editPkg.name} onChange={e => setEditPkg({ ...editPkg, name: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Price (֏)</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelPriceDram")}</label>
                 <Input value={editPkg.price} onChange={e => setEditPkg({ ...editPkg, price: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">Lessons</label>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelLessonsCount")}</label>
                 <Input type="number" value={editPkg.lessons} onChange={e => setEditPkg({ ...editPkg, lessons: +e.target.value })} className="h-10" /></div>
               <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditPkg(null)}>Cancel</Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">Save</Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditPkg(null)}>{t("cancel")}</Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("save")}</Button>
               </div>
             </form>
           )}
@@ -149,16 +177,16 @@ export default function AdminPackages() {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>New Package</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("packageDialogNewTitle")}</DialogTitle></DialogHeader>
           <form onSubmit={handleAdd} className="space-y-3 mt-2">
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-              <Input value={newPkg.name} onChange={e => setNewPkg({ ...newPkg, name: e.target.value })} placeholder="e.g. Silver" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Price (֏) *</label>
-              <Input value={newPkg.price} onChange={e => setNewPkg({ ...newPkg, price: e.target.value })} placeholder="45,000" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">Lessons</label>
+              <Input value={newPkg.name} onChange={e => setNewPkg({ ...newPkg, name: e.target.value })} placeholder={t("packagePlaceholderName")} className="h-10" /></div>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelPriceDram")} *</label>
+              <Input value={newPkg.price} onChange={e => setNewPkg({ ...newPkg, price: e.target.value })} placeholder={t("packagePlaceholderPrice")} className="h-10" /></div>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelLessonsCount")}</label>
               <Input type="number" value={newPkg.lessons} onChange={e => setNewPkg({ ...newPkg, lessons: +e.target.value })} className="h-10" /></div>
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>{t("cancel")}</Button>
               <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>
             </div>
           </form>
@@ -166,7 +194,7 @@ export default function AdminPackages() {
       </Dialog>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete}
-        title="Delete Package" description="Are you sure? Students enrolled in this package won't be affected." confirmLabel={t("delete")} danger />
+        title={t("packageDeleteTitle")} description={t("packageDeleteDesc")} confirmLabel={t("delete")} danger />
     </AdminLayout>
   );
 }

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Reveal } from "src/lib/motion";
 import DashboardLayout from "src/components/DashboardLayout";
+import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
@@ -42,10 +43,7 @@ export default function DashboardExamTests() {
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-foreground">{t("examTests")}</h2>
-          <p className="text-muted-foreground mt-1">{t("examTestsHubSub")}</p>
-        </div>
+        <PanelPageHeader className="mb-8" icon={ClipboardCheck} title={t("examTests")} subtitle={t("examTestsHubSub")} />
 
         <Reveal delay={0.06}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">

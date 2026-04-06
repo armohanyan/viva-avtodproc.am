@@ -1,4 +1,5 @@
 import DashboardLayout from "src/components/DashboardLayout";
+import PanelPageHeader from "src/components/PanelPageHeader";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import { useLang } from "src/lib/i18n";
 import type { TranslationKey } from "src/lib/i18n";
@@ -8,7 +9,7 @@ import { Button } from "src/components/ui/button";
 import { Link } from "wouter";
 import { useToast } from "src/lib/toast";
 import { useMemo, useState } from "react";
-import { Calendar, BookOpen, CheckCircle2, Video, Bell, Clock, ArrowRight, TrendingUp, ClipboardCheck } from "lucide-react";
+import { Calendar, BookOpen, CheckCircle2, Video, Bell, Clock, ArrowRight, TrendingUp, ClipboardCheck, LayoutDashboard } from "lucide-react";
 import { CountUpText } from "src/lib/motion";
 
 type LessonRow = {
@@ -55,12 +56,16 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-foreground">
-          {t("welcomeUser")}, {t("dashboardDemoFirstName")}! 👋
-        </h2>
-        <p className="text-muted-foreground mt-1">{t("dashboardLearningOverview")}</p>
-      </div>
+      <PanelPageHeader
+        className="mb-8"
+        icon={LayoutDashboard}
+        title={
+          <>
+            {t("welcomeUser")}, {t("dashboardDemoFirstName")}! 👋
+          </>
+        }
+        subtitle={t("dashboardLearningOverview")}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {stats.map((s, i) => (

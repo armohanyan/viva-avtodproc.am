@@ -1,11 +1,12 @@
 import DashboardLayout from "src/components/DashboardLayout";
+import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
-import { Camera, Shield, Bell } from "lucide-react";
+import { Camera, Shield, Bell, UserCircle } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "src/lib/motion";
 
@@ -49,7 +50,7 @@ export default function DashboardProfile() {
 
   return (
     <DashboardLayout>
-      <h2 className="text-2xl font-bold text-foreground mb-6">{t("profile")}</h2>
+      <PanelPageHeader icon={UserCircle} title={t("profile")} subtitle={t("dashboardProfilePageSubtitle")} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Avatar card */}

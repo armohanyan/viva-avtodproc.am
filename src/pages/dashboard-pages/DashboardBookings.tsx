@@ -1,10 +1,11 @@
 import DashboardLayout from "src/components/DashboardLayout";
+import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import DataTableToolbar from "src/components/DataTableToolbar";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarClock } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 
@@ -91,7 +92,7 @@ export default function DashboardBookings() {
   return (
     <DashboardLayout>
       <Reveal>
-        <h2 className="text-2xl font-bold text-foreground mb-6">{t("bookingTitle")}</h2>
+        <PanelPageHeader icon={CalendarClock} title={t("bookingTitle")} subtitle={t("dashboardBookingsPageSubtitle")} />
       </Reveal>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">

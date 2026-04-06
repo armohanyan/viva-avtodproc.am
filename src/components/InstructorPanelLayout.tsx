@@ -16,7 +16,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
-import { INSTRUCTOR_NAV_LINKS } from "src/modules/instructor/instructor.consts";
+import { INSTRUCTOR_NAV_LINKS, INSTRUCTOR_PANEL_EMAIL } from "src/modules/instructor/instructor.consts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -112,7 +112,7 @@ export default function InstructorPanelLayout({ children }: Props) {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">
           <p className="text-sm font-medium text-foreground truncate">{t("dashboardProfileInstructorDemo")}</p>
-          <p className="text-xs text-muted-foreground truncate">instructor@vivadrive.am</p>
+          <p className="text-xs text-muted-foreground truncate">{INSTRUCTOR_PANEL_EMAIL}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
@@ -159,7 +159,7 @@ export default function InstructorPanelLayout({ children }: Props) {
             <button
               type="button"
               className="relative w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center"
-              onClick={() => showToast(t("notifications") + " coming soon.", "info")}
+              onClick={() => showToast(t("panelNotificationsComingSoon"), "info")}
             >
               <Bell className="w-4 h-4 text-muted-foreground" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />

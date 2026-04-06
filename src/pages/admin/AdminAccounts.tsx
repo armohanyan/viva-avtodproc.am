@@ -7,7 +7,9 @@ import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
-import { Plus, Edit2 } from "lucide-react";
+import CsvExportButton from "src/components/CsvExportButton";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Plus, Edit2, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type Role = "admin" | "instructor" | "student";
@@ -63,6 +65,8 @@ export default function AdminAccounts() {
 
   const roleLabel = (r: Role) => t(r === "admin" ? "roleAdmin" : r === "instructor" ? "roleInstructor" : "roleStudent");
 
+  const displayCreated = (c: string) => (c === "Today" ? t("dateLabelToday") : c);
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!edit) return;
@@ -94,16 +98,17 @@ export default function AdminAccounts() {
 
   return (
     <AdminLayout>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">{t("adminAccounts")}</h2>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xl">{t("accountsPageSubtitle")}</p>
-        </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
-          <Plus className="w-4 h-4" />
-          {t("createAccount")}
-        </Button>
-      </div>
+      <PanelPageHeader
+        icon={Users}
+        title={t("adminAccounts")}
+        subtitle={t("accountsPageSubtitle")}
+        actions={
+          <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
+            <Plus className="w-4 h-4" />
+            {t("createAccount")}
+          </Button>
+        }
+      />
 
       <Card className="border-border overflow-hidden">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
@@ -126,13 +131,34 @@ export default function AdminAccounts() {
               </button>
             ))}
           </div>
+          <CsvExportButton
+            filename="admin-accounts.csv"
+            headers={[
+              t("tableColId"),
+              t("name"),
+              t("accountsColEmail"),
+              t("phoneNumber"),
+              t("accountsColRole"),
+              t("status"),
+              t("accountsColCreated"),
+            ]}
+            rows={filtered.map((a) => [
+              a.id,
+              a.name,
+              a.email,
+              a.phone,
+              roleLabel(a.role),
+              t(a.status),
+              displayCreated(a.created),
+            ])}
+          />
         </DataTableToolbar>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {["ID", t("name"), t("accountsColEmail"), t("phoneNumber"), t("accountsColRole"), t("status"), t("accountsColCreated"), t("actions")].map((h, i) => (
+                {[t("tableColId"), t("name"), t("accountsColEmail"), t("phoneNumber"), t("accountsColRole"), t("status"), t("accountsColCreated"), t("actions")].map((h, i) => (
                   <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -152,7 +178,7 @@ export default function AdminAccounts() {
                   <td className="px-4 py-3">
                     <Badge variant={a.status === "active" ? "default" : "secondary"}>{t(a.status)}</Badge>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{a.created}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{displayCreated(a.created)}</td>
                   <td className="px-4 py-3">
                     <button type="button" className="p-1.5 hover:bg-accent rounded-md" onClick={() => setEdit(a)}>
                       <Edit2 className="w-4 h-4" />

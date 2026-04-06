@@ -6,6 +6,8 @@ import {
   AdminBookingsPage,
   AdminPackagesPage,
   AdminCohortsPage,
+  AdminBranchesPage,
+  AdminCarsPage,
   AdminBlogsPage,
   AdminAccountsPage,
   AdminProfilePage,
@@ -13,6 +15,8 @@ import {
 
 export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/dashboard", component: AdminDashboardPage },
+  { path: "/admin/branches", component: AdminBranchesPage },
+  { path: "/admin/cars", component: AdminCarsPage },
   { path: "/admin/users", component: AdminUsersPage },
   { path: "/admin/instructors", component: AdminInstructorsPage },
   { path: "/admin/bookings", component: AdminBookingsPage },

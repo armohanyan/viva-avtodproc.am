@@ -9,7 +9,9 @@ import { Label } from "src/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
-import { Plus, Edit2, Trash2, ImageIcon } from "lucide-react";
+import CsvExportButton from "src/components/CsvExportButton";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Plus, Edit2, Trash2, ImageIcon, Newspaper } from "lucide-react";
 import { loadBlogs, createBlog, updateBlog, deleteBlog, slugify, type Blog } from "src/lib/blogs";
 import { isRichTextEmpty } from "src/lib/blogHtml";
 import RichTextEditor from "src/components/RichTextEditor";
@@ -143,8 +145,11 @@ export default function AdminBlogs() {
 
   return (
     <AdminLayout>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-bold text-foreground">{t("blogsAdmin")}</h2>
+      <PanelPageHeader
+        icon={Newspaper}
+        title={t("blogsAdmin")}
+        subtitle={t("adminBlogsPageSubtitle")}
+        actions={
         <Button
           onClick={() => {
             setNewBlog({
@@ -162,7 +167,8 @@ export default function AdminBlogs() {
           <Plus className="w-4 h-4" />
           {t("addNew")}
         </Button>
-      </div>
+        }
+      />
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
@@ -180,6 +186,17 @@ export default function AdminBlogs() {
               </button>
             ))}
           </div>
+          <CsvExportButton
+            filename="admin-blogs.csv"
+            headers={[t("blogColTitle"), t("blogColSlug"), t("blogColExcerpt"), t("date"), t("status")]}
+            rows={filtered.map((b) => [
+              b.title,
+              b.slug,
+              b.excerpt || "—",
+              new Date(b.publishedAt).toLocaleDateString(),
+              b.published ? t("blogPublished") : t("blogDraft"),
+            ])}
+          />
         </DataTableToolbar>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

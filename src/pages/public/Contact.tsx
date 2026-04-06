@@ -8,28 +8,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "src/lib/motion";
+import type { Branch } from "src/modules/branches";
+import { useBranches } from "src/modules/branches";
 
 export default function Contact() {
   const { t } = useLang();
   const { showToast } = useToast();
-  const branches = [
-    {
-      name: "Գարեգին Նժդեհ 8",
-      mapUrl: "https://maps.google.com/maps?q=%D4%B3%D5%A1%D6%80%D5%A5%D5%A3%D5%AB%D5%B6%20%D5%86%D5%AA%D5%A4%D5%A5%D5%B0%208%2C%20Yerevan&z=16&output=embed",
-    },
-    {
-      name: "Ազատամարտիկների 75/1",
-      mapUrl: "https://maps.google.com/maps?q=%D4%B1%D5%A6%D5%A1%D5%BF%D5%A1%D5%B4%D5%A1%D6%80%D5%BF%D5%AB%D5%AF%D5%B6%D5%A5%D6%80%D5%AB%2075%2F1%2C%20Yerevan&z=16&output=embed",
-    },
-    {
-      name: "Ք.Մասիս Երևանյան 125",
-      mapUrl: "https://maps.google.com/maps?q=%D5%94.%D5%84%D5%A1%D5%BD%D5%AB%D5%BD%20%D4%B5%D6%80%D6%87%D5%A1%D5%B6%D5%B5%D5%A1%D5%B6%20125&z=16&output=embed",
-    },
-  ];
+  const { branches } = useBranches();
 
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", subject: "", message: "" });
   const [loading, setLoading] = useState(false);
-  const [selectedBranch, setSelectedBranch] = useState<(typeof branches)[number] | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -140,19 +129,25 @@ export default function Contact() {
               <div className="rounded-2xl border border-border p-5 space-y-4 bg-accent/40">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-5 h-5 text-primary" />
-                  <h3 className="text-lg font-semibold text-foreground">Մասնաճյուղերը</h3>
+                  <h3 className="text-lg font-semibold text-foreground">{t("branches")}</h3>
                 </div>
                 <div className="space-y-3">
                   {branches.map((branch) => (
                     <div
-                      key={branch.name}
-                      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
+                      key={branch.id}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
                     >
-                      <p className="text-sm text-foreground">{branch.name}</p>
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-sm font-medium text-foreground">{branch.name}</p>
+                        {branch.phone && <p className="text-xs text-muted-foreground">{branch.phone}</p>}
+                        {branch.email && <p className="text-xs text-muted-foreground">{branch.email}</p>}
+                        {branch.workHours && <p className="text-xs text-muted-foreground">{branch.workHours}</p>}
+                      </div>
                       <Button
                         type="button"
                         variant="outline"
                         size="icon"
+                        className="shrink-0"
                         onClick={() => setSelectedBranch(branch)}
                         aria-label={`Open map for ${branch.name}`}
                       >

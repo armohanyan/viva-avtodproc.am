@@ -1,4 +1,5 @@
 import AdminLayout from "src/components/AdminLayout";
+import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
@@ -62,7 +63,7 @@ export default function AdminProfile() {
 
   return (
     <AdminLayout>
-      <h2 className="text-2xl font-bold text-foreground mb-6">{t("adminProfileTitle")}</h2>
+      <PanelPageHeader icon={Shield} title={t("adminProfileTitle")} subtitle={t("adminProfilePageSubtitle")} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Reveal delay={0.06}>

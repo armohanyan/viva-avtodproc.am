@@ -2,7 +2,8 @@ import InstructorPanelLayout from "src/components/InstructorPanelLayout";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
-import { Calendar, Clock, User, ArrowRight } from "lucide-react";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Calendar, Clock, User, ArrowRight, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
 import { CountUpText } from "src/lib/motion";
 
@@ -17,10 +18,12 @@ export default function InstructorDashboard() {
 
   return (
     <InstructorPanelLayout>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-foreground">{t("instructorDashboardTitle")}</h2>
-        <p className="text-muted-foreground mt-1">{t("instructorKpiNextDays")}</p>
-      </div>
+      <PanelPageHeader
+        className="mb-8"
+        icon={LayoutDashboard}
+        title={t("instructorDashboardTitle")}
+        subtitle={t("instructorKpiNextDays")}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <Card className="p-6 border-border">

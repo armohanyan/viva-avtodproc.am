@@ -3,7 +3,9 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
-import { Users, Calendar, TrendingUp, Car, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import CsvExportButton from "src/components/CsvExportButton";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Users, Calendar, TrendingUp, Car, ArrowUpRight, ArrowDownRight, LayoutDashboard } from "lucide-react";
 import { useToast } from "src/lib/toast";
 import { useMemo, useState } from "react";
 
@@ -46,10 +48,7 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-foreground">{t("adminDashboard")}</h2>
-        <p className="text-muted-foreground text-sm mt-1">{t("adminWelcomeBack")}</p>
-      </div>
+      <PanelPageHeader icon={LayoutDashboard} title={t("adminDashboard")} subtitle={t("adminDashboardPageSubtitle")} />
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
@@ -68,7 +67,7 @@ export default function AdminDashboard() {
                     <ArrowDownRight className="w-3.5 h-3.5 text-red-500" />
                   )}
                   <span className={`text-xs font-medium ${s.up ? "text-emerald-600" : "text-red-500"}`}>
-                    {s.change} this month
+                    {s.change} {t("adminStatsChangeThisMonth")}
                   </span>
                 </div>
               </div>
@@ -83,7 +82,7 @@ export default function AdminDashboard() {
       {/* Recent Bookings Table */}
       <Card className="border-border overflow-hidden">
         <div className="p-5 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="font-semibold text-foreground">Recent Bookings</h3>
+          <h3 className="font-semibold text-foreground">{t("adminRecentBookingsTitle")}</h3>
           <a href="/admin/bookings" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
         </div>
         <DataTableToolbar value={bookingSearch} onChange={setBookingSearch} placeholder={`${t("search")}…`}>
@@ -101,12 +100,23 @@ export default function AdminDashboard() {
               </button>
             ))}
           </div>
+          <CsvExportButton
+            filename="admin-dashboard-recent-bookings.csv"
+            headers={[t("bookingColStudent"), t("cohortColInstructor"), t("date"), t("bookingColTime"), t("status")]}
+            rows={filteredRecentBookings.map((b) => [
+              b.student,
+              b.instructor,
+              b.date,
+              b.time,
+              t(b.status as "confirmed" | "pending" | "cancelled"),
+            ])}
+          />
         </DataTableToolbar>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {["Student", "Instructor", t("date"), "Time", t("status"), t("actions")].map((h, i) => (
+                {[t("bookingColStudent"), t("cohortColInstructor"), t("date"), t("bookingColTime"), t("status"), t("actions")].map((h, i) => (
                   <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-5 py-3 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -127,14 +137,14 @@ export default function AdminDashboard() {
                     <button
                       type="button"
                       className="text-primary hover:underline text-xs mr-3"
-                      onClick={() => showToast(`Edit booking for ${b.student}`, "info")}
+                      onClick={() => showToast(`${t("adminEditBookingToastPrefix")}: ${b.student}`, "info")}
                     >
                       {t("edit")}
                     </button>
                     <button
                       type="button"
                       className="text-red-500 hover:underline text-xs"
-                      onClick={() => showToast(`Delete booking for ${b.student}`, "info")}
+                      onClick={() => showToast(`${t("adminDeleteBookingToastPrefix")}: ${b.student}`, "info")}
                     >
                       {t("delete")}
                     </button>

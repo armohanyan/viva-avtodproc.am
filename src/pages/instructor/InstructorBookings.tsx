@@ -3,14 +3,16 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { CalendarClock } from "lucide-react";
 import { useMemo, useState } from "react";
 
-type Booking = { id: string; student: string; date: string; time: string; type: string; status: string };
+type Booking = { id: string; student: string; date: string; time: string; type: "practical" | "theory"; status: string };
 
 const initialBookings: Booking[] = [
-  { id: "BK-101", student: "Ani Karapetyan", date: "Apr 4, 2026", time: "10:00", type: "Practical", status: "confirmed" },
-  { id: "BK-102", student: "Tigran Mkhitaryan", date: "Apr 5, 2026", time: "14:00", type: "Theory", status: "confirmed" },
-  { id: "BK-103", student: "Nare Harutyunyan", date: "Apr 6, 2026", time: "09:00", type: "Practical", status: "pending" },
+  { id: "BK-101", student: "Ani Karapetyan", date: "Apr 4, 2026", time: "10:00", type: "practical", status: "confirmed" },
+  { id: "BK-102", student: "Tigran Mkhitaryan", date: "Apr 5, 2026", time: "14:00", type: "theory", status: "confirmed" },
+  { id: "BK-103", student: "Nare Harutyunyan", date: "Apr 6, 2026", time: "09:00", type: "practical", status: "pending" },
 ];
 
 const statusColor: Record<string, string> = {
@@ -19,8 +21,8 @@ const statusColor: Record<string, string> = {
   cancelled: "bg-red-100 text-red-600",
 };
 const typeColor: Record<string, string> = {
-  Practical: "bg-blue-100 text-blue-700",
-  Theory: "bg-purple-100 text-purple-700",
+  practical: "bg-blue-100 text-blue-700",
+  theory: "bg-purple-100 text-purple-700",
 };
 
 export default function InstructorBookings() {
@@ -40,7 +42,7 @@ export default function InstructorBookings() {
 
   return (
     <InstructorPanelLayout>
-      <h2 className="text-2xl font-bold text-foreground mb-6">{t("bookings")}</h2>
+      <PanelPageHeader icon={CalendarClock} title={t("bookings")} subtitle={t("instructorBookingsPageSubtitle")} />
 
       <Card className="border-border overflow-hidden">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
@@ -64,7 +66,7 @@ export default function InstructorBookings() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {["ID", t("name"), t("date"), t("bookingTimeLabel"), t("filterByType"), t("status")].map((h, i) => (
+                {[t("tableColId"), t("name"), t("date"), t("bookingTimeLabel"), t("filterByType"), t("status")].map((h, i) => (
                   <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -79,7 +81,7 @@ export default function InstructorBookings() {
                   <td className="px-4 py-3 whitespace-nowrap">{b.date}</td>
                   <td className="px-4 py-3 whitespace-nowrap">{b.time}</td>
                   <td className="px-4 py-3">
-                    <Badge className={typeColor[b.type] ?? ""}>{b.type}</Badge>
+                    <Badge className={typeColor[b.type] ?? ""}>{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}</Badge>
                   </td>
                   <td className="px-4 py-3">
                     <Badge className={statusColor[b.status] ?? ""}>{t(b.status as "confirmed" | "pending" | "cancelled")}</Badge>

@@ -3,6 +3,8 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 type Row = { id: string; name: string; email: string; phone: string; package: string; lessons: string; status: string };
@@ -32,7 +34,7 @@ export default function InstructorStudents() {
 
   return (
     <InstructorPanelLayout>
-      <h2 className="text-2xl font-bold text-foreground mb-6">{t("instructorMyStudents")}</h2>
+      <PanelPageHeader icon={Users} title={t("instructorMyStudents")} subtitle={t("instructorStudentsPageSubtitle")} />
 
       <Card className="border-border overflow-hidden">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />

@@ -1,4 +1,5 @@
 import DashboardLayout from "src/components/DashboardLayout";
+import PanelPageHeader from "src/components/PanelPageHeader";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import { useLang } from "src/lib/i18n";
 import type { TranslationKey } from "src/lib/i18n";
@@ -85,7 +86,7 @@ export default function DashboardPurchases() {
   return (
     <DashboardLayout>
       <Reveal>
-        <h2 className="text-2xl font-bold text-foreground mb-4">{t("purchases")}</h2>
+        <PanelPageHeader icon={ShoppingBag} title={t("purchases")} subtitle={t("dashboardPurchasesPageSubtitle")} />
       </Reveal>
 
       <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="rounded-lg border border-border bg-card mb-6">
