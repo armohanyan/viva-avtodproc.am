@@ -8,7 +8,6 @@ import {
   GraduationCap,
   Car,
   User,
-  Bell,
   LogOut,
   Menu,
   Settings,
@@ -156,14 +155,6 @@ export default function InstructorPanelLayout({ children }: Props) {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <button
-              type="button"
-              className="relative w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center"
-              onClick={() => showToast(t("panelNotificationsComingSoon"), "info")}
-            >
-              <Bell className="w-4 h-4 text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-            </button>
             <UserMenu />
           </div>
         </header>

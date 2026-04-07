@@ -14,6 +14,7 @@ export function loadFleetCars(): FleetCar[] {
       ...c,
       id: String(c.id),
       plate: String(c.plate ?? ""),
+      vin: c.vin != null ? String(c.vin) : undefined,
       make: String(c.make ?? ""),
       model: String(c.model ?? ""),
       year: c.year != null ? Number(c.year) : undefined,

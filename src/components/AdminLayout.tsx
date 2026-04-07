@@ -9,7 +9,6 @@ import {
   Newspaper,
   LogOut,
   Menu,
-  Bell,
   Shield,
   GraduationCap,
   UserCog,
@@ -57,6 +56,7 @@ export default function AdminLayout({ children }: Props) {
     "/admin/learn": School,
     "/admin/instructors": Car,
     "/admin/users": GraduationCap,
+    "/admin/users/analytics": GraduationCap,
     "/admin/finance": Landmark,
     "/admin/blogs": Newspaper,
     "/admin/accounts": UserCog,
@@ -77,8 +77,6 @@ export default function AdminLayout({ children }: Props) {
 
   const renderAdminNavItem = (link: AdminNavigationLink) => {
     const Icon = iconByPath[link.href as keyof typeof iconByPath];
-    const onLearnHub = location === "/admin/learn";
-    const underLearn = location.startsWith("/admin/learn/");
     const hasChildren = Boolean(link.children?.length);
 
     if (!hasChildren) {
@@ -100,8 +98,10 @@ export default function AdminLayout({ children }: Props) {
       );
     }
 
-    const parentSoft = underLearn && !onLearnHub;
-    const parentStrong = onLearnHub;
+    const onParent = location === link.href;
+    const underParent = location.startsWith(`${link.href}/`);
+    const parentSoft = underParent && !onParent;
+    const parentStrong = onParent;
 
     return (
       <div key={link.href} className="space-y-0.5">
@@ -235,14 +235,6 @@ export default function AdminLayout({ children }: Props) {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <button
-              type="button"
-              className="relative w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center"
-              onClick={() => showToast(t("panelNotificationsComingSoon"), "info")}
-            >
-              <Bell className="w-4 h-4 text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-            </button>
             <UserMenu />
           </div>
         </header>

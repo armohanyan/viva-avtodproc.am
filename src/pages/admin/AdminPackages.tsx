@@ -141,10 +141,10 @@ export default function AdminPackages() {
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setEditPkg({ ...pkg })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")}>
+                      <button onClick={() => setEditPkg({ ...pkg })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => setDeleteId(pkg.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")}>
+                      <button onClick={() => setDeleteId(pkg.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>

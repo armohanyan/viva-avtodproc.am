@@ -181,7 +181,7 @@ export default function AdminAccounts() {
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{displayCreated(a.created)}</td>
                   <td className="px-4 py-3">
-                    <button type="button" className="p-1.5 hover:bg-accent rounded-md" onClick={() => setEdit(a)}>
+                    <button type="button" className="p-1.5 hover:bg-accent rounded-md" onClick={() => setEdit(a)} aria-label={t("edit")} title={t("edit")}>
                       <Edit2 className="w-4 h-4" />
                     </button>
                   </td>

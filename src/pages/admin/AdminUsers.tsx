@@ -32,15 +32,18 @@ type User = {
   /** YYYY-MM-DD */
   joinedIso: string;
   branchId: string;
+  /** 0-10, where 0 means complete beginner */
+  skillRating: number;
+  licenseAchieved: boolean;
 };
 
 const initialUsers: User[] = [
-  { id: "USR-001", name: "Ani Karapetyan", email: "ani@example.com", phone: "+374 99 111 222", instructor: "Armen Petrosyan", package: "Standard", lessons: "4/18", status: "active", joinedIso: "2026-03-01", branchId: "br-garegin-8" },
-  { id: "USR-002", name: "Tigran Mkhitaryan", email: "tigran@example.com", phone: "+374 77 333 444", instructor: "Vardan Grigoryan", package: "Basic", lessons: "10/10", status: "completed", joinedIso: "2026-02-10", branchId: "br-azatamart-75" },
-  { id: "USR-003", name: "Nare Harutyunyan", email: "nare@example.com", phone: "+374 55 555 666", instructor: "Narine Hovhannisyan", package: "Premium", lessons: "2/28", status: "active", joinedIso: "2026-03-15", branchId: "br-masis-125" },
-  { id: "USR-004", name: "Suren Danielyan", email: "suren@example.com", phone: "+374 98 777 888", instructor: "Armen Petrosyan", package: "Standard", lessons: "0/18", status: "inactive", joinedIso: "2026-01-20", branchId: "br-garegin-8" },
-  { id: "USR-005", name: "Mane Poghosyan", email: "mane@example.com", phone: "+374 91 999 000", instructor: "Lilit Sargsyan", package: "Basic", lessons: "6/10", status: "active", joinedIso: "2026-03-20", branchId: "br-azatamart-75" },
-  { id: "USR-006", name: "Artak Sargsyan", email: "artak@example.com", phone: "+374 95 123 456", instructor: "Vardan Grigoryan", package: "Premium", lessons: "15/28", status: "active", joinedIso: "2026-02-01", branchId: "br-masis-125" },
+  { id: "USR-001", name: "Ani Karapetyan", email: "ani@example.com", phone: "+374 99 111 222", instructor: "Armen Petrosyan", package: "Standard", lessons: "4/18", status: "active", joinedIso: "2026-03-01", branchId: "br-garegin-8", skillRating: 2, licenseAchieved: false },
+  { id: "USR-002", name: "Tigran Mkhitaryan", email: "tigran@example.com", phone: "+374 77 333 444", instructor: "Vardan Grigoryan", package: "Basic", lessons: "10/10", status: "completed", joinedIso: "2026-02-10", branchId: "br-azatamart-75", skillRating: 0, licenseAchieved: true },
+  { id: "USR-003", name: "Nare Harutyunyan", email: "nare@example.com", phone: "+374 55 555 666", instructor: "Narine Hovhannisyan", package: "Premium", lessons: "2/28", status: "active", joinedIso: "2026-03-15", branchId: "br-masis-125", skillRating: 4, licenseAchieved: false },
+  { id: "USR-004", name: "Suren Danielyan", email: "suren@example.com", phone: "+374 98 777 888", instructor: "Armen Petrosyan", package: "Standard", lessons: "0/18", status: "inactive", joinedIso: "2026-01-20", branchId: "br-garegin-8", skillRating: 1, licenseAchieved: false },
+  { id: "USR-005", name: "Mane Poghosyan", email: "mane@example.com", phone: "+374 91 999 000", instructor: "Lilit Sargsyan", package: "Basic", lessons: "6/10", status: "active", joinedIso: "2026-03-20", branchId: "br-azatamart-75", skillRating: 3, licenseAchieved: false },
+  { id: "USR-006", name: "Artak Sargsyan", email: "artak@example.com", phone: "+374 95 123 456", instructor: "Vardan Grigoryan", package: "Premium", lessons: "15/28", status: "active", joinedIso: "2026-02-01", branchId: "br-masis-125", skillRating: 6, licenseAchieved: false },
 ];
 
 const statusColor: Record<string, string> = {
@@ -76,12 +79,14 @@ export default function AdminUsers() {
     package: "Basic",
     status: "active",
     branchId: DEFAULT_PRIMARY_BRANCH_ID,
+    skillRating: 0,
+    licenseAchieved: false,
   });
 
   const filtered = users.filter((u) => {
     const q = search.trim().toLowerCase();
     const branchLabel = branchNameById(branches, u.branchId);
-    const hay = [u.id, u.name, u.email, u.phone, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel].join(" ").toLowerCase();
+    const hay = [u.id, u.name, u.email, u.phone, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel, String(u.skillRating), u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")].join(" ").toLowerCase();
     const matchesSearch = !q || hay.includes(q);
     const matchesInstructor = instructorFilter === "all" || u.instructor === instructorFilter;
     const matchesBranch = branchFilter === "all" || u.branchId === branchFilter;
@@ -124,6 +129,8 @@ export default function AdminUsers() {
       status: "active",
       joinedIso: todayIsoDate(),
       branchId: newUser.branchId || DEFAULT_PRIMARY_BRANCH_ID,
+      skillRating: Number(newUser.skillRating ?? 0),
+      licenseAchieved: !!newUser.licenseAchieved,
     };
     setUsers(u => [user, ...u]);
     setAddOpen(false);
@@ -135,6 +142,8 @@ export default function AdminUsers() {
       package: "Basic",
       status: "active",
       branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID,
+      skillRating: 0,
+      licenseAchieved: false,
     });
     showToast(t("userAddedToast"), "success");
   };
@@ -146,16 +155,21 @@ export default function AdminUsers() {
         title={t("adminSidebarStudents")}
         subtitle={t("adminStudentsPageSubtitle")}
         actions={
-          <Button
-            onClick={() => {
-              setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID }));
-              setAddOpen(true);
-            }}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            {t("addNew")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/admin/users/analytics">
+              <Button variant="outline">{t("adminStudentsAnalytics")}</Button>
+            </Link>
+            <Button
+              onClick={() => {
+                setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID }));
+                setAddOpen(true);
+              }}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              {t("addNew")}
+            </Button>
+          </div>
         }
       />
 
@@ -195,7 +209,9 @@ export default function AdminUsers() {
               t("cohortColInstructor"),
               t("adminColPackage"),
               t("adminColLessons"),
+              t("studentSkillRating"),
               t("status"),
+              t("studentLicense"),
               t("adminColJoined"),
             ]}
             rows={filtered.map((u) => [
@@ -206,17 +222,19 @@ export default function AdminUsers() {
               u.instructor,
               u.package,
               u.lessons,
+              String(u.skillRating),
               userStatusLabel(u.status),
+              u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet"),
               displayJoined(u.joinedIso),
             ])}
           />
         </DataTableToolbar>
 
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[56rem]">
+          <table className="w-full text-sm min-w-[62rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("name"), t("email"), t("phone"), t("adminColBranch"), t("cohortColInstructor"), t("adminColPackage"), t("adminColLessons"), t("status"), t("adminColJoined"), t("actions")].map((h, i) => (
+                {[t("name"), t("email"), t("phone"), t("adminColBranch"), t("cohortColInstructor"), t("adminColPackage"), t("adminColLessons"), t("studentSkillRating"), t("status"), t("studentLicense"), t("adminColJoined"), t("actions")].map((h, i) => (
                   <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -238,7 +256,13 @@ export default function AdminUsers() {
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.instructor}</td>
                   <td className="px-4 py-3.5 text-muted-foreground">{u.package}</td>
                   <td className="px-4 py-3.5 text-muted-foreground">{u.lessons}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground font-medium whitespace-nowrap">{u.skillRating}/10</td>
                   <td className="px-4 py-3.5"><Badge className={`text-xs ${statusColor[u.status]}`}>{userStatusLabel(u.status)}</Badge></td>
+                  <td className="px-4 py-3.5">
+                    <Badge variant={u.licenseAchieved ? "default" : "secondary"} className="text-xs">
+                      {u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{displayJoined(u.joinedIso)}</td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-0.5 flex-wrap">
@@ -272,7 +296,6 @@ export default function AdminUsers() {
           {t("panelShowingLabel")} {filtered.length} / {users.length} {t("adminTableUsersFooter")}
         </div>
       </Card>
-
       {/* Edit Dialog */}
       <Dialog open={!!editUser} onOpenChange={() => setEditUser(null)}>
         <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
@@ -300,12 +323,23 @@ export default function AdminUsers() {
                   ))}
                 </select></div>
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-                <select value={editUser.status} onChange={e => setEditUser({ ...editUser, status: e.target.value })}
+                <select value={editUser.status} onChange={e => setEditUser({ ...editUser, status: e.target.value, licenseAchieved: e.target.value === "completed" ? true : editUser.licenseAchieved })}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
                   <option value="active">{t("active")}</option>
                   <option value="inactive">{t("inactive")}</option>
                   <option value="completed">{t("userStatusCompleted")}</option>
                 </select></div>
+              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("studentSkillRating")} (0-10)</label>
+                <Input type="number" min={0} max={10} value={editUser.skillRating} onChange={e => setEditUser({ ...editUser, skillRating: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })} className="h-10" /></div>
+              <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={editUser.licenseAchieved}
+                  onChange={e => setEditUser({ ...editUser, licenseAchieved: e.target.checked, status: e.target.checked ? "completed" : editUser.status === "completed" ? "active" : editUser.status })}
+                  className="h-4 w-4 rounded border-input accent-primary"
+                />
+                {t("studentLicenseAchieved")}
+              </label>
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColJoined")}</label>
                 <Input type="date" value={editUser.joinedIso} onChange={e => setEditUser({ ...editUser, joinedIso: e.target.value })} className="h-10" /></div>
               <div className="flex gap-3 pt-2">
@@ -349,6 +383,17 @@ export default function AdminUsers() {
                 <option value="Standard">{t("standard")}</option>
                 <option value="Premium">{t("premium")}</option>
               </select></div>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("studentSkillRating")} (0-10)</label>
+              <Input type="number" min={0} max={10} value={newUser.skillRating ?? 0} onChange={e => setNewUser({ ...newUser, skillRating: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })} className="h-10" /></div>
+            <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={!!newUser.licenseAchieved}
+                onChange={e => setNewUser((s) => ({ ...s, licenseAchieved: e.target.checked, status: e.target.checked ? "completed" : s.status === "completed" ? "active" : s.status }))}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              {t("studentLicenseAchieved")}
+            </label>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>{t("cancel")}</Button>
               <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>

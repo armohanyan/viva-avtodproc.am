@@ -24,7 +24,7 @@ export default function InstructorCars() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return myCars.filter((c) => {
-      const hay = [c.plate, c.make, c.model, c.year != null ? String(c.year) : "", c.notes ?? ""]
+      const hay = [c.plate, c.vin, c.make, c.model, c.year != null ? String(c.year) : "", c.notes ?? ""]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -50,7 +50,7 @@ export default function InstructorCars() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {[t("carColModel"), t("carColPlate"), t("carColTransmission")].map((h, i) => (
+                {[t("carColModel"), t("carColPlate"), t("fleetFieldVin"), t("carColTransmission")].map((h, i) => (
                   <th
                     key={i}
                     className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
@@ -65,6 +65,7 @@ export default function InstructorCars() {
                 <tr key={c.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium text-foreground">{displayModel(c)}</td>
                   <td className="px-4 py-3 font-mono text-xs">{c.plate}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.vin ?? "—"}</td>
                   <td className="px-4 py-3">
                     <Badge variant="secondary">{transLabel(c.transmission)}</Badge>
                   </td>

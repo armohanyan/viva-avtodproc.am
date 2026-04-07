@@ -4,7 +4,7 @@ import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
   LayoutDashboard, Calendar, ShoppingBag, CreditCard, User, ClipboardCheck,
-  Bell, LogOut, Menu, Settings
+  LogOut, Menu, Settings
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
@@ -148,14 +148,6 @@ export default function DashboardLayout({ children }: Props) {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <button
-              type="button"
-              className="relative w-9 h-9 rounded-full hover:bg-accent flex items-center justify-center"
-              onClick={() => showToast(t("notifications") + " coming soon.", "info")}
-            >
-              <Bell className="w-4 h-4 text-muted-foreground" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
-            </button>
             <UserMenu />
           </div>
         </header>

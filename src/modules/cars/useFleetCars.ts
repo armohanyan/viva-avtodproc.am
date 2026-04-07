@@ -29,27 +29,26 @@ export function useFleetCars() {
   useEffect(() => {
     const handler = () => refresh();
     window.addEventListener("storage", handler);
-    window.addEventListener("viva-fleet-updated", handler);
     return () => {
       window.removeEventListener("storage", handler);
-      window.removeEventListener("viva-fleet-updated", handler);
     };
   }, [refresh]);
 
+  // Keep state updater callbacks pure; persist through effects.
+  useEffect(() => {
+    saveFleetCars(cars);
+  }, [cars]);
+
+  useEffect(() => {
+    saveCarExpenses(expenses);
+  }, [expenses]);
+
   const persistCars = useCallback((updater: (prev: FleetCar[]) => FleetCar[]) => {
-    setCars((prev) => {
-      const next = updater(prev);
-      saveFleetCars(next);
-      return next;
-    });
+    setCars((prev) => updater(prev));
   }, []);
 
   const persistExpenses = useCallback((updater: (prev: CarExpense[]) => CarExpense[]) => {
-    setExpenses((prev) => {
-      const next = updater(prev);
-      saveCarExpenses(next);
-      return next;
-    });
+    setExpenses((prev) => updater(prev));
   }, []);
 
   const addCar = useCallback(

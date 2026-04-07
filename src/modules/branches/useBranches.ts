@@ -19,19 +19,18 @@ export function useBranches() {
   useEffect(() => {
     const handler = () => setBranches(loadBranches());
     window.addEventListener("storage", handler);
-    window.addEventListener("viva-branches-updated", handler);
     return () => {
       window.removeEventListener("storage", handler);
-      window.removeEventListener("viva-branches-updated", handler);
     };
   }, []);
 
+  // Keep state updaters pure; persist as a separate effect.
+  useEffect(() => {
+    saveBranches(branches);
+  }, [branches]);
+
   const persist = useCallback((updater: (prev: Branch[]) => Branch[]) => {
-    setBranches((prev) => {
-      const next = updater(prev);
-      saveBranches(next);
-      return next;
-    });
+    setBranches((prev) => updater(prev));
   }, []);
 
   const addBranch = useCallback(

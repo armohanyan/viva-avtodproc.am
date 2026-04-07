@@ -2,6 +2,8 @@ export type FleetCar = {
   id: string;
   /** License plate */
   plate: string;
+  /** Vehicle identification number */
+  vin?: string;
   make: string;
   model: string;
   year?: number;

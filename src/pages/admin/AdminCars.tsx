@@ -62,6 +62,7 @@ export default function AdminCars() {
   const [addOpen, setAddOpen] = useState(false);
   const [newCar, setNewCar] = useState({
     plate: "",
+    vin: "",
     make: "",
     model: "",
     year: "" as string,
@@ -83,7 +84,7 @@ export default function AdminCars() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cars.filter((c) => {
-      const hay = [c.plate, c.make, c.model, c.notes, c.year != null ? String(c.year) : ""]
+      const hay = [c.plate, c.vin, c.make, c.model, c.notes, c.year != null ? String(c.year) : ""]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -110,6 +111,7 @@ export default function AdminCars() {
     }
     updateCar(editCar.id, {
       plate: editCar.plate.trim(),
+      vin: editCar.vin?.trim() || undefined,
       make: editCar.make.trim(),
       model: editCar.model.trim(),
       year: editCar.year,
@@ -125,6 +127,7 @@ export default function AdminCars() {
       setExpenseCar({
         ...expenseCar,
         plate: editCar.plate.trim(),
+        vin: editCar.vin?.trim() || undefined,
         make: editCar.make.trim(),
         model: editCar.model.trim(),
         year: editCar.year,
@@ -145,6 +148,7 @@ export default function AdminCars() {
     const y = newCar.year.trim() ? parseInt(newCar.year, 10) : undefined;
     addCar({
       plate: newCar.plate.trim(),
+      vin: newCar.vin.trim() || undefined,
       make: newCar.make.trim(),
       model: newCar.model.trim(),
       year: y != null && !Number.isNaN(y) ? y : undefined,
@@ -156,6 +160,7 @@ export default function AdminCars() {
     setAddOpen(false);
     setNewCar({
       plate: "",
+      vin: "",
       make: "",
       model: "",
       year: "",
@@ -243,6 +248,7 @@ export default function AdminCars() {
             filename="admin-fleet.csv"
             headers={[
               t("fleetColPlate"),
+              t("fleetFieldVin"),
               t("fleetColMake"),
               t("fleetColModel"),
               t("fleetColYear"),
@@ -251,6 +257,7 @@ export default function AdminCars() {
             ]}
             rows={filtered.map((c) => [
               c.plate,
+              c.vin ?? "—",
               c.make,
               c.model,
               c.year != null ? String(c.year) : "—",
@@ -265,6 +272,7 @@ export default function AdminCars() {
               <tr>
                 {[
                   t("fleetColPlate"),
+                  t("fleetFieldVin"),
                   t("fleetColMake"),
                   t("fleetColModel"),
                   t("fleetColYear"),
@@ -286,6 +294,7 @@ export default function AdminCars() {
               {filtered.map((c) => (
                 <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{c.plate}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground font-mono text-xs whitespace-nowrap">{c.vin ?? "—"}</td>
                   <td className="px-4 py-3.5 text-muted-foreground">{c.make}</td>
                   <td className="px-4 py-3.5 text-muted-foreground">{c.model}</td>
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.year ?? "—"}</td>
@@ -314,6 +323,7 @@ export default function AdminCars() {
                         onClick={() => setEditCar({ ...c })}
                         className="p-1.5 rounded hover:bg-primary/10 text-primary"
                         aria-label={t("edit")}
+                        title={t("edit")}
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
@@ -322,6 +332,7 @@ export default function AdminCars() {
                         onClick={() => setDeleteId(c.id)}
                         className="p-1.5 rounded hover:bg-red-50 text-red-500"
                         aria-label={t("delete")}
+                        title={t("delete")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -357,6 +368,14 @@ export default function AdminCars() {
                 <Input
                   value={editCar.make}
                   onChange={(e) => setEditCar({ ...editCar, make: e.target.value })}
+                  className="h-10"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetFieldVin")}</label>
+                <Input
+                  value={editCar.vin ?? ""}
+                  onChange={(e) => setEditCar({ ...editCar, vin: e.target.value })}
                   className="h-10"
                 />
               </div>
@@ -470,6 +489,14 @@ export default function AdminCars() {
               <Input
                 value={newCar.make}
                 onChange={(e) => setNewCar({ ...newCar, make: e.target.value })}
+                className="h-10"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetFieldVin")}</label>
+              <Input
+                value={newCar.vin}
+                onChange={(e) => setNewCar({ ...newCar, vin: e.target.value })}
                 className="h-10"
               />
             </div>
@@ -672,6 +699,7 @@ export default function AdminCars() {
                                     onClick={() => setEditExpense({ ...ex })}
                                     className="p-1.5 rounded hover:bg-primary/10 text-primary"
                                     aria-label={t("edit")}
+                        title={t("edit")}
                                   >
                                     <Edit2 className="w-3.5 h-3.5" />
                                   </button>
@@ -683,6 +711,7 @@ export default function AdminCars() {
                                     }}
                                     className="p-1.5 rounded hover:bg-red-50 text-red-500"
                                     aria-label={t("delete")}
+                        title={t("delete")}
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>

@@ -284,17 +284,17 @@ export default function AdminCohorts() {
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
                       {c.meetLink && (
-                        <button type="button" onClick={() => handleJoinMeeting(c.meetLink)} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("meetLink")}>
+                        <button type="button" onClick={() => handleJoinMeeting(c.meetLink)} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("meetLink")} title={t("meetLink")}>
                           <Video className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button type="button" onClick={() => setEditCohort({ ...c })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")}>
+                      <button type="button" onClick={() => setEditCohort({ ...c })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button type="button" onClick={handleViewStudents} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("cohortAriaViewStudents")}>
+                      <button type="button" onClick={handleViewStudents} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("cohortAriaViewStudents")} title={t("cohortAriaViewStudents")}>
                         <Users className="w-3.5 h-3.5" />
                       </button>
-                      <button type="button" onClick={() => setDeleteId(c.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")}>
+                      <button type="button" onClick={() => setDeleteId(c.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>

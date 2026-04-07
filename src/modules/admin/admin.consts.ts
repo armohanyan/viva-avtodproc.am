@@ -4,7 +4,13 @@ import type { AdminNavigationLink } from "./admin.types";
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
   { href: "/admin/bookings", translationKey: "bookings" },
-  { href: "/admin/users", translationKey: "adminSidebarStudents" },
+  {
+    href: "/admin/users",
+    translationKey: "adminSidebarStudents",
+    children: [
+      { href: "/admin/users/analytics", translationKey: "adminStudentsAnalytics" },
+    ],
+  },
   {
     href: "/admin/learn",
     translationKey: "adminSidebarLearn",

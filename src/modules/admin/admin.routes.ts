@@ -2,6 +2,7 @@ import type { AppRoute } from "src/shared/types/router.types";
 import {
   AdminDashboardPage,
   AdminUsersPage,
+  AdminUsersAnalyticsPage,
   AdminInstructorsPage,
   AdminBookingsPage,
   AdminPackagesPage,
@@ -24,6 +25,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/branches", component: AdminBranchesPage },
   { path: "/admin/cars", component: AdminCarsPage },
   { path: "/admin/users", component: AdminUsersPage },
+  { path: "/admin/users/analytics", component: AdminUsersAnalyticsPage },
   { path: "/admin/instructors", component: AdminInstructorsPage },
   { path: "/admin/bookings", component: AdminBookingsPage },
   { path: "/admin/learn/practical", component: AdminLearnPracticalPage },
