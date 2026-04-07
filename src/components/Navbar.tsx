@@ -49,6 +49,8 @@ export default function Navbar() {
   const panelLinkActive = (href: string) =>
     isAdmin && href === "/admin/learn"
       ? location === href || location.startsWith("/admin/learn/")
+      : href === "/dashboard/learn"
+      ? location === href || location.startsWith("/dashboard/learn/") || location.startsWith("/dashboard/exam-tests")
       : location === href;
   const isOfferActive = offerLinks.some((link) => location === link.href);
   const learnLinkActive = (href: string) =>

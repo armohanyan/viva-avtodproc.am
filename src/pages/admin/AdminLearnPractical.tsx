@@ -12,19 +12,45 @@ import { Reveal } from "src/lib/motion";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { DEMO_STUDENTS } from "src/modules/admin/adminPeople";
 import { useAdminLearnSearchParams } from "src/lib/adminLearnSearchParams";
+import MultiSelectDropdown from "src/components/MultiSelectDropdown";
+import {
+  ARMENIA_REGIONS,
+  YEREVAN_DISTRICTS,
+  PRACTICAL_LESSON_TYPES,
+  getRegionLabel,
+  getYerevanDistrictLabel,
+  getLessonTypeLabel,
+  validatePracticalBookingSelection,
+  type ArmeniaRegion,
+  type PracticalLessonType,
+  type YerevanDistrict,
+} from "src/modules/instructors/instructor-booking";
+import { getFilteredInstructors } from "src/modules/instructors/instructor.api";
 
 export default function AdminLearnPractical() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
   const { studentId: studentFromQuery, branchId: branchFromQuery } = useAdminLearnSearchParams();
-  const practicalNames = useMemo(
-    () => instructorRecords.filter((i) => i.teachesPractical).map((i) => i.name),
-    [],
-  );
-  const [instructor, setInstructor] = useState(practicalNames[0] ?? "");
+  const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
+  const [region, setRegion] = useState<ArmeniaRegion | "">("");
+  const [districts, setDistricts] = useState<YerevanDistrict[]>([]);
+  const [instructor, setInstructor] = useState("");
   const [studentId, setStudentId] = useState(DEMO_STUDENTS[0]?.id ?? "");
   const [branchId, setBranchId] = useState(DEFAULT_PRIMARY_BRANCH_ID);
+
+  const filteredInstructors = useMemo(
+    () =>
+      getFilteredInstructors(instructorRecords, {
+        lessonType,
+        region,
+        districts,
+      }),
+    [lessonType, region, districts],
+  );
+  const practicalNames = filteredInstructors.map((item) => item.name);
+  const validationErrors = validatePracticalBookingSelection({ lessonType, region, districts });
+  const readyForCalendar = validationErrors.length === 0 && practicalNames.length > 0;
 
   useEffect(() => {
     if (studentFromQuery) setStudentId(studentFromQuery);
@@ -35,6 +61,12 @@ export default function AdminLearnPractical() {
       setBranchId(branchFromQuery);
     }
   }, [branchFromQuery, branches]);
+
+  useEffect(() => {
+    if (!practicalNames.includes(instructor)) {
+      setInstructor(practicalNames[0] ?? "");
+    }
+  }, [instructor, practicalNames]);
 
   const studentName = DEMO_STUDENTS.find((s) => s.id === studentId)?.name ?? "";
 
@@ -91,24 +123,82 @@ export default function AdminLearnPractical() {
               </select>
             </div>
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("bookingStepLessonType")}</label>
+              <select
+                value={lessonType}
+                onChange={(e) => setLessonType(e.target.value as PracticalLessonType | "")}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+              >
+                <option value="">{t("bookingSelectLessonTypePlaceholder")}</option>
+                {PRACTICAL_LESSON_TYPES.map((value) => (
+                  <option key={value} value={value}>
+                    {getLessonTypeLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("bookingStepRegion")}</label>
+              <select
+                value={region}
+                onChange={(e) => {
+                  const nextRegion = e.target.value as ArmeniaRegion | "";
+                  setRegion(nextRegion);
+                  if (nextRegion !== "Yerevan") setDistricts([]);
+                }}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+              >
+                <option value="">{t("bookingSelectRegionPlaceholder")}</option>
+                {ARMENIA_REGIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {getRegionLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {region === "Yerevan" && (
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("bookingStepDistricts")}</label>
+                <MultiSelectDropdown
+                  options={YEREVAN_DISTRICTS.map((value) => ({
+                    value,
+                    label: getYerevanDistrictLabel(value),
+                  }))}
+                  value={districts}
+                  onChange={(next) => setDistricts(next as YerevanDistrict[])}
+                  placeholder={t("bookingStepDistricts")}
+                  ariaLabel={t("bookingStepDistricts")}
+                />
+              </div>
+            )}
+          </div>
+          {validationErrors.length > 0 && (
+            <p className="text-xs text-amber-600 mt-3">{t("bookingCompleteFiltersHint")}</p>
+          )}
           <p className="text-xs text-muted-foreground mt-3">{t("adminLearnManualBookingNote")}</p>
         </Card>
       </Reveal>
 
-      <LessonBookingCalendar
-        mode="admin"
-        instructorNames={practicalNames}
-        selectedInstructor={instructor}
-        onInstructorChange={setInstructor}
-        studentName={studentName}
-        onBookingConfirmed={({ instructor: ins, dateIso, time, studentLabel }) => {
-          const branch = branchNameById(branches, branchId);
-          showToast(
-            `${t("adminPracticalBookedToast")} ${studentLabel} · ${ins} · ${dateIso} ${time} · ${branch}`,
-            "success",
-          );
-        }}
-      />
+      {readyForCalendar ? (
+        <LessonBookingCalendar
+          mode="admin"
+          instructorNames={practicalNames}
+          selectedInstructor={instructor}
+          onInstructorChange={setInstructor}
+          studentName={studentName}
+          onBookingConfirmed={({ instructor: ins, dateIso, time, studentLabel }) => {
+            const branch = branchNameById(branches, branchId);
+            showToast(
+              `${t("adminPracticalBookedToast")} ${studentLabel} · ${ins} · ${dateIso} ${time} · ${branch}`,
+              "success",
+            );
+          }}
+        />
+      ) : (
+        <Card className="p-6 border-border text-sm text-muted-foreground">{t("bookingNoInstructorsByFilter")}</Card>
+      )}
     </AdminLayout>
   );
 }

@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Reveal } from "src/lib/motion";
 import DashboardLayout from "src/components/DashboardLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
@@ -9,10 +9,14 @@ import { ClipboardCheck, Layers, Signpost, ArrowRight } from "lucide-react";
 
 export default function DashboardExamTests() {
   const { t } = useLang();
+  const [location] = useLocation();
+  const basePath = location.startsWith("/dashboard/learn/exam-tests")
+    ? "/dashboard/learn/exam-tests"
+    : "/dashboard/exam-tests";
 
   const modes = [
     {
-      href: "/dashboard/exam-tests/quiz/full",
+      href: `${basePath}/quiz/full`,
       icon: ClipboardCheck,
       title: t("examTestsFullTitle"),
       desc: t("examTestsFullDesc"),
@@ -21,7 +25,7 @@ export default function DashboardExamTests() {
       border: "border-border",
     },
     {
-      href: "/dashboard/exam-tests/quiz/topics",
+      href: `${basePath}/quiz/topics`,
       icon: Layers,
       title: t("examTestsTopicsTitle"),
       desc: t("examTestsTopicsDesc"),
@@ -30,7 +34,7 @@ export default function DashboardExamTests() {
       border: "border-border",
     },
     {
-      href: "/dashboard/exam-tests/quiz/signs",
+      href: `${basePath}/quiz/signs`,
       icon: Signpost,
       title: t("examTestsSignsTitle"),
       desc: t("examTestsSignsDesc"),
@@ -43,7 +47,22 @@ export default function DashboardExamTests() {
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
-        <PanelPageHeader className="mb-8" icon={ClipboardCheck} title={t("examTests")} subtitle={t("examTestsHubSub")} />
+        <PanelPageHeader className="mb-6" icon={ClipboardCheck} title="Քննական թեստեր" subtitle={t("examTestsHubSub")} />
+
+        <div className="flex flex-wrap gap-2 mb-8">
+          <Link
+            href="/dashboard/learn/exam-tests"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground"
+          >
+            Քննական թեստեր
+          </Link>
+          <Link
+            href="/dashboard/learn/thematic-tests"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+          >
+            Թեմատիկ թեստեր
+          </Link>
+        </div>
 
         <Reveal delay={0.06}>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">

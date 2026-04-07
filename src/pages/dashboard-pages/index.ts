@@ -1,6 +1,8 @@
 export { default as DashboardPage } from "./Dashboard";
+export { default as DashboardLearnPage } from "./DashboardLearn";
 export { default as DashboardExamTestsPage } from "./DashboardExamTests";
 export { default as DashboardExamQuizPage } from "./DashboardExamQuiz";
+export { default as DashboardThematicTestsPage } from "./DashboardThematicTests";
 export { default as DashboardBookingsPage } from "./DashboardBookings";
 export { default as DashboardPurchasesPage } from "./DashboardPurchases";
 export { default as DashboardPaymentsPage } from "./DashboardPayments";

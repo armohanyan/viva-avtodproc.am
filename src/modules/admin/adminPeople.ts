@@ -18,7 +18,5 @@ export function getStudentById(id: string): DemoStudent | undefined {
 
 /** Instructor names for `<select>` — directory + extra seed-only staff */
 export function allInstructorNames(): string[] {
-  const fromData = instructors.map((i) => i.name);
-  const extra = ["Lilit Sargsyan", "Hovhannes Mkrtchyan"];
-  return [...new Set([...fromData, ...extra])].sort((a, b) => a.localeCompare(b));
+  return instructors.map((i) => i.name).sort((a, b) => a.localeCompare(b));
 }

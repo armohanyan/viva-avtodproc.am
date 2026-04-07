@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
-  LayoutDashboard, Calendar, ShoppingBag, CreditCard, User, ClipboardCheck,
+  LayoutDashboard, Calendar, ShoppingBag, CreditCard, User, BookOpen,
   LogOut, Menu, Settings
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
@@ -37,7 +37,7 @@ export default function DashboardLayout({ children }: Props) {
 
   const iconByPath = {
     "/dashboard": LayoutDashboard,
-    "/dashboard/exam-tests": ClipboardCheck,
+    "/dashboard/learn": BookOpen,
     "/dashboard/bookings": Calendar,
     "/dashboard/purchases": ShoppingBag,
     "/dashboard/payments": CreditCard,
@@ -51,7 +51,9 @@ export default function DashboardLayout({ children }: Props) {
   }));
 
   const isNavActive = (href: string) => {
-    if (href === "/dashboard/exam-tests") return location.startsWith("/dashboard/exam-tests");
+    if (href === "/dashboard/learn") {
+      return location.startsWith("/dashboard/learn") || location.startsWith("/dashboard/exam-tests");
+    }
     return location === href;
   };
 
@@ -141,8 +143,10 @@ export default function DashboardLayout({ children }: Props) {
               </SheetContent>
             </Sheet>
             <h1 className="font-semibold text-foreground hidden sm:block">
-              {location.startsWith("/dashboard/exam-tests")
-                ? t("examTests")
+              {location.startsWith("/dashboard/learn")
+                ? t("learn")
+                : location.startsWith("/dashboard/exam-tests")
+                ? t("learn")
                 : nav.find((n) => n.href === location)?.label || t("dashboard")}
             </h1>
           </div>

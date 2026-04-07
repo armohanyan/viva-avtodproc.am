@@ -20,9 +20,13 @@ function isExamMode(s: string): s is ExamQuizMode {
 
 export default function DashboardExamQuiz() {
   const { t, lang } = useLang();
-  const [match, params] = useRoute("/dashboard/exam-tests/quiz/:mode");
+  const [learnMatch, learnParams] = useRoute("/dashboard/learn/exam-tests/quiz/:mode");
+  const [legacyMatch, legacyParams] = useRoute("/dashboard/exam-tests/quiz/:mode");
+  const match = learnMatch || legacyMatch;
+  const params = learnMatch ? learnParams : legacyParams;
   const modeParam = params?.mode ?? "";
   const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
+  const backHref = learnMatch ? "/dashboard/learn/exam-tests" : "/dashboard/exam-tests";
 
   const [round, setRound] = useState(0);
   const questions = useMemo(() => {
@@ -47,7 +51,7 @@ export default function DashboardExamQuiz() {
   }, [finished, questions, answers]);
 
   if (!match || !mode) {
-    return <Redirect to="/dashboard/exam-tests" />;
+    return <Redirect to="/dashboard/learn/exam-tests" />;
   }
 
   const q = questions[index];
@@ -91,7 +95,7 @@ export default function DashboardExamQuiz() {
       <DashboardLayout>
         <div className="max-w-lg mx-auto text-center py-12">
           <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-          <Link href="/dashboard/exam-tests">
+          <Link href={backHref}>
             <Button variant="outline">{t("examQuizBackToList")}</Button>
           </Link>
         </div>
@@ -117,7 +121,7 @@ export default function DashboardExamQuiz() {
                 <Button onClick={restart} variant="outline" className="w-full sm:w-auto">
                   {t("examQuizRetake")}
                 </Button>
-                <Link href="/dashboard/exam-tests">
+                <Link href={backHref}>
                   <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">{t("examQuizBackToList")}</Button>
                 </Link>
               </div>
@@ -200,7 +204,7 @@ export default function DashboardExamQuiz() {
           <p className="text-sm text-muted-foreground">
             {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
           </p>
-          <Link href="/dashboard/exam-tests">
+          <Link href={backHref}>
             <Button variant="ghost" size="sm" className="text-muted-foreground">
               {t("examQuizBackToList")}
             </Button>

@@ -10,29 +10,59 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
+import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import { Plus, Edit2, Trash2, Calendar, School } from "lucide-react";
 import { useState } from "react";
+import { instructors as initialInstructors, type Instructor } from "src/data/instructors";
+import {
+  ARMENIA_REGIONS,
+  YEREVAN_DISTRICTS,
+  PRACTICAL_LESSON_TYPES,
+  getRegionLabel,
+  getYerevanDistrictLabel,
+  getLessonTypeLabel,
+  type ArmeniaRegion,
+  type YerevanDistrict,
+  type PracticalLessonType,
+} from "src/modules/instructors/instructor-booking";
+import { createInstructor, updateInstructor } from "src/modules/instructors/instructor.api";
 
-type Instructor = {
-  name: string;
-  email: string;
-  phone: string;
-  years: number;
-  students: number;
-  rating: number;
-  status: string;
-  schedule: string;
-  teachesPractical: boolean;
-  teachesTheory: boolean;
-};
+type InstructorForm = Pick<
+  Instructor,
+  | "name"
+  | "email"
+  | "phone"
+  | "years"
+  | "schedule"
+  | "teachesPractical"
+  | "teachesTheory"
+  | "status"
+  | "availableRegions"
+  | "availableYerevanDistricts"
+  | "lessonTypes"
+>;
 
-const initialInstructors: Instructor[] = [
-  { name: "Armen Petrosyan", email: "armen.p@vivadrive.am", phone: "+374 99 111 111", years: 12, students: 340, rating: 4.9, status: "active", schedule: "Mon–Sat", teachesPractical: true, teachesTheory: false },
-  { name: "Narine Hovhannisyan", email: "narine.h@vivadrive.am", phone: "+374 77 222 222", years: 8, students: 210, rating: 4.8, status: "active", schedule: "Mon–Fri", teachesPractical: true, teachesTheory: true },
-  { name: "Vardan Grigoryan", email: "vardan.g@vivadrive.am", phone: "+374 55 333 333", years: 15, students: 420, rating: 5.0, status: "active", schedule: "Tue–Sun", teachesPractical: true, teachesTheory: false },
-  { name: "Lilit Sargsyan", email: "lilit.s@vivadrive.am", phone: "+374 91 444 444", years: 6, students: 175, rating: 4.7, status: "active", schedule: "Mon–Fri", teachesPractical: false, teachesTheory: true },
-  { name: "Hovhannes Mkrtchyan", email: "hov.m@vivadrive.am", phone: "+374 95 555 555", years: 10, students: 290, rating: 4.9, status: "inactive", schedule: "Mon–Sat", teachesPractical: true, teachesTheory: true },
-];
+const createNewInstructorDraft = (): InstructorForm => ({
+  name: "",
+  email: "",
+  phone: "",
+  years: 1,
+  schedule: "Mon-Fri",
+  teachesPractical: true,
+  teachesTheory: false,
+  status: "active",
+  availableRegions: [],
+  availableYerevanDistricts: [],
+  lessonTypes: [],
+});
+
+function renderRegions(regions: ArmeniaRegion[]): string {
+  return regions.map(getRegionLabel).join(", ");
+}
+
+function renderLessonTypes(types: PracticalLessonType[]): string {
+  return types.map(getLessonTypeLabel).join(", ");
+}
 
 export default function AdminInstructors() {
   const { t } = useLang();
@@ -41,21 +71,15 @@ export default function AdminInstructors() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [scheduleFilter, setScheduleFilter] = useState("all");
-  const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
-  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [regionFilter, setRegionFilter] = useState<"all" | ArmeniaRegion>("all");
+  const [lessonTypeFilter, setLessonTypeFilter] = useState<"all" | PracticalLessonType>("all");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [teachingFilter, setTeachingFilter] = useState<"all" | "practical_only" | "theory_only" | "both">("all");
-  const [newIns, setNewIns] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    years: 1,
-    schedule: "Mon–Fri",
-    teachesPractical: true,
-    teachesTheory: false,
-  });
+  const [newIns, setNewIns] = useState<InstructorForm>(createNewInstructorDraft());
 
-  const editIns = editIdx !== null ? instructors[editIdx] : null;
+  const editIns = editId ? instructors.find((i) => i.id === editId) ?? null : null;
   const scheduleOptions = Array.from(new Set(instructors.map((i) => i.schedule)));
 
   const teachingFilterMatch = (ins: Instructor) => {
@@ -73,57 +97,97 @@ export default function AdminInstructors() {
     ]
       .filter(Boolean)
       .join(" ");
-    const hay = [ins.name, ins.email, ins.phone, ins.schedule, ins.status, teachingLabels, String(ins.years), String(ins.students), String(ins.rating)]
+    const hay = [
+      ins.name,
+      ins.email,
+      ins.phone,
+      ins.schedule,
+      ins.status,
+      teachingLabels,
+      renderRegions(ins.availableRegions),
+      renderLessonTypes(ins.lessonTypes),
+      String(ins.years),
+      String(ins.students),
+      String(ins.rating),
+    ]
       .join(" ")
       .toLowerCase();
     const matchesSearch = !q || hay.includes(q);
     const matchesStatus = statusFilter === "all" || ins.status === statusFilter;
     const matchesSchedule = scheduleFilter === "all" || ins.schedule === scheduleFilter;
-    return matchesSearch && matchesStatus && matchesSchedule && teachingFilterMatch(ins);
+    const matchesRegion = regionFilter === "all" || ins.availableRegions.includes(regionFilter);
+    const matchesLessonType = lessonTypeFilter === "all" || ins.lessonTypes.includes(lessonTypeFilter);
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesSchedule &&
+      matchesRegion &&
+      matchesLessonType &&
+      teachingFilterMatch(ins)
+    );
   });
 
   const instructorStatusLabel = (s: string) => (s === "active" ? t("active") : t("inactive"));
 
+  const validateInstructor = (ins: InstructorForm) => {
+    if (!ins.name || !ins.email) return t("fillRequired");
+    if (!ins.teachesPractical && !ins.teachesTheory) return t("instructorTeachingRequired");
+    if (ins.availableRegions.length === 0) return t("instructorRegionsRequired");
+    if (ins.availableRegions.includes("Yerevan") && (ins.availableYerevanDistricts?.length ?? 0) === 0) {
+      return t("instructorYerevanDistrictsRequired");
+    }
+    if (ins.teachesPractical && ins.lessonTypes.length === 0) return t("instructorLessonTypesRequired");
+    return "";
+  };
+
   const handleDelete = () => {
-    setInstructors(ins => ins.filter((_, i) => i !== deleteIdx));
+    if (!deleteId) return;
+    setInstructors((items) => items.filter((i) => i.id !== deleteId));
     showToast(t("instructorDeleted"), "success");
   };
 
   const handleEdit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editIdx === null || !editIns) return;
-    if (!editIns.teachesPractical && !editIns.teachesTheory) {
-      showToast(t("instructorTeachingRequired"), "error");
+    if (!editIns) return;
+
+    const error = validateInstructor(editIns);
+    if (error) {
+      showToast(error, "error");
       return;
     }
-    setInstructors(ins => ins.map((x, i) => i === editIdx ? editIns : x));
-    setEditIdx(null);
+
+    setEditId(null);
     showToast(t("instructorUpdatedToast"), "success");
   };
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newIns.name || !newIns.email) { showToast(t("fillRequired"), "error"); return; }
-    if (!newIns.teachesPractical && !newIns.teachesTheory) {
-      showToast(t("instructorTeachingRequired"), "error");
+    const error = validateInstructor(newIns);
+    if (error) {
+      showToast(error, "error");
       return;
     }
-    setInstructors(ins => [...ins, { ...newIns, students: 0, rating: 5.0, status: "active" }]);
+
+    const nextPayload: Omit<Instructor, "id"> = {
+      ...newIns,
+      students: 0,
+      rating: 5.0,
+      hourlyPrice: 7000,
+      location: newIns.availableRegions[0] ?? "Yerevan",
+      car: "Toyota Corolla",
+      transmission: "Manual",
+      imageSrc: "/logo.jpg",
+      specialties: [],
+    };
+
+    setInstructors((items) => createInstructor(items, nextPayload));
     setAddOpen(false);
-    setNewIns({ name: "", email: "", phone: "", years: 1, schedule: "Mon–Fri", teachesPractical: true, teachesTheory: false });
+    setNewIns(createNewInstructorDraft());
     showToast(t("instructorAddedToast"), "success");
   };
 
-  const updateEdit = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    if (editIdx === null) return;
-    setInstructors(ins => ins.map((x, i) => i === editIdx ? { ...x, [k]: k === "years" ? +e.target.value : e.target.value } : x));
-  };
-
-  const toggleEditTeaching = (field: "teachesPractical" | "teachesTheory") => () => {
-    if (editIdx === null) return;
-    setInstructors((ins) =>
-      ins.map((x, i) => (i === editIdx ? { ...x, [field]: !x[field] } : x))
-    );
+  const updateEdit = (id: string, patch: Partial<Instructor>) => {
+    setInstructors((items) => updateInstructor(items, id, patch));
   };
 
   return (
@@ -141,7 +205,7 @@ export default function AdminInstructors() {
       />
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
-        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
+        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}...`}>
           <div className="flex flex-wrap gap-2 items-center">
             {["all", "active", "inactive"].map((s) => (
               <button
@@ -163,7 +227,35 @@ export default function AdminInstructors() {
             >
               <option value="all">{t("filterOptionAll")}</option>
               {scheduleOptions.map((s) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <select
+              value={regionFilter}
+              onChange={(e) => setRegionFilter(e.target.value as "all" | ArmeniaRegion)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground min-w-[10rem]"
+              aria-label={t("instructorRegionsLabel")}
+            >
+              <option value="all">{t("filterOptionAll")}</option>
+              {ARMENIA_REGIONS.map((region) => (
+                <option key={region} value={region}>
+                  {getRegionLabel(region)}
+                </option>
+              ))}
+            </select>
+            <select
+              value={lessonTypeFilter}
+              onChange={(e) => setLessonTypeFilter(e.target.value as "all" | PracticalLessonType)}
+              className="h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground min-w-[10rem]"
+              aria-label={t("instructorLessonTypesLabel")}
+            >
+              <option value="all">{t("filterOptionAll")}</option>
+              {PRACTICAL_LESSON_TYPES.map((lessonType) => (
+                <option key={lessonType} value={lessonType}>
+                  {getLessonTypeLabel(lessonType)}
+                </option>
               ))}
             </select>
             <select
@@ -183,6 +275,8 @@ export default function AdminInstructors() {
                 t("adminInstructorColInstructor"),
                 t("emailAddress"),
                 t("adminInstructorColTeachingType"),
+                t("instructorRegionsLabel"),
+                t("instructorLessonTypesLabel"),
                 t("phone"),
                 t("cohortColSchedule"),
                 t("adminInstructorColRating"),
@@ -195,7 +289,9 @@ export default function AdminInstructors() {
                 ins.email,
                 [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
                   .filter(Boolean)
-                  .join(" + ") || "—",
+                  .join(" + ") || "-",
+                renderRegions(ins.availableRegions),
+                renderLessonTypes(ins.lessonTypes) || "-",
                 ins.phone,
                 ins.schedule,
                 ins.rating.toFixed(1),
@@ -207,10 +303,22 @@ export default function AdminInstructors() {
           </div>
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[56rem]">
+          <table className="w-full text-sm min-w-[72rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("adminInstructorColInstructor"), t("adminInstructorColTeachingType"), t("phone"), t("cohortColSchedule"), t("adminInstructorColRating"), t("adminInstructorColExperience"), t("adminInstructorColStudents"), t("status"), t("actions")].map((h) => (
+                {[
+                  t("adminInstructorColInstructor"),
+                  t("adminInstructorColTeachingType"),
+                  t("instructorRegionsLabel"),
+                  t("instructorLessonTypesLabel"),
+                  t("phone"),
+                  t("cohortColSchedule"),
+                  t("adminInstructorColRating"),
+                  t("adminInstructorColExperience"),
+                  t("adminInstructorColStudents"),
+                  t("status"),
+                  t("actions"),
+                ].map((h) => (
                   <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
                     {h}
                   </th>
@@ -219,7 +327,7 @@ export default function AdminInstructors() {
             </thead>
             <tbody className="divide-y divide-border">
               {filteredInstructors.map((ins) => (
-                <tr key={ins.email} className="hover:bg-muted/30 transition-colors">
+                <tr key={ins.id} className="hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3.5 min-w-[220px]">
                     <p className="font-medium text-foreground">{ins.name}</p>
                     <p className="text-xs text-muted-foreground">{ins.email}</p>
@@ -238,17 +346,15 @@ export default function AdminInstructors() {
                       )}
                     </div>
                   </td>
+                  <td className="px-4 py-3.5 text-muted-foreground">{renderRegions(ins.availableRegions)}</td>
+                  <td className="px-4 py-3.5 text-muted-foreground">{renderLessonTypes(ins.lessonTypes) || "-"}</td>
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.phone}</td>
                   <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.schedule}</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
-                    {ins.rating.toFixed(1)}
-                  </td>
+                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{ins.rating.toFixed(1)}</td>
                   <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
                     {ins.years} {t("adminInstructorYearsShort")}
                   </td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
-                    {ins.students}
-                  </td>
+                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{ins.students}</td>
                   <td className="px-4 py-3.5">
                     <Badge className={`text-xs ${ins.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                       {instructorStatusLabel(ins.status)}
@@ -256,13 +362,13 @@ export default function AdminInstructors() {
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setEditIdx(instructors.findIndex((x) => x.email === ins.email))} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
+                      <button onClick={() => setEditId(ins.id)} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => showToast(`${ins.name} — ${t("instructorScheduleSoonToast")}`, "info")} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("ariaScheduleButton")} title={t("ariaScheduleButton")}>
+                      <button onClick={() => showToast(`${ins.name} - ${t("instructorScheduleSoonToast")}`, "info")} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("ariaScheduleButton")} title={t("ariaScheduleButton")}>
                         <Calendar className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => setDeleteIdx(instructors.findIndex((x) => x.email === ins.email))} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
+                      <button onClick={() => setDeleteId(ins.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -277,33 +383,43 @@ export default function AdminInstructors() {
         </div>
       </div>
 
-      {/* Edit */}
-      <Dialog open={editIdx !== null} onOpenChange={() => setEditIdx(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{t("instructorDialogEditTitle")}</DialogTitle></DialogHeader>
+      <Dialog open={editId !== null} onOpenChange={() => setEditId(null)}>
+        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("instructorDialogEditTitle")}</DialogTitle>
+          </DialogHeader>
           {editIns && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
-                <Input value={editIns.name} onChange={updateEdit("name")} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")}</label>
-                <Input value={editIns.email} onChange={updateEdit("email")} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
-                <Input value={editIns.phone} onChange={updateEdit("phone")} className="h-10" /></div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
+                <Input value={editIns.name} onChange={(e) => updateEdit(editIns.id, { name: e.target.value })} className="h-10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")}</label>
+                <Input value={editIns.email} onChange={(e) => updateEdit(editIns.id, { email: e.target.value })} className="h-10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
+                <Input value={editIns.phone} onChange={(e) => updateEdit(editIns.id, { phone: e.target.value })} className="h-10" />
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
-                  <Input type="number" value={editIns.years} onChange={updateEdit("years")} className="h-10" /></div>
-                <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
-                  <Input value={editIns.schedule} onChange={updateEdit("schedule")} className="h-10" /></div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
+                  <Input type="number" value={editIns.years} onChange={(e) => updateEdit(editIns.id, { years: +e.target.value || 1 })} className="h-10" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
+                  <Input value={editIns.schedule} onChange={(e) => updateEdit(editIns.id, { schedule: e.target.value })} className="h-10" />
+                </div>
               </div>
               <div>
                 <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
-                <p className="text-xs text-muted-foreground mb-2">{t("instructorTeachingHint")}</p>
                 <div className="flex flex-col gap-2">
                   <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
                     <input
                       type="checkbox"
                       checked={editIns.teachesPractical}
-                      onChange={toggleEditTeaching("teachesPractical")}
+                      onChange={() => updateEdit(editIns.id, { teachesPractical: !editIns.teachesPractical })}
                       className="h-4 w-4 rounded border-input accent-primary"
                     />
                     {t("instructorTeachingPractical")}
@@ -312,48 +428,121 @@ export default function AdminInstructors() {
                     <input
                       type="checkbox"
                       checked={editIns.teachesTheory}
-                      onChange={toggleEditTeaching("teachesTheory")}
+                      onChange={() => updateEdit(editIns.id, { teachesTheory: !editIns.teachesTheory })}
                       className="h-4 w-4 rounded border-input accent-primary"
                     />
                     {t("instructorTeachingTheory")}
                   </label>
                 </div>
               </div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-                <select value={editIns.status} onChange={updateEdit("status")}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorRegionsLabel")}</label>
+                <MultiSelectDropdown
+                  options={ARMENIA_REGIONS.map((region) => ({
+                    value: region,
+                    label: getRegionLabel(region),
+                  }))}
+                  value={editIns.availableRegions}
+                  onChange={(nextRegions) => {
+                    updateEdit(editIns.id, {
+                      availableRegions: nextRegions as ArmeniaRegion[],
+                      availableYerevanDistricts: nextRegions.includes("Yerevan")
+                        ? (editIns.availableYerevanDistricts ?? [])
+                        : [],
+                    });
+                  }}
+                  placeholder={t("instructorRegionsLabel")}
+                  ariaLabel={t("instructorRegionsLabel")}
+                />
+              </div>
+              {editIns.availableRegions.includes("Yerevan") && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorYerevanDistrictsLabel")}</label>
+                  <MultiSelectDropdown
+                    options={YEREVAN_DISTRICTS.map((district) => ({
+                      value: district,
+                      label: getYerevanDistrictLabel(district),
+                    }))}
+                    value={editIns.availableYerevanDistricts ?? []}
+                    onChange={(nextDistricts) =>
+                      updateEdit(editIns.id, {
+                        availableYerevanDistricts: nextDistricts as YerevanDistrict[],
+                      })
+                    }
+                    placeholder={t("instructorYerevanDistrictsLabel")}
+                    ariaLabel={t("instructorYerevanDistrictsLabel")}
+                  />
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorLessonTypesLabel")}</label>
+                <MultiSelectDropdown
+                  options={PRACTICAL_LESSON_TYPES.map((lessonType) => ({
+                    value: lessonType,
+                    label: getLessonTypeLabel(lessonType),
+                  }))}
+                  value={editIns.lessonTypes}
+                  onChange={(nextLessonTypes) =>
+                    updateEdit(editIns.id, { lessonTypes: nextLessonTypes as PracticalLessonType[] })
+                  }
+                  placeholder={t("instructorLessonTypesLabel")}
+                  ariaLabel={t("instructorLessonTypesLabel")}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
+                <select
+                  value={editIns.status}
+                  onChange={(e) => updateEdit(editIns.id, { status: e.target.value as "active" | "inactive" })}
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
                   <option value="active">{t("active")}</option>
                   <option value="inactive">{t("inactive")}</option>
-                </select></div>
+                </select>
+              </div>
               <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditIdx(null)}>{t("cancel")}</Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("save")}</Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditId(null)}>
+                  {t("cancel")}
+                </Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                  {t("save")}
+                </Button>
               </div>
             </form>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Add */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{t("instructorDialogAddTitle")}</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("instructorDialogAddTitle")}</DialogTitle>
+          </DialogHeader>
           <form onSubmit={handleAdd} className="space-y-3 mt-2">
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-              <Input value={newIns.name} onChange={e => setNewIns({ ...newIns, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
-              <Input type="email" value={newIns.email} onChange={e => setNewIns({ ...newIns, email: e.target.value })} placeholder="name@vivadrive.am" className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
-              <Input value={newIns.phone} onChange={e => setNewIns({ ...newIns, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" /></div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
+              <Input value={newIns.name} onChange={(e) => setNewIns({ ...newIns, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
+              <Input type="email" value={newIns.email} onChange={(e) => setNewIns({ ...newIns, email: e.target.value })} placeholder="name@vivadrive.am" className="h-10" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
+              <Input value={newIns.phone} onChange={(e) => setNewIns({ ...newIns, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" />
+            </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
-                <Input type="number" value={newIns.years} onChange={e => setNewIns({ ...newIns, years: +e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
-                <Input value={newIns.schedule} onChange={e => setNewIns({ ...newIns, schedule: e.target.value })} className="h-10" /></div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
+                <Input type="number" value={newIns.years} onChange={(e) => setNewIns({ ...newIns, years: +e.target.value || 1 })} className="h-10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
+                <Input value={newIns.schedule} onChange={(e) => setNewIns({ ...newIns, schedule: e.target.value })} className="h-10" />
+              </div>
             </div>
             <div>
               <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
-              <p className="text-xs text-muted-foreground mb-2">{t("instructorTeachingHint")}</p>
               <div className="flex flex-col gap-2">
                 <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
                   <input
@@ -375,16 +564,75 @@ export default function AdminInstructors() {
                 </label>
               </div>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorRegionsLabel")}</label>
+              <MultiSelectDropdown
+                options={ARMENIA_REGIONS.map((region) => ({
+                  value: region,
+                  label: getRegionLabel(region),
+                }))}
+                value={newIns.availableRegions}
+                onChange={(nextRegions) => {
+                  setNewIns({
+                    ...newIns,
+                    availableRegions: nextRegions as ArmeniaRegion[],
+                    availableYerevanDistricts: nextRegions.includes("Yerevan")
+                      ? (newIns.availableYerevanDistricts ?? [])
+                      : [],
+                  });
+                }}
+                placeholder={t("instructorRegionsLabel")}
+                ariaLabel={t("instructorRegionsLabel")}
+              />
+            </div>
+            {newIns.availableRegions.includes("Yerevan") && (
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorYerevanDistrictsLabel")}</label>
+                <MultiSelectDropdown
+                  options={YEREVAN_DISTRICTS.map((district) => ({
+                    value: district,
+                    label: getYerevanDistrictLabel(district),
+                  }))}
+                  value={newIns.availableYerevanDistricts ?? []}
+                  onChange={(nextDistricts) =>
+                    setNewIns({
+                      ...newIns,
+                      availableYerevanDistricts: nextDistricts as YerevanDistrict[],
+                    })
+                  }
+                  placeholder={t("instructorYerevanDistrictsLabel")}
+                  ariaLabel={t("instructorYerevanDistrictsLabel")}
+                />
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorLessonTypesLabel")}</label>
+              <MultiSelectDropdown
+                options={PRACTICAL_LESSON_TYPES.map((lessonType) => ({
+                  value: lessonType,
+                  label: getLessonTypeLabel(lessonType),
+                }))}
+                value={newIns.lessonTypes}
+                onChange={(nextLessonTypes) =>
+                  setNewIns({ ...newIns, lessonTypes: nextLessonTypes as PracticalLessonType[] })
+                }
+                placeholder={t("instructorLessonTypesLabel")}
+                ariaLabel={t("instructorLessonTypesLabel")}
+              />
+            </div>
             <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>{t("cancel")}</Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("addNew")}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog open={deleteIdx !== null} onClose={() => setDeleteIdx(null)} onConfirm={handleDelete}
-        title={t("instructorRemoveTitle")} description={t("instructorRemoveDesc")} confirmLabel={t("delete")} danger />
+      <ConfirmDialog open={deleteId !== null} onClose={() => setDeleteId(null)} onConfirm={handleDelete} title={t("instructorRemoveTitle")} description={t("instructorRemoveDesc")} confirmLabel={t("delete")} danger />
     </AdminLayout>
   );
 }

@@ -85,7 +85,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <Link href="/dashboard/exam-tests">
+      <Link href="/dashboard/learn">
         <Card className="p-5 mb-8 border-border bg-gradient-to-r from-primary/10 to-card hover:border-primary/30 transition-colors cursor-pointer">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">

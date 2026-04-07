@@ -7,6 +7,7 @@ import InstructorCard from "src/components/InstructorCard";
 
 export default function Instructors() {
   const { t } = useLang();
+  const visibleInstructors = instructors.filter((ins) => ins.status === "active");
 
   return (
     <div className="min-h-screen">
@@ -26,7 +27,7 @@ export default function Instructors() {
       <section className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {instructors.map((ins, i) => (
+            {visibleInstructors.map((ins, i) => (
               <Reveal key={i} delay={i * 0.06}>
                 <InstructorCard
                   instructor={ins}

@@ -32,6 +32,7 @@ import { useBranches } from "src/modules/branches";
 export default function Home() {
   const { t } = useLang();
   const { branches } = useBranches();
+  const visibleInstructors = instructors.filter((ins) => ins.status === "active");
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
   const stats = [
@@ -283,7 +284,7 @@ export default function Home() {
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {instructors.map((ins, i) => (
+            {visibleInstructors.map((ins, i) => (
               <InstructorCard
                 key={i}
                 instructor={ins}

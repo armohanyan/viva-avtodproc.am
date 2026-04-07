@@ -6,6 +6,7 @@ import { CountUpText } from "src/lib/motion";
 import { useLang } from "src/lib/i18n";
 import { Star, CalendarDays, Users, MapPin, Car, Gauge } from "lucide-react";
 import type { Instructor } from "src/data/instructors";
+import { getLessonTypeLabel } from "src/modules/instructors/instructor-booking";
 
 type Props = {
   instructor: Instructor;
@@ -36,7 +37,7 @@ export default function InstructorCard({
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0 flex-1">
             <h3 className="font-bold text-lg text-foreground break-words">{instructor.name}</h3>
-            {(instructor.teachesPractical || instructor.teachesTheory) && (
+            {(instructor.teachesPractical || instructor.teachesTheory || instructor.lessonTypes.length > 0) && (
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {instructor.teachesPractical && (
                   <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0">
@@ -48,6 +49,11 @@ export default function InstructorCard({
                     {t("instructorTeachingTheory")}
                   </Badge>
                 )}
+                {instructor.lessonTypes.map((lessonType) => (
+                  <Badge key={lessonType} variant="outline" className="text-[10px] font-medium px-2 py-0 border-orange-400/50 text-orange-700">
+                    {getLessonTypeLabel(lessonType)}
+                  </Badge>
+                ))}
               </div>
             )}
           </div>
