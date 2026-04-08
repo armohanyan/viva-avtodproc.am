@@ -2,6 +2,9 @@
   "name": "sandbox-website-template",
   "description": "Viva Driving School — React frontend (Vite). Backend to be added later.",
   "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
     "@radix-ui/react-slot": "^1.2.4",
@@ -21,7 +24,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dedent": "^1.7.2",
-    "dompurify": "^3.3.3",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.577.0",
     "mathjs": "^15.1.1",
@@ -32,6 +34,7 @@
     "react-hook-form": "^7.71.2",
     "react-icons": "^5.6.0",
     "runable-website-runtime": "^0.0.14",
+    "sanitize-html": "^2.17.2",
     "tailwind-merge": "^3.5.0",
     "wouter": "^3.9.0",
     "zod": "^4.3.6"
@@ -39,11 +42,11 @@
   "devDependencies": {
     "@eslint/js": "9.39.4",
     "@tailwindcss/vite": "^4.2.1",
-    "@types/dompurify": "^3.0.5",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.3.5",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@types/sanitize-html": "^2.16.1",
     "@typescript/native-preview": "^7.0.0-dev.20260306.1",
     "@vitejs/plugin-react": "5.1.4",
     "eslint": "9.39.4",
@@ -61,8 +64,13 @@
   },
   "scripts": {
     "build": "vite build",
+    "build:panel": "vite build",
+    "build:web": "npm run build -w web",
+    "build:all": "npm run build:web && npm run build:panel",
     "check": "tsgo && vite build",
     "dev": "vite",
+    "dev:panel": "vite",
+    "dev:web": "npm run dev -w web",
     "lint": "eslint .",
     "preview": "bun run build && vite preview"
   },

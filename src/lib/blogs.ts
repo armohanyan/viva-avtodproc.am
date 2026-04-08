@@ -146,6 +146,15 @@ export function getBlogBySlug(slug: string): Blog | undefined {
   return loadBlogs().find((b) => b.slug === slug && b.published);
 }
 
+/** Server / SSG-safe: seed posts only (no localStorage). For Next.js metadata. */
+export function getSeedBlogBySlug(slug: string): Blog | undefined {
+  return SEED.find((b) => b.slug === slug && b.published);
+}
+
+export function getPublishedSeedBlogSlugs(): string[] {
+  return SEED.filter((b) => b.published).map((b) => b.slug);
+}
+
 export { slugify };
 
 export function createBlog(input: {

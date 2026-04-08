@@ -1,10 +1,11 @@
+"use client";
+
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
 import { CheckCircle2, X } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
-import { Link } from "wouter";
 import { CountUpText, Reveal } from "src/lib/motion";
 
 type Tier = {
@@ -166,7 +167,7 @@ export default function Packages() {
                   </li>
                 </ul>
                 <div className="mt-auto">
-                  <Link href="/register">
+                  <a href="/register">
                     <Button
                       className={`w-full ${
                         pkg.popular
@@ -176,7 +177,7 @@ export default function Packages() {
                     >
                       {t("choosePackage")}
                     </Button>
-                  </Link>
+                  </a>
                 </div>
               </Reveal>
             ))}

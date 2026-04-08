@@ -1,8 +1,9 @@
+"use client";
+
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
 import { Car, BookOpen, Award, Clock, Users, CheckCircle2 } from "lucide-react";
-import { Link } from "wouter";
 import { Button } from "src/components/ui/button";
 import { CountUpText, Reveal } from "src/lib/motion";
 
@@ -86,14 +87,14 @@ export default function Services() {
                           ))}
                         </ul>
                         <div className="mt-6">
-                          <Link href="/packages">
+                          <a href="/packages">
                             <Button
                               className={`${s.bg} ${s.color} border border-current/50 hover:opacity-80`}
                               variant="outline"
                             >
                               {t("servicesViewPackagesCta")}
                             </Button>
-                          </Link>
+                          </a>
                         </div>
                       </div>
                     </div>

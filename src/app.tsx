@@ -1,11 +1,13 @@
 import { useEffect } from "react";
-import { Route, Switch, useLocation } from "wouter";
+import { Route, Switch } from "wouter";
 import { AgentFeedback } from "@runablehq/website-runtime";
 import { AppProviders } from "src/core/providers/AppProviders";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { appRoutes } from "src/core/routing/app.routes";
+import RedirectToMarketing from "src/pages/RedirectToMarketing";
 
 function ScrollToTopOnRouteChange() {
-	const [location] = useLocation();
+	const { pathname: location } = useAppNavigation();
 
 	useEffect(() => {
 		// Wouter navigation doesn't automatically reset scroll position in SPAs.
@@ -22,6 +24,9 @@ function AnimatedRoutes() {
 			{appRoutes.map((route) => (
 				<Route key={route.path} path={route.path} component={route.component} />
 			))}
+			<Route>
+				<RedirectToMarketing />
+			</Route>
 		</Switch>
 	);
 }

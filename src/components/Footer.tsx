@@ -1,4 +1,3 @@
-import { Link } from "wouter";
 import { Facebook, Instagram, Youtube, Phone, Mail, MapPin } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -52,9 +51,9 @@ export default function Footer() {
                 { href: "/contact", label: t("contact") },
               ].map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className="text-sm text-hero-foreground/80 hover:text-hero-foreground transition-colors">
+                  <a href={l.href} className="text-sm text-hero-foreground/80 hover:text-hero-foreground transition-colors">
                     {l.label}
-                  </Link>
+                  </a>
                 </li>
               ))}
             </ul>

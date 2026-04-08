@@ -1,9 +1,10 @@
+"use client";
+
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useEffect, useMemo, useState } from "react";
 import { useLang } from "src/lib/i18n";
 import { ArrowUpRight, CheckCircle2, Lock } from "lucide-react";
-import { Link } from "wouter";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
@@ -165,11 +166,11 @@ export default function ExamTests() {
                   </p>
                   <p className="text-sm text-foreground truncate">{activeTopic.title}</p>
                 </div>
-                <Link href={`/thematic-questions/quiz/topics?topic=${activeTopic.topicId}`}>
+                <a href={`/thematic-questions/quiz/topics?topic=${activeTopic.topicId}`}>
                   <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
                     {t("examTestsContinueSession")}
                   </Button>
-                </Link>
+                </a>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 <div className="rounded-lg bg-background/80 p-2">
@@ -265,7 +266,7 @@ export default function ExamTests() {
                     topic.isFree ? "border-primary/30 shadow-primary/5" : "border-border"
                   }`}
                 >
-                  <Link href={topic.href} className="block p-3.5 sm:p-4">
+                  <a href={topic.href} className="block p-3.5 sm:p-4">
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div
                         className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
@@ -313,7 +314,7 @@ export default function ExamTests() {
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </a>
                 </Card>
               </Reveal>
             );
@@ -351,16 +352,16 @@ export default function ExamTests() {
           <p className="text-muted-foreground text-lg mb-10 max-w-2xl mx-auto">{t("examTestsCtaSub")}</p>
           <Reveal>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/login?redirect=/thematic-questions">
+              <a href="/login?redirect=/thematic-questions">
                 <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8">
                   {t("examTestsSignInToPractice")}
                 </Button>
-              </Link>
-              <Link href="/packages">
+              </a>
+              <a href="/packages">
                 <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-accent px-8">
                   {t("packages")}
                 </Button>
-              </Link>
+              </a>
             </div>
           </Reveal>
         </div>

@@ -1,8 +1,11 @@
+"use client";
+
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Redirect, useLocation, useRoute } from "wouter";
+import { useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import {
@@ -20,28 +23,38 @@ function isExamMode(s: string): s is ExamQuizMode {
   return VALID_MODES.includes(s as ExamQuizMode);
 }
 
-export default function ExamQuiz() {
+export type ExamQuizProps = {
+  mode?: string | null;
+  examListPath?: "/thematic-questions" | "/exam-tests";
+};
+
+function ExamQuizRedirect({ target }: { target: "/thematic-questions" | "/exam-tests" }) {
+  const { navigate } = useAppNavigation();
+  useEffect(() => {
+    navigate(target);
+  }, [navigate, target]);
+  return null;
+}
+
+type RunnerProps = {
+  mode: ExamQuizMode;
+  listPath: "/thematic-questions" | "/exam-tests";
+};
+
+function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const { t, lang } = useLang();
-  const [, setLocation] = useLocation();
-  const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
-  const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
-  const match = newMatch || oldMatch;
-  const modeParam = newParams?.mode ?? oldParams?.mode ?? "";
-  const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
+  const { navigate } = useAppNavigation();
   const topicId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") || "5" : "5";
 
   const [round, setRound] = useState(0);
-  const questions = useMemo(() => {
-    if (!mode) return [];
-    return selectQuestionsForMode(mode);
-  }, [mode, round]);
+  const questions = useMemo(() => selectQuestionsForMode(mode), [mode, round]);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
   const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
 
-  const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
+  const finished = Boolean(questions.length > 0 && index >= questions.length);
 
   const correctCount = useMemo(() => {
     if (!finished) return 0;
@@ -124,10 +137,6 @@ export default function ExamQuiz() {
     setSelected(answers[index] ?? null);
   }, [index, answers, finished]);
 
-  if (!match || !mode) {
-    return <Redirect to="/thematic-questions" />;
-  }
-
   const q = questions[index];
   const isLast = questions.length > 0 && index === questions.length - 1;
   const current = q ? getQuestionInLang(q, lang) : null;
@@ -155,7 +164,7 @@ export default function ExamQuiz() {
   const exitToExamTests = () => {
     discardSessionRef.current = true;
     clearActiveSession();
-    setLocation("/thematic-questions");
+    navigate(listPath);
   };
 
   const restart = () => {
@@ -179,9 +188,9 @@ export default function ExamQuiz() {
           {questions.length === 0 ? (
             <div className="max-w-lg mx-auto text-center py-12">
               <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-              <Link href="/thematic-questions">
+              <a href={listPath}>
                 <Button variant="outline">{t("examQuizBackToList")}</Button>
-              </Link>
+              </a>
             </div>
           ) : finished ? (
             <>
@@ -203,7 +212,7 @@ export default function ExamQuiz() {
                       onClick={exitToExamTests}
                       className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
-                        {t("examQuizBackToList")}
+                      {t("examQuizBackToList")}
                     </Button>
                   </div>
                 </Card>
@@ -279,7 +288,7 @@ export default function ExamQuiz() {
                   {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
                 </p>
                 <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={exitToExamTests}>
-                    {t("examQuizBackToList")}
+                  {t("examQuizBackToList")}
                 </Button>
               </div>
               <Reveal delay={0.06}>
@@ -350,4 +359,42 @@ export default function ExamQuiz() {
       <Footer />
     </div>
   );
+}
+
+function ExamQuizWouter() {
+  const { navigate } = useAppNavigation();
+  const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
+  const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
+  const wouterMatched = newMatch || oldMatch;
+  const modeParam = (newParams?.mode ?? oldParams?.mode ?? "").trim();
+  const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
+  const listPath: "/thematic-questions" | "/exam-tests" =
+    oldMatch && !newMatch ? "/exam-tests" : "/thematic-questions";
+
+  useEffect(() => {
+    if (mode !== null) return;
+    navigate(listPath);
+  }, [mode, listPath, navigate]);
+
+  if (!mode) {
+    return null;
+  }
+
+  if (!wouterMatched) {
+    return null;
+  }
+
+  return <ExamQuizRunner mode={mode} listPath={listPath} />;
+}
+
+export default function ExamQuiz({ mode: modeProp, examListPath }: ExamQuizProps = {}) {
+  if (modeProp != null && examListPath) {
+    const trimmed = modeProp.trim();
+    const m = isExamMode(trimmed) ? trimmed : null;
+    if (!m) {
+      return <ExamQuizRedirect target={examListPath} />;
+    }
+    return <ExamQuizRunner mode={m} listPath={examListPath} />;
+  }
+  return <ExamQuizWouter />;
 }

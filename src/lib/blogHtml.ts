@@ -1,4 +1,4 @@
-import DOMPurify from "dompurify";
+import sanitizeHtml from "sanitize-html";
 
 /** Escape plain text and wrap paragraphs for legacy plain-text posts. */
 /** True if rich text has no visible text (empty editor). */
@@ -18,33 +18,51 @@ export function plainTextToHtml(text: string): string {
     .join("");
 }
 
+const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [
+    "p",
+    "br",
+    "strong",
+    "b",
+    "em",
+    "i",
+    "u",
+    "s",
+    "h2",
+    "h3",
+    "h4",
+    "ul",
+    "ol",
+    "li",
+    "a",
+    "img",
+    "blockquote",
+    "span",
+  ],
+  allowedAttributes: {
+    a: ["href", "title", "target", "rel", "class"],
+    img: ["src", "alt", "title", "class", "width", "height"],
+    span: ["class"],
+    p: ["class"],
+    h2: ["class"],
+    h3: ["class"],
+    h4: ["class"],
+    ul: ["class"],
+    ol: ["class"],
+    li: ["class"],
+    blockquote: ["class"],
+  },
+  allowedSchemes: ["http", "https", "mailto"],
+  allowedSchemesByTag: {
+    img: ["http", "https", "data"],
+    a: ["http", "https", "mailto"],
+  },
+  allowProtocolRelative: false,
+};
+
 /** Safe HTML for blog body and excerpts derived from HTML. */
 export function sanitizeBlogHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      "p",
-      "br",
-      "strong",
-      "b",
-      "em",
-      "i",
-      "u",
-      "s",
-      "h2",
-      "h3",
-      "h4",
-      "ul",
-      "ol",
-      "li",
-      "a",
-      "img",
-      "blockquote",
-      "span",
-    ],
-    ALLOWED_ATTR: ["href", "src", "alt", "title", "target", "rel", "class", "width", "height"],
-    ALLOW_DATA_ATTR: false,
-    ALLOW_UNKNOWN_PROTOCOLS: false,
-  });
+  return sanitizeHtml(html, SANITIZE_OPTIONS);
 }
 
 const MAX_COVER_DATA_URL_CHARS = 2_400_000;

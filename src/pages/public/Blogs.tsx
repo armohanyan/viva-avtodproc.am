@@ -1,5 +1,6 @@
+"use client";
+
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
@@ -68,21 +69,21 @@ export default function Blogs() {
                           <time dateTime={post.publishedAt}>{formatDate(post.publishedAt, locale)}</time>
                         </div>
                         <h2 className="text-xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">
-                          <Link
+                          <a
                             href={`/blogs/${post.slug}`}
                             className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                           >
                             {post.title}
-                          </Link>
+                          </a>
                         </h2>
                         <p className="text-muted-foreground leading-relaxed flex-1 mb-6">{post.excerpt}</p>
-                        <Link
+                        <a
                           href={`/blogs/${post.slug}`}
                           className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
                         >
                           {t("blogReadMore")}
                           <ArrowRight className="w-4 h-4" aria-hidden />
-                        </Link>
+                        </a>
                       </div>
                     </article>
                   </Reveal>

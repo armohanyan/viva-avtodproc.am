@@ -1,4 +1,3 @@
-import { Link } from "wouter";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
 import { Card } from "src/components/ui/card";
@@ -107,11 +106,11 @@ export default function InstructorCard({
 
         {showBookButton && (
           <div className="mt-4">
-            <Link href="/register">
+            <a href="/register">
               <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" size="sm">
                 {t("bookLesson")}
               </Button>
-            </Link>
+            </a>
           </div>
         )}
       </div>

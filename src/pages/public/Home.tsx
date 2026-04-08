@@ -1,4 +1,5 @@
-import { Link } from "wouter";
+"use client";
+
 import { useLang } from "src/lib/i18n";
 import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
@@ -153,12 +154,12 @@ export default function Home() {
               {t("heroSub")}
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/register">
+              <a href="/register">
                 <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-12 text-base">
                   {t("getStarted")} <ArrowRight className="ml-2 w-4 h-4" />
                 </Button>
-              </Link>
-              <Link href="/packages">
+              </a>
+              <a href="/packages">
                 <Button
                   size="lg"
                   variant="outline"
@@ -166,7 +167,7 @@ export default function Home() {
                 >
                   {t("learnMore")}
                 </Button>
-              </Link>
+              </a>
             </div>
           </div>
         </div>
@@ -201,7 +202,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {services.map((s, i) => (
-              <Link key={i} href={s.href} className="block">
+              <a key={i} href={s.href} className="block">
                 <Card className="p-6 hover:shadow-lg transition-shadow border-border group cursor-pointer flex flex-col h-full">
                   <div className={`w-12 h-12 ${s.bg} rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
                     <s.icon className={`w-6 h-6 ${s.color}`} />
@@ -212,7 +213,7 @@ export default function Home() {
                     {t("learnMore")} <ChevronRight className="w-4 h-4" />
                   </div>
                 </Card>
-              </Link>
+              </a>
             ))}
           </div>
         </div>
@@ -256,7 +257,7 @@ export default function Home() {
                   ))}
                 </ul>
                 <div className="mt-auto">
-                  <Link href="/register">
+                  <a href="/register">
                     <Button
                       className={`w-full ${
                         pkg.popular
@@ -266,7 +267,7 @@ export default function Home() {
                     >
                       {t("choosePackage")}
                     </Button>
-                  </Link>
+                  </a>
                 </div>
               </div>
             ))}
@@ -294,11 +295,11 @@ export default function Home() {
             ))}
           </div>
           <div className="text-center mt-10">
-            <Link href="/instructors">
+            <a href="/instructors">
               <Button variant="outline" className="border-border">
                 {t("viewAll")} <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -389,7 +390,7 @@ export default function Home() {
                   </p>
 
                   <div className="mt-7 flex flex-wrap gap-3 items-center">
-                    <Link href="/contact">
+                    <a href="/contact">
                       <Button
                         size="lg"
                         variant="outline"
@@ -397,7 +398,7 @@ export default function Home() {
                       >
                         {t("contactSendMessageTitle")} <ArrowRight className="ml-2 w-4 h-4" />
                       </Button>
-                    </Link>
+                    </a>
                     <div className="text-xs text-muted-foreground">
                       Select info below
                     </div>
@@ -559,15 +560,15 @@ export default function Home() {
             {t("ctaReadyLicenseSub")}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/register">
+            <a href="/register">
               <Button
                 size="lg"
                 className="bg-hero text-hero-foreground hover:bg-hero/90 px-8 h-12 text-base font-semibold"
               >
                 {t("getStarted")} <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
-            </Link>
-            <Link href="/contact">
+            </a>
+            <a href="/contact">
               <Button
                 size="lg"
                 variant="outline"
@@ -575,7 +576,7 @@ export default function Home() {
               >
                 {t("contact")}
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>

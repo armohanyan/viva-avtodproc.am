@@ -1,0 +1,39 @@
+import { useEffect, type ReactElement } from "react";
+import { useLocation } from "wouter";
+
+/**
+ * Fallback when the URL is not a panel route: send users to the Next.js marketing app.
+ * Set `VITE_MARKETING_ORIGIN` in dev (e.g. http://localhost:3000). On production same-origin
+ * deploys, leave unset — nginx should not send marketing paths here.
+ */
+export default function RedirectToMarketing(): ReactElement | null {
+  const [pathname] = useLocation();
+
+  useEffect(() => {
+    const base = (import.meta.env.VITE_MARKETING_ORIGIN as string | undefined)?.replace(/\/$/, "");
+    if (!base) return;
+    const target = `${base}${pathname}${window.location.search}${window.location.hash}`;
+    if (target !== window.location.href) {
+      window.location.replace(target);
+    }
+  }, [pathname]);
+
+  if (import.meta.env.VITE_MARKETING_ORIGIN) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 text-center text-muted-foreground text-sm">
+        Opening marketing site…
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-6 text-center text-muted-foreground text-sm max-w-md mx-auto">
+      <p>This URL is served by the marketing app (Next.js). Run it from the repo root:</p>
+      <code className="text-xs bg-muted px-2 py-1 rounded text-foreground">npm run dev:web</code>
+      <p className="text-xs">
+        Or set <code className="text-foreground">VITE_MARKETING_ORIGIN</code> (e.g.{" "}
+        <code className="text-foreground">http://localhost:3000</code>) to auto-redirect from the panel dev server.
+      </p>
+    </div>
+  );
+}
