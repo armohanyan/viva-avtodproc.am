@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
 import DashboardLayout from "src/components/DashboardLayout";
+import DashboardLearnSubnav from "src/components/dashboard/DashboardLearnSubnav";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Card } from "src/components/ui/card";
 import { useLang } from "src/lib/i18n";
@@ -39,6 +40,9 @@ export default function DashboardThematicTests() {
     setStats(getExamStats());
   }, []);
 
+  const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);
+  const activeTopic = stats.activeSession ? topicById[stats.activeSession.topicId] : undefined;
+
   const totalQuestions = 1094;
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
@@ -48,22 +52,13 @@ export default function DashboardThematicTests() {
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
-        <PanelPageHeader className="mb-6" title="Թեմատիկ թեստեր" subtitle="Հանրային էջի նույն թեմատիկ քարտերը՝ բոլորն ամբողջությամբ բաց։" />
+        <PanelPageHeader
+          className="mb-4 sm:mb-6"
+          title={t("dashboardLearnThematicTests")}
+          subtitle={t("dashboardLearnThematicSubtitle")}
+        />
 
-        <div className="flex flex-wrap gap-2 mb-6">
-          <Link
-            href="/dashboard/learn/exam-tests"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-          >
-            Քննական թեստեր
-          </Link>
-          <Link
-            href="/dashboard/learn/thematic-tests"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground"
-          >
-            Թեմատիկ թեստեր
-          </Link>
-        </div>
+        <DashboardLearnSubnav active="thematic" />
 
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-foreground">{t("examTestsTopicsHeading")}</h2>
@@ -89,6 +84,31 @@ export default function DashboardThematicTests() {
                 {stats.wrong} / {totalQuestions}
               </p>
               <p className="text-xs text-muted-foreground">{t("examTestsNegativeResult")}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground">{t("examTestsStatAttempts")}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">{stats.attempts}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground">{t("examTestsStatBest")}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">{stats.bestPct}%</p>
+              {stats.activeSession && activeTopic && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {stats.topicStats[activeTopic.topicId]?.bestCorrect ?? 0}/{stats.topicStats[activeTopic.topicId]?.bestAnswered ?? 0}
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground">{t("examTestsStatLast")}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">{stats.lastPct}%</p>
+              {stats.activeSession && activeTopic && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {stats.topicStats[activeTopic.topicId]?.lastCorrect ?? 0}/{stats.topicStats[activeTopic.topicId]?.lastAnswered ?? 0}
+                </p>
+              )}
             </div>
           </div>
         </Card>
@@ -126,7 +146,7 @@ export default function DashboardThematicTests() {
 
                         <div className="mt-2.5 flex items-center justify-between">
                           <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100/80 px-2.5 py-1 rounded-full">
-                            Բաց է
+                            {t("dashboardThematicTopicUnlocked")}
                           </span>
 
                           <div className="inline-flex items-center gap-1 text-xs font-medium text-primary">

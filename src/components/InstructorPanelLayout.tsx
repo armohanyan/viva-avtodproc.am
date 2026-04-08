@@ -135,30 +135,33 @@ export default function InstructorPanelLayout({ children }: Props) {
         <Sidebar />
       </aside>
       <div className="flex flex-col flex-1 min-w-0 min-h-0 lg:pl-64">
-        <header className="bg-card border-b border-border px-4 sm:px-6 h-16 flex items-center justify-between shrink-0 z-20">
-          <div className="flex items-center gap-3">
+        <header className="bg-card border-b border-border px-3 sm:px-6 min-h-14 h-14 sm:h-16 sm:min-h-16 flex items-center justify-between gap-2 shrink-0 z-20">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Sheet open={open} onOpenChange={setOpen}>
-              <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon-lg">
+              <SheetTrigger asChild className="lg:hidden shrink-0">
+                <Button variant="ghost" size="icon-lg" aria-label={t("openMenu")}>
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0">
+              <SheetContent side="left" className="w-[min(20rem,86vw)] p-0">
                 <div className="h-full pt-12 flex flex-col min-h-0">
                   <Sidebar />
                 </div>
               </SheetContent>
             </Sheet>
-            <h1 className="font-semibold text-foreground hidden sm:block truncate">
+            <h1 className="font-semibold text-foreground text-sm sm:text-base truncate min-w-0">
               {nav.find((n) => n.href === location)?.label || t("instructorDashboardTitle")}
             </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <ThemeToggle />
             <UserMenu />
           </div>
         </header>
-        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+        <main
+          ref={mainRef}
+          className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
+        >
           {children}
         </main>
       </div>

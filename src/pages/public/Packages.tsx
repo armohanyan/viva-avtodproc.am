@@ -7,44 +7,52 @@ import { Badge } from "src/components/ui/badge";
 import { Link } from "wouter";
 import { CountUpText, Reveal } from "src/lib/motion";
 
+type Tier = {
+  nameKey: "basic" | "standard" | "premium";
+  price: string;
+  practical: number;
+  theory: number;
+  popular: boolean;
+  priorityBooking: boolean;
+  instructorChoice: boolean;
+  premiumCert: boolean;
+};
+
+const TIERS: Tier[] = [
+  {
+    nameKey: "basic",
+    price: "35,000",
+    practical: 10,
+    theory: 8,
+    popular: false,
+    priorityBooking: false,
+    instructorChoice: false,
+    premiumCert: false,
+  },
+  {
+    nameKey: "standard",
+    price: "55,000",
+    practical: 18,
+    theory: 12,
+    popular: true,
+    priorityBooking: false,
+    instructorChoice: true,
+    premiumCert: false,
+  },
+  {
+    nameKey: "premium",
+    price: "85,000",
+    practical: 28,
+    theory: 16,
+    popular: false,
+    priorityBooking: true,
+    instructorChoice: true,
+    premiumCert: true,
+  },
+];
+
 export default function Packages() {
   const { t } = useLang();
-
-  const packages = [
-    {
-      name: t("basic"), price: "35,000", lessons: 10, popular: false,
-      features: [
-        { text: "10 practical lessons (60 min)", inc: true },
-        { text: "Online theory access", inc: true },
-        { text: "Practice exam", inc: false },
-        { text: "Priority booking", inc: false },
-        { text: "Instructor choice", inc: false },
-        { text: "Certificate", inc: true },
-      ]
-    },
-    {
-      name: t("standard"), price: "55,000", lessons: 18, popular: true,
-      features: [
-        { text: "18 practical lessons (60 min)", inc: true },
-        { text: "Online theory access", inc: true },
-        { text: "Practice exam (2 sessions)", inc: true },
-        { text: "Priority booking", inc: false },
-        { text: "Instructor choice", inc: true },
-        { text: "Certificate", inc: true },
-      ]
-    },
-    {
-      name: t("premium"), price: "85,000", lessons: 28, popular: false,
-      features: [
-        { text: "28 practical lessons (60 min)", inc: true },
-        { text: "Online theory access", inc: true },
-        { text: "Practice exam (unlimited)", inc: true },
-        { text: "Priority booking", inc: true },
-        { text: "Instructor choice", inc: true },
-        { text: "Certificate + framing", inc: true },
-      ]
-    },
-  ];
 
   const faqs = [
     {
@@ -84,9 +92,9 @@ export default function Packages() {
       <section className="py-20 bg-background">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {packages.map((pkg, i) => (
+            {TIERS.map((pkg, i) => (
               <Reveal
-                key={i}
+                key={pkg.nameKey}
                 className={`relative rounded-2xl border-2 ${pkg.popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-6 sm:p-8 flex flex-col h-full`}
                 delay={i * 0.06}
               >
@@ -95,7 +103,7 @@ export default function Packages() {
                     <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                   </div>
                 )}
-                <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
+                <h3 className="font-bold text-xl text-foreground mb-2">{t(pkg.nameKey)}</h3>
                 <div className="flex items-baseline gap-1 mb-1">
                   <span className="text-4xl font-bold text-foreground">
                     <CountUpText value={pkg.price} />
@@ -103,17 +111,59 @@ export default function Packages() {
                   <span className="text-muted-foreground">֏</span>
                 </div>
                 <p className="text-sm text-muted-foreground mb-7">
-                  <CountUpText value={pkg.lessons} /> {t("lessons")} included
+                  {pkg.practical} {t("lessons")} · {pkg.theory} {t("packageFeatTheorySessions")}
                 </p>
                 <ul className="space-y-3 mb-8">
-                  {pkg.features.map((f, j) => (
-                    <li key={j} className="flex items-center gap-2.5 text-sm">
-                      {f.inc
-                        ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                        : <X className="w-4 h-4 text-muted-foreground shrink-0" />}
-                      <span className={f.inc ? "text-foreground" : "text-muted-foreground"}>{f.text}</span>
-                    </li>
-                  ))}
+                  <li className="flex items-center gap-2.5 text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-foreground">
+                      {pkg.practical} {t("lessons")} — {t("lessonTypePractical")}
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-foreground">
+                      {pkg.theory} {t("packageFeatTheorySessions")}
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-foreground">{t("packageFeatDigitalPrep")}</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    <span className="text-foreground">{t("packageFeatCertificate")}</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm">
+                    {pkg.priorityBooking ? (
+                      <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    ) : (
+                      <X className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className={pkg.priorityBooking ? "text-foreground" : "text-muted-foreground"}>
+                      {t("packageFeatPriorityBooking")}
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm">
+                    {pkg.instructorChoice ? (
+                      <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    ) : (
+                      <X className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className={pkg.instructorChoice ? "text-foreground" : "text-muted-foreground"}>
+                      {t("packageFeatInstructorChoice")}
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2.5 text-sm">
+                    {pkg.premiumCert ? (
+                      <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                    ) : (
+                      <X className="w-4 h-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className={pkg.premiumCert ? "text-foreground" : "text-muted-foreground"}>
+                      {t("packageFeatPremiumCert")}
+                    </span>
+                  </li>
                 </ul>
                 <div className="mt-auto">
                   <Link href="/register">
@@ -134,7 +184,6 @@ export default function Packages() {
         </div>
       </section>
 
-      {/* FAQ */}
       <section className="py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-12 text-center">

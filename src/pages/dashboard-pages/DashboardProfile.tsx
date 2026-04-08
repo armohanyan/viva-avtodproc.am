@@ -6,7 +6,7 @@ import { Card } from "src/components/ui/card";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
-import { Camera, Shield, Bell, UserCircle } from "lucide-react";
+import { Shield, UserCircle } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "src/lib/motion";
 
@@ -18,7 +18,6 @@ export default function DashboardProfile() {
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPass, setSavingPass] = useState(false);
-  const [notifs, setNotifs] = useState([true, true, false, true]);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
   const setP = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setPass(f => ({ ...f, [k]: e.target.value }));
@@ -43,29 +42,18 @@ export default function DashboardProfile() {
     }, 700);
   };
 
-  const toggleNotif = (i: number) => {
-    setNotifs(n => { const copy = [...n]; copy[i] = !copy[i]; return copy; });
-    showToast(t("preferencesUpdatedLabel"), "success");
-  };
-
   return (
     <DashboardLayout>
       <PanelPageHeader icon={UserCircle} title={t("profile")} subtitle={t("dashboardProfilePageSubtitle")} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Avatar card */}
+        {/* Profile summary card */}
         <Reveal delay={0.06}>
           <Card className="p-6 border-border text-center">
-            <div className="relative inline-block mb-4">
-              <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-3xl mx-auto">
+            <div className="mb-4 flex justify-center">
+              <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-3xl">
                 {form.firstName[0]}
               </div>
-              <button
-                onClick={() => showToast(t("photoUploadComingSoonLabel"), "info")}
-                className="absolute bottom-0 right-0 w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground hover:bg-primary/90 border-2 border-hero-foreground"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
             </div>
             <h3 className="font-bold text-foreground text-lg">{form.firstName} {form.lastName}</h3>
             <p className="text-muted-foreground text-sm mt-0.5">{form.email}</p>
@@ -73,8 +61,10 @@ export default function DashboardProfile() {
             <div className="mt-6 space-y-2.5 text-left">
               {[
                 { label: t("memberSinceLabel"), value: t("memberSinceDemoValue") },
-                { label: t("lessonsCompletedLabel"), value: "4 / 18" },
-                { label: t("assignedInstructorLabel"), value: t("dashboardProfileInstructorDemo") },
+                {
+                  label: t("lessonsCompletedLabel"),
+                  value: `4 / 18 ${t("lessons")} (${t("studentServicesPackageTitle")}) · 1 / 3 (${t("studentServicesExtraTitle")})`,
+                },
               ].map((r, i) => (
                 <div key={i} className="flex justify-between text-sm border-b border-border pb-2">
                   <span className="text-muted-foreground">{r.label}</span>
@@ -147,39 +137,6 @@ export default function DashboardProfile() {
                   {savingPass ? t("updating") : t("updatePassword")}
                 </Button>
               </form>
-            </Card>
-          </Reveal>
-
-          <Reveal delay={0.18}>
-            <Card className="p-6 border-border">
-              <div className="flex items-center gap-2 mb-5">
-                <Bell className="w-4 h-4 text-muted-foreground" />
-                <h3 className="font-semibold text-foreground">{t("notificationPreferencesTitle")}</h3>
-              </div>
-              <div className="space-y-4">
-                {[
-                  t("profileNotifEmailLessons"),
-                  t("profileNotifSms"),
-                  t("profileNotifPromo"),
-                  t("profileNotifCancellations"),
-                ].map((opt, i) => (
-                  <label key={i} className="flex items-center justify-between cursor-pointer group">
-                    <span className="text-sm text-muted-foreground">{opt}</span>
-                    <div className="relative" onClick={() => toggleNotif(i)}>
-                      <div
-                        className={`w-10 h-5 rounded-full transition-colors ${
-                          notifs[i] ? "bg-primary" : "bg-accent"
-                        }`}
-                      />
-                      <div
-                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-background rounded-full shadow transition-transform ${
-                          notifs[i] ? "translate-x-5" : ""
-                        }`}
-                      />
-                    </div>
-                  </label>
-                ))}
-              </div>
             </Card>
           </Reveal>
         </div>

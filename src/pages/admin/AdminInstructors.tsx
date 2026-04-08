@@ -107,7 +107,6 @@ export default function AdminInstructors() {
       renderRegions(ins.availableRegions),
       renderLessonTypes(ins.lessonTypes),
       String(ins.years),
-      String(ins.students),
       String(ins.rating),
     ]
       .join(" ")
@@ -170,14 +169,12 @@ export default function AdminInstructors() {
 
     const nextPayload: Omit<Instructor, "id"> = {
       ...newIns,
-      students: 0,
       rating: 5.0,
       hourlyPrice: 7000,
       location: newIns.availableRegions[0] ?? "Yerevan",
       car: "Toyota Corolla",
       transmission: "Manual",
       imageSrc: "/logo.jpg",
-      specialties: [],
     };
 
     setInstructors((items) => createInstructor(items, nextPayload));
@@ -281,7 +278,6 @@ export default function AdminInstructors() {
                 t("cohortColSchedule"),
                 t("adminInstructorColRating"),
                 t("adminInstructorColExperience"),
-                t("adminInstructorColStudents"),
                 t("status"),
               ]}
               rows={filteredInstructors.map((ins) => [
@@ -296,14 +292,13 @@ export default function AdminInstructors() {
                 ins.schedule,
                 ins.rating.toFixed(1),
                 `${ins.years} ${t("adminInstructorYearsShort")}`,
-                String(ins.students),
                 instructorStatusLabel(ins.status),
               ])}
             />
           </div>
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[72rem]">
+          <table className="w-full text-sm min-w-[64rem]">
             <thead className="bg-muted/40">
               <tr>
                 {[
@@ -315,7 +310,6 @@ export default function AdminInstructors() {
                   t("cohortColSchedule"),
                   t("adminInstructorColRating"),
                   t("adminInstructorColExperience"),
-                  t("adminInstructorColStudents"),
                   t("status"),
                   t("actions"),
                 ].map((h) => (
@@ -354,7 +348,6 @@ export default function AdminInstructors() {
                   <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
                     {ins.years} {t("adminInstructorYearsShort")}
                   </td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{ins.students}</td>
                   <td className="px-4 py-3.5">
                     <Badge className={`text-xs ${ins.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                       {instructorStatusLabel(ins.status)}
@@ -384,12 +377,21 @@ export default function AdminInstructors() {
       </div>
 
       <Dialog open={editId !== null} onOpenChange={() => setEditId(null)}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[min(90vh,720px)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("instructorDialogEditTitle")}</DialogTitle>
           </DialogHeader>
           {editIns && (
             <form onSubmit={handleEdit} className="space-y-3 mt-2">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("blogFieldCoverImage")}</label>
+                <Input
+                  value={editIns.imageSrc}
+                  onChange={(e) => updateEdit(editIns.id, { imageSrc: e.target.value })}
+                  placeholder="/logo.jpg"
+                  className="h-10"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
                 <Input value={editIns.name} onChange={(e) => updateEdit(editIns.id, { name: e.target.value })} className="h-10" />
@@ -411,6 +413,49 @@ export default function AdminInstructors() {
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
                   <Input value={editIns.schedule} onChange={(e) => updateEdit(editIns.id, { schedule: e.target.value })} className="h-10" />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("ratingDisplayLabel")}</label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    max={5}
+                    value={editIns.rating}
+                    onChange={(e) => updateEdit(editIns.id, { rating: Math.min(5, Math.max(0, +e.target.value || 0)) })}
+                    className="h-10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("hourlyRateLabel")}</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={editIns.hourlyPrice}
+                    onChange={(e) => updateEdit(editIns.id, { hourlyPrice: +e.target.value || 0 })}
+                    className="h-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("location")}</label>
+                <Input value={editIns.location} onChange={(e) => updateEdit(editIns.id, { location: e.target.value })} className="h-10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("carColModel")}</label>
+                <Input value={editIns.car} onChange={(e) => updateEdit(editIns.id, { car: e.target.value })} className="h-10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("carColTransmission")}</label>
+                <select
+                  value={editIns.transmission === "Automatic" ? "Automatic" : "Manual"}
+                  onChange={(e) => updateEdit(editIns.id, { transmission: e.target.value })}
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="Manual">{t("transmissionManual")}</option>
+                  <option value="Automatic">{t("transmissionAutomatic")}</option>
+                </select>
               </div>
               <div>
                 <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>

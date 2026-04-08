@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -9,6 +9,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
+import LangToggle from "./LangToggle";
 import { DASHBOARD_NAV_LINKS } from "src/modules/dashboard/dashboard.consts";
 import {
   DropdownMenu,
@@ -50,9 +51,32 @@ export default function DashboardLayout({ children }: Props) {
     label: t(link.translationKey),
   }));
 
+  const headerTitle = useMemo(() => {
+    if (location.startsWith("/dashboard/learn/exam-tests") || location.startsWith("/dashboard/exam-tests")) {
+      return t("dashboardLearnExamTests");
+    }
+    if (location.startsWith("/dashboard/learn/thematic-tests")) {
+      return t("dashboardLearnThematicTests");
+    }
+    if (location.startsWith("/dashboard/learn")) {
+      return t("learn");
+    }
+    if (location.startsWith("/dashboard/bookings/package")) {
+      return t("bookingsSubnavPackage");
+    }
+    if (location.startsWith("/dashboard/bookings/practical")) {
+      return t("bookingsSubnavPractical");
+    }
+    const hit = DASHBOARD_NAV_LINKS.find((l) => l.href === location);
+    return hit ? t(hit.translationKey) : t("dashboard");
+  }, [location, t]);
+
   const isNavActive = (href: string) => {
     if (href === "/dashboard/learn") {
       return location.startsWith("/dashboard/learn") || location.startsWith("/dashboard/exam-tests");
+    }
+    if (href === "/dashboard/bookings") {
+      return location.startsWith("/dashboard/bookings");
     }
     return location === href;
   };
@@ -66,10 +90,13 @@ export default function DashboardLayout({ children }: Props) {
     <div className="flex flex-col h-full min-h-0 bg-card">
       <div className="p-5 border-b border-border shrink-0">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
             <img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
           </div>
-          <span className="font-bold text-foreground">{t("brandName")}</span>
+          <div className="min-w-0">
+            <span className="font-bold text-foreground block truncate">{t("brandName")}</span>
+            <p className="text-xs text-primary font-medium truncate">{t("roleStudent")}</p>
+          </div>
         </Link>
       </div>
       <nav className="px-3 py-4 flex-1 min-h-0 overflow-y-auto space-y-1">
@@ -130,32 +157,34 @@ export default function DashboardLayout({ children }: Props) {
         <Sidebar />
       </aside>
       <div className="flex flex-col flex-1 min-w-0 min-h-0 lg:pl-64">
-        <header className="bg-card border-b border-border px-4 sm:px-6 h-16 flex items-center justify-between shrink-0 z-20">
-            <div className="flex items-center gap-3">
+        <header className="bg-card border-b border-border px-3 sm:px-6 min-h-14 h-14 sm:h-16 sm:min-h-16 flex items-center justify-between gap-2 shrink-0 z-20">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <Sheet open={open} onOpenChange={setOpen}>
-              <SheetTrigger asChild className="lg:hidden">
-                <Button variant="ghost" size="icon-lg"><Menu className="h-6 w-6" /></Button>
+              <SheetTrigger asChild className="lg:hidden shrink-0">
+                <Button variant="ghost" size="icon-lg" aria-label={t("openMenu")}>
+                  <Menu className="h-6 w-6" />
+                </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[86vw] max-w-[20rem] p-0">
+              <SheetContent side="left" className="w-[min(20rem,86vw)] p-0">
                 <div className="h-full pt-12 flex flex-col min-h-0">
                   <Sidebar />
                 </div>
               </SheetContent>
             </Sheet>
-            <h1 className="font-semibold text-foreground hidden sm:block">
-              {location.startsWith("/dashboard/learn")
-                ? t("learn")
-                : location.startsWith("/dashboard/exam-tests")
-                ? t("learn")
-                : nav.find((n) => n.href === location)?.label || t("dashboard")}
-            </h1>
+            <h1 className="font-semibold text-foreground text-sm sm:text-base truncate min-w-0">{headerTitle}</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <LangToggle />
             <ThemeToggle />
             <UserMenu />
           </div>
         </header>
-        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">{children}</main>
+        <main
+          ref={mainRef}
+          className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
+        >
+          {children}
+        </main>
       </div>
     </div>
   );

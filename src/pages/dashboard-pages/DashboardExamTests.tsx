@@ -1,11 +1,20 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Reveal } from "src/lib/motion";
 import DashboardLayout from "src/components/DashboardLayout";
+import DashboardLearnSubnav from "src/components/dashboard/DashboardLearnSubnav";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
-import { Button } from "src/components/ui/button";
-import { ClipboardCheck, Layers, Signpost, ArrowRight } from "lucide-react";
+import { getExamStats, type ExamStats } from "src/lib/examStats";
+import { EXAM_QUESTION_POOL, type ExamQuizMode } from "src/data/examSampleQuestions";
+
+function poolTotalForMode(mode: ExamQuizMode): number {
+  if (mode === "signs") return EXAM_QUESTION_POOL.filter((q) => q.category === "signs").length;
+  if (mode === "topics") {
+    return EXAM_QUESTION_POOL.filter((q) => q.category === "rules" || q.category === "safety").length;
+  }
+  return EXAM_QUESTION_POOL.length;
+}
 
 export default function DashboardExamTests() {
   const { t } = useLang();
@@ -14,96 +23,125 @@ export default function DashboardExamTests() {
     ? "/dashboard/learn/exam-tests"
     : "/dashboard/exam-tests";
 
-  const modes = [
-    {
-      href: `${basePath}/quiz/full`,
-      icon: ClipboardCheck,
-      title: t("examTestsFullTitle"),
-      desc: t("examTestsFullDesc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-      border: "border-border",
-    },
-    {
-      href: `${basePath}/quiz/topics`,
-      icon: Layers,
-      title: t("examTestsTopicsTitle"),
-      desc: t("examTestsTopicsDesc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-      border: "border-border",
-    },
-    {
-      href: `${basePath}/quiz/signs`,
-      icon: Signpost,
-      title: t("examTestsSignsTitle"),
-      desc: t("examTestsSignsDesc"),
-      color: "text-primary",
-      bg: "bg-primary/10",
-      border: "border-border",
-    },
+  const [stats, setStats] = useState<ExamStats>({
+    answered: 0,
+    correct: 0,
+    wrong: 0,
+    attempts: 0,
+    bestPct: 0,
+    lastPct: 0,
+    questionResults: {},
+    topicStats: {},
+    activeSession: null,
+  });
+
+  useEffect(() => {
+    setStats(getExamStats());
+  }, []);
+
+  const totalQuestions = 1094;
+  const progressPct = useMemo(() => {
+    if (totalQuestions <= 0) return 0;
+    return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
+  }, [stats.answered]);
+
+  const activeTopicStats = stats.activeSession ? stats.topicStats[stats.activeSession.topicId] : undefined;
+
+  const modes: Array<{ href: string; total: number }> = [
+    { href: `${basePath}/quiz/full`, total: poolTotalForMode("full") },
+    { href: `${basePath}/quiz/topics`, total: poolTotalForMode("topics") },
+    { href: `${basePath}/quiz/signs`, total: poolTotalForMode("signs") },
   ];
 
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
-        <PanelPageHeader className="mb-6" icon={ClipboardCheck} title="Քննական թեստեր" subtitle={t("examTestsHubSub")} />
+        <PanelPageHeader
+          className="mb-4 sm:mb-6"
+          title={t("dashboardLearnExamTests")}
+          subtitle={t("dashboardLearnExamSubtitle")}
+        />
 
-        <div className="flex flex-wrap gap-2 mb-8">
-          <Link
-            href="/dashboard/learn/exam-tests"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground"
-          >
-            Քննական թեստեր
-          </Link>
-          <Link
-            href="/dashboard/learn/thematic-tests"
-            className="px-3 py-1.5 rounded-lg text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-          >
-            Թեմատիկ թեստեր
-          </Link>
+        <DashboardLearnSubnav active="exam" />
+
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-foreground">{t("examTestsModesHeading")}</h2>
         </div>
 
-        <Reveal delay={0.06}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-            <Card className="p-5 border-border">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("examTestsStatAttempts")}</p>
-              <p className="text-2xl font-bold text-foreground mt-1">—</p>
-            </Card>
-            <Card className="p-5 border-border">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("examTestsStatBest")}</p>
-              <p className="text-2xl font-bold text-foreground mt-1">—</p>
-            </Card>
-            <Card className="p-5 border-border">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("examTestsStatLast")}</p>
-              <p className="text-2xl font-bold text-foreground mt-1">—</p>
-            </Card>
+        <Card className="rounded-xl border border-border p-4 sm:p-5 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm text-muted-foreground">{t("examTestsMyProgress")}</p>
+            <p className="text-xs text-muted-foreground">{progressPct}%</p>
           </div>
-        </Reveal>
+          <div className="h-1.5 w-full rounded-full bg-accent mb-3">
+            <div className="h-1.5 rounded-full bg-amber-400 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-lg bg-accent/40 p-3">
+              <p className="text-emerald-600 font-semibold text-sm">
+                {stats.correct} / {totalQuestions}
+              </p>
+              <p className="text-xs text-muted-foreground">{t("examTestsPositiveResult")}</p>
+            </div>
+            <div className="rounded-lg bg-accent/40 p-3">
+              <p className="text-rose-500 font-semibold text-sm">
+                {stats.wrong} / {totalQuestions}
+              </p>
+              <p className="text-xs text-muted-foreground">{t("examTestsNegativeResult")}</p>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {modes.map((m, i) => (
-            <Reveal key={m.href} delay={i * 0.06}>
-              <Card className={`p-6 border ${m.border} shadow-sm flex flex-col`}>
-                <div className={`w-12 h-12 ${m.bg} rounded-xl flex items-center justify-center mb-4`}>
-                  <m.icon className={`w-6 h-6 ${m.color}`} />
-                </div>
-                <h3 className="font-bold text-foreground mb-2">{m.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed flex-1 mb-6">{m.desc}</p>
-                <Link href={m.href}>
-                  <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
-                    {t("examTestsStart")}
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
-              </Card>
-            </Reveal>
-          ))}
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground">{t("examTestsStatAttempts")}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">{stats.attempts}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground">{t("examTestsStatBest")}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">{stats.bestPct}%</p>
+              {stats.activeSession && activeTopicStats && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {activeTopicStats.bestCorrect ?? 0}/{activeTopicStats.bestAnswered ?? 0}
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+              <p className="text-xs text-muted-foreground">{t("examTestsStatLast")}</p>
+              <p className="text-sm font-semibold text-foreground mt-1">{stats.lastPct}%</p>
+              {stats.activeSession && activeTopicStats && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {activeTopicStats.lastCorrect ?? 0}/{activeTopicStats.lastAnswered ?? 0}
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <div className="flex justify-end mb-3">
+          <span className="text-sm text-muted-foreground">{t("examTestsRestoreResultsCaption")}</span>
         </div>
 
-        <Reveal delay={0.18}>
-          <p className="text-xs text-muted-foreground mt-8 text-center">{t("examTestsHubNote")}</p>
-        </Reveal>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          {modes.map((m, index) => {
+            const answeredInMode = 0;
+            const testLabel = `${t("examTestsNumberedTitle")} ${index + 1}`;
+
+            return (
+              <Link key={m.href} href={m.href} className="block">
+                <Card className="rounded-xl sm:rounded-2xl border border-neutral-200/90 dark:border-border bg-card shadow-none transition-colors hover:bg-muted/30">
+                  <div className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5 sm:py-4">
+                    <p className="text-sm sm:text-[15px] font-medium text-neutral-800 dark:text-foreground leading-snug min-w-0">
+                      {testLabel}
+                    </p>
+                    <p className="text-sm text-muted-foreground tabular-nums shrink-0">
+                      {answeredInMode} / {m.total}
+                    </p>
+                  </div>
+                </Card>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </DashboardLayout>
   );

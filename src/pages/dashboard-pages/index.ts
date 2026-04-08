@@ -4,6 +4,8 @@ export { default as DashboardExamTestsPage } from "./DashboardExamTests";
 export { default as DashboardExamQuizPage } from "./DashboardExamQuiz";
 export { default as DashboardThematicTestsPage } from "./DashboardThematicTests";
 export { default as DashboardBookingsPage } from "./DashboardBookings";
+export { default as DashboardBookingsPackagePage } from "./DashboardBookingsPackage";
+export { default as DashboardBookingsPracticalPage } from "./DashboardBookingsPractical";
 export { default as DashboardPurchasesPage } from "./DashboardPurchases";
 export { default as DashboardPaymentsPage } from "./DashboardPayments";
 export { default as DashboardProfilePage } from "./DashboardProfile";

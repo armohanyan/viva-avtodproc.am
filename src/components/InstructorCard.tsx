@@ -4,7 +4,7 @@ import { Badge } from "src/components/ui/badge";
 import { Card } from "src/components/ui/card";
 import { CountUpText } from "src/lib/motion";
 import { useLang } from "src/lib/i18n";
-import { Star, CalendarDays, Users, MapPin, Car, Gauge } from "lucide-react";
+import { Star, CalendarDays, MapPin, Car, Gauge } from "lucide-react";
 import type { Instructor } from "src/data/instructors";
 import { getLessonTypeLabel } from "src/modules/instructors/instructor-booking";
 
@@ -96,12 +96,6 @@ export default function InstructorCard({
           <div className="flex items-center gap-2">
             <Gauge className="w-4 h-4 text-primary shrink-0" />
             <span>{instructor.transmission}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-primary shrink-0" />
-            <span>
-              <CountUpText value={`${instructor.students}+`} />
-            </span>
           </div>
           <div className="flex items-center gap-2 col-span-2">
             <CalendarDays className="w-4 h-4 text-primary shrink-0" />
