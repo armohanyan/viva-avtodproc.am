@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
@@ -292,53 +293,81 @@ export default function AdminCars() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{c.plate}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground font-mono text-xs whitespace-nowrap">{c.vin ?? "—"}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground">{c.make}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground">{c.model}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.year ?? "—"}</td>
-                  <td
-                    className="px-4 py-3.5 text-muted-foreground max-w-[14rem] truncate"
-                    title={instructorNamesForEmails(c.assignedInstructorEmails)}
-                  >
-                    {instructorNamesForEmails(c.assignedInstructorEmails)}
-                  </td>
-                  <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">
-                    {formatMoney(totalsAllTimeByCar.get(c.id) ?? 0)}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openExpenses(c)}
-                        className="p-1.5 rounded hover:bg-primary/10 text-primary"
-                        aria-label={t("fleetOpenExpenses")}
-                        title={t("fleetOpenExpenses")}
-                      >
-                        <Receipt className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditCar({ ...c })}
-                        className="p-1.5 rounded hover:bg-primary/10 text-primary"
-                        aria-label={t("edit")}
-                        title={t("edit")}
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteId(c.id)}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                        aria-label={t("delete")}
-                        title={t("delete")}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={c.id}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "expenses",
+                      label: t("fleetOpenExpenses"),
+                      ariaLabel: t("fleetOpenExpenses"),
+                      icon: Receipt,
+                      onClick: () => openExpenses(c),
+                    },
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditCar({ ...c }),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(c.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{c.plate}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground font-mono text-xs whitespace-nowrap">{c.vin ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{c.make}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{c.model}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.year ?? "—"}</td>
+                    <td
+                      className="px-4 py-3.5 text-muted-foreground max-w-[14rem] truncate"
+                      title={instructorNamesForEmails(c.assignedInstructorEmails)}
+                    >
+                      {instructorNamesForEmails(c.assignedInstructorEmails)}
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">
+                      {formatMoney(totalsAllTimeByCar.get(c.id) ?? 0)}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "expenses",
+                            label: t("fleetOpenExpenses"),
+                            ariaLabel: t("fleetOpenExpenses"),
+                            icon: Receipt,
+                            onClick: () => openExpenses(c),
+                          },
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditCar({ ...c }),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(c.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>
@@ -685,39 +714,64 @@ export default function AdminCars() {
                           </tr>
                         ) : (
                           listExpenses.map((ex) => (
-                            <tr key={ex.id} className="hover:bg-muted/30">
-                              <td className="px-3 sm:px-4 py-2.5 whitespace-nowrap text-muted-foreground align-top">{ex.date}</td>
-                              <td className="px-3 sm:px-4 py-2.5 font-medium tabular-nums align-top whitespace-nowrap">{formatMoney(ex.amount)}</td>
-                              <td className="px-3 sm:px-4 py-2.5 align-top min-w-[140px] max-w-[280px]">{ex.purpose}</td>
-                              <td className="px-3 sm:px-4 py-2.5 text-muted-foreground align-top min-w-[120px] max-w-[220px] break-words" title={ex.note}>
-                                {ex.note ?? "—"}
-                              </td>
-                              <td className="px-3 sm:px-4 py-2.5 align-top whitespace-nowrap">
-                                <div className="flex gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditExpense({ ...ex })}
-                                    className="p-1.5 rounded hover:bg-primary/10 text-primary"
-                                    aria-label={t("edit")}
-                        title={t("edit")}
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      removeExpense(ex.id);
-                                      showToast(t("fleetExpenseDeletedToast"), "success");
-                                    }}
-                                    className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                                    aria-label={t("delete")}
-                        title={t("delete")}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
+                            <AdminTableRowContextMenu
+                              key={ex.id}
+                              actions={[
+                                {
+                                  kind: "item",
+                                  id: "edit",
+                                  label: t("edit"),
+                                  icon: Edit2,
+                                  onClick: () => setEditExpense({ ...ex }),
+                                },
+                                {
+                                  kind: "item",
+                                  id: "delete",
+                                  label: t("delete"),
+                                  icon: Trash2,
+                                  destructive: true,
+                                  onClick: () => {
+                                    removeExpense(ex.id);
+                                    showToast(t("fleetExpenseDeletedToast"), "success");
+                                  },
+                                },
+                              ]}
+                            >
+                              <tr className="hover:bg-muted/30">
+                                <td className="px-3 sm:px-4 py-2.5 whitespace-nowrap text-muted-foreground align-top">{ex.date}</td>
+                                <td className="px-3 sm:px-4 py-2.5 font-medium tabular-nums align-top whitespace-nowrap">{formatMoney(ex.amount)}</td>
+                                <td className="px-3 sm:px-4 py-2.5 align-top min-w-[140px] max-w-[280px]">{ex.purpose}</td>
+                                <td className="px-3 sm:px-4 py-2.5 text-muted-foreground align-top min-w-[120px] max-w-[220px] break-words" title={ex.note}>
+                                  {ex.note ?? "—"}
+                                </td>
+                                <td className="px-3 sm:px-4 py-2.5 align-top whitespace-nowrap">
+                                  <AdminTableRowActions
+                                    toolbarOnly
+                                    className="gap-1"
+                                    actions={[
+                                      {
+                                        kind: "item",
+                                        id: "edit",
+                                        label: t("edit"),
+                                        icon: Edit2,
+                                        onClick: () => setEditExpense({ ...ex }),
+                                      },
+                                      {
+                                        kind: "item",
+                                        id: "delete",
+                                        label: t("delete"),
+                                        icon: Trash2,
+                                        destructive: true,
+                                        onClick: () => {
+                                          removeExpense(ex.id);
+                                          showToast(t("fleetExpenseDeletedToast"), "success");
+                                        },
+                                      },
+                                    ]}
+                                  />
+                                </td>
+                              </tr>
+                            </AdminTableRowContextMenu>
                           ))
                         )}
                       </tbody>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useLang } from "../lib/i18n";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { ChevronDown, Menu } from "lucide-react";
@@ -14,7 +15,7 @@ import { cn } from "src/lib/utils";
 
 export default function Navbar() {
   const { t } = useLang();
-  const [location] = useLocation();
+  const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
 
   const isAdmin = location.startsWith("/admin");
@@ -50,8 +51,8 @@ export default function Navbar() {
     isAdmin && href === "/admin/learn"
       ? location === href || location.startsWith("/admin/learn/")
       : href === "/dashboard/learn"
-      ? location === href || location.startsWith("/dashboard/learn/") || location.startsWith("/dashboard/exam-tests")
-      : location === href;
+        ? location === href || location.startsWith("/dashboard/learn/") || location.startsWith("/dashboard/exam-tests")
+        : location === href;
   const isOfferActive = offerLinks.some((link) => location === link.href);
   const learnLinkActive = (href: string) =>
     location === href || (href === "/thematic-questions" && location.startsWith("/thematic-questions"));
@@ -62,11 +63,11 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 bg-background border-b border-border shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center gap-4 min-w-0 md:gap-6 lg:gap-8">
-          <Link href="/" className="flex shrink-0 items-center gap-2">
+          <MarketingLink href="/" className="flex shrink-0 items-center gap-2">
             <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
               <img src="/logo.jpg" alt={t("brandName")} className="w-7 h-7 object-contain" />
             </div>
-          </Link>
+          </MarketingLink>
 
           <div className="hidden lg:flex flex-1 min-w-0 items-center gap-3 lg:gap-4">
             <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain scroll-pl-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -74,7 +75,7 @@ export default function Navbar() {
                 {isPublic ? (
                   <>
                     {publicRootLinks.slice(0, 2).map((l) => (
-                      <Link
+                      <MarketingLink
                         key={l.href}
                         href={l.href}
                         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
@@ -84,7 +85,7 @@ export default function Navbar() {
                         }`}
                       >
                         {l.label}
-                      </Link>
+                      </MarketingLink>
                     ))}
 
                     <DropdownMenu>
@@ -95,7 +96,7 @@ export default function Navbar() {
                             "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5",
                             isOfferActive
                               ? "text-primary bg-primary/10"
-                              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                              : "text-muted-foreground hover:text-foreground hover:bg-accent",
                           )}
                         >
                           {t("offer")}
@@ -104,10 +105,15 @@ export default function Navbar() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-44">
                         {offerLinks.map((link) => (
-                          <DropdownMenuItem key={link.href} asChild>
-                            <Link href={link.href} className="w-full cursor-pointer">
-                              {link.label}
-                            </Link>
+                          <DropdownMenuItem
+                            key={link.href}
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              navigate(link.href);
+                            }}
+                          >
+                            {link.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -121,7 +127,7 @@ export default function Navbar() {
                             "flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5",
                             isLearnActive
                               ? "text-primary bg-primary/10"
-                              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                              : "text-muted-foreground hover:text-foreground hover:bg-accent",
                           )}
                         >
                           {t("learn")}
@@ -130,17 +136,22 @@ export default function Navbar() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-44">
                         {learnLinks.map((link) => (
-                          <DropdownMenuItem key={link.href} asChild>
-                            <Link href={link.href} className="w-full cursor-pointer">
-                              {link.label}
-                            </Link>
+                          <DropdownMenuItem
+                            key={link.href}
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              navigate(link.href);
+                            }}
+                          >
+                            {link.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
 
                     {blogNav ? (
-                      <Link
+                      <MarketingLink
                         href={blogNav.href}
                         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
                           blogNavActive
@@ -149,11 +160,11 @@ export default function Navbar() {
                         }`}
                       >
                         {blogNav.label}
-                      </Link>
+                      </MarketingLink>
                     ) : null}
 
                     {publicRootLinks.slice(2).map((l) => (
-                      <Link
+                      <MarketingLink
                         key={l.href}
                         href={l.href}
                         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
@@ -163,7 +174,7 @@ export default function Navbar() {
                         }`}
                       >
                         {l.label}
-                      </Link>
+                      </MarketingLink>
                     ))}
                   </>
                 ) : (
@@ -191,14 +202,16 @@ export default function Navbar() {
               <ThemeToggle />
               {!isDashboard && !isAdmin && (
                 <>
-                  <Link href="/login">
-                    <Button variant="ghost" size="sm">{t("login")}</Button>
-                  </Link>
-                  <Link href="/register">
+                  <a href={panelHref("/login")}>
+                    <Button variant="ghost" size="sm">
+                      {t("login")}
+                    </Button>
+                  </a>
+                  <a href={panelHref("/register")}>
                     <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground whitespace-nowrap">
                       {t("register")}
                     </Button>
-                  </Link>
+                  </a>
                 </>
               )}
               {(isDashboard || isAdmin) && (
@@ -206,9 +219,11 @@ export default function Navbar() {
                   <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm">
                     A
                   </div>
-                  <Link href="/">
-                    <Button variant="ghost" size="sm">{t("logout")}</Button>
-                  </Link>
+                  <a href={marketingHref("/")}>
+                    <Button variant="ghost" size="sm">
+                      {t("logout")}
+                    </Button>
+                  </a>
                 </div>
               )}
             </div>
@@ -235,88 +250,100 @@ export default function Navbar() {
                     Navigation
                   </div>
                   <div className="flex flex-col gap-1">
-                {isPublic ? (
-                  <>
-                    {publicRootLinks.slice(0, 2).map((l) => (
-                      <Link
-                        key={l.href}
-                        href={l.href}
-                        onClick={() => setOpen(false)}
-                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {l.label}
-                      </Link>
-                    ))}
+                    {isPublic ? (
+                      <>
+                        {publicRootLinks.slice(0, 2).map((l) => (
+                          <MarketingLink
+                            key={l.href}
+                            href={l.href}
+                            onClick={() => setOpen(false)}
+                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              location === l.href
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {l.label}
+                          </MarketingLink>
+                        ))}
 
-                    {offerLinks.map((l) => (
-                      <Link
-                        key={l.href}
-                        href={l.href}
-                        onClick={() => setOpen(false)}
-                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {l.label}
-                      </Link>
-                    ))}
+                        {offerLinks.map((l) => (
+                          <MarketingLink
+                            key={l.href}
+                            href={l.href}
+                            onClick={() => setOpen(false)}
+                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              location === l.href
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {l.label}
+                          </MarketingLink>
+                        ))}
 
-                    {learnLinks.map((l) => (
-                      <Link
-                        key={l.href}
-                        href={l.href}
-                        onClick={() => setOpen(false)}
-                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          learnLinkActive(l.href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {l.label}
-                      </Link>
-                    ))}
+                        {learnLinks.map((l) => (
+                          <MarketingLink
+                            key={l.href}
+                            href={l.href}
+                            onClick={() => setOpen(false)}
+                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              learnLinkActive(l.href)
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {l.label}
+                          </MarketingLink>
+                        ))}
 
-                    {blogNav ? (
-                      <Link
-                        href={blogNav.href}
-                        onClick={() => setOpen(false)}
-                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          blogNavActive ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {blogNav.label}
-                      </Link>
-                    ) : null}
+                        {blogNav ? (
+                          <MarketingLink
+                            href={blogNav.href}
+                            onClick={() => setOpen(false)}
+                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              blogNavActive
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {blogNav.label}
+                          </MarketingLink>
+                        ) : null}
 
-                    {publicRootLinks.slice(2).map((l) => (
-                      <Link
-                        key={l.href}
-                        href={l.href}
-                        onClick={() => setOpen(false)}
-                        className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                          location === l.href ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                        }`}
-                      >
-                        {l.label}
-                      </Link>
-                    ))}
-                  </>
-                ) : (
-                  links.map((l) => (
-                    <Link
-                      key={l.href}
-                      href={l.href}
-                      onClick={() => setOpen(false)}
-                      className={cn(
-                        "px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                        "indent" in l && l.indent ? "pl-6 text-xs" : "",
-                        panelLinkActive(l.href) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-accent",
-                      )}
-                    >
-                      {l.label}
-                    </Link>
-                  ))
-                )}
+                        {publicRootLinks.slice(2).map((l) => (
+                          <MarketingLink
+                            key={l.href}
+                            href={l.href}
+                            onClick={() => setOpen(false)}
+                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                              location === l.href
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {l.label}
+                          </MarketingLink>
+                        ))}
+                      </>
+                    ) : (
+                      links.map((l) => (
+                        <Link
+                          key={l.href}
+                          href={l.href}
+                          onClick={() => setOpen(false)}
+                          className={cn(
+                            "px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                            "indent" in l && l.indent ? "pl-6 text-xs" : "",
+                            panelLinkActive(l.href)
+                              ? "text-primary bg-primary/10"
+                              : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                          )}
+                        >
+                          {l.label}
+                        </Link>
+                      ))
+                    )}
                   </div>
                 </div>
                 <div className="border-t border-border p-4 space-y-3 bg-background/60">
@@ -326,12 +353,14 @@ export default function Navbar() {
                   </div>
                   {!isDashboard && !isAdmin && (
                     <div className="flex flex-col gap-3">
-                      <Link href="/login" onClick={() => setOpen(false)}>
-                        <Button variant="outline" className="w-full">{t("login")}</Button>
-                      </Link>
-                      <Link href="/register" onClick={() => setOpen(false)}>
+                      <a href={panelHref("/login")} onClick={() => setOpen(false)}>
+                        <Button variant="outline" className="w-full">
+                          {t("login")}
+                        </Button>
+                      </a>
+                      <a href={panelHref("/register")} onClick={() => setOpen(false)}>
                         <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">{t("register")}</Button>
-                      </Link>
+                      </a>
                     </div>
                   )}
                 </div>

@@ -6,15 +6,8 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { getExamStats, type ExamStats } from "src/lib/examStats";
-import { EXAM_QUESTION_POOL, type ExamQuizMode } from "src/data/examSampleQuestions";
-
-function poolTotalForMode(mode: ExamQuizMode): number {
-  if (mode === "signs") return EXAM_QUESTION_POOL.filter((q) => q.category === "signs").length;
-  if (mode === "topics") {
-    return EXAM_QUESTION_POOL.filter((q) => q.category === "rules" || q.category === "safety").length;
-  }
-  return EXAM_QUESTION_POOL.length;
-}
+import type { ExamQuizMode } from "src/data/examSampleQuestions";
+import { countQuestionsForExamMode, getExamQuestionPool, subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
 
 export default function DashboardExamTests() {
   const { t } = useLang();
@@ -39,7 +32,17 @@ export default function DashboardExamTests() {
     setStats(getExamStats());
   }, []);
 
-  const totalQuestions = 1094;
+  const [poolRev, setPoolRev] = useState(0);
+  useEffect(() => subscribeExamQuestionsUpdated(() => setPoolRev((r) => r + 1)), []);
+
+  const pool = useMemo(() => {
+    void poolRev;
+    return getExamQuestionPool();
+  }, [poolRev]);
+
+  const poolTotalForMode = (mode: ExamQuizMode) => countQuestionsForExamMode(pool, mode);
+
+  const totalQuestions = pool.length;
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
     return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));

@@ -1,7 +1,11 @@
-import { Link, Redirect, useRoute } from "wouter";
+"use client";
+
+import { useEffect } from "react";
+import { useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { getBlogBySlug } from "src/lib/blogs";
 import { sanitizeBlogHtml, sanitizeCoverImageUrl } from "src/lib/blogHtml";
 import { ArrowLeft, Calendar } from "lucide-react";
@@ -12,17 +16,16 @@ function formatDate(iso: string, locale: string): string {
   return d.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
 }
 
-export default function BlogPost() {
+export type BlogPostProps = {
+  /** When set (e.g. Next.js `[slug]`), wouter route matching is skipped */
+  slug?: string;
+};
+
+function BlogPostBody({ slug }: { slug: string }) {
   const { t, lang } = useLang();
-  const [match, params] = useRoute("/blogs/:slug");
-  const slug = match && params?.slug ? params.slug : "";
-
-  const post = slug ? getBlogBySlug(slug) : undefined;
+  const { MarketingLink } = useAppNavigation();
   const locale = lang === "am" ? "hy-AM" : lang === "ru" ? "ru-RU" : "en-US";
-
-  if (!match) {
-    return <Redirect to="/blogs" />;
-  }
+  const post = slug ? getBlogBySlug(slug) : undefined;
 
   if (!post) {
     return (
@@ -31,9 +34,9 @@ export default function BlogPost() {
         <section className="py-24 bg-background">
           <div className="max-w-2xl mx-auto px-4 text-center">
             <h1 className="text-2xl font-bold text-foreground mb-4">{t("blogPostNotFound")}</h1>
-            <Link href="/blogs" className="text-primary font-medium hover:underline">
+            <MarketingLink href="/blogs" className="text-primary font-medium hover:underline">
               {t("blogBackToList")}
-            </Link>
+            </MarketingLink>
           </div>
         </section>
         <Footer />
@@ -50,13 +53,13 @@ export default function BlogPost() {
 
       <article className="bg-background">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-          <Link
+          <MarketingLink
             href="/blogs"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-8 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" aria-hidden />
             {t("blogBackToList")}
-          </Link>
+          </MarketingLink>
 
           {cover ? (
             <div className="mb-10 rounded-2xl overflow-hidden border border-border bg-muted aspect-[21/9] max-h-[min(420px,50vh)]">
@@ -85,4 +88,35 @@ export default function BlogPost() {
       <Footer />
     </div>
   );
+}
+
+function BlogPostWouter() {
+  const { navigate } = useAppNavigation();
+  const [match, params] = useRoute("/blogs/:slug");
+  const slug = match && params?.slug ? params.slug : "";
+
+  useEffect(() => {
+    if (!match) {
+      navigate("/blogs");
+    }
+  }, [match, navigate]);
+
+  if (!match) {
+    return (
+      <div className="min-h-screen">
+        <Navbar />
+        <section className="py-24 bg-background" aria-hidden />
+        <Footer />
+      </div>
+    );
+  }
+
+  return <BlogPostBody slug={slug} />;
+}
+
+export default function BlogPost({ slug: slugProp }: BlogPostProps = {}) {
+  if (slugProp !== undefined) {
+    return <BlogPostBody slug={slugProp} />;
+  }
+  return <BlogPostWouter />;
 }

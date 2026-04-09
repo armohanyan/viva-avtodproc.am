@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
@@ -130,42 +131,63 @@ export default function AdminBranches() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((b) => (
-                <tr key={b.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5 font-medium text-foreground min-w-[200px]">
-                    <span className="inline-flex items-center gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                      {b.name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate">{b.phone ?? "—"}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[12rem] truncate">{b.email ?? "—"}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground max-w-[14rem] truncate">{b.workHours ?? "—"}</td>
-                  <td className="px-4 py-3.5 text-xs text-muted-foreground font-mono max-w-[180px] truncate" title={b.mapUrl}>
-                    {b.mapUrl}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditBranch({ ...b })}
-                        className="p-1.5 rounded hover:bg-primary/10 text-primary"
-                        aria-label={t("edit")}
-                        title={t("edit")}
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteId(b.id)}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                        aria-label={t("delete")}
-                        title={t("delete")}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={b.id}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditBranch({ ...b }),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(b.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5 font-medium text-foreground min-w-[200px]">
+                      <span className="inline-flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                        {b.name}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate">{b.phone ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[12rem] truncate">{b.email ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground max-w-[14rem] truncate">{b.workHours ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-xs text-muted-foreground font-mono max-w-[180px] truncate" title={b.mapUrl}>
+                      {b.mapUrl}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditBranch({ ...b }),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(b.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

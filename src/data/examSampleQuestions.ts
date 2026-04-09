@@ -9,6 +9,10 @@ export interface ExamQuestion {
   readonly optionExplanations?: Record<Lang, readonly (string | null)[]>;
   readonly correctIndex: number;
   readonly category: ExamQuestionCategory;
+  /** Thematic chapter (1–10). Used with `?topic=` on thematic practice; omit for sign-only questions. */
+  readonly topicId?: string;
+  /** Optional illustration (HTTPS URL or data URL), same for all languages. */
+  readonly imageUrl?: string | null;
 }
 
 /** Localized copy for the active UI language (same correctIndex across languages). */
@@ -41,6 +45,7 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
     },
     correctIndex: 1,
     category: "rules",
+    topicId: "5",
   },
   {
     id: "r2",
@@ -76,6 +81,7 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
     },
     correctIndex: 1,
     category: "rules",
+    topicId: "5",
   },
   {
     id: "s1",
@@ -136,6 +142,7 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
     },
     correctIndex: 1,
     category: "safety",
+    topicId: "5",
   },
   {
     id: "sf2",
@@ -156,6 +163,7 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
     },
     correctIndex: 1,
     category: "safety",
+    topicId: "5",
   },
   {
     id: "r3",
@@ -176,6 +184,7 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
     },
     correctIndex: 1,
     category: "rules",
+    topicId: "5",
   },
   {
     id: "s3",
@@ -201,12 +210,25 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
 
 export type ExamQuizMode = "full" | "topics" | "signs";
 
-export function selectQuestionsForMode(mode: ExamQuizMode, pool: readonly ExamQuestion[] = EXAM_QUESTION_POOL): ExamQuestion[] {
+export type SelectExamQuestionsOpts = {
+  /** When set (thematic URL with `?topic=`), keep only rules/safety questions with this `topicId`. */
+  thematicTopicId?: string | null;
+};
+
+export function selectQuestionsForMode(
+  mode: ExamQuizMode,
+  pool: readonly ExamQuestion[] = EXAM_QUESTION_POOL,
+  opts?: SelectExamQuestionsOpts,
+): ExamQuestion[] {
   let filtered: ExamQuestion[];
   if (mode === "signs") {
     filtered = pool.filter((q) => q.category === "signs");
   } else if (mode === "topics") {
     filtered = pool.filter((q) => q.category === "rules" || q.category === "safety");
+    const tid = opts?.thematicTopicId?.trim();
+    if (tid) {
+      filtered = filtered.filter((q) => q.topicId === tid);
+    }
   } else {
     filtered = [...pool];
   }

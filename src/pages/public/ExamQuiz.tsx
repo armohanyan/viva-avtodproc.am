@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Redirect, useLocation, useRoute } from "wouter";
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import {
@@ -13,6 +16,9 @@ import {
 import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
+import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
+import { getExamQuestionPool, subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
+import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -20,28 +26,53 @@ function isExamMode(s: string): s is ExamQuizMode {
   return VALID_MODES.includes(s as ExamQuizMode);
 }
 
-export default function ExamQuiz() {
+export type ExamQuizProps = {
+  mode?: string | null;
+  examListPath?: "/thematic-questions" | "/exam-tests";
+};
+
+function ExamQuizRedirect({ target }: { target: "/thematic-questions" | "/exam-tests" }) {
+  const { navigate } = useAppNavigation();
+  useEffect(() => {
+    navigate(target);
+  }, [navigate, target]);
+  return null;
+}
+
+type RunnerProps = {
+  mode: ExamQuizMode;
+  listPath: "/thematic-questions" | "/exam-tests";
+};
+
+function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const { t, lang } = useLang();
-  const [, setLocation] = useLocation();
-  const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
-  const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
-  const match = newMatch || oldMatch;
-  const modeParam = newParams?.mode ?? oldParams?.mode ?? "";
-  const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
-  const topicId = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") || "5" : "5";
+  const { navigate, MarketingLink } = useAppNavigation();
+  const topicParam =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") : null;
+  const topicId = topicParam || "5";
+  const thematicTopicId =
+    listPath === "/thematic-questions" && mode === "topics" && topicParam ? topicParam : undefined;
+  const timedExam = mode === "full";
+
+  const [poolRev, setPoolRev] = useState(0);
+  useEffect(() => subscribeExamQuestionsUpdated(() => setPoolRev((r) => r + 1)), []);
 
   const [round, setRound] = useState(0);
-  const questions = useMemo(() => {
-    if (!mode) return [];
-    return selectQuestionsForMode(mode);
-  }, [mode, round]);
+  const [endedByTimeout, setEndedByTimeout] = useState(false);
+  const questions = useMemo(
+    () =>
+      selectQuestionsForMode(mode, getExamQuestionPool(), {
+        thematicTopicId: thematicTopicId ?? null,
+      }),
+    [mode, round, listPath, thematicTopicId, poolRev],
+  );
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
   const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
 
-  const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
+  const finished = Boolean(questions.length > 0 && index >= questions.length);
 
   const correctCount = useMemo(() => {
     if (!finished) return 0;
@@ -54,6 +85,24 @@ export default function ExamQuiz() {
   }, [finished, questions, answers]);
   const statsSavedRef = useRef(false);
   const discardSessionRef = useRef(false);
+  const liveRef = useRef({ index, selected, answers, questions });
+  liveRef.current = { index, selected, answers, questions };
+
+  const handleTimeExpired = useCallback(() => {
+    setEndedByTimeout(true);
+    const { index: i, selected: sel, answers: ans, questions: qs } = liveRef.current;
+    const next: (number | null)[] = qs.map((_, idx) => (idx < ans.length ? ans[idx] ?? null : null));
+    if (sel !== null && i < qs.length) next[i] = sel;
+    setAnswers(next);
+    setIndex(qs.length);
+  }, []);
+
+  const countdownActive = timedExam && !finished && questions.length > 0;
+  const { formatted: countdownFormatted, isCritical, isWarning } = useFullExamCountdown({
+    active: countdownActive,
+    resetKey: round,
+    onExpire: handleTimeExpired,
+  });
 
   const updateSessionProgress = (attemptAnswers: (number | null)[]) => {
     const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
@@ -124,9 +173,9 @@ export default function ExamQuiz() {
     setSelected(answers[index] ?? null);
   }, [index, answers, finished]);
 
-  if (!match || !mode) {
-    return <Redirect to="/thematic-questions" />;
-  }
+  useEffect(() => {
+    setEndedByTimeout(false);
+  }, [round, mode]);
 
   const q = questions[index];
   const isLast = questions.length > 0 && index === questions.length - 1;
@@ -153,9 +202,12 @@ export default function ExamQuiz() {
   };
 
   const exitToExamTests = () => {
+    if (timedExam && !finished) {
+      if (!window.confirm(t("examQuizExitConfirm"))) return;
+    }
     discardSessionRef.current = true;
     clearActiveSession();
-    setLocation("/thematic-questions");
+    navigate(listPath);
   };
 
   const restart = () => {
@@ -164,6 +216,7 @@ export default function ExamQuiz() {
     }
     statsSavedRef.current = false;
     discardSessionRef.current = false;
+    setEndedByTimeout(false);
     setRound((r) => r + 1);
     setIndex(0);
     setSelected(null);
@@ -179,15 +232,18 @@ export default function ExamQuiz() {
           {questions.length === 0 ? (
             <div className="max-w-lg mx-auto text-center py-12">
               <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-              <Link href="/thematic-questions">
+              <MarketingLink href={listPath}>
                 <Button variant="outline">{t("examQuizBackToList")}</Button>
-              </Link>
+              </MarketingLink>
             </div>
           ) : finished ? (
             <>
               <Reveal delay={0.06}>
                 <Card className="p-8 border-border text-center">
                   <h2 className="text-2xl font-bold text-foreground mb-2">{t("examQuizResultsTitle")}</h2>
+                  {endedByTimeout ? (
+                    <p className="text-sm text-amber-700 dark:text-amber-400 mb-4">{t("examQuizAutoSubmitted")}</p>
+                  ) : null}
                   <p className="text-muted-foreground mb-6">{t("examQuizScoreLabel")}</p>
                   <p className="text-5xl font-bold text-primary mb-2">
                     <CountUpText value={correctCount} />/{questions.length}
@@ -203,7 +259,7 @@ export default function ExamQuiz() {
                       onClick={exitToExamTests}
                       className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
-                        {t("examQuizBackToList")}
+                      {t("examQuizBackToList")}
                     </Button>
                   </div>
                 </Card>
@@ -226,6 +282,11 @@ export default function ExamQuiz() {
                           )}
                           <p className="text-sm text-foreground font-medium">{loc.text}</p>
                         </div>
+                        {question.imageUrl ? (
+                          <div className="mb-3">
+                            <ExamQuestionFigure url={question.imageUrl} alt={t("examQuizQuestionImageAlt")} />
+                          </div>
+                        ) : null}
                         <div className="ml-7 mt-3 space-y-2">
                           {loc.options.map((opt, optionIndex) => {
                             const isSelectedOption = userAns === optionIndex;
@@ -274,38 +335,61 @@ export default function ExamQuiz() {
             </>
           ) : (
             <>
-              <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <p className="text-sm text-muted-foreground">
                   {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
                 </p>
-                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={exitToExamTests}>
-                    {t("examQuizBackToList")}
+                {countdownActive ? (
+                  <div
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums ${
+                      isCritical
+                        ? "border-red-600/60 bg-red-500/10 text-red-800 dark:text-red-300"
+                        : isWarning
+                          ? "border-amber-600/50 bg-amber-500/10 text-amber-950 dark:text-amber-200"
+                          : "border-border bg-muted/50 text-foreground"
+                    }`}
+                    role="timer"
+                    aria-live="polite"
+                    aria-label={countdownFormatted}
+                  >
+                    <span>{countdownFormatted}</span>
+                  </div>
+                ) : null}
+                <Button variant="ghost" size="sm" className="text-muted-foreground sm:ml-auto" onClick={exitToExamTests}>
+                  {t("examQuizBackToList")}
                 </Button>
               </div>
               <Reveal delay={0.06}>
                 <Card className="p-8 border-border">
+                  {q?.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
                   <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{current?.text ?? ""}</h2>
                   <div className="space-y-2">
-                    {current?.options.map((opt, i) => (
+                    {current?.options.map((opt, i) => {
+                      const hideImmediateFeedback = timedExam;
+                      return (
                       <div key={i} className="rounded-xl border border-transparent">
                         <button
                           type="button"
                           onClick={() => setSelected(i)}
                           className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                            selected === null
+                            hideImmediateFeedback
                               ? selected === i
                                 ? "border-primary bg-primary/10 text-foreground"
                                 : "border-border hover:border-muted-foreground/30 text-foreground"
-                              : i === q.correctIndex
-                                ? "border-emerald-600 text-foreground"
-                                : selected === i
-                                  ? "border-red-600 text-foreground"
-                                  : "border-border text-foreground"
+                              : selected === null
+                                ? selected === i
+                                  ? "border-primary bg-primary/10 text-foreground"
+                                  : "border-border hover:border-muted-foreground/30 text-foreground"
+                                : i === q.correctIndex
+                                  ? "border-emerald-600 text-foreground"
+                                  : selected === i
+                                    ? "border-red-600 text-foreground"
+                                    : "border-border text-foreground"
                           }`}
                         >
                           {opt}
                         </button>
-                        {selected !== null && current.optionExplanations[i] ? (
+                        {!hideImmediateFeedback && selected !== null && current.optionExplanations[i] ? (
                           <div className="mt-1 ml-2">
                             <button
                               type="button"
@@ -327,7 +411,8 @@ export default function ExamQuiz() {
                           </div>
                         ) : null}
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                   <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">
@@ -350,4 +435,42 @@ export default function ExamQuiz() {
       <Footer />
     </div>
   );
+}
+
+function ExamQuizWouter() {
+  const { navigate } = useAppNavigation();
+  const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
+  const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
+  const wouterMatched = newMatch || oldMatch;
+  const modeParam = (newParams?.mode ?? oldParams?.mode ?? "").trim();
+  const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
+  const listPath: "/thematic-questions" | "/exam-tests" =
+    oldMatch && !newMatch ? "/exam-tests" : "/thematic-questions";
+
+  useEffect(() => {
+    if (mode !== null) return;
+    navigate(listPath);
+  }, [mode, listPath, navigate]);
+
+  if (!mode) {
+    return null;
+  }
+
+  if (!wouterMatched) {
+    return null;
+  }
+
+  return <ExamQuizRunner mode={mode} listPath={listPath} />;
+}
+
+export default function ExamQuiz({ mode: modeProp, examListPath }: ExamQuizProps = {}) {
+  if (modeProp != null && examListPath) {
+    const trimmed = modeProp.trim();
+    const m = isExamMode(trimmed) ? trimmed : null;
+    if (!m) {
+      return <ExamQuizRedirect target={examListPath} />;
+    }
+    return <ExamQuizRunner mode={m} listPath={examListPath} />;
+  }
+  return <ExamQuizWouter />;
 }

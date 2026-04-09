@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
+
+/* Explicit scan roots so Vite + Next both pick up classes under `src/` regardless of which CSS file is the entry. */
+@source "./**/*.{js,ts,jsx,tsx}";
+
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));

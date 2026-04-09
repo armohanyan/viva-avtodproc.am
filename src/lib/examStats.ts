@@ -70,7 +70,16 @@ const EMPTY: ExamStats = {
 
 function readStoredStats(): StoredExamStats {
   if (typeof window === "undefined") {
-    return { attempts: 0, bestPct: 0, lastPct: 0, totalCorrect: 0, totalWrong: 0, questionResults: {}, topics: {} };
+    return {
+      attempts: 0,
+      bestPct: 0,
+      lastPct: 0,
+      totalCorrect: 0,
+      totalWrong: 0,
+      questionResults: {},
+      topics: {},
+      activeSession: null,
+    };
   }
   try {
     const raw = window.localStorage.getItem(KEY);

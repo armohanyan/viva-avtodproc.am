@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
@@ -129,27 +130,60 @@ export default function AdminPackages() {
             </thead>
             <tbody className="divide-y divide-border">
               {filteredPackages.map((pkg) => (
-                <tr key={pkg.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{pkg.id}</td>
-                  <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{pkg.name}</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.price} ֏</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.lessons}</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.enrolled}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground min-w-[240px]">{pkg.features.join(", ") || "—"}</td>
-                  <td className="px-4 py-3.5">
-                    <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("active")}</Badge>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setEditPkg({ ...pkg })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => setDeleteId(pkg.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={pkg.id}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditPkg({ ...pkg }),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(pkg.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{pkg.id}</td>
+                    <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{pkg.name}</td>
+                    <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.price} ֏</td>
+                    <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.lessons}</td>
+                    <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.enrolled}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground min-w-[240px]">{pkg.features.join(", ") || "—"}</td>
+                    <td className="px-4 py-3.5">
+                      <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("active")}</Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditPkg({ ...pkg }),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(pkg.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

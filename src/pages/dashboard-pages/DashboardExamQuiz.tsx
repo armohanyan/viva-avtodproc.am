@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, Redirect, useRoute } from "wouter";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, Redirect, useLocation, useRoute } from "wouter";
 import DashboardLayout from "src/components/DashboardLayout";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
@@ -11,6 +11,9 @@ import {
 } from "src/data/examSampleQuestions";
 import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
+import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
+import { getExamQuestionPool, subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
+import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -20,6 +23,7 @@ function isExamMode(s: string): s is ExamQuizMode {
 
 export default function DashboardExamQuiz() {
   const { t, lang } = useLang();
+  const [, setLocation] = useLocation();
   const [learnMatch, learnParams] = useRoute("/dashboard/learn/exam-tests/quiz/:mode");
   const [legacyMatch, legacyParams] = useRoute("/dashboard/exam-tests/quiz/:mode");
   const match = learnMatch || legacyMatch;
@@ -27,12 +31,23 @@ export default function DashboardExamQuiz() {
   const modeParam = params?.mode ?? "";
   const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
   const backHref = learnMatch ? "/dashboard/learn/exam-tests" : "/dashboard/exam-tests";
+  const timedExam = mode === "full";
+
+  const topicParam =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") : null;
+  const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
+
+  const [poolRev, setPoolRev] = useState(0);
+  useEffect(() => subscribeExamQuestionsUpdated(() => setPoolRev((r) => r + 1)), []);
 
   const [round, setRound] = useState(0);
+  const [endedByTimeout, setEndedByTimeout] = useState(false);
   const questions = useMemo(() => {
     if (!mode) return [];
-    return selectQuestionsForMode(mode);
-  }, [mode, round]);
+    return selectQuestionsForMode(mode, getExamQuestionPool(), {
+      thematicTopicId: thematicTopicId ?? null,
+    });
+  }, [mode, round, thematicTopicId, poolRev]);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -40,6 +55,25 @@ export default function DashboardExamQuiz() {
   const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
 
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
+
+  const liveRef = useRef({ index, selected, answers, questions });
+  liveRef.current = { index, selected, answers, questions };
+
+  const handleTimeExpired = useCallback(() => {
+    setEndedByTimeout(true);
+    const { index: i, selected: sel, answers: ans, questions: qs } = liveRef.current;
+    const next: (number | null)[] = qs.map((_, idx) => (idx < ans.length ? ans[idx] ?? null : null));
+    if (sel !== null && i < qs.length) next[i] = sel;
+    setAnswers(next);
+    setIndex(qs.length);
+  }, []);
+
+  const countdownActive = Boolean(mode && timedExam && !finished && questions.length > 0);
+  const { formatted: countdownFormatted, isCritical, isWarning } = useFullExamCountdown({
+    active: countdownActive,
+    resetKey: round,
+    onExpire: handleTimeExpired,
+  });
 
   const correctCount = useMemo(() => {
     if (!finished) return 0;
@@ -50,15 +84,19 @@ export default function DashboardExamQuiz() {
     }, 0);
   }, [finished, questions, answers]);
 
-  if (!match || !mode) {
-    return <Redirect to="/dashboard/learn/exam-tests" />;
-  }
+  useEffect(() => {
+    setEndedByTimeout(false);
+  }, [round, mode]);
 
-  const q = questions[index];
+  useEffect(() => {
+    if (finished) return;
+    setSelected(answers[index] ?? null);
+  }, [index, answers, finished]);
+
   const isLast = questions.length > 0 && index === questions.length - 1;
 
   const goNext = () => {
-    if (selected === null || !q) return;
+    if (selected === null || questions[index] == null) return;
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
@@ -70,7 +108,7 @@ export default function DashboardExamQuiz() {
   };
 
   const goBack = () => {
-    if (index === 0 || !q) return;
+    if (index === 0 || questions[index] == null) return;
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
@@ -78,6 +116,7 @@ export default function DashboardExamQuiz() {
   };
 
   const restart = () => {
+    setEndedByTimeout(false);
     setRound((r) => r + 1);
     setIndex(0);
     setSelected(null);
@@ -85,10 +124,16 @@ export default function DashboardExamQuiz() {
     setOpenExplanations({});
   };
 
-  useEffect(() => {
-    if (finished) return;
-    setSelected(answers[index] ?? null);
-  }, [index, answers, finished]);
+  const requestExit = () => {
+    if (timedExam && !finished) {
+      if (!window.confirm(t("examQuizExitConfirm"))) return;
+    }
+    setLocation(backHref);
+  };
+
+  if (!match || !mode) {
+    return <Redirect to="/dashboard/learn/exam-tests" />;
+  }
 
   if (questions.length === 0) {
     return (
@@ -112,6 +157,9 @@ export default function DashboardExamQuiz() {
           <Reveal delay={0.06}>
             <Card className="p-8 border-border text-center">
               <h2 className="text-2xl font-bold text-foreground mb-2">{t("examQuizResultsTitle")}</h2>
+              {endedByTimeout ? (
+                <p className="text-sm text-amber-700 dark:text-amber-400 mb-4">{t("examQuizAutoSubmitted")}</p>
+              ) : null}
               <p className="text-muted-foreground mb-6">{t("examQuizScoreLabel")}</p>
               <p className="text-5xl font-bold text-primary mb-2">
                 <CountUpText value={correctCount} />/{total}
@@ -145,6 +193,11 @@ export default function DashboardExamQuiz() {
                       )}
                       <p className="text-sm text-foreground font-medium">{loc.text}</p>
                     </div>
+                    {question.imageUrl ? (
+                      <div className="mb-3">
+                        <ExamQuestionFigure url={question.imageUrl} alt={t("examQuizQuestionImageAlt")} />
+                      </div>
+                    ) : null}
                     <div className="ml-7 mt-3 space-y-2">
                       {loc.options.map((opt, optionIndex) => {
                         const isSelectedOption = userAns === optionIndex;
@@ -195,46 +248,81 @@ export default function DashboardExamQuiz() {
     );
   }
 
+  const q = questions[index];
+  if (!q) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-lg mx-auto text-center py-12">
+          <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
+          <Link href={backHref}>
+            <Button variant="outline">{t("examQuizBackToList")}</Button>
+          </Link>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   const current = getQuestionInLang(q, lang);
 
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
           </p>
-          <Link href={backHref}>
-            <Button variant="ghost" size="sm" className="text-muted-foreground">
-              {t("examQuizBackToList")}
-            </Button>
-          </Link>
+          {countdownActive ? (
+            <div
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums ${
+                isCritical
+                  ? "border-red-600/60 bg-red-500/10 text-red-800 dark:text-red-300"
+                  : isWarning
+                    ? "border-amber-600/50 bg-amber-500/10 text-amber-950 dark:text-amber-200"
+                    : "border-border bg-muted/50 text-foreground"
+              }`}
+              role="timer"
+              aria-live="polite"
+              aria-label={countdownFormatted}
+            >
+              <span>{countdownFormatted}</span>
+            </div>
+          ) : null}
+          <Button variant="ghost" size="sm" className="text-muted-foreground sm:ml-auto" onClick={requestExit}>
+            {t("examQuizBackToList")}
+          </Button>
         </div>
 
         <Reveal delay={0.06}>
           <Card className="p-8 border-border">
+            {q.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
             <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{current.text}</h2>
             <div className="space-y-2">
-              {current.options.map((opt, i) => (
+              {current.options.map((opt, i) => {
+                const hideImmediateFeedback = timedExam;
+                return (
                 <div key={i} className="rounded-xl border border-transparent">
                   <button
                     type="button"
                     onClick={() => setSelected(i)}
                     className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                      selected === null
+                      hideImmediateFeedback
                         ? selected === i
                           ? "border-primary bg-primary/10 text-foreground"
                           : "border-border hover:border-primary/40 text-foreground"
-                        : i === q.correctIndex
-                          ? "border-emerald-600 text-foreground"
-                          : selected === i
-                            ? "border-red-600 text-foreground"
-                            : "border-border text-foreground"
+                        : selected === null
+                          ? selected === i
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border hover:border-primary/40 text-foreground"
+                          : i === q.correctIndex
+                            ? "border-emerald-600 text-foreground"
+                            : selected === i
+                              ? "border-red-600 text-foreground"
+                              : "border-border text-foreground"
                     }`}
                   >
                     {opt}
                   </button>
-                  {selected !== null && current.optionExplanations[i] ? (
+                  {!hideImmediateFeedback && selected !== null && current.optionExplanations[i] ? (
                     <div className="mt-1 ml-2">
                       <button
                         type="button"
@@ -256,7 +344,8 @@ export default function DashboardExamQuiz() {
                     </div>
                   ) : null}
                 </div>
-              ))}
+              );
+              })}
             </div>
             <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
               <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">

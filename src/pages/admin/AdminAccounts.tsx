@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
@@ -168,24 +169,46 @@ export default function AdminAccounts() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((a) => (
-                <tr key={a.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{a.id}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{a.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{a.email}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{a.phone}</td>
-                  <td className="px-4 py-3">
-                    <Badge className={roleBadge[a.role]}>{roleLabel(a.role)}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={a.status === "active" ? "default" : "secondary"}>{t(a.status)}</Badge>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{displayCreated(a.created)}</td>
-                  <td className="px-4 py-3">
-                    <button type="button" className="p-1.5 hover:bg-accent rounded-md" onClick={() => setEdit(a)} aria-label={t("edit")} title={t("edit")}>
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={a.id}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEdit(a),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{a.id}</td>
+                    <td className="px-4 py-3 font-medium text-foreground">{a.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{a.email}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{a.phone}</td>
+                    <td className="px-4 py-3">
+                      <Badge className={roleBadge[a.role]}>{roleLabel(a.role)}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={a.status === "active" ? "default" : "secondary"}>{t(a.status)}</Badge>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{displayCreated(a.created)}</td>
+                    <td className="px-4 py-3">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEdit(a),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

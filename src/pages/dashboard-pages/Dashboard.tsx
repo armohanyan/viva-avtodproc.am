@@ -2,26 +2,13 @@ import DashboardLayout from "src/components/DashboardLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
-import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Link } from "wouter";
-import { Calendar, BookOpen, CheckCircle2, Clock, ArrowRight, LayoutDashboard } from "lucide-react";
+import { Calendar, BookOpen, CheckCircle2, ArrowRight, LayoutDashboard } from "lucide-react";
 import { CountUpText } from "src/lib/motion";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
-
-type LessonRow = {
-  date: string;
-  time: string;
-  instructor: string;
-  lessonTypeKey: "lessonTypePractical" | "lessonTypeTheory";
-  status: "confirmed" | "pending";
-};
-
-const upcoming: LessonRow[] = [
-  { date: "Mar 28", time: "10:00", instructor: "Armen Petrosyan", lessonTypeKey: "lessonTypePractical", status: "confirmed" },
-  { date: "Mar 30", time: "14:00", instructor: "Narine H.", lessonTypeKey: "lessonTypeTheory", status: "confirmed" },
-  { date: "Apr 2", time: "09:00", instructor: "Armen Petrosyan", lessonTypeKey: "lessonTypePractical", status: "pending" },
-];
+import { partitionStudentDemoBookings } from "src/data/studentDemoBookings";
+import StudentDemoBookingRow from "src/components/dashboard/StudentDemoBookingRow";
 
 export default function Dashboard() {
   const { t } = useLang();
@@ -32,6 +19,9 @@ export default function Dashboard() {
     packagePracticalRemaining,
     extraPracticalRemaining,
   } = useStudentEntitlements();
+
+  const { upcoming: upcomingBookings } = partitionStudentDemoBookings();
+  const upcomingPreview = upcomingBookings.slice(0, 3);
 
   const stats = [
     { label: t("upcomingLessons"), value: upcomingBookingsCount, icon: Calendar, color: "text-primary", bg: "bg-primary/10" },
@@ -107,35 +97,11 @@ export default function Dashboard() {
         </Link>
       </div>
       <div className="space-y-3">
-        {upcoming.map((lesson, i) => (
-          <Card key={`${lesson.date}-${lesson.time}-${i}`} className="p-4 border-border">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex flex-col items-center justify-center shrink-0">
-                  <span className="text-xs font-semibold text-primary">{lesson.date.split(" ")[0]}</span>
-                  <span className="text-sm font-bold text-primary">{lesson.date.split(" ")[1]}</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="font-medium text-foreground text-sm truncate">{lesson.instructor}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground">{lesson.time}</span>
-                    <Badge variant="secondary" className="text-xs px-2 py-0 bg-accent text-foreground">
-                      {t(lesson.lessonTypeKey)}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <Badge
-                className={`text-xs shrink-0 ${
-                  lesson.status === "confirmed" ? "bg-primary/10 text-primary" : "bg-accent text-muted-foreground"
-                }`}
-              >
-                {lesson.status === "confirmed" ? t("confirmed") : t("pending")}
-              </Badge>
-            </div>
-          </Card>
-        ))}
+        {upcomingPreview.length === 0 ? (
+          <Card className="p-4 border-border text-sm text-muted-foreground">{t("noUpcoming")}</Card>
+        ) : (
+          upcomingPreview.map((b) => <StudentDemoBookingRow key={b.id} booking={b} variant="dashboard" />)
+        )}
       </div>
 
       <div className="mt-6">

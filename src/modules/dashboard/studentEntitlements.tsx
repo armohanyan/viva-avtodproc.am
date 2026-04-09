@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { TranslationKey } from "src/lib/i18n";
+import { countUpcomingStudentDemoBookings } from "src/data/studentDemoBookings";
 
 export type PackageTierId = "basic" | "standard" | "premium";
 
@@ -148,7 +149,7 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
       hasTheoryFromPackage: ownedPackages.length > 0,
       primaryTheorySessions: primary?.theorySessions ?? 0,
       completedPracticalLessons: pkgUsed + extraPracticalBlocks.reduce((a, e) => a + e.practicalUsed, 0),
-      upcomingBookingsCount: 3,
+      upcomingBookingsCount: countUpcomingStudentDemoBookings(),
     };
   }, [ownedPackages, extraPracticalBlocks]);
 

@@ -1,16 +1,26 @@
+"use client";
+
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useEffect, useMemo, useState } from "react";
-import { useLang } from "src/lib/i18n";
+import { useLang, type TranslationKey } from "src/lib/i18n";
+import {
+  THEMATIC_TOPIC_ICON,
+  THEMATIC_TOPIC_IDS,
+  THEMATIC_TOPIC_TITLE_KEYS,
+} from "src/data/thematicTopics";
+import { countThematicTopicQuestions, getExamQuestionPool, subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
 import { ArrowUpRight, CheckCircle2, Lock } from "lucide-react";
-import { Link } from "wouter";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
 import { getExamStats, type ExamStats } from "src/lib/examStats";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 export default function ExamTests() {
   const { t } = useLang();
+  const { MarketingLink, panelHref } = useAppNavigation();
+  const lockedTopicHref = panelHref("/login?redirect=/thematic-questions");
   const [stats, setStats] = useState<ExamStats>({
     answered: 0,
     correct: 0,
@@ -23,100 +33,30 @@ export default function ExamTests() {
     activeSession: null,
   });
 
-  const signInRedirectHref = "/login?redirect=/thematic-questions";
+  const [poolRev, setPoolRev] = useState(0);
+  useEffect(() => subscribeExamQuestionsUpdated(() => setPoolRev((r) => r + 1)), []);
 
-  const topics = [
-    {
-      iconSrc: "/topic-icons/varir-theme-5.svg",
-      title: t("examTestsTopic1Title"),
-      done: 0,
-      total: 147,
-      isFree: true,
-      topicId: "5",
-      href: "/thematic-questions/quiz/topics?topic=5",
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-3.svg",
-      title: t("examTestsTopic2Title"),
-      done: 0,
-      total: 72,
-      isFree: false,
-      topicId: "3",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-2.svg",
-      title: t("examTestsTopic3Title"),
-      done: 0,
-      total: 78,
-      isFree: false,
-      topicId: "2",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-6.svg",
-      title: t("examTestsTopic4Title"),
-      done: 0,
-      total: 176,
-      isFree: false,
-      topicId: "6",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-8.svg",
-      title: t("examTestsTopic5Title"),
-      done: 0,
-      total: 135,
-      isFree: false,
-      topicId: "8",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-7.svg",
-      title: t("examTestsTopic6Title"),
-      done: 0,
-      total: 95,
-      isFree: false,
-      topicId: "7",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-10.svg",
-      title: t("examTestsTopic7Title"),
-      done: 0,
-      total: 134,
-      isFree: false,
-      topicId: "10",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-4.svg",
-      title: t("examTestsTopic8Title"),
-      done: 0,
-      total: 80,
-      isFree: false,
-      topicId: "4",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-9.svg",
-      title: t("examTestsTopic9Title"),
-      done: 0,
-      total: 126,
-      isFree: false,
-      topicId: "9",
-      href: signInRedirectHref,
-    },
-    {
-      iconSrc: "/topic-icons/varir-theme-1.svg",
-      title: t("examTestsTopic10Title"),
-      done: 0,
-      total: 51,
-      isFree: false,
-      topicId: "1",
-      href: signInRedirectHref,
-    },
-  ];
+  const pool = useMemo(() => {
+    void poolRev;
+    return getExamQuestionPool();
+  }, [poolRev]);
+
+  const topics = useMemo(
+    () =>
+      THEMATIC_TOPIC_IDS.map((topicId, i) => {
+        const total = countThematicTopicQuestions(pool, topicId);
+        const isFree = topicId === "5";
+        return {
+          iconSrc: THEMATIC_TOPIC_ICON[topicId],
+          title: t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
+          topicId,
+          total,
+          isFree,
+          href: isFree ? `/thematic-questions/quiz/topics?topic=${topicId}` : lockedTopicHref,
+        };
+      }),
+    [pool, t, lockedTopicHref],
+  );
 
   const steps = [
     t("examTestsStep1"),
@@ -128,7 +68,10 @@ export default function ExamTests() {
     setStats(getExamStats());
   }, []);
 
-  const totalQuestions = 1094;
+  const totalQuestions = useMemo(
+    () => pool.filter((q) => q.category === "rules" || q.category === "safety").length,
+    [pool],
+  );
   const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
@@ -165,11 +108,11 @@ export default function ExamTests() {
                   </p>
                   <p className="text-sm text-foreground truncate">{activeTopic.title}</p>
                 </div>
-                <Link href={`/thematic-questions/quiz/topics?topic=${activeTopic.topicId}`}>
+                <MarketingLink href={`/thematic-questions/quiz/topics?topic=${activeTopic.topicId}`}>
                   <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
                     {t("examTestsContinueSession")}
                   </Button>
-                </Link>
+                </MarketingLink>
               </div>
               <div className="grid grid-cols-3 gap-2 mt-3">
                 <div className="rounded-lg bg-background/80 p-2">
@@ -265,7 +208,7 @@ export default function ExamTests() {
                     topic.isFree ? "border-primary/30 shadow-primary/5" : "border-border"
                   }`}
                 >
-                  <Link href={topic.href} className="block p-3.5 sm:p-4">
+                  <MarketingLink href={topic.href} className="block p-3.5 sm:p-4">
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div
                         className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
@@ -313,7 +256,7 @@ export default function ExamTests() {
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </MarketingLink>
                 </Card>
               </Reveal>
             );
@@ -351,16 +294,16 @@ export default function ExamTests() {
           <p className="text-muted-foreground text-lg mb-10 max-w-2xl mx-auto">{t("examTestsCtaSub")}</p>
           <Reveal>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/login?redirect=/thematic-questions">
+              <a href={panelHref("/login?redirect=/thematic-questions")}>
                 <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8">
                   {t("examTestsSignInToPractice")}
                 </Button>
-              </Link>
-              <Link href="/packages">
+              </a>
+              <MarketingLink href="/packages">
                 <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-accent px-8">
                   {t("packages")}
                 </Button>
-              </Link>
+              </MarketingLink>
             </div>
           </Reveal>
         </div>

@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 
 export type Theme = "light" | "dark";
 
@@ -37,9 +45,9 @@ function applyThemeClass(theme: Theme) {
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => getInitialTheme());
 
-  useEffect(() => {
+  // Before paint: apply class + persist so toggling feels immediate (no useEffect delay).
+  useLayoutEffect(() => {
     applyThemeClass(theme);
-
     try {
       window.localStorage.setItem(STORAGE_KEY, theme);
     } catch {
@@ -67,13 +75,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
+  }, []);
+
   const value = useMemo<ThemeContextValue>(
     () => ({
       theme,
-      setTheme: (t) => setThemeState(t),
-      toggleTheme: () => setThemeState((prev) => (prev === "dark" ? "light" : "dark")),
+      setTheme,
+      toggleTheme,
     }),
-    [theme]
+    [theme, setTheme, toggleTheme],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
@@ -82,4 +98,3 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export function useTheme() {
   return useContext(ThemeContext);
 }
-

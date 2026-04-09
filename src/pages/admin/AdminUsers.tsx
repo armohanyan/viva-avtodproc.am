@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { formatShortDateFromIso, todayIsoDate } from "src/lib/adminFormat";
@@ -241,53 +242,104 @@ export default function AdminUsers() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((u, i) => (
-                <tr key={i} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-xs shrink-0">{u.name[0]}</div>
-                      <span className="font-medium text-foreground whitespace-nowrap">{u.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.email}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.phone}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, u.branchId)}>
-                    {branchNameById(branches, u.branchId)}
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.instructor}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground">{u.package}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground">{u.lessons}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground font-medium whitespace-nowrap">{u.skillRating}/10</td>
-                  <td className="px-4 py-3.5"><Badge className={`text-xs ${statusColor[u.status]}`}>{userStatusLabel(u.status)}</Badge></td>
-                  <td className="px-4 py-3.5">
-                    <Badge variant={u.licenseAchieved ? "default" : "secondary"} className="text-xs">
-                      {u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{displayJoined(u.joinedIso)}</td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-0.5 flex-wrap">
-                      <Link
-                        href={adminLearnPracticalHref(u.id, u.branchId)}
-                        className="p-1.5 rounded-md hover:bg-primary/10 text-primary inline-flex shrink-0"
-                        title={t("adminStudentQuickPractical")}
-                        aria-label={t("adminStudentQuickPractical")}
-                      >
-                        <CalendarClock className="w-3.5 h-3.5" />
-                      </Link>
-                      <Link
-                        href={adminLearnTheoryHref(u.id)}
-                        className="p-1.5 rounded-md hover:bg-primary/10 text-primary inline-flex shrink-0"
-                        title={t("adminStudentQuickTheory")}
-                        aria-label={t("adminStudentQuickTheory")}
-                      >
-                        <BookOpen className="w-3.5 h-3.5" />
-                      </Link>
-                      <span className="w-px h-4 bg-border mx-0.5 shrink-0" aria-hidden />
-                      <button type="button" onClick={() => setEditUser({ ...u })} className="p-1.5 rounded-md hover:bg-primary/10 text-primary" title={t("edit")} aria-label={t("edit")}><Edit2 className="w-3.5 h-3.5" /></button>
-                      <button type="button" onClick={() => setDeleteId(u.id)} className="p-1.5 rounded-md hover:bg-red-50 text-red-500" title={t("delete")} aria-label={t("delete")}><Trash2 className="w-3.5 h-3.5" /></button>
-                    </div>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={i}
+                  actions={[
+                    {
+                      kind: "link",
+                      id: "practical",
+                      label: t("adminStudentQuickPractical"),
+                      href: adminLearnPracticalHref(u.id, u.branchId),
+                      icon: CalendarClock,
+                    },
+                    {
+                      kind: "link",
+                      id: "theory",
+                      label: t("adminStudentQuickTheory"),
+                      href: adminLearnTheoryHref(u.id),
+                      icon: BookOpen,
+                    },
+                    { kind: "separator", id: "sep-learn" },
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditUser({ ...u }),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(u.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-xs shrink-0">{u.name[0]}</div>
+                        <span className="font-medium text-foreground whitespace-nowrap">{u.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.email}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.phone}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, u.branchId)}>
+                      {branchNameById(branches, u.branchId)}
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.instructor}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{u.package}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{u.lessons}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground font-medium whitespace-nowrap">{u.skillRating}/10</td>
+                    <td className="px-4 py-3.5"><Badge className={`text-xs ${statusColor[u.status]}`}>{userStatusLabel(u.status)}</Badge></td>
+                    <td className="px-4 py-3.5">
+                      <Badge variant={u.licenseAchieved ? "default" : "secondary"} className="text-xs">
+                        {u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{displayJoined(u.joinedIso)}</td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        className="gap-0.5"
+                        actions={[
+                          {
+                            kind: "link",
+                            id: "practical",
+                            label: t("adminStudentQuickPractical"),
+                            href: adminLearnPracticalHref(u.id, u.branchId),
+                            icon: CalendarClock,
+                          },
+                          {
+                            kind: "link",
+                            id: "theory",
+                            label: t("adminStudentQuickTheory"),
+                            href: adminLearnTheoryHref(u.id),
+                            icon: BookOpen,
+                          },
+                          { kind: "separator", id: "sep-learn" },
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditUser({ ...u }),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(u.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>
