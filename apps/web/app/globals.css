@@ -1,1 +1,5 @@
+/* Tailwind scans from the entry file by default — include shared `src/` + this app or utilities are missing. */
+@source "../../../src/**/*.{js,ts,jsx,tsx}";
+@source "../../**/*.{js,ts,jsx,tsx}";
+
 @import "../../../src/styles.css";

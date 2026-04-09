@@ -8,6 +8,7 @@ import { loadPublishedBlogs, type Blog } from "src/lib/blogs";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
 import { Calendar, ArrowRight, ImageIcon } from "lucide-react";
 import { Reveal } from "src/lib/motion";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 function formatDate(iso: string, locale: string): string {
   const d = new Date(iso);
@@ -17,6 +18,7 @@ function formatDate(iso: string, locale: string): string {
 
 export default function Blogs() {
   const { t, lang } = useLang();
+  const { MarketingLink } = useAppNavigation();
   const [posts, setPosts] = useState<Blog[]>(() => loadPublishedBlogs());
 
   useEffect(() => {
@@ -69,21 +71,21 @@ export default function Blogs() {
                           <time dateTime={post.publishedAt}>{formatDate(post.publishedAt, locale)}</time>
                         </div>
                         <h2 className="text-xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors">
-                          <a
+                          <MarketingLink
                             href={`/blogs/${post.slug}`}
                             className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                           >
                             {post.title}
-                          </a>
+                          </MarketingLink>
                         </h2>
                         <p className="text-muted-foreground leading-relaxed flex-1 mb-6">{post.excerpt}</p>
-                        <a
+                        <MarketingLink
                           href={`/blogs/${post.slug}`}
                           className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
                         >
                           {t("blogReadMore")}
                           <ArrowRight className="w-4 h-4" aria-hidden />
-                        </a>
+                        </MarketingLink>
                       </div>
                     </article>
                   </Reveal>

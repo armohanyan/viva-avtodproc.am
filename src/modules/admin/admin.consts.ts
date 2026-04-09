@@ -17,6 +17,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
     children: [
       { href: "/admin/learn/groups", translationKey: "adminSidebarGroups" },
       { href: "/admin/learn/packages", translationKey: "packages" },
+      { href: "/admin/learn/exam-questions", translationKey: "adminSidebarExamQuestions" },
     ],
   },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },

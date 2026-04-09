@@ -3,7 +3,7 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Link } from "wouter";
-import { Car, ChevronRight, BookOpen } from "lucide-react";
+import { Car, ChevronRight, BookOpen, ClipboardList } from "lucide-react";
 import { Reveal } from "src/lib/motion";
 
 export default function AdminLearnHub() {
@@ -24,13 +24,20 @@ export default function AdminLearnHub() {
       descKey: "adminLearnCardTheoryDesc" as const,
       ctaKey: "adminLearnOpenTheory" as const,
     },
+    {
+      href: "/admin/learn/exam-questions",
+      icon: ClipboardList,
+      titleKey: "adminLearnCardExamTestsTitle" as const,
+      descKey: "adminLearnCardExamTestsDesc" as const,
+      ctaKey: "adminLearnOpenExamTests" as const,
+    },
   ];
 
   return (
     <AdminLayout>
       <PanelPageHeader icon={BookOpen} title={t("adminLearnHubTitle")} subtitle={t("adminLearnHubSubtitle")} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl lg:max-w-6xl">
         {cards.map((c, idx) => (
           <Reveal key={c.href} delay={idx * 0.08}>
             <Link href={c.href} className="block group">

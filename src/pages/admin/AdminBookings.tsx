@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { formatShortDateFromIso, todayIsoDate } from "src/lib/adminFormat";
@@ -216,32 +217,65 @@ export default function AdminBookings() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((b, i) => (
-                <tr key={i} className="hover:bg-muted/30">
-                  <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono whitespace-nowrap">{b.id}</td>
-                  <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{studentLabel(b.studentId)}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, b.branchId)}>
-                    {branchNameById(branches, b.branchId)}
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.instructorName}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{formatShortDateFromIso(b.dateIso, lang)}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.time}</td>
-                  <td className="px-4 py-3.5">
-                    <Badge className={`text-xs ${typeColor[b.type]}`}>{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}</Badge>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <Badge className={`text-xs ${statusColor[b.status]}`}>{t(b.status as "confirmed" | "pending" | "cancelled")}</Badge>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setEditBooking({ ...b })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button type="button" onClick={() => setDeleteId(b.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={i}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditBooking({ ...b }),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(b.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30">
+                    <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono whitespace-nowrap">{b.id}</td>
+                    <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{studentLabel(b.studentId)}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, b.branchId)}>
+                      {branchNameById(branches, b.branchId)}
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.instructorName}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{formatShortDateFromIso(b.dateIso, lang)}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.time}</td>
+                    <td className="px-4 py-3.5">
+                      <Badge className={`text-xs ${typeColor[b.type]}`}>{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}</Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge className={`text-xs ${statusColor[b.status]}`}>{t(b.status as "confirmed" | "pending" | "cancelled")}</Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditBooking({ ...b }),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(b.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

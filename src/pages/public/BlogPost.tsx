@@ -23,6 +23,7 @@ export type BlogPostProps = {
 
 function BlogPostBody({ slug }: { slug: string }) {
   const { t, lang } = useLang();
+  const { MarketingLink } = useAppNavigation();
   const locale = lang === "am" ? "hy-AM" : lang === "ru" ? "ru-RU" : "en-US";
   const post = slug ? getBlogBySlug(slug) : undefined;
 
@@ -33,9 +34,9 @@ function BlogPostBody({ slug }: { slug: string }) {
         <section className="py-24 bg-background">
           <div className="max-w-2xl mx-auto px-4 text-center">
             <h1 className="text-2xl font-bold text-foreground mb-4">{t("blogPostNotFound")}</h1>
-            <a href="/blogs" className="text-primary font-medium hover:underline">
+            <MarketingLink href="/blogs" className="text-primary font-medium hover:underline">
               {t("blogBackToList")}
-            </a>
+            </MarketingLink>
           </div>
         </section>
         <Footer />
@@ -52,13 +53,13 @@ function BlogPostBody({ slug }: { slug: string }) {
 
       <article className="bg-background">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
-          <a
+          <MarketingLink
             href="/blogs"
             className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-8 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" aria-hidden />
             {t("blogBackToList")}
-          </a>
+          </MarketingLink>
 
           {cover ? (
             <div className="mb-10 rounded-2xl overflow-hidden border border-border bg-muted aspect-[21/9] max-h-[min(420px,50vh)]">

@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
@@ -321,52 +322,98 @@ export default function AdminInstructors() {
             </thead>
             <tbody className="divide-y divide-border">
               {filteredInstructors.map((ins) => (
-                <tr key={ins.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5 min-w-[220px]">
-                    <p className="font-medium text-foreground">{ins.name}</p>
-                    <p className="text-xs text-muted-foreground">{ins.email}</p>
-                  </td>
-                  <td className="px-4 py-3.5 align-top">
-                    <div className="flex flex-wrap gap-1 max-w-[220px]">
-                      {ins.teachesPractical && (
-                        <Badge variant="secondary" className="text-[10px] font-medium">
-                          {t("instructorTeachingPractical")}
-                        </Badge>
-                      )}
-                      {ins.teachesTheory && (
-                        <Badge variant="outline" className="text-[10px] font-medium border-primary/30 text-primary">
-                          {t("instructorTeachingTheory")}
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground">{renderRegions(ins.availableRegions)}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground">{renderLessonTypes(ins.lessonTypes) || "-"}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.phone}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.schedule}</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{ins.rating.toFixed(1)}</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
-                    {ins.years} {t("adminInstructorYearsShort")}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <Badge className={`text-xs ${ins.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                      {instructorStatusLabel(ins.status)}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setEditId(ins.id)} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => showToast(`${ins.name} - ${t("instructorScheduleSoonToast")}`, "info")} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("ariaScheduleButton")} title={t("ariaScheduleButton")}>
-                        <Calendar className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => setDeleteId(ins.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={ins.id}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditId(ins.id),
+                    },
+                    {
+                      kind: "item",
+                      id: "schedule",
+                      label: t("ariaScheduleButton"),
+                      ariaLabel: t("ariaScheduleButton"),
+                      icon: Calendar,
+                      onClick: () => showToast(`${ins.name} - ${t("instructorScheduleSoonToast")}`, "info"),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(ins.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5 min-w-[220px]">
+                      <p className="font-medium text-foreground">{ins.name}</p>
+                      <p className="text-xs text-muted-foreground">{ins.email}</p>
+                    </td>
+                    <td className="px-4 py-3.5 align-top">
+                      <div className="flex flex-wrap gap-1 max-w-[220px]">
+                        {ins.teachesPractical && (
+                          <Badge variant="secondary" className="text-[10px] font-medium">
+                            {t("instructorTeachingPractical")}
+                          </Badge>
+                        )}
+                        {ins.teachesTheory && (
+                          <Badge variant="outline" className="text-[10px] font-medium border-primary/30 text-primary">
+                            {t("instructorTeachingTheory")}
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{renderRegions(ins.availableRegions)}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground">{renderLessonTypes(ins.lessonTypes) || "-"}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.phone}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.schedule}</td>
+                    <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{ins.rating.toFixed(1)}</td>
+                    <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
+                      {ins.years} {t("adminInstructorYearsShort")}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge className={`text-xs ${ins.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                        {instructorStatusLabel(ins.status)}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditId(ins.id),
+                          },
+                          {
+                            kind: "item",
+                            id: "schedule",
+                            label: t("ariaScheduleButton"),
+                            ariaLabel: t("ariaScheduleButton"),
+                            icon: Calendar,
+                            onClick: () => showToast(`${ins.name} - ${t("instructorScheduleSoonToast")}`, "info"),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(ins.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

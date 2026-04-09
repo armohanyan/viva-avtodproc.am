@@ -1,5 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
@@ -124,37 +125,57 @@ export default function AdminDashboard() {
             </thead>
             <tbody className="divide-y divide-border">
               {filteredRecentBookings.map((b, i) => (
-                <tr key={i} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-5 py-3.5 font-medium text-foreground">{b.student}</td>
-                  <td className="px-5 py-3.5 text-muted-foreground">{b.instructor}</td>
-                  <td className="px-5 py-3.5 text-muted-foreground">{b.date}</td>
-                  <td className="px-5 py-3.5 text-muted-foreground">{b.time}</td>
-                  <td className="px-5 py-3.5">
-                    <Badge className={`text-xs ${statusColor[b.status]}`}>
-                      {t(b.status as any)}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <button
-                      type="button"
-                      className="text-primary hover:underline text-xs mr-3"
-                      onClick={() => showToast(`${t("adminEditBookingToastPrefix")}: ${b.student}`, "info")}
-                      aria-label={t("edit")}
-                      title={t("edit")}
-                    >
-                      {t("edit")}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-red-500 hover:underline text-xs"
-                      onClick={() => showToast(`${t("adminDeleteBookingToastPrefix")}: ${b.student}`, "info")}
-                      aria-label={t("delete")}
-                      title={t("delete")}
-                    >
-                      {t("delete")}
-                    </button>
-                  </td>
-                </tr>
+                <AdminTableRowContextMenu
+                  key={i}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      onClick: () => showToast(`${t("adminEditBookingToastPrefix")}: ${b.student}`, "info"),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      destructive: true,
+                      onClick: () => showToast(`${t("adminDeleteBookingToastPrefix")}: ${b.student}`, "info"),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-5 py-3.5 font-medium text-foreground">{b.student}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground">{b.instructor}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground">{b.date}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground">{b.time}</td>
+                    <td className="px-5 py-3.5">
+                      <Badge className={`text-xs ${statusColor[b.status]}`}>
+                        {t(b.status as any)}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        presentation="text"
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            onClick: () => showToast(`${t("adminEditBookingToastPrefix")}: ${b.student}`, "info"),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            destructive: true,
+                            onClick: () => showToast(`${t("adminDeleteBookingToastPrefix")}: ${b.student}`, "info"),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

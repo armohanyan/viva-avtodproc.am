@@ -5,7 +5,13 @@ import DashboardLayout from "src/components/DashboardLayout";
 import DashboardLearnSubnav from "src/components/dashboard/DashboardLearnSubnav";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Card } from "src/components/ui/card";
-import { useLang } from "src/lib/i18n";
+import { useLang, type TranslationKey } from "src/lib/i18n";
+import {
+  THEMATIC_TOPIC_ICON,
+  THEMATIC_TOPIC_IDS,
+  THEMATIC_TOPIC_TITLE_KEYS,
+} from "src/data/thematicTopics";
+import { countThematicTopicQuestions, getExamQuestionPool, subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
 import { Reveal } from "src/lib/motion";
 import { getExamStats, type ExamStats } from "src/lib/examStats";
 
@@ -23,18 +29,24 @@ export default function DashboardThematicTests() {
     activeSession: null,
   });
 
-  const topics = [
-    { iconSrc: "/topic-icons/varir-theme-5.svg", title: t("examTestsTopic1Title"), total: 147, topicId: "5" },
-    { iconSrc: "/topic-icons/varir-theme-3.svg", title: t("examTestsTopic2Title"), total: 72, topicId: "3" },
-    { iconSrc: "/topic-icons/varir-theme-2.svg", title: t("examTestsTopic3Title"), total: 78, topicId: "2" },
-    { iconSrc: "/topic-icons/varir-theme-6.svg", title: t("examTestsTopic4Title"), total: 176, topicId: "6" },
-    { iconSrc: "/topic-icons/varir-theme-8.svg", title: t("examTestsTopic5Title"), total: 135, topicId: "8" },
-    { iconSrc: "/topic-icons/varir-theme-7.svg", title: t("examTestsTopic6Title"), total: 95, topicId: "7" },
-    { iconSrc: "/topic-icons/varir-theme-10.svg", title: t("examTestsTopic7Title"), total: 134, topicId: "10" },
-    { iconSrc: "/topic-icons/varir-theme-4.svg", title: t("examTestsTopic8Title"), total: 80, topicId: "4" },
-    { iconSrc: "/topic-icons/varir-theme-9.svg", title: t("examTestsTopic9Title"), total: 126, topicId: "9" },
-    { iconSrc: "/topic-icons/varir-theme-1.svg", title: t("examTestsTopic10Title"), total: 51, topicId: "1" },
-  ];
+  const [poolRev, setPoolRev] = useState(0);
+  useEffect(() => subscribeExamQuestionsUpdated(() => setPoolRev((r) => r + 1)), []);
+
+  const pool = useMemo(() => {
+    void poolRev;
+    return getExamQuestionPool();
+  }, [poolRev]);
+
+  const topics = useMemo(
+    () =>
+      THEMATIC_TOPIC_IDS.map((topicId, i) => ({
+        iconSrc: THEMATIC_TOPIC_ICON[topicId],
+        title: t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
+        total: countThematicTopicQuestions(pool, topicId),
+        topicId,
+      })),
+    [pool, t],
+  );
 
   useEffect(() => {
     setStats(getExamStats());
@@ -43,7 +55,10 @@ export default function DashboardThematicTests() {
   const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);
   const activeTopic = stats.activeSession ? topicById[stats.activeSession.topicId] : undefined;
 
-  const totalQuestions = 1094;
+  const totalQuestions = useMemo(
+    () => pool.filter((q) => q.category === "rules" || q.category === "safety").length,
+    [pool],
+  );
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
     return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
@@ -121,7 +136,7 @@ export default function DashboardThematicTests() {
           {topics.map((topic, i) => {
             const topicStats = stats.topicStats[topic.topicId] ?? { answered: 0 };
             const topicPct = topic.total > 0 ? Math.min(100, Math.round((topicStats.answered / topic.total) * 100)) : 0;
-            const href = `/thematic-questions/quiz/topics?topic=${topic.topicId}`;
+            const href = `/dashboard/learn/exam-tests/quiz/topics?topic=${topic.topicId}`;
 
             return (
               <Reveal key={`${topic.topicId}-${i}`} delay={i * 0.05}>

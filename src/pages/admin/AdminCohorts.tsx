@@ -1,5 +1,9 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, {
+  AdminTableRowContextMenu,
+  type AdminTableRowAction,
+} from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { formatShortDateFromIso } from "src/lib/adminFormat";
@@ -265,42 +269,67 @@ export default function AdminCohorts() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredCohorts.map((c) => (
-                <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{c.id}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[12rem] truncate" title={branchNameById(branches, c.branchId)}>
-                    {branchNameById(branches, c.branchId)}
-                  </td>
-                  <td className="px-4 py-3.5 font-medium text-foreground min-w-[200px]">{c.name}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.instructorName}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.schedule}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{periodLabel(c)}</td>
-                  <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
-                    {c.enrolled} / {c.seats}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <Badge className={`text-xs ${statusColor[c.status]}`}>{cohortStatusLabel(c.status)}</Badge>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2">
-                      {c.meetLink && (
-                        <button type="button" onClick={() => handleJoinMeeting(c.meetLink)} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("meetLink")} title={t("meetLink")}>
-                          <Video className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button type="button" onClick={() => setEditCohort({ ...c })} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("edit")} title={t("edit")}>
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button type="button" onClick={handleViewStudents} className="p-1.5 rounded hover:bg-primary/10 text-primary" aria-label={t("cohortAriaViewStudents")} title={t("cohortAriaViewStudents")}>
-                        <Users className="w-3.5 h-3.5" />
-                      </button>
-                      <button type="button" onClick={() => setDeleteId(c.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500" aria-label={t("delete")} title={t("delete")}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredCohorts.map((c) => {
+                const rowActions: AdminTableRowAction[] = [
+                  ...(c.meetLink
+                    ? [
+                        {
+                          kind: "item" as const,
+                          id: "meet",
+                          label: t("meetLink"),
+                          icon: Video,
+                          onClick: () => handleJoinMeeting(c.meetLink!),
+                        },
+                      ]
+                    : []),
+                  {
+                    kind: "item",
+                    id: "edit",
+                    label: t("edit"),
+                    icon: Edit2,
+                    onClick: () => setEditCohort({ ...c }),
+                  },
+                  {
+                    kind: "item",
+                    id: "students",
+                    label: t("cohortAriaViewStudents"),
+                    ariaLabel: t("cohortAriaViewStudents"),
+                    icon: Users,
+                    onClick: handleViewStudents,
+                  },
+                  {
+                    kind: "item",
+                    id: "delete",
+                    label: t("delete"),
+                    icon: Trash2,
+                    destructive: true,
+                    onClick: () => setDeleteId(c.id),
+                  },
+                ];
+                return (
+                  <AdminTableRowContextMenu key={c.id} actions={rowActions}>
+                    <tr className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{c.id}</td>
+                      <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[12rem] truncate" title={branchNameById(branches, c.branchId)}>
+                        {branchNameById(branches, c.branchId)}
+                      </td>
+                      <td className="px-4 py-3.5 font-medium text-foreground min-w-[200px]">{c.name}</td>
+                      <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.instructorName}</td>
+                      <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.schedule}</td>
+                      <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{periodLabel(c)}</td>
+                      <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
+                        {c.enrolled} / {c.seats}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <Badge className={`text-xs ${statusColor[c.status]}`}>{cohortStatusLabel(c.status)}</Badge>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <AdminTableRowActions toolbarOnly actions={rowActions} />
+                      </td>
+                    </tr>
+                  </AdminTableRowContextMenu>
+                );
+              })}
             </tbody>
           </table>
         </AdminTableScroll>

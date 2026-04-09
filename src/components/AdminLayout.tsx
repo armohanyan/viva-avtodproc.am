@@ -228,11 +228,13 @@ export default function AdminLayout({ children }: Props) {
                   ? t("adminLearnPracticalTitle")
                   : location === "/admin/learn/theory"
                     ? t("adminLearnTheoryTitle")
-                    : location === "/admin/learn/groups"
-                      ? t("adminSidebarGroups")
-                      : location === "/admin/learn/packages"
-                        ? t("packages")
-                    : adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard")}
+                    : location === "/admin/learn/exam-questions"
+                      ? t("adminExamQuestionsTitle")
+                      : location === "/admin/learn/groups"
+                        ? t("adminSidebarGroups")
+                        : location === "/admin/learn/packages"
+                          ? t("packages")
+                          : adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard")}
             </h1>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">

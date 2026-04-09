@@ -7,6 +7,7 @@ import { CheckCircle2, X } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
 import { CountUpText, Reveal } from "src/lib/motion";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 type Tier = {
   nameKey: "basic" | "standard" | "premium";
@@ -54,6 +55,7 @@ const TIERS: Tier[] = [
 
 export default function Packages() {
   const { t } = useLang();
+  const { panelHref } = useAppNavigation();
 
   const faqs = [
     {
@@ -167,7 +169,7 @@ export default function Packages() {
                   </li>
                 </ul>
                 <div className="mt-auto">
-                  <a href="/register">
+                  <a href={panelHref("/register")}>
                     <Button
                       className={`w-full ${
                         pkg.popular

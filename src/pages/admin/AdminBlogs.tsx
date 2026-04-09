@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
@@ -217,58 +218,79 @@ export default function AdminBlogs() {
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map((b) => (
-                <tr key={b.id} className="hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-start gap-3 max-w-[240px]">
-                      <div className="w-14 h-14 rounded-lg bg-muted shrink-0 overflow-hidden border border-border">
-                        {b.coverImage ? (
-                          <img src={b.coverImage} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                            <ImageIcon className="w-5 h-5" />
-                          </div>
-                        )}
+                <AdminTableRowContextMenu
+                  key={b.id}
+                  actions={[
+                    {
+                      kind: "item",
+                      id: "edit",
+                      label: t("edit"),
+                      icon: Edit2,
+                      onClick: () => setEditBlog({ ...b }),
+                    },
+                    {
+                      kind: "item",
+                      id: "delete",
+                      label: t("delete"),
+                      icon: Trash2,
+                      destructive: true,
+                      onClick: () => setDeleteId(b.id),
+                    },
+                  ]}
+                >
+                  <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-start gap-3 max-w-[240px]">
+                        <div className="w-14 h-14 rounded-lg bg-muted shrink-0 overflow-hidden border border-border">
+                          {b.coverImage ? (
+                            <img src={b.coverImage} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                              <ImageIcon className="w-5 h-5" />
+                            </div>
+                          )}
+                        </div>
+                        <span className="font-medium text-foreground line-clamp-2 pt-0.5">{b.title}</span>
                       </div>
-                      <span className="font-medium text-foreground line-clamp-2 pt-0.5">{b.title}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{b.slug}</td>
-                  <td className="px-4 py-3.5 text-muted-foreground max-w-[200px]">
-                    <span className="line-clamp-2">{b.excerpt || "—"}</span>
-                  </td>
-                  <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap text-xs">
-                    {new Date(b.publishedAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    {b.published ? (
-                      <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("blogPublished")}</Badge>
-                    ) : (
-                      <Badge className="bg-slate-100 text-slate-600 text-xs">{t("blogDraft")}</Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditBlog({ ...b })}
-                        className="p-1.5 rounded hover:bg-primary/10 text-primary"
-                        aria-label={t("edit")}
-                        title={t("edit")}
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteId(b.id)}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                        aria-label={t("delete")}
-                        title={t("delete")}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{b.slug}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground max-w-[200px]">
+                      <span className="line-clamp-2">{b.excerpt || "—"}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap text-xs">
+                      {new Date(b.publishedAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {b.published ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 text-xs">{t("blogPublished")}</Badge>
+                      ) : (
+                        <Badge className="bg-slate-100 text-slate-600 text-xs">{t("blogDraft")}</Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <AdminTableRowActions
+                        toolbarOnly
+                        actions={[
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => setEditBlog({ ...b }),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(b.id),
+                          },
+                        ]}
+                      />
+                    </td>
+                  </tr>
+                </AdminTableRowContextMenu>
               ))}
             </tbody>
           </table>

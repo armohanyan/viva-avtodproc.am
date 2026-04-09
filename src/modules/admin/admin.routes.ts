@@ -16,6 +16,7 @@ import {
   AdminLearnHubPage,
   AdminLearnPracticalPage,
   AdminLearnTheoryPage,
+  AdminExamQuestionsPage,
   AdminRedirectCohortsToLearn,
   AdminRedirectPackagesToLearn,
 } from "src/pages/admin";
@@ -30,6 +31,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/bookings", component: AdminBookingsPage },
   { path: "/admin/learn/practical", component: AdminLearnPracticalPage },
   { path: "/admin/learn/theory", component: AdminLearnTheoryPage },
+  { path: "/admin/learn/exam-questions", component: AdminExamQuestionsPage },
   { path: "/admin/learn/groups", component: AdminCohortsPage },
   { path: "/admin/learn/packages", component: AdminPackagesPage },
   { path: "/admin/learn", component: AdminLearnHubPage },

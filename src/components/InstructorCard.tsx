@@ -3,6 +3,7 @@ import { Badge } from "src/components/ui/badge";
 import { Card } from "src/components/ui/card";
 import { CountUpText } from "src/lib/motion";
 import { useLang } from "src/lib/i18n";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { Star, CalendarDays, MapPin, Car, Gauge } from "lucide-react";
 import type { Instructor } from "src/data/instructors";
 import { getLessonTypeLabel } from "src/modules/instructors/instructor-booking";
@@ -21,6 +22,7 @@ export default function InstructorCard({
   className,
 }: Props) {
   const { t } = useLang();
+  const { panelHref } = useAppNavigation();
 
   return (
     <Card className={`rounded-2xl border border-border shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full p-0 gap-0 ${className ?? ""}`}>
@@ -106,7 +108,7 @@ export default function InstructorCard({
 
         {showBookButton && (
           <div className="mt-4">
-            <a href="/register">
+            <a href={panelHref("/register")}>
               <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" size="sm">
                 {t("bookLesson")}
               </Button>

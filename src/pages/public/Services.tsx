@@ -6,9 +6,11 @@ import { useLang } from "src/lib/i18n";
 import { Car, BookOpen, Award, Clock, Users, CheckCircle2 } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { CountUpText, Reveal } from "src/lib/motion";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 export default function Services() {
   const { t } = useLang();
+  const { MarketingLink } = useAppNavigation();
 
   const services = [
     {
@@ -87,14 +89,14 @@ export default function Services() {
                           ))}
                         </ul>
                         <div className="mt-6">
-                          <a href="/packages">
+                          <MarketingLink href="/packages">
                             <Button
                               className={`${s.bg} ${s.color} border border-current/50 hover:opacity-80`}
                               variant="outline"
                             >
                               {t("servicesViewPackagesCta")}
                             </Button>
-                          </a>
+                          </MarketingLink>
                         </div>
                       </div>
                     </div>

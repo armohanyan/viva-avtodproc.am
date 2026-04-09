@@ -15,7 +15,7 @@ import { cn } from "src/lib/utils";
 
 export default function Navbar() {
   const { t } = useLang();
-  const { pathname: location } = useAppNavigation();
+  const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
 
   const isAdmin = location.startsWith("/admin");
@@ -63,11 +63,11 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 bg-background border-b border-border shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center gap-4 min-w-0 md:gap-6 lg:gap-8">
-          <a href="/" className="flex shrink-0 items-center gap-2">
+          <MarketingLink href="/" className="flex shrink-0 items-center gap-2">
             <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
               <img src="/logo.jpg" alt={t("brandName")} className="w-7 h-7 object-contain" />
             </div>
-          </a>
+          </MarketingLink>
 
           <div className="hidden lg:flex flex-1 min-w-0 items-center gap-3 lg:gap-4">
             <div className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain scroll-pl-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -75,7 +75,7 @@ export default function Navbar() {
                 {isPublic ? (
                   <>
                     {publicRootLinks.slice(0, 2).map((l) => (
-                      <a
+                      <MarketingLink
                         key={l.href}
                         href={l.href}
                         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
@@ -85,7 +85,7 @@ export default function Navbar() {
                         }`}
                       >
                         {l.label}
-                      </a>
+                      </MarketingLink>
                     ))}
 
                     <DropdownMenu>
@@ -105,10 +105,15 @@ export default function Navbar() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-44">
                         {offerLinks.map((link) => (
-                          <DropdownMenuItem key={link.href} asChild>
-                            <a href={link.href} className="w-full cursor-pointer">
-                              {link.label}
-                            </a>
+                          <DropdownMenuItem
+                            key={link.href}
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              navigate(link.href);
+                            }}
+                          >
+                            {link.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -131,17 +136,22 @@ export default function Navbar() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="start" className="w-44">
                         {learnLinks.map((link) => (
-                          <DropdownMenuItem key={link.href} asChild>
-                            <a href={link.href} className="w-full cursor-pointer">
-                              {link.label}
-                            </a>
+                          <DropdownMenuItem
+                            key={link.href}
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              navigate(link.href);
+                            }}
+                          >
+                            {link.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
 
                     {blogNav ? (
-                      <a
+                      <MarketingLink
                         href={blogNav.href}
                         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
                           blogNavActive
@@ -150,11 +160,11 @@ export default function Navbar() {
                         }`}
                       >
                         {blogNav.label}
-                      </a>
+                      </MarketingLink>
                     ) : null}
 
                     {publicRootLinks.slice(2).map((l) => (
-                      <a
+                      <MarketingLink
                         key={l.href}
                         href={l.href}
                         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5 ${
@@ -164,7 +174,7 @@ export default function Navbar() {
                         }`}
                       >
                         {l.label}
-                      </a>
+                      </MarketingLink>
                     ))}
                   </>
                 ) : (
@@ -192,12 +202,12 @@ export default function Navbar() {
               <ThemeToggle />
               {!isDashboard && !isAdmin && (
                 <>
-                  <a href="/login">
+                  <a href={panelHref("/login")}>
                     <Button variant="ghost" size="sm">
                       {t("login")}
                     </Button>
                   </a>
-                  <a href="/register">
+                  <a href={panelHref("/register")}>
                     <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground whitespace-nowrap">
                       {t("register")}
                     </Button>
@@ -209,7 +219,7 @@ export default function Navbar() {
                   <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm">
                     A
                   </div>
-                  <a href="/">
+                  <a href={marketingHref("/")}>
                     <Button variant="ghost" size="sm">
                       {t("logout")}
                     </Button>
@@ -243,7 +253,7 @@ export default function Navbar() {
                     {isPublic ? (
                       <>
                         {publicRootLinks.slice(0, 2).map((l) => (
-                          <a
+                          <MarketingLink
                             key={l.href}
                             href={l.href}
                             onClick={() => setOpen(false)}
@@ -254,11 +264,11 @@ export default function Navbar() {
                             }`}
                           >
                             {l.label}
-                          </a>
+                          </MarketingLink>
                         ))}
 
                         {offerLinks.map((l) => (
-                          <a
+                          <MarketingLink
                             key={l.href}
                             href={l.href}
                             onClick={() => setOpen(false)}
@@ -269,11 +279,11 @@ export default function Navbar() {
                             }`}
                           >
                             {l.label}
-                          </a>
+                          </MarketingLink>
                         ))}
 
                         {learnLinks.map((l) => (
-                          <a
+                          <MarketingLink
                             key={l.href}
                             href={l.href}
                             onClick={() => setOpen(false)}
@@ -284,11 +294,11 @@ export default function Navbar() {
                             }`}
                           >
                             {l.label}
-                          </a>
+                          </MarketingLink>
                         ))}
 
                         {blogNav ? (
-                          <a
+                          <MarketingLink
                             href={blogNav.href}
                             onClick={() => setOpen(false)}
                             className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -298,11 +308,11 @@ export default function Navbar() {
                             }`}
                           >
                             {blogNav.label}
-                          </a>
+                          </MarketingLink>
                         ) : null}
 
                         {publicRootLinks.slice(2).map((l) => (
-                          <a
+                          <MarketingLink
                             key={l.href}
                             href={l.href}
                             onClick={() => setOpen(false)}
@@ -313,7 +323,7 @@ export default function Navbar() {
                             }`}
                           >
                             {l.label}
-                          </a>
+                          </MarketingLink>
                         ))}
                       </>
                     ) : (
@@ -343,12 +353,12 @@ export default function Navbar() {
                   </div>
                   {!isDashboard && !isAdmin && (
                     <div className="flex flex-col gap-3">
-                      <a href="/login" onClick={() => setOpen(false)}>
+                      <a href={panelHref("/login")} onClick={() => setOpen(false)}>
                         <Button variant="outline" className="w-full">
                           {t("login")}
                         </Button>
                       </a>
-                      <a href="/register" onClick={() => setOpen(false)}>
+                      <a href={panelHref("/register")} onClick={() => setOpen(false)}>
                         <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">{t("register")}</Button>
                       </a>
                     </div>

@@ -1,10 +1,12 @@
 import { Facebook, Instagram, Youtube, Phone, Mail, MapPin } from "lucide-react";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 export default function Footer() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const { MarketingLink } = useAppNavigation();
   const socialLinks = [
     { icon: Facebook, href: "https://facebook.com", label: "Facebook" },
     { icon: Instagram, href: "https://instagram.com", label: "Instagram" },
@@ -51,9 +53,12 @@ export default function Footer() {
                 { href: "/contact", label: t("contact") },
               ].map((l) => (
                 <li key={l.href}>
-                  <a href={l.href} className="text-sm text-hero-foreground/80 hover:text-hero-foreground transition-colors">
+                  <MarketingLink
+                    href={l.href}
+                    className="text-sm text-hero-foreground/80 hover:text-hero-foreground transition-colors"
+                  >
                     {l.label}
-                  </a>
+                  </MarketingLink>
                 </li>
               ))}
             </ul>

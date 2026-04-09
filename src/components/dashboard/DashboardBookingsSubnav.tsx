@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
 
-type ActiveTab = "package" | "practical";
+type ActiveTab = "overview" | "package" | "practical";
 
 export default function DashboardBookingsSubnav({ active }: { active: ActiveTab }) {
   const { t } = useLang();
@@ -17,6 +17,9 @@ export default function DashboardBookingsSubnav({ active }: { active: ActiveTab 
 
   return (
     <nav className="flex flex-wrap gap-2 mb-6 sm:mb-8" aria-label={t("bookings")}>
+      <Link href="/dashboard/bookings" className={tabClass(active === "overview")}>
+        {t("bookingsSubnavOverview")}
+      </Link>
       <Link href="/dashboard/bookings/package" className={tabClass(active === "package")}>
         {t("bookingsSubnavPackage")}
       </Link>
