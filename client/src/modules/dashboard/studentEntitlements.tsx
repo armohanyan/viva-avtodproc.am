@@ -1,0 +1,253 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { countUpcomingStudentBookings } from "src/data/studentDemoBookings";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useAccount } from "src/modules/accounts";
+import { useStudentBookings } from "src/modules/bookings/useStudentBookings";
+import type { TranslationKey } from "src/lib/i18n";
+
+export type PackageTierId = "basic" | "standard" | "premium";
+
+export type CatalogPackage = {
+  id: PackageTierId;
+  nameKey: TranslationKey;
+  priceDisplay: string;
+  practicalLessons: number;
+  theorySessions: number;
+};
+
+/** Mirrors public pricing; theory + exam/thematic access are included with every tier. */
+export const STUDENT_PACKAGE_CATALOG: readonly CatalogPackage[] = [
+  {
+    id: "basic",
+    nameKey: "basic",
+    priceDisplay: "35,000 ֏",
+    practicalLessons: 10,
+    theorySessions: 8,
+  },
+  {
+    id: "standard",
+    nameKey: "standard",
+    priceDisplay: "55,000 ֏",
+    practicalLessons: 18,
+    theorySessions: 12,
+  },
+  {
+    id: "premium",
+    nameKey: "premium",
+    priceDisplay: "85,000 ֏",
+    practicalLessons: 28,
+    theorySessions: 16,
+  },
+] as const;
+
+export const EXTRA_PRACTICAL_BLOCK = {
+  lessons: 3,
+  priceDisplay: "12,000 ֏",
+  nameKey: "demoExtraPracticalBlockName" as TranslationKey,
+};
+
+const TIER_TO_PACKAGE_ID: Record<PackageTierId, string> = {
+  basic: "PKG-001",
+  standard: "PKG-002",
+  premium: "PKG-003",
+};
+
+export type OwnedPackage = {
+  purchaseId: string;
+  tier: PackageTierId;
+  purchasedAt: string;
+  practicalTotal: number;
+  practicalUsed: number;
+  theorySessions: number;
+};
+
+export type OwnedExtraPractical = {
+  id: string;
+  purchasedAt: string;
+  practicalTotal: number;
+  practicalUsed: number;
+  priceDisplay: string;
+};
+
+type EntitlementsApi = {
+  packages: OwnedPackage[];
+  extras: OwnedExtraPractical[];
+};
+
+export function paymentDescForTier(tier: PackageTierId): TranslationKey {
+  switch (tier) {
+    case "basic":
+      return "paymentDescBasicPackage";
+    case "standard":
+      return "paymentDescStandardPackage";
+    case "premium":
+      return "paymentDescPremiumPackage";
+  }
+}
+
+type StudentEntitlementsContextValue = {
+  ownedPackages: readonly OwnedPackage[];
+  extraPracticalBlocks: readonly OwnedExtraPractical[];
+  practicalCreditsRemaining: number;
+  packagePracticalRemaining: number;
+  extraPracticalRemaining: number;
+  hasTheoryFromPackage: boolean;
+  primaryTheorySessions: number;
+  completedPracticalLessons: number;
+  upcomingBookingsCount: number;
+  entitlementsLoading: boolean;
+  entitlementsError: string | null;
+  refreshEntitlements: () => Promise<void>;
+  purchasePackage: (tier: PackageTierId) => Promise<void>;
+  purchaseExtraPracticalBlock: () => Promise<void>;
+};
+
+const StudentEntitlementsContext = createContext<StudentEntitlementsContextValue | null>(null);
+
+export function StudentEntitlementsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAccount();
+  const { bookings } = useStudentBookings(user?.accountType === "student" ? user.id : undefined);
+  const [ownedPackages, setOwnedPackages] = useState<OwnedPackage[]>([]);
+  const [extraPracticalBlocks, setExtraPracticalBlocks] = useState<OwnedExtraPractical[]>([]);
+  const [entitlementsLoading, setEntitlementsLoading] = useState(false);
+  const [entitlementsError, setEntitlementsError] = useState<string | null>(null);
+
+  const refreshEntitlements = useCallback(async () => {
+    if (!user?.id || user.accountType !== "student") {
+      setOwnedPackages([]);
+      setExtraPracticalBlocks([]);
+      setEntitlementsError(null);
+      return;
+    }
+    setEntitlementsLoading(true);
+    setEntitlementsError(null);
+    try {
+      const data = await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements`);
+      setOwnedPackages(
+        Array.isArray(data.packages)
+          ? data.packages.map((p) => ({
+              ...p,
+              tier: normalizeTier(String(p.tier)),
+            }))
+          : [],
+      );
+      setExtraPracticalBlocks(Array.isArray(data.extras) ? [...data.extras] : []);
+    } catch (e) {
+      setOwnedPackages([]);
+      setExtraPracticalBlocks([]);
+      setEntitlementsError(getApiErrorMessage(e));
+    } finally {
+      setEntitlementsLoading(false);
+    }
+  }, [user?.id, user?.accountType]);
+
+  useEffect(() => {
+    void refreshEntitlements();
+  }, [refreshEntitlements]);
+
+  const aggregates = useMemo(() => {
+    let pkgRem = 0;
+    let pkgTotal = 0;
+    let pkgUsed = 0;
+    for (const p of ownedPackages) {
+      pkgRem += Math.max(0, p.practicalTotal - p.practicalUsed);
+      pkgTotal += p.practicalTotal;
+      pkgUsed += p.practicalUsed;
+    }
+    let exRem = 0;
+    for (const e of extraPracticalBlocks) {
+      exRem += Math.max(0, e.practicalTotal - e.practicalUsed);
+    }
+    const primary = ownedPackages[0];
+    return {
+      packagePracticalRemaining: pkgRem,
+      extraPracticalRemaining: exRem,
+      practicalCreditsRemaining: pkgRem + exRem,
+      hasTheoryFromPackage: ownedPackages.length > 0,
+      primaryTheorySessions: primary?.theorySessions ?? 0,
+      completedPracticalLessons: pkgUsed + extraPracticalBlocks.reduce((a, e) => a + e.practicalUsed, 0),
+      upcomingBookingsCount: countUpcomingStudentBookings(bookings),
+    };
+  }, [ownedPackages, extraPracticalBlocks, bookings]);
+
+  const purchasePackage = useCallback(
+    async (tier: PackageTierId) => {
+      if (!user?.id || user.accountType !== "student") return;
+      const packageId = TIER_TO_PACKAGE_ID[tier];
+      await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements/package`, {
+        method: "POST",
+        body: { packageId },
+      });
+      await refreshEntitlements();
+    },
+    [user?.id, user?.accountType, refreshEntitlements],
+  );
+
+  const purchaseExtraPracticalBlock = useCallback(async () => {
+    if (!user?.id || user.accountType !== "student") return;
+    await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements/extra-practical`, {
+      method: "POST",
+      body: { practicalTotal: EXTRA_PRACTICAL_BLOCK.lessons },
+    });
+    await refreshEntitlements();
+  }, [user?.id, user?.accountType, refreshEntitlements]);
+
+  const value = useMemo(
+    () =>
+      ({
+        ownedPackages,
+        extraPracticalBlocks,
+        practicalCreditsRemaining: aggregates.practicalCreditsRemaining,
+        packagePracticalRemaining: aggregates.packagePracticalRemaining,
+        extraPracticalRemaining: aggregates.extraPracticalRemaining,
+        hasTheoryFromPackage: aggregates.hasTheoryFromPackage,
+        primaryTheorySessions: aggregates.primaryTheorySessions,
+        completedPracticalLessons: aggregates.completedPracticalLessons,
+        upcomingBookingsCount: aggregates.upcomingBookingsCount,
+        entitlementsLoading,
+        entitlementsError,
+        refreshEntitlements,
+        purchasePackage,
+        purchaseExtraPracticalBlock,
+      }) satisfies StudentEntitlementsContextValue,
+    [
+      ownedPackages,
+      extraPracticalBlocks,
+      aggregates,
+      entitlementsLoading,
+      entitlementsError,
+      refreshEntitlements,
+      purchasePackage,
+      purchaseExtraPracticalBlock,
+    ],
+  );
+
+  return (
+    <StudentEntitlementsContext.Provider value={value}>{children}</StudentEntitlementsContext.Provider>
+  );
+}
+
+export function useStudentEntitlements(): StudentEntitlementsContextValue {
+  const ctx = useContext(StudentEntitlementsContext);
+  if (!ctx) {
+    throw new Error("useStudentEntitlements must be used within StudentEntitlementsProvider");
+  }
+  return ctx;
+}
+
+export function getCatalogPackage(tier: PackageTierId): CatalogPackage | undefined {
+  return STUDENT_PACKAGE_CATALOG.find((p) => p.id === tier);
+}
+
+function normalizeTier(raw: string): PackageTierId {
+  return raw === "basic" || raw === "standard" || raw === "premium" ? raw : "standard";
+}
+

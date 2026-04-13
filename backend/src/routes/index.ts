@@ -1,0 +1,44 @@
+import { Router } from 'express';
+import accountsRoutes from './accounts.routes';
+import authRoutes from './auth.routes';
+import blogRoutes from './blog.routes';
+import bookingRoutes from './booking.routes';
+import branchRoutes from './branch.routes';
+import cityRoutes from './city.routes';
+import examQuestionRoutes from './exam-question.routes';
+import financeRoutes from './finance.routes';
+import fleetRoutes from './fleet.routes';
+import instructorRoutes from './instructor.routes';
+import marketingRoutes from './marketing.routes';
+import packageRoutes from './package.routes';
+import studentRoutes from './student.routes';
+import theoryCohortRoutes from './theory-cohort.routes';
+import userRoutes from './user.routes';
+
+const router = Router();
+
+router.get('/health', (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: 'viva-backend',
+    time: new Date().toISOString(),
+  });
+});
+
+router.use('/auth', authRoutes);
+router.use('/accounts', accountsRoutes);
+router.use('/cities', cityRoutes);
+router.use('/branches', branchRoutes);
+router.use('/instructors', instructorRoutes);
+router.use('/students', studentRoutes);
+router.use('/theory-cohorts', theoryCohortRoutes);
+router.use('/packages', packageRoutes);
+router.use('/bookings', bookingRoutes);
+router.use('/blogs', blogRoutes);
+router.use('/marketing', marketingRoutes);
+router.use('/exam-questions', examQuestionRoutes);
+router.use('/finance', financeRoutes);
+router.use('/fleet', fleetRoutes);
+router.use('/user', userRoutes);
+
+export default router;

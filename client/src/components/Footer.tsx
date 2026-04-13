@@ -1,0 +1,140 @@
+import type { ComponentType } from "react";
+import { Facebook, Instagram, Youtube, Phone, Mail, MapPin } from "lucide-react";
+import { useLang } from "../lib/i18n";
+import { useToast } from "../lib/toast";
+import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
+import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
+import { useMemo } from "react";
+
+function TikTokIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z" />
+    </svg>
+  );
+}
+
+type SocialIcon = ComponentType<{ className?: string }>;
+
+export default function Footer() {
+  const { t } = useLang();
+  const { showToast } = useToast();
+  const { MarketingLink } = useAppNavigation();
+  const { data: mkt } = useMarketingPublic();
+
+  const socialLinks = useMemo((): { icon: SocialIcon; href: string; label: string }[] => {
+    const s = mkt?.social;
+    return [
+      { icon: Facebook, href: s?.facebook?.trim() || "https://facebook.com", label: "Facebook" },
+      { icon: Instagram, href: s?.instagram?.trim() || "https://instagram.com", label: "Instagram" },
+      { icon: Youtube, href: s?.youtube?.trim() || "https://youtube.com", label: "YouTube" },
+      { icon: TikTokIcon, href: s?.tiktok?.trim() || "https://www.tiktok.com", label: "TikTok" },
+    ];
+  }, [mkt]);
+
+  const footerPhone = mkt?.contact?.phones?.[0]?.trim() || "+374 10 123 456";
+  const footerEmail = mkt?.contact?.emails?.[0]?.trim() || "info@vivadrive.am";
+  const addr1 = mkt?.footer?.addressLine1?.trim() || "Yerevan, Armenia";
+  const addr2 = mkt?.footer?.addressLine2?.trim() || "Mashtots Ave, 45";
+
+  return (
+    <footer className="bg-hero text-hero-foreground">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center overflow-hidden">
+                <img src="/logo.jpg" alt={t("brandName")} className="w-7 h-7 object-contain" />
+              </div>
+            </div>
+            <p className="text-sm text-hero-foreground/80 leading-relaxed mb-5">{t("aboutSub")}</p>
+            <div className="flex gap-3">
+              {socialLinks.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={item.label}
+                  className="w-9 h-9 rounded-lg bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors"
+                >
+                  <item.icon className="w-4 h-4" />
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-hero-foreground mb-4">{t("quickLinks")}</h4>
+            <ul className="space-y-2">
+              {[
+                { href: "/about", label: t("about") },
+                { href: "/services", label: t("services") },
+                { href: "/thematic-questions", label: t("examTests") },
+                { href: "/packages", label: t("packages") },
+                { href: "/instructors", label: t("instructors") },
+                { href: "/blogs", label: t("blogs") },
+                { href: "/contact", label: t("contact") },
+              ].map((l) => (
+                <li key={l.href}>
+                  <MarketingLink
+                    href={l.href}
+                    className="text-sm text-hero-foreground/80 hover:text-hero-foreground transition-colors"
+                  >
+                    {l.label}
+                  </MarketingLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-hero-foreground mb-4">{t("contact")}</h4>
+            <ul className="space-y-3">
+              <li className="flex items-start gap-2 text-sm">
+                <MapPin className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+                <span>
+                  {addr1}
+                  <br />
+                  {addr2}
+                </span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <Phone className="w-4 h-4 text-primary shrink-0" />
+                <span>{footerPhone}</span>
+              </li>
+              <li className="flex items-center gap-2 text-sm">
+                <Mail className="w-4 h-4 text-primary shrink-0" />
+                <span>{footerEmail}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <p className="text-xs text-hero-foreground/70">
+            © 2026 {t("brandName")}. {t("allRights")}
+          </p>
+          <div className="flex gap-4 text-xs text-hero-foreground/70">
+            <button
+              type="button"
+              onClick={() => showToast("Privacy policy page is coming soon.", "info")}
+              className="hover:text-hero-foreground/90"
+            >
+              Privacy Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => showToast("Terms of service page is coming soon.", "info")}
+              className="hover:text-hero-foreground/90"
+            >
+              Terms of Service
+            </button>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}

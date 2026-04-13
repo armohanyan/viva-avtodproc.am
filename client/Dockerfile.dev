@@ -1,0 +1,9 @@
+# syntax=docker/dockerfile:1
+# Local dev: bind-mount ./client; panel (Vite) and marketing (Next) use separate commands in compose.
+
+FROM node:22-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/web/package.json ./apps/web/
+RUN npm ci
+ENV NEXT_TELEMETRY_DISABLED=1

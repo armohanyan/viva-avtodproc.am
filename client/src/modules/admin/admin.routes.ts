@@ -1,0 +1,50 @@
+import type { AccountType } from "src/modules/accounts";
+import type { AppRoute } from "src/shared/types/router.types";
+import {
+  AdminDashboardPage,
+  AdminUsersPage,
+  AdminUsersAnalyticsPage,
+  AdminInstructorsPage,
+  AdminBookingsPage,
+  AdminPackagesPage,
+  AdminCohortsPage,
+  AdminBranchesPage,
+  AdminCarsPage,
+  AdminBlogsPage,
+  AdminAccountsPage,
+  AdminFinancePage,
+  AdminProfilePage,
+  AdminLearnHubPage,
+  AdminLearnPracticalPage,
+  AdminLearnTheoryPage,
+  AdminExamQuestionsPage,
+  AdminMarketingPage,
+  AdminRedirectCohortsToLearn,
+  AdminRedirectPackagesToLearn,
+} from "src/pages/admin";
+
+const STAFF: readonly AccountType[] = ["super_admin", "admin"];
+const SUPER_ADMIN_ONLY: readonly AccountType[] = ["super_admin"];
+
+export const adminRoutes: readonly AppRoute[] = [
+  { path: "/admin/dashboard", component: AdminDashboardPage, allowedAccountTypes: STAFF },
+  { path: "/admin/branches", component: AdminBranchesPage, allowedAccountTypes: STAFF },
+  { path: "/admin/cars", component: AdminCarsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/users", component: AdminUsersPage, allowedAccountTypes: STAFF },
+  { path: "/admin/users/analytics", component: AdminUsersAnalyticsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/instructors", component: AdminInstructorsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/bookings", component: AdminBookingsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn/practical", component: AdminLearnPracticalPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn/theory", component: AdminLearnTheoryPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn/exam-questions", component: AdminExamQuestionsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn/groups", component: AdminCohortsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn/packages", component: AdminPackagesPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn", component: AdminLearnHubPage, allowedAccountTypes: STAFF },
+  { path: "/admin/packages", component: AdminRedirectPackagesToLearn, allowedAccountTypes: STAFF },
+  { path: "/admin/cohorts", component: AdminRedirectCohortsToLearn, allowedAccountTypes: STAFF },
+  { path: "/admin/blogs", component: AdminBlogsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/marketing-content", component: AdminMarketingPage, allowedAccountTypes: SUPER_ADMIN_ONLY },
+  { path: "/admin/finance", component: AdminFinancePage, allowedAccountTypes: STAFF },
+  { path: "/admin/accounts", component: AdminAccountsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/profile", component: AdminProfilePage, allowedAccountTypes: STAFF },
+];

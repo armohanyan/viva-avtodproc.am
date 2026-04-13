@@ -1,0 +1,150 @@
+import { QueryTypes } from 'sequelize';
+import config from '../config';
+import { sequelize } from '../database/sequelize';
+import { Blog } from './blog.model';
+import { Booking } from './booking.model';
+import { Branch } from './branch.model';
+import { CarExpense } from './car-expense.model';
+import { City } from './city.model';
+import { ExamQuestion } from './exam-question.model';
+import { FinanceTransaction } from './finance-transaction.model';
+import { FleetCar } from './fleet-car.model';
+import { FleetCarInstructor } from './fleet-car-instructor.model';
+import { InstructorBranch } from './instructor-branch.model';
+import { InstructorProfile } from './instructor-profile.model';
+import { MarketingSetting } from './marketing-setting.model';
+import { MarketingStat } from './marketing-stat.model';
+import { MarketingTestimonial } from './marketing-testimonial.model';
+import { Package } from './package.model';
+import { StudentExtraPractical } from './student-extra-practical.model';
+import { StudentProfile } from './student-profile.model';
+import { TheoryCohort } from './theory-cohort.model';
+import { TheoryCohortEnrollment } from './theory-cohort-enrollment.model';
+import { User } from './user.model';
+
+City.hasMany(Branch, { foreignKey: 'cityId', sourceKey: 'id' });
+Branch.belongsTo(City, { foreignKey: 'cityId', targetKey: 'id' });
+
+User.hasOne(InstructorProfile, { foreignKey: 'userId', sourceKey: 'id', as: 'instructorProfile' });
+InstructorProfile.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'user' });
+
+User.hasOne(StudentProfile, { foreignKey: 'userId', sourceKey: 'id', as: 'studentProfile' });
+StudentProfile.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'studentAccount' });
+
+StudentProfile.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+StudentProfile.belongsTo(Package, { foreignKey: 'packageId', targetKey: 'id', as: 'package' });
+StudentProfile.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'assignedInstructor' });
+
+User.hasMany(InstructorBranch, { foreignKey: 'instructorUserId', sourceKey: 'id' });
+Branch.hasMany(InstructorBranch, { foreignKey: 'branchId', sourceKey: 'id' });
+InstructorBranch.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
+InstructorBranch.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+
+Booking.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+Booking.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+Booking.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+
+Booking.hasMany(FinanceTransaction, { foreignKey: 'bookingId', sourceKey: 'id', as: 'financeTransactions' });
+FinanceTransaction.belongsTo(Booking, { foreignKey: 'bookingId', targetKey: 'id', as: 'booking' });
+
+FleetCar.hasMany(CarExpense, { foreignKey: 'carId', sourceKey: 'id' });
+CarExpense.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
+
+FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
+User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
+FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
+FleetCarInstructor.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'user' });
+
+TheoryCohort.hasMany(TheoryCohortEnrollment, { foreignKey: 'cohortId', sourceKey: 'id' });
+TheoryCohortEnrollment.belongsTo(TheoryCohort, { foreignKey: 'cohortId', targetKey: 'id' });
+TheoryCohortEnrollment.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+
+User.hasMany(StudentExtraPractical, { foreignKey: 'userId', sourceKey: 'id' });
+StudentExtraPractical.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
+
+FinanceTransaction.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+
+export {
+  Blog,
+  Booking,
+  Branch,
+  CarExpense,
+  City,
+  ExamQuestion,
+  FinanceTransaction,
+  FleetCar,
+  FleetCarInstructor,
+  InstructorBranch,
+  InstructorProfile,
+  MarketingSetting,
+  MarketingStat,
+  MarketingTestimonial,
+  Package,
+  StudentExtraPractical,
+  StudentProfile,
+  TheoryCohort,
+  TheoryCohortEnrollment,
+  User,
+};
+
+/** Adds `users.is_active` when the table predates the Sequelize model field (sync without alter skips new columns). */
+async function ensureUsersIsActiveColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const rows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_active'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (rows.length > 0) {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `users` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1',
+  );
+}
+
+/** Adds `finance_transactions.booking_id` when the table predates the Sequelize field (sync without alter skips new columns). */
+async function ensureFinanceTransactionsBookingIdColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions' AND COLUMN_NAME = 'booking_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  await sequelize.query(
+    `ALTER TABLE \`finance_transactions\`
+     ADD COLUMN \`booking_id\` VARCHAR(64) NULL,
+     ADD CONSTRAINT \`finance_transactions_booking_id_fk\`
+     FOREIGN KEY (\`booking_id\`) REFERENCES \`bookings\` (\`id\`)
+     ON UPDATE CASCADE ON DELETE RESTRICT`,
+  );
+}
+
+export async function syncModels(): Promise<void> {
+  await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await ensureUsersIsActiveColumn();
+  await ensureFinanceTransactionsBookingIdColumn();
+}

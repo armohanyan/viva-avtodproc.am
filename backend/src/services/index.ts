@@ -1,0 +1,12 @@
+export { default as AuthService } from './auth.service';
+export { default as BlogService } from './blog.service';
+export { default as BookingService } from './booking.service';
+export { default as BranchService } from './branch.service';
+export { default as CityService } from './city.service';
+export { default as ExamQuestionService } from './exam-question.service';
+export { default as FleetService } from './fleet.service';
+export { default as InstructorService } from './instructor.service';
+export { default as MarketingService } from './marketing.service';
+export { default as PackageService } from './package.service';
+export { default as StudentAdminService } from './student-admin.service';
+export { default as UserService } from './user.service';

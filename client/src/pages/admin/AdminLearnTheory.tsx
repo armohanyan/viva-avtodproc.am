@@ -1,0 +1,192 @@
+import AdminLayout from "src/components/AdminLayout";
+import { useLang } from "src/lib/i18n";
+import { useToast } from "src/lib/toast";
+import { formatShortDateFromIso } from "src/lib/adminFormat";
+import { Card } from "src/components/ui/card";
+import { Badge } from "src/components/ui/badge";
+import { Button } from "src/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import PanelPageHeader from "src/components/PanelPageHeader";
+import { Link } from "wouter";
+import { ArrowLeft, UsersRound } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Reveal } from "src/lib/motion";
+import { branchNameById, useBranches } from "src/modules/branches";
+import { useAdminLearnSearchParams } from "src/lib/adminLearnSearchParams";
+import { useAdminStudentsMini } from "src/modules/admin/useAdminStudents";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+
+type Cohort = {
+  id: string;
+  name: string;
+  startDateIso: string;
+  endDateIso: string;
+  schedule: string;
+  seats: number;
+  enrolled: number;
+  instructorName: string;
+  meetLink: string;
+  status: string;
+  branchId: string;
+};
+
+export default function AdminLearnTheory() {
+  const { t, lang } = useLang();
+  const { showToast } = useToast();
+  const { branches } = useBranches();
+  const { students } = useAdminStudentsMini();
+  const { studentId: studentFromQuery } = useAdminLearnSearchParams();
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [dialogCohortId, setDialogCohortId] = useState<string | null>(null);
+  const [studentId, setStudentId] = useState("");
+
+  const refreshCohorts = useCallback(async () => {
+    try {
+      const data = await vivaApiJson<Cohort[]>("/theory-cohorts");
+      setCohorts(Array.isArray(data) ? data : []);
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    void refreshCohorts();
+  }, [refreshCohorts]);
+
+  useEffect(() => {
+    if (studentFromQuery) setStudentId(studentFromQuery);
+  }, [studentFromQuery]);
+
+  useEffect(() => {
+    setStudentId((prev) => prev || students[0]?.id || "");
+  }, [students]);
+
+  const activeGroups = useMemo(() => cohorts.filter((c) => c.status === "active"), [cohorts]);
+
+  const dialogCohort = dialogCohortId ? cohorts.find((c) => c.id === dialogCohortId) : null;
+  const seatsLeft = dialogCohort ? dialogCohort.seats - dialogCohort.enrolled : 0;
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dialogCohortId || !dialogCohort) return;
+    if (dialogCohort.enrolled >= dialogCohort.seats) {
+      showToast(t("adminTheoryGroupFullHint"), "error");
+      return;
+    }
+    const studentName = students.find((s) => s.id === studentId)?.name ?? "";
+    try {
+      await vivaApiJson(`/theory-cohorts/${encodeURIComponent(dialogCohortId)}/enrollments`, {
+        method: "POST",
+        body: { studentUserId: studentId },
+      });
+      setDialogCohortId(null);
+      showToast(`${t("adminTheoryEnrolledToast")} ${studentName} → ${dialogCohort.name}`, "success");
+      await refreshCohorts();
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    }
+  };
+
+  return (
+    <AdminLayout>
+      <div className="mb-4">
+        <Link href="/admin/learn" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          {t("adminLearnHubTitle")}
+        </Link>
+      </div>
+
+      <Reveal>
+        <PanelPageHeader icon={UsersRound} title={t("adminLearnTheoryTitle")} subtitle={t("adminLearnTheorySubtitle")} />
+      </Reveal>
+
+      {studentFromQuery && (
+        <p className="text-xs text-muted-foreground mb-4 rounded-lg bg-muted/50 px-3 py-2 border border-border/60 max-w-2xl">
+          {t("adminLearnStudentFromQueryHint")}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {activeGroups.length === 0 ? (
+          <Card className="p-8 border-border text-center text-muted-foreground">{t("adminTheoryNoActiveGroups")}</Card>
+        ) : (
+          activeGroups.map((c, idx) => {
+            const full = c.enrolled >= c.seats;
+            return (
+              <Reveal key={c.id} delay={idx * 0.06}>
+                <Card className="p-5 border-border h-full flex flex-col min-w-0">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-foreground">{c.name}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">{branchNameById(branches, c.branchId)}</p>
+                    </div>
+                    <Badge className="shrink-0 bg-emerald-100 text-emerald-700">{t("active")}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-1">{c.schedule}</p>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    {formatShortDateFromIso(c.startDateIso, lang)} – {formatShortDateFromIso(c.endDateIso, lang)}
+                  </p>
+                  <div className="flex items-center justify-between text-sm mt-auto pt-2 border-t border-border gap-2">
+                    <span className="text-muted-foreground shrink-0">{t("cohortColInstructor")}</span>
+                    <span className="font-medium text-foreground text-right min-w-0">{c.instructorName}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-2">
+                    <span className="text-muted-foreground">{t("cohortColEnrollment")}</span>
+                    <span className="font-medium text-foreground">
+                      {c.enrolled} / {c.seats}
+                    </span>
+                  </div>
+                  <Button className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground" disabled={full} onClick={() => setDialogCohortId(c.id)}>
+                    {full ? t("adminTheoryGroupFull") : t("adminTheoryEnrollCta")}
+                  </Button>
+                </Card>
+              </Reveal>
+            );
+          })
+        )}
+      </div>
+
+      <Dialog open={!!dialogCohortId} onOpenChange={(open) => !open && setDialogCohortId(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("adminTheoryDialogTitle")}</DialogTitle>
+          </DialogHeader>
+          {dialogCohort && (
+            <form onSubmit={handleEnroll} className="space-y-4 mt-2">
+              <div className="rounded-lg bg-muted/40 p-3 text-sm">
+                <p className="font-medium text-foreground">{dialogCohort.name}</p>
+                <p className="text-muted-foreground text-xs mt-1">{dialogCohort.schedule}</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {t("cohortColEnrollment")}: {dialogCohort.enrolled} / {dialogCohort.seats}
+                  {seatsLeft > 0 ? ` · ${seatsLeft} ${t("adminTheorySeatsLeft")}` : ""}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("adminLearnStudentFieldLabel")}</label>
+                <select
+                  value={studentId}
+                  onChange={(e) => setStudentId(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setDialogCohortId(null)}>
+                  {t("cancel")}
+                </Button>
+                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" disabled={seatsLeft <= 0}>
+                  {t("adminTheoryEnrollCta")}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </AdminLayout>
+  );
+}
