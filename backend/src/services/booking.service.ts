@@ -1,4 +1,10 @@
+import { Op } from 'sequelize';
 import { Booking, User } from '../models';
+import InstructorAvailabilityService from './instructor-availability.service';
+import ErrorsUtil from '../utils/errors.util';
+import { HttpStatusCodesUtil } from '../utils';
+
+const { InputValidationError } = ErrorsUtil;
 
 type BookingWithUsers = Booking & { instructor: User; student: User };
 type BookingWithInstructor = Booking & { instructor: User };
@@ -20,7 +26,14 @@ export type StudentBookingDto = {
   time: string;
   instructor: string;
   lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory';
-  status: 'confirmed' | 'pending' | 'cancelled' | 'completed';
+  status:
+    | 'confirmed'
+    | 'pending'
+    | 'pending_prebook'
+    | 'pending_payment'
+    | 'cancelled'
+    | 'completed'
+    | 'refunded';
 };
 
 function dateIsoString(v: unknown): string {
@@ -28,6 +41,32 @@ function dateIsoString(v: unknown): string {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return String(v).slice(0, 10);
 }
+
+const STUDENT_BOOKING_STATUSES = new Set<string>([
+  'confirmed',
+  'pending',
+  'pending_prebook',
+  'pending_payment',
+  'cancelled',
+  'completed',
+  'refunded',
+]);
+
+function normalizeStudentBookingStatus(raw: string): StudentBookingDto['status'] {
+  if (STUDENT_BOOKING_STATUSES.has(raw)) {
+    return raw as StudentBookingDto['status'];
+  }
+  return 'pending';
+}
+
+/** Bookings that occupy an instructor slot on the calendar (legacy `pending` included). */
+const SLOT_RESERVING_STATUSES = [
+  'confirmed',
+  'pending',
+  'pending_prebook',
+  'pending_payment',
+  'completed',
+] as const;
 
 export default class BookingService {
   static async listAdmin(): Promise<BookingAdminDto[]> {
@@ -58,6 +97,33 @@ export default class BookingService {
     });
   }
 
+  /** For calendar: slots held by another booking for this instructor in the date range. */
+  static async listBusySlotsForInstructor(
+    instructorUserId: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<{ dateIso: string; time: string; studentUserId: string }[]> {
+    const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
+    if (!exists) return [];
+    const rows = await Booking.findAll({
+      where: {
+        instructorUserId,
+        dateIso: { [Op.between]: [fromIso, toIso] },
+        status: { [Op.in]: [...SLOT_RESERVING_STATUSES] },
+      },
+      attributes: ['dateIso', 'time', 'studentUserId'],
+      order: [
+        ['dateIso', 'ASC'],
+        ['time', 'ASC'],
+      ],
+    });
+    return rows.map((b) => ({
+      dateIso: dateIsoString(b.dateIso),
+      time: b.time,
+      studentUserId: b.studentUserId,
+    }));
+  }
+
   static async listForStudent(studentUserId: string): Promise<StudentBookingDto[]> {
     const rows = await Booking.findAll({
       where: { studentUserId },
@@ -70,14 +136,13 @@ export default class BookingService {
     return rows.map((b) => {
       const row = b as BookingWithInstructor;
       const inst = row.instructor;
-      const status = b.status as StudentBookingDto['status'];
       return {
         id: b.id,
         dateIso: dateIsoString(b.dateIso),
         time: b.time,
         instructor: inst.name,
         lessonTypeKey: b.lessonType === 'theory' ? 'lessonTypeTheory' : 'lessonTypePractical',
-        status: ['confirmed', 'pending', 'cancelled', 'completed'].includes(status) ? status : 'pending',
+        status: normalizeStudentBookingStatus(b.status),
       };
     });
   }
@@ -96,6 +161,17 @@ export default class BookingService {
       where: { name: input.instructorName, accountType: 'instructor' },
     });
     if (!instructor) return null;
+    const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+      instructor.id,
+      input.dateIso.slice(0, 10),
+      input.time,
+    );
+    if (unavailable) {
+      throw new InputValidationError(
+        'Instructor is not available at this time (day off, break, or outside work hours).',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
     const id = input.id?.trim() || `BK-${String((await Booking.count()) + 1).padStart(3, '0')}`;
     await Booking.create({
       id,
@@ -131,6 +207,19 @@ export default class BookingService {
       });
       if (!instructor) return null;
       instructorUserId = instructor.id;
+    }
+    const nextDateIso = patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
+    const nextTime = patch.time !== undefined ? patch.time : row.time;
+    const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+      instructorUserId,
+      nextDateIso,
+      nextTime,
+    );
+    if (unavailable) {
+      throw new InputValidationError(
+        'Instructor is not available at this time (day off, break, or outside work hours).',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
     }
     await row.update({
       ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),

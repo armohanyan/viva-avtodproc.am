@@ -20,6 +20,14 @@ export type TheoryCohortDto = {
   branchId: string;
 };
 
+export type TheoryCohortEnrollmentStudentDto = {
+  userId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
+};
+
 function dateIso(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
   if (v instanceof Date) return v.toISOString().slice(0, 10);
@@ -123,6 +131,30 @@ export default class TheoryCohortService {
     await TheoryCohortEnrollment.destroy({ where: { cohortId: id } });
     const n = await TheoryCohort.destroy({ where: { id } });
     return n > 0;
+  }
+
+  /** Returns `null` if the cohort does not exist. */
+  static async listEnrollments(cohortId: string): Promise<TheoryCohortEnrollmentStudentDto[] | null> {
+    const exists = await TheoryCohort.findByPk(cohortId);
+    if (!exists) return null;
+    const rows = await TheoryCohortEnrollment.findAll({
+      where: { cohortId },
+      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'phone', 'isActive'] }],
+    });
+    const out: TheoryCohortEnrollmentStudentDto[] = [];
+    for (const row of rows) {
+      const student = row.get('student') as User | null | undefined;
+      if (!student) continue;
+      out.push({
+        userId: student.id,
+        name: student.name,
+        email: student.email,
+        phone: student.phone ?? null,
+        isActive: student.isActive ?? true,
+      });
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
   }
 
   static async enroll(cohortId: string, studentUserId: string): Promise<TheoryCohortDto | null> {

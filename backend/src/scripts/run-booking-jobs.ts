@@ -1,0 +1,20 @@
+import 'dotenv/config';
+import { connectDatabase } from '../database/sequelize';
+import { syncModels } from '../models';
+import BookingCronService from '../services/booking-cron.service';
+import LoggerUtil from '../utils/logger.util';
+
+async function main() {
+  await connectDatabase();
+  await syncModels();
+
+  const result = await BookingCronService.runDueJobs();
+
+  LoggerUtil.info(`run-booking-jobs: ${JSON.stringify(result)}`);
+  process.exit(0);
+}
+
+void main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -84,4 +84,16 @@ export default class TheoryCohortController {
       next(e);
     }
   }
+
+  static async listEnrollments(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await TheoryCohortService.listEnrollments(req.params.id!);
+      if (data === null) {
+        return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
 }

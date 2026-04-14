@@ -10,6 +10,10 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare time: string;
   declare lessonType: 'practical' | 'theory';
   declare status: string;
+  /** Set when payment is captured (practical / personal flows). */
+  declare paidAt: CreationOptional<Date | null>;
+  /** When `status === pending_payment`, unpaid holds expire and the slot is released. */
+  declare holdExpiresAt: CreationOptional<Date | null>;
 }
 
 Booking.init(
@@ -22,6 +26,8 @@ Booking.init(
     time: { type: DataTypes.STRING(16), allowNull: false },
     lessonType: { type: DataTypes.ENUM('practical', 'theory'), allowNull: false },
     status: { type: DataTypes.STRING(32), allowNull: false },
+    paidAt: { type: DataTypes.DATE, allowNull: true },
+    holdExpiresAt: { type: DataTypes.DATE, allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

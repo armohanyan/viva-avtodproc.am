@@ -23,7 +23,14 @@ export type MarketingContactDto = {
 };
 
 export type MarketingFooterDto = { addressLine1: string; addressLine2: string };
-export type MarketingSocialDto = { facebook: string; instagram: string; youtube: string; tiktok: string };
+export type MarketingSocialDto = {
+  facebook: string;
+  instagram: string;
+  youtube: string;
+  tiktok: string;
+  /** Digits (country code, no +) or full `https://wa.me/...` — used for floating WhatsApp; empty hides the button. */
+  whatsapp: string;
+};
 
 export type MarketingPublicBundle = {
   stats: { key: string; value: string }[];
@@ -46,6 +53,7 @@ const SK = {
   SOCIAL_IG: 'social_instagram_url',
   SOCIAL_YT: 'social_youtube_url',
   SOCIAL_TT: 'social_tiktok_url',
+  SOCIAL_WHATSAPP: 'social_whatsapp',
 } as const;
 
 const DEFAULT_STATS: MarketingStatDto[] = [
@@ -106,6 +114,7 @@ async function readContactFooterSocial(): Promise<{
       instagram: getSetting(m, SK.SOCIAL_IG, 'https://instagram.com'),
       youtube: getSetting(m, SK.SOCIAL_YT, 'https://youtube.com'),
       tiktok: getSetting(m, SK.SOCIAL_TT, 'https://www.tiktok.com'),
+      whatsapp: getSetting(m, SK.SOCIAL_WHATSAPP, ''),
     },
   };
 }
@@ -291,6 +300,7 @@ export default class MarketingService {
       { settingKey: SK.SOCIAL_IG, valueText: social.instagram },
       { settingKey: SK.SOCIAL_YT, valueText: social.youtube },
       { settingKey: SK.SOCIAL_TT, valueText: social.tiktok },
+      { settingKey: SK.SOCIAL_WHATSAPP, valueText: social.whatsapp },
     ];
     for (const u of upserts) {
       await MarketingSetting.upsert(u);

@@ -7,6 +7,7 @@ import {
   ExamQuestion,
   FinanceTransaction,
   FleetCar,
+  InstructorAvailabilityBlock,
   InstructorBranch,
   InstructorProfile,
   Package,
@@ -237,6 +238,29 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     { instructorUserId: 'acc-instructor', branchId: 'br-azatamart-75' },
   ]);
 
+  await InstructorAvailabilityBlock.bulkCreate([
+    {
+      id: 'IAB-SEED-01',
+      instructorUserId: 'INS-001',
+      ruleKind: 'weekday_lunch' as const,
+      weekday: null,
+      dateIso: null,
+      timeStart: '14:00',
+      timeEnd: '15:00',
+      allDay: false,
+    },
+    {
+      id: 'IAB-SEED-06',
+      instructorUserId: 'INS-001',
+      ruleKind: 'date_off',
+      weekday: null,
+      dateIso: '2026-05-14',
+      timeStart: '00:00',
+      timeEnd: '23:59',
+      allDay: true,
+    },
+  ]);
+
   await StudentProfile.bulkCreate([
     {
       userId: 'USR-001',
@@ -377,7 +401,16 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     },
     { id: 'sb-1', studentUserId: 'USR-DEMO', instructorUserId: 'INS-001', branchId: 'br-garegin-8', dateIso: '2026-04-11', time: '10:00', lessonType: 'practical', status: 'confirmed' },
     { id: 'sb-2', studentUserId: 'USR-DEMO', instructorUserId: 'INS-002', branchId: 'br-garegin-8', dateIso: '2026-04-14', time: '14:00', lessonType: 'theory', status: 'confirmed' },
-    { id: 'sb-3', studentUserId: 'USR-DEMO', instructorUserId: 'INS-001', branchId: 'br-garegin-8', dateIso: '2026-04-18', time: '09:00', lessonType: 'practical', status: 'pending' },
+    {
+      id: 'sb-3',
+      studentUserId: 'USR-DEMO',
+      instructorUserId: 'INS-001',
+      branchId: 'br-garegin-8',
+      dateIso: '2026-08-20',
+      time: '09:00',
+      lessonType: 'practical',
+      status: 'pending_prebook',
+    },
     { id: 'sb-4', studentUserId: 'USR-DEMO', instructorUserId: 'INS-001', branchId: 'br-garegin-8', dateIso: '2026-03-22', time: '11:00', lessonType: 'practical', status: 'completed' },
     { id: 'sb-5', studentUserId: 'USR-DEMO', instructorUserId: 'INS-002', branchId: 'br-garegin-8', dateIso: '2026-03-08', time: '16:00', lessonType: 'theory', status: 'completed' },
     { id: 'sb-6', studentUserId: 'USR-DEMO', instructorUserId: 'INS-001', branchId: 'br-garegin-8', dateIso: '2026-02-26', time: '15:00', lessonType: 'practical', status: 'cancelled' },

@@ -39,6 +39,7 @@ const socialSchema = z.object({
   instagram: z.string(),
   youtube: z.string(),
   tiktok: z.string(),
+  whatsapp: z.string(),
 });
 
 const replaceSettingsSchema = z.object({

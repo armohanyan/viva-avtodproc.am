@@ -2,6 +2,7 @@ import { QueryTypes } from 'sequelize';
 import config from '../config';
 import { sequelize } from '../database/sequelize';
 import { Blog } from './blog.model';
+import { BookedCall } from './booked-call.model';
 import { Booking } from './booking.model';
 import { Branch } from './branch.model';
 import { CarExpense } from './car-expense.model';
@@ -10,6 +11,7 @@ import { ExamQuestion } from './exam-question.model';
 import { FinanceTransaction } from './finance-transaction.model';
 import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
+import { InstructorAvailabilityBlock } from './instructor-availability-block.model';
 import { InstructorBranch } from './instructor-branch.model';
 import { InstructorProfile } from './instructor-profile.model';
 import { MarketingSetting } from './marketing-setting.model';
@@ -40,6 +42,9 @@ Branch.hasMany(InstructorBranch, { foreignKey: 'branchId', sourceKey: 'id' });
 InstructorBranch.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
 InstructorBranch.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
+User.hasMany(InstructorAvailabilityBlock, { foreignKey: 'instructorUserId', sourceKey: 'id' });
+InstructorAvailabilityBlock.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
+
 Booking.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
 Booking.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
 Booking.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
@@ -66,6 +71,7 @@ FinanceTransaction.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' }
 
 export {
   Blog,
+  BookedCall,
   Booking,
   Branch,
   CarExpense,
@@ -74,6 +80,7 @@ export {
   FinanceTransaction,
   FleetCar,
   FleetCarInstructor,
+  InstructorAvailabilityBlock,
   InstructorBranch,
   InstructorProfile,
   MarketingSetting,
@@ -143,8 +150,37 @@ async function ensureFinanceTransactionsBookingIdColumn(): Promise<void> {
   );
 }
 
+/** Adds `bookings.paid_at` / `bookings.hold_expires_at` when tables predate Sequelize fields. */
+async function ensureBookingsPaymentColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+       AND COLUMN_NAME IN ('paid_at', 'hold_expires_at')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('paid_at')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `paid_at` DATETIME NULL');
+  }
+  if (!have.has('hold_expires_at')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `hold_expires_at` DATETIME NULL');
+  }
+}
+
 export async function syncModels(): Promise<void> {
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
+  await ensureBookingsPaymentColumns();
 }

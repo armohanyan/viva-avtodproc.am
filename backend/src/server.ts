@@ -6,9 +6,29 @@ import { connectDatabase } from './database/sequelize';
 import { syncModels } from './models';
 import { seedDatabaseIfEmpty } from './seed/seed-database';
 import MarketingService from './services/marketing.service';
+import BookingCronService from './services/booking-cron.service';
 import { LoggerUtil } from './utils';
 
 const { PORT } = config;
+
+function startBookingCronIfEnabled(): void {
+  if (process.env.BOOKING_CRON_ENABLED !== '1') {
+    return;
+  }
+  const raw = Number(process.env.BOOKING_CRON_INTERVAL_MS);
+  const ms = Number.isFinite(raw) && raw >= 30_000 ? raw : 300_000;
+  const tick = () => {
+    void BookingCronService.runDueJobs().catch((err) =>
+      LoggerUtil.error(`Booking cron: ${err instanceof Error ? err.message : String(err)}`),
+    );
+  };
+  tick();
+  const handle = setInterval(tick, ms);
+  if (typeof handle.unref === 'function') {
+    handle.unref();
+  }
+  LoggerUtil.info(`Booking cron enabled (interval ${ms} ms)`);
+}
 
 async function start() {
   try {
@@ -46,6 +66,7 @@ async function start() {
     LoggerUtil.info('Viva API listening');
     LoggerUtil.info(`Port: ${bind}`);
     LoggerUtil.info(`Started at: ${new Date().toUTCString()}`);
+    startBookingCronIfEnabled();
   };
 
   server.on('error', onError);

@@ -1,5 +1,6 @@
 export { default as AuthController } from './auth.controller';
 export { default as BlogController } from './blog.controller';
+export { default as BookedCallController } from './booked-call.controller';
 export { default as BookingController } from './booking.controller';
 export { default as BranchController } from './branch.controller';
 export { default as CityController } from './city.controller';
