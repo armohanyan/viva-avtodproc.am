@@ -3,6 +3,7 @@ export { default as AdminUsersPage } from "./AdminUsers";
 export { default as AdminUsersAnalyticsPage } from "./AdminUsersAnalytics";
 export { default as AdminInstructorsPage } from "./AdminInstructors";
 export { default as AdminBookingsPage } from "./AdminBookings";
+export { default as AdminBookedCallsPage } from "./AdminBookedCalls";
 export { default as AdminPackagesPage } from "./AdminPackages";
 export { default as AdminCohortsPage } from "./AdminCohorts";
 export { default as AdminBranchesPage } from "./AdminBranches";

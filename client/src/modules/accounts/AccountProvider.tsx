@@ -8,6 +8,8 @@ import {
   type PropsWithChildren,
   type ReactNode,
 } from "react";
+import { apiFetch, apiV1Path } from "src/lib/api";
+import { tryRefreshAccessToken } from "src/lib/authSession";
 import type { AccountSessionUser, AccountType } from "./account.types";
 import { clearAccountSession, loadAccountSession, saveAccountSession } from "./account.session";
 import { inferAccountTypeFromEmail } from "./inferAccountType";
@@ -36,12 +38,26 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setUser(loadAccountSession());
-    setHydrated(true);
+    let cancelled = false;
+    void (async () => {
+      let u = loadAccountSession();
+      if (!u || !u.accessToken) {
+        const ok = await tryRefreshAccessToken();
+        if (!cancelled && ok) {
+          u = loadAccountSession();
+        }
+      }
+      if (!cancelled) {
+        setUser(u);
+        setHydrated(true);
+      }
+    })();
+
     const onStorage = () => setUser(loadAccountSession());
     window.addEventListener("storage", onStorage);
     window.addEventListener("viva-account-session-updated", onStorage);
     return () => {
+      cancelled = true;
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("viva-account-session-updated", onStorage);
     };
@@ -61,8 +77,15 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
   }, []);
 
   const signOut = useCallback(() => {
-    clearAccountSession();
-    setUser(null);
+    void (async () => {
+      try {
+        await apiFetch(apiV1Path("/auth/logout"), { method: "POST" });
+      } catch {
+        /* still clear client session */
+      }
+      clearAccountSession();
+      setUser(null);
+    })();
   }, []);
 
   const defaultHomePath = user ? defaultHomePathForAccountType(user.accountType) : "/dashboard";

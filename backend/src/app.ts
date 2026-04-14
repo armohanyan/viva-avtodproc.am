@@ -1,4 +1,5 @@
 import path from 'path';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -45,6 +46,7 @@ class App {
   }
 
   private setRequestParser(): void {
+    this.app.use(cookieParser());
     this.app.use(express.json({ limit: '1mb' }));
     this.app.use(express.urlencoded({ limit: '1mb', extended: true }));
   }

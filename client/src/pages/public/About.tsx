@@ -3,11 +3,30 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
+import type { TranslationKey } from "src/lib/i18n";
 import { CheckCircle2, Target, Eye, Heart } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
+import { useMemo } from "react";
+import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
+import {
+  ABOUT_MARKETING_STAT_LABEL_KEY,
+  ABOUT_MARKETING_STATS_ORDER,
+} from "src/modules/marketing/statLabels";
+import { MARKETING_FALLBACK_STATS } from "src/modules/marketing/marketingFallbackStats";
 
 export default function About() {
   const { t } = useLang();
+  const { data: mkt } = useMarketingPublic();
+
+  const storyStats = useMemo(() => {
+    const rows = mkt?.stats?.length ? mkt.stats : MARKETING_FALLBACK_STATS;
+    const fallbackByKey = Object.fromEntries(MARKETING_FALLBACK_STATS.map((s) => [s.key, s.value]));
+    const byKey = { ...fallbackByKey, ...Object.fromEntries(rows.map((s) => [s.key, s.value])) };
+    return ABOUT_MARKETING_STATS_ORDER.map((key) => ({
+      value: byKey[key] ?? "",
+      label: t((ABOUT_MARKETING_STAT_LABEL_KEY[key] ?? "aboutStatYearsActive") as TranslationKey),
+    }));
+  }, [mkt, t]);
 
   const values = [
     { icon: Target, title: t("aboutValueSafetyTitle"), desc: t("aboutValueSafetyDesc") },
@@ -63,17 +82,12 @@ export default function About() {
               <h3 className="text-2xl font-bold mb-4">{t("ourMission")}</h3>
               <p className="text-primary-foreground/80 leading-relaxed text-lg">{t("missionText")}</p>
               <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                {[
-                  { v: "3,200+", l: t("aboutStatGraduates") },
-                  { v: "94%", l: t("aboutStatPassRate") },
-                  { v: "18", l: t("aboutStatInstructors") },
-                  { v: "14", l: t("aboutStatYearsActive") },
-                ].map((s, i) => (
+                {storyStats.map((s, i) => (
                   <Reveal key={i} delay={i * 0.06}>
                     <div className="text-3xl font-bold">
-                      <CountUpText value={s.v} />
+                      <CountUpText value={s.value} />
                     </div>
-                    <div className="text-primary-foreground/80 text-sm">{s.l}</div>
+                    <div className="text-primary-foreground/80 text-sm">{s.label}</div>
                   </Reveal>
                 ))}
               </div>

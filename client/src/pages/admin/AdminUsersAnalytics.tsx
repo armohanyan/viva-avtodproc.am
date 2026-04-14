@@ -1,8 +1,10 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import PanelPageHeader from "src/components/PanelPageHeader";
+import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
 import { GraduationCap } from "lucide-react";
+import { Link } from "wouter";
 import { useLang } from "src/lib/i18n";
 import { Bar } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from "chart.js";
@@ -58,6 +60,13 @@ export default function AdminUsersAnalytics() {
         icon={GraduationCap}
         title={t("adminStudentsAnalytics")}
         subtitle={t("studentRatingStatsSubtitle")}
+        actions={
+          <Link href="/admin/users" className="block w-full min-w-0 sm:w-auto">
+            <Button variant="outline" className="w-full sm:w-auto">
+              {t("adminSidebarStudents")}
+            </Button>
+          </Link>
+        }
       />
 
       <Card className="border-border overflow-hidden">

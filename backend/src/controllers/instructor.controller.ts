@@ -50,6 +50,7 @@ export default class InstructorController {
   static async list(_req: Request, res: Response, next: NextFunction) {
     try {
       const data = await InstructorService.list();
+
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);
@@ -60,6 +61,7 @@ export default class InstructorController {
     try {
       const body = parseBody(createSchema, req.body);
       const row = await InstructorService.create(body);
+
       SuccessHandlerUtil.handleAdd(res, next, row);
     } catch (e) {
       next(e);
@@ -70,9 +72,11 @@ export default class InstructorController {
     try {
       const body = parseBody(updateSchema, req.body);
       const row = await InstructorService.update(req.params.id!, body);
+
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+
       SuccessHandlerUtil.handleUpdate(res, next, row);
     } catch (e) {
       next(e);
@@ -82,9 +86,11 @@ export default class InstructorController {
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
       const ok = await InstructorService.remove(req.params.id!);
+
       if (!ok) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+
       res.sendStatus(204);
     } catch (e) {
       next(e);
@@ -96,11 +102,14 @@ export default class InstructorController {
     try {
       const instructorUserId = req.params.id!;
       const exists = await InstructorAvailabilityService.instructorExists(instructorUserId);
+
       if (!exists) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+
       const q = parseQuery(busySlotsQuerySchema, { from: req.query.from, to: req.query.to });
       const data = await BookingService.listBusySlotsForInstructor(instructorUserId, q.from.slice(0, 10), q.to.slice(0, 10));
+
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);
@@ -129,23 +138,28 @@ export default class InstructorController {
     try {
       const instructorUserId = req.params.id!;
       const exists = await InstructorAvailabilityService.instructorExists(instructorUserId);
+
       if (!exists) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+
       const body = parseBody(availabilityCreateSchema, req.body);
       try {
         const row = await InstructorAvailabilityService.create({
           ...body,
           instructorUserId,
         });
+
         if (!row) {
           return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
         }
+
         SuccessHandlerUtil.handleAdd(res, next, row);
       } catch (err) {
         if (err instanceof Error) {
           return next(new InputValidationError(err.message, HttpStatusCodesUtil.BAD_REQUEST));
         }
+
         throw err;
       }
     } catch (e) {
@@ -158,9 +172,11 @@ export default class InstructorController {
       const instructorUserId = req.params.id!;
       const blockId = req.params.blockId!;
       const ok = await InstructorAvailabilityService.remove(instructorUserId, blockId);
+
       if (!ok) {
         return next(new ResourceNotFoundError('Block not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+
       res.sendStatus(204);
     } catch (e) {
       next(e);

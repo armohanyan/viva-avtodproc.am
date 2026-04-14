@@ -22,7 +22,11 @@ export default function PanelPageHeader({ icon: Icon, title, subtitle, actions, 
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">{subtitle}</p>
         ) : null}
       </div>  
-      {actions != null ? <div className="shrink-0 flex flex-wrap gap-2 justify-end">{actions}</div> : null}
+      {actions != null ? (
+        <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end sm:gap-2 [&_a]:min-w-0">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

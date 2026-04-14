@@ -2,40 +2,63 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import DataTableToolbar from "src/components/DataTableToolbar";
+import TableColumnFilter from "src/components/TableColumnFilter";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
+import { vivaApiJson } from "src/lib/vivaApi";
+import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
+import {
+  isSlotBlockedByAvailabilityRules,
+  isSlotInPastDate,
+  normalizeAvailabilityBlocksFromApi,
+} from "src/modules/instructors/instructorAvailability";
 
 const timeSlots = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
 ];
 
-type SlotStatus = "available" | "booked" | "mine";
+export type InstructorCalendarOption = { id: string; name: string };
 
-const slotData: Record<string, Record<string, SlotStatus>> = {
-  "09:00": { "2026-03-28": "available", "2026-03-29": "booked", "2026-03-30": "available", "2026-03-31": "available", "2026-04-01": "mine" },
-  "10:00": { "2026-03-28": "mine", "2026-03-29": "available", "2026-03-30": "booked", "2026-03-31": "available", "2026-04-01": "available" },
-  "11:00": { "2026-03-28": "booked", "2026-03-29": "available", "2026-03-30": "available", "2026-03-31": "booked", "2026-04-01": "available" },
-  "12:00": { "2026-03-28": "available", "2026-03-29": "booked", "2026-03-30": "mine", "2026-03-31": "available", "2026-04-01": "booked" },
-  "13:00": { "2026-03-28": "available", "2026-03-29": "available", "2026-03-30": "available", "2026-03-31": "booked", "2026-04-01": "available" },
-  "14:00": { "2026-03-28": "booked", "2026-03-29": "mine", "2026-03-30": "available", "2026-03-31": "available", "2026-04-01": "booked" },
-  "15:00": { "2026-03-28": "available", "2026-03-29": "available", "2026-03-30": "booked", "2026-03-31": "available", "2026-04-01": "available" },
-  "16:00": { "2026-03-28": "available", "2026-03-29": "booked", "2026-03-30": "available", "2026-03-31": "booked", "2026-04-01": "mine" },
-  "17:00": { "2026-03-28": "booked", "2026-03-29": "available", "2026-03-30": "available", "2026-03-31": "available", "2026-04-01": "available" },
+export type LessonBookingPayload = {
+  instructorUserId: string;
+  instructor: string;
+  dateIso: string;
+  time: string;
+  studentLabel?: string;
 };
 
-function getWeekDays(offset: number) {
-  const base = new Date("2026-03-28");
-  base.setDate(base.getDate() + offset * 5);
-  return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    return d;
+type SlotStatus = "available" | "unavailable" | "mine";
+
+function todayIsoLocal(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+}
+
+/** Monday 00:00 local of the ISO week containing `from`. */
+function startOfIsoWeekMonday(from: Date): Date {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+export type InstructorBusySlot = { dateIso: string; time: string; studentUserId: string };
+
+/** Five weekdays (Mon–Fri) starting Monday of current week + `weekOffset` weeks. */
+function getWeekDays(weekOffset: number): Date[] {
+  const monday = startOfIsoWeekMonday(new Date());
+  monday.setDate(monday.getDate() + weekOffset * 7);
+  return [0, 1, 2, 3, 4].map((i) => {
+    const x = new Date(monday);
+    x.setDate(monday.getDate() + i);
+    return x;
   });
 }
 
 function fmt(d: Date) {
-  return d.toISOString().split("T")[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function dayLabel(d: Date, locale: string) {
@@ -48,18 +71,13 @@ function localeFromLang(lang: "en" | "ru" | "am") {
   return "en-US";
 }
 
-export type LessonBookingPayload = {
-  instructor: string;
-  dateIso: string;
-  time: string;
-  studentLabel?: string;
-};
-
 export type LessonBookingCalendarProps = {
   mode: "student" | "admin";
-  instructorNames: string[];
-  selectedInstructor: string;
-  onInstructorChange: (name: string) => void;
+  instructors: readonly InstructorCalendarOption[];
+  selectedInstructorId: string;
+  onInstructorChange: (instructorUserId: string) => void;
+  /** When set in student mode, “my” slots are resolved from `/bookings`. */
+  studentUserId?: string;
   /** Required in admin mode to enable Confirm */
   studentName?: string;
   onBookingConfirmed?: (payload: LessonBookingPayload) => void;
@@ -67,9 +85,10 @@ export type LessonBookingCalendarProps = {
 
 export default function LessonBookingCalendar({
   mode,
-  instructorNames,
-  selectedInstructor,
+  instructors,
+  selectedInstructorId,
   onInstructorChange,
+  studentUserId,
   studentName = "",
   onBookingConfirmed,
 }: LessonBookingCalendarProps) {
@@ -80,8 +99,55 @@ export default function LessonBookingCalendar({
   const [confirmed, setConfirmed] = useState(false);
   const [slotSearch, setSlotSearch] = useState("");
   const [periodFilter, setPeriodFilter] = useState<"all" | "morning" | "afternoon">("all");
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
+  const [busySlots, setBusySlots] = useState<InstructorBusySlot[]>([]);
+  const [blocksLoading, setBlocksLoading] = useState(false);
 
-  const days = getWeekDays(weekOffset);
+  useEffect(() => {
+    if (!selectedInstructorId) {
+      setAvailabilityBlocks([]);
+      setBusySlots([]);
+      setBlocksLoading(false);
+      return;
+    }
+    const week = getWeekDays(weekOffset);
+    const from = fmt(week[0]);
+    const to = fmt(week[4]);
+    let cancelled = false;
+    const run = async () => {
+      setBlocksLoading(true);
+      try {
+        const busyQ = new URLSearchParams({ from, to }).toString();
+        const [blocks, busy] = await Promise.all([
+          vivaApiJson<AvailabilityBlock[]>(
+            `/instructors/${encodeURIComponent(selectedInstructorId)}/availability-blocks`,
+          ),
+          vivaApiJson<InstructorBusySlot[]>(
+            `/instructors/${encodeURIComponent(selectedInstructorId)}/busy-slots?${busyQ}`,
+          ),
+        ]);
+        if (!cancelled) {
+          setAvailabilityBlocks(normalizeAvailabilityBlocksFromApi(blocks));
+          setBusySlots(Array.isArray(busy) ? busy : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailabilityBlocks([]);
+          setBusySlots([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setBlocksLoading(false);
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstructorId, weekOffset]);
+
+  const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
   const visibleTimeSlots = useMemo(() => {
     return timeSlots.filter((time) => {
@@ -96,23 +162,44 @@ export default function LessonBookingCalendar({
     });
   }, [slotSearch, periodFilter]);
 
-  const getStatus = (time: string, date: string): SlotStatus => slotData[time]?.[date] || "available";
+  const getStatus = useCallback(
+    (time: string, dateIso: string): SlotStatus => {
+      const today = todayIsoLocal();
+      if (blocksLoading) return "unavailable";
+      if (isSlotInPastDate(dateIso, today)) return "unavailable";
+      const mySlot =
+        mode === "student" &&
+        studentUserId &&
+        busySlots.some((b) => b.dateIso === dateIso && b.time === time && b.studentUserId === studentUserId);
+      if (mySlot) return "mine";
+      if (busySlots.some((b) => b.dateIso === dateIso && b.time === time)) return "unavailable";
+      if (isSlotBlockedByAvailabilityRules(dateIso, time, availabilityBlocks)) return "unavailable";
+      return "available";
+    },
+    [blocksLoading, mode, studentUserId, busySlots, availabilityBlocks],
+  );
 
   const slotStyle = (status: SlotStatus, isSelected: boolean) => {
     if (isSelected) return "bg-primary text-primary-foreground border-primary";
     if (status === "mine") return "bg-primary/10 text-primary border-primary/20 cursor-default";
-    if (status === "booked") return "bg-accent text-muted-foreground border-border cursor-not-allowed";
+    if (status === "unavailable") return "bg-accent text-muted-foreground border-border cursor-not-allowed";
     return "bg-card text-muted-foreground border-border hover:border-primary/40 hover:bg-primary/10 cursor-pointer";
   };
 
   const canClick = (status: SlotStatus) => status === "available";
 
+  const selectedInstructorName = useMemo(
+    () => instructors.find((i) => i.id === selectedInstructorId)?.name ?? "",
+    [instructors, selectedInstructorId],
+  );
+
   const handleConfirm = () => {
-    if (!selected) return;
+    if (!selected || !selectedInstructorId) return;
     if (mode === "admin" && !studentName.trim()) return;
     setConfirmed(true);
     onBookingConfirmed?.({
-      instructor: selectedInstructor,
+      instructorUserId: selectedInstructorId,
+      instructor: selectedInstructorName,
       dateIso: selected.date,
       time: selected.time,
       ...(mode === "admin" ? { studentLabel: studentName.trim() } : {}),
@@ -133,18 +220,18 @@ export default function LessonBookingCalendar({
           <Card className="p-5 border-border">
             <h3 className="font-semibold text-foreground mb-3">{t("selectInstructor")}</h3>
             <div className="flex flex-wrap gap-2">
-              {instructorNames.map((ins) => (
+              {instructors.map((ins) => (
                 <button
-                  key={ins}
+                  key={ins.id}
                   type="button"
-                  onClick={() => onInstructorChange(ins)}
+                  onClick={() => onInstructorChange(ins.id)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    selectedInstructor === ins
+                    selectedInstructorId === ins.id
                       ? "bg-primary text-primary-foreground border-primary"
                       : "border-border text-muted-foreground hover:border-primary/30"
                   }`}
                 >
-                  {ins}
+                  {ins.name}
                 </button>
               ))}
             </div>
@@ -180,33 +267,37 @@ export default function LessonBookingCalendar({
               </div>
             </div>
 
+            {blocksLoading ? (
+              <p className="text-xs text-muted-foreground mb-3">{t("instructorAvailabilityCalendarLoading")}</p>
+            ) : null}
+
             <DataTableToolbar
               value={slotSearch}
               onChange={setSlotSearch}
               placeholder={`${t("filterByHour")}…`}
               className="border-t border-border bg-muted/20"
-            >
-              <div className="flex flex-wrap gap-2">
-                {(["all", "morning", "afternoon"] as const).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPeriodFilter(p)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                      periodFilter === p ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                    }`}
-                  >
-                    {p === "all" ? t("bookingSlotFilterAll") : p === "morning" ? t("bookingSlotFilterMorning") : t("bookingSlotFilterAfternoon")}
-                  </button>
-                ))}
-              </div>
-            </DataTableToolbar>
+            />
 
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr>
-                    <th className="text-left text-xs text-muted-foreground font-medium pr-4 py-2 w-16">{t("bookingGridTimeLabel")}</th>
+                    <th className="text-left text-xs text-muted-foreground font-medium pr-4 py-2 w-16">
+                      <div className="flex min-w-0 items-center gap-0.5">
+                        <span className="truncate">{t("bookingGridTimeLabel")}</span>
+                        <TableColumnFilter
+                          value={periodFilter}
+                          onChange={(v) => setPeriodFilter(v as "all" | "morning" | "afternoon")}
+                          ariaLabel={t("filter")}
+                          options={[
+                            { value: "all", label: t("filterOptionAll") },
+                            { value: "morning", label: t("bookingSlotFilterMorning") },
+                            { value: "afternoon", label: t("bookingSlotFilterAfternoon") },
+                          ]}
+                          className="h-6 w-6"
+                        />
+                      </div>
+                    </th>
                     {days.map((d, i) => (
                       <th key={i} className="text-center py-2 px-1">
                         <div className="text-xs text-muted-foreground font-medium">{dayLabel(d, locale)}</div>
@@ -228,6 +319,7 @@ export default function LessonBookingCalendar({
                             <div
                               role="button"
                               tabIndex={0}
+                              aria-label={`${dateStr} ${time} ${status}`}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
@@ -245,7 +337,7 @@ export default function LessonBookingCalendar({
                               }}
                               className={`h-8 rounded-md border text-xs text-center flex items-center justify-center transition-colors ${slotStyle(status, isSelected)}`}
                             >
-                              {status === "mine" ? t("mine") : status === "booked" ? "—" : ""}
+                              {status === "mine" ? t("mine") : status === "unavailable" ? "—" : ""}
                             </div>
                           </td>
                         );
@@ -262,7 +354,7 @@ export default function LessonBookingCalendar({
                 ...(mode === "student"
                   ? [{ color: "bg-primary/10 border border-primary/20", label: t("myBooking") }]
                   : []),
-                { color: "bg-accent border border-border", label: t("booked") },
+                { color: "bg-accent border border-border", label: t("bookingSlotUnavailable") },
                 { color: "bg-primary", label: t("selected") },
               ].map((l, i) => (
                 <div key={i} className="flex items-center gap-1.5">
@@ -307,7 +399,7 @@ export default function LessonBookingCalendar({
                 <div className="bg-accent rounded-lg p-3 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{t("bookingInstructorLabel")}</span>
-                    <span className="font-medium text-foreground text-xs">{selectedInstructor}</span>
+                    <span className="font-medium text-foreground text-xs">{selectedInstructorName}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{t("bookingDateLabel")}</span>

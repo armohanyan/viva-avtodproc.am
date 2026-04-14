@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, ImageIcon, Newspaper } from "lucide-react";
 import { slugify, ensureUniqueSlug, type Blog } from "src/lib/blogs";
@@ -234,20 +235,6 @@ export default function AdminBlogs() {
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <div className="flex flex-wrap gap-2">
-            {(["all", "published", "draft"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  statusFilter === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {s === "all" ? t("filterOptionAll") : s === "published" ? t("blogPublished") : t("blogDraft")}
-              </button>
-            ))}
-          </div>
           <CsvExportButton
             filename="admin-blogs.csv"
             headers={[t("blogColTitle"), t("blogColSlug"), t("blogColExcerpt"), t("date"), t("status")]}
@@ -264,16 +251,26 @@ export default function AdminBlogs() {
           <table className="w-full text-sm min-w-[48rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("blogColTitle"), t("blogColSlug"), t("blogColExcerpt"), t("date"), t("status"), t("actions")].map(
-                  (h) => (
-                    <th
-                      key={h}
-                      className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
-                    >
-                      {h}
-                    </th>
-                  ),
-                )}
+                <TableColumnHeaderWithFilter title={t("blogColTitle")} />
+                <TableColumnHeaderWithFilter title={t("blogColSlug")} />
+                <TableColumnHeaderWithFilter title={t("blogColExcerpt")} />
+                <TableColumnHeaderWithFilter title={t("date")} />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={(v) => setStatusFilter(v as "all" | "published" | "draft")}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "published", label: t("blogPublished") },
+                        { value: "draft", label: t("blogDraft") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

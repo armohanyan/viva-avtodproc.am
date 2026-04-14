@@ -1,36 +1,69 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { sequelize } from '../database/sequelize';
+import { signAccessToken } from '../helpers/jwt.helper';
+import { OAuthAccount, User } from '../models';
+import type { AccountType } from '../models/user.model';
+import type { OAuthProvider } from '../models/oauth-account.model';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
-import { signAccessToken } from '../helpers/jwt.helper';
-import { User } from '../models';
+import RefreshTokenService from './refresh-token.service';
 
 const { UnauthorizedError, ConflictError } = ErrorsUtil;
 
+export type AuthUserDto = { id: string; email: string; name: string; accountType: AccountType };
+
+export type AuthTokensDto = {
+  accessToken: string;
+  user: AuthUserDto;
+  /** Opaque refresh token — set as httpOnly cookie only; never include in JSON responses. */
+  refreshPlain: string;
+};
+
+function toDto(user: User): AuthUserDto {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    accountType: user.accountType,
+  };
+}
+
 export default class AuthService {
-  static async login(email: string, password: string): Promise<{ token: string; user: { id: string; email: string; name: string; accountType: string } }> {
+  private static async assertActive(user: User): Promise<void> {
+    if (!user.isActive) {
+      throw new UnauthorizedError('Account is disabled', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+  }
+
+  private static async issueTokens(user: User): Promise<AuthTokensDto> {
+    await this.assertActive(user);
+    const accessToken = signAccessToken({
+      sub: user.id,
+      email: user.email,
+      accountType: user.accountType,
+    });
+    const { plain } = await RefreshTokenService.createForUser(user.id);
+    return { accessToken, user: toDto(user), refreshPlain: plain };
+  }
+
+  static async login(email: string, password: string): Promise<AuthTokensDto> {
     const normalized = email.trim().toLowerCase();
     const user = await User.findOne({ where: { email: normalized } });
-    if (!user || !user.passwordHash) {
+    if (!user) {
       throw new UnauthorizedError('Invalid email or password', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+    if (!user.passwordHash) {
+      throw new UnauthorizedError(
+        'This account uses social sign-in. Use Google, Facebook, or Apple to sign in.',
+        HttpStatusCodesUtil.UNAUTHORIZED,
+      );
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) {
       throw new UnauthorizedError('Invalid email or password', HttpStatusCodesUtil.UNAUTHORIZED);
     }
-    const token = signAccessToken({
-      sub: user.id,
-      email: user.email,
-      accountType: user.accountType,
-    });
-    return {
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        accountType: user.accountType,
-      },
-    };
+    return this.issueTokens(user);
   }
 
   static async register(input: {
@@ -38,9 +71,9 @@ export default class AuthService {
     password: string;
     name: string;
     phone?: string;
-  }): Promise<{ token: string; user: { id: string; email: string; name: string; accountType: string } }> {
+  }): Promise<AuthTokensDto> {
     const email = input.email.trim().toLowerCase();
-    const existing = await User.findOne({ where: { email: email } });
+    const existing = await User.findOne({ where: { email } });
     if (existing) {
       throw new ConflictError('Email already registered', HttpStatusCodesUtil.CONFLICT);
     }
@@ -54,19 +87,97 @@ export default class AuthService {
       accountType: 'student',
       passwordHash,
     });
-    const token = signAccessToken({
+    return this.issueTokens(user);
+  }
+
+  /** Returns new access + rotated refresh, or null if refresh is invalid. */
+  static async refreshWithPlain(refreshPlain: string): Promise<AuthTokensDto | null> {
+    const rotated = await RefreshTokenService.rotate(refreshPlain);
+    if (!rotated) {
+      return null;
+    }
+    const user = await User.findByPk(rotated.userId);
+    if (!user) {
+      return null;
+    }
+    try {
+      await this.assertActive(user);
+    } catch {
+      return null;
+    }
+    const accessToken = signAccessToken({
       sub: user.id,
       email: user.email,
       accountType: user.accountType,
     });
-    return {
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        accountType: user.accountType,
-      },
-    };
+    return { accessToken, user: toDto(user), refreshPlain: rotated.plain };
+  }
+
+  static async logoutPlain(refreshPlain: string | undefined): Promise<void> {
+    if (refreshPlain) {
+      await RefreshTokenService.revokeByPlain(refreshPlain);
+    }
+  }
+
+  static async findOrCreateOAuthUser(input: {
+    provider: OAuthProvider;
+    providerUserId: string;
+    email: string;
+    name: string;
+  }): Promise<AuthTokensDto> {
+    const email = input.email.trim().toLowerCase();
+    const nameTrim = input.name.trim() || email.split('@')[0] || 'User';
+
+    const user = await sequelize.transaction(async (t) => {
+      const existingLink = await OAuthAccount.findOne({
+        where: { provider: input.provider, providerUserId: input.providerUserId },
+        transaction: t,
+      });
+      if (existingLink) {
+        const u = await User.findByPk(existingLink.userId, { transaction: t });
+        if (!u) {
+          throw new UnauthorizedError('Account not found', HttpStatusCodesUtil.UNAUTHORIZED);
+        }
+        return u;
+      }
+
+      let u = await User.findOne({ where: { email }, transaction: t });
+      if (!u) {
+        const id = `USR-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        u = await User.create(
+          {
+            id,
+            email,
+            name: nameTrim,
+            phone: null,
+            accountType: 'student',
+            passwordHash: null,
+          },
+          { transaction: t },
+        );
+      }
+
+      await OAuthAccount.create(
+        {
+          id: `OA-${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}`,
+          userId: u.id,
+          provider: input.provider,
+          providerUserId: input.providerUserId,
+        },
+        { transaction: t },
+      );
+
+      return u;
+    });
+
+    return this.issueTokens(user);
+  }
+
+  static async me(userId: string): Promise<AuthUserDto | null> {
+    const user = await User.findByPk(userId);
+    if (!user || !user.isActive) {
+      return null;
+    }
+    return toDto(user);
   }
 }

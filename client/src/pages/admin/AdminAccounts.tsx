@@ -10,6 +10,7 @@ import { Button } from "src/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -196,25 +197,6 @@ export default function AdminAccounts() {
           <p className="p-6 text-sm text-muted-foreground text-center">{t("redirecting")}</p>
         ) : null}
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <div className="flex gap-2 flex-wrap">
-            {(
-              [
-                ["staff", t("accountsStaffFilter")],
-                ["all", t("accountsFilterAll")],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setScope(key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  scope === key ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <CsvExportButton
             filename="admin-accounts.csv"
             headers={[
@@ -242,11 +224,28 @@ export default function AdminAccounts() {
           <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("tableColId"), t("name"), t("accountsColEmail"), t("phoneNumber"), t("accountsColRole"), t("status"), t("accountsColCreated"), t("actions")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter title={t("name")} />
+                <TableColumnHeaderWithFilter title={t("accountsColEmail")} />
+                <TableColumnHeaderWithFilter title={t("phoneNumber")} />
+                <TableColumnHeaderWithFilter
+                  title={t("accountsColRole")}
+                  filter={
+                    <TableColumnFilter
+                      value={scope}
+                      onChange={(v) => setScope(v as "staff" | "all")}
+                      ariaLabel={t("accountsColRole")}
+                      allValue="staff"
+                      options={[
+                        { value: "staff", label: t("accountsStaffFilter") },
+                        { value: "all", label: t("accountsFilterAll") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("status")} />
+                <TableColumnHeaderWithFilter title={t("accountsColCreated")} />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

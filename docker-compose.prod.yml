@@ -2,9 +2,10 @@
 #
 #   docker compose -f docker-compose.prod.yml up --build
 #
-# Panel:  http://localhost:3000
-# Next:   http://localhost:3001
-# API:    http://localhost:3002/api/v1/health
+# Ports (defaults):
+#   Marketing (Next):  http://localhost:5173  → container listens on 3001 (see Dockerfile.web)
+#   Panel (nginx):     http://localhost:3000
+#   API:               http://localhost:3001/api/v1/health
 
 services:
   db:
@@ -35,7 +36,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:3002/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          "node -e \"fetch('http://127.0.0.1:3001/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
       interval: 5s
       timeout: 5s
@@ -43,7 +44,7 @@ services:
       start_period: 45s
     environment:
       EXPOSE_ERROR_DETAILS: ${EXPOSE_ERROR_DETAILS:-1}
-      PORT: "3002"
+      PORT: "3001"
       MYSQL_HOST: db
       MYSQL_PORT: "3306"
       MYSQL_USER: root
@@ -52,9 +53,9 @@ services:
       DB_AUTO_SEED: ${DB_AUTO_SEED:-1}
       DB_SYNC_ALTER: ${DB_SYNC_ALTER:-0}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-docker-dev-change-me}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3002}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3001,http://127.0.0.1:3001}
     ports:
-      - "${BACKEND_PUBLISH_PORT:-3002}:3002"
+      - "${BACKEND_PUBLISH_PORT:-3001}:3001"
     depends_on:
       db:
         condition: service_healthy
@@ -64,7 +65,7 @@ services:
       context: ./client
       dockerfile: Dockerfile
       args:
-        VITE_MARKETING_ORIGIN: ${VITE_MARKETING_ORIGIN:-http://localhost:3001}
+        VITE_MARKETING_ORIGIN: ${VITE_MARKETING_ORIGIN:-http://localhost:5173}
     container_name: viva-frontend
     restart: unless-stopped
     ports:
@@ -78,15 +79,15 @@ services:
       context: ./client
       dockerfile: Dockerfile.web
       args:
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3001}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:5173}
         NEXT_PUBLIC_PANEL_URL: ${NEXT_PUBLIC_PANEL_URL:-http://localhost:3000}
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3002}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
     container_name: viva-web
     restart: unless-stopped
     ports:
-      - "${WEB_PUBLISH_PORT:-3001}:3001"
+      - "${WEB_PUBLISH_PORT:-5173}:3001"
     environment:
-      INTERNAL_API_BASE_URL: http://backend:3002
+      INTERNAL_API_BASE_URL: http://backend:3001
     depends_on:
       backend:
         condition: service_healthy

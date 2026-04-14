@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, Package } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -123,16 +124,6 @@ export default function AdminPackages() {
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[8rem] sm:w-auto"
-            aria-label={t("filterByStatus")}
-          >
-            <option value="all">{t("filterOptionAll")}</option>
-            <option value="active">{t("active")}</option>
-            <option value="inactive">{t("inactive")}</option>
-          </select>
           <CsvExportButton
             filename="admin-packages.csv"
             headers={[
@@ -159,11 +150,28 @@ export default function AdminPackages() {
           <table className="w-full text-sm min-w-[40rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("tableColId"), t("name"), t("adminColPrice"), t("lessons"), t("adminColEnrolled"), t("adminColFeatures"), t("status"), t("actions")].map((h) => (
-                  <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter title={t("name")} />
+                <TableColumnHeaderWithFilter title={t("adminColPrice")} />
+                <TableColumnHeaderWithFilter title={t("lessons")} />
+                <TableColumnHeaderWithFilter title={t("adminColEnrolled")} />
+                <TableColumnHeaderWithFilter title={t("adminColFeatures")} />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "active", label: t("active") },
+                        { value: "inactive", label: t("inactive") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

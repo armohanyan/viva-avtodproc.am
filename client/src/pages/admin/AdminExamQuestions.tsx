@@ -10,6 +10,7 @@ import { Label } from "src/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
   Select,
@@ -18,8 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "src/components/ui/select";
-import { Link } from "wouter";
-import { ChevronLeft, ClipboardList, Edit2, ImageIcon, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ClipboardList, Edit2, ImageIcon, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
 import type { ExamQuestion, ExamQuestionCategory } from "src/data/examSampleQuestions";
 import { EXAM_QUESTION_POOL } from "src/data/examSampleQuestions";
@@ -273,16 +273,6 @@ export default function AdminExamQuestions() {
 
   return (
     <AdminLayout>
-      <div className="mb-4">
-        <Link
-          href="/admin/learn"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          {t("adminLearnHubTitle")}
-        </Link>
-      </div>
-
       <PanelPageHeader
         icon={ClipboardList}
         title={t("adminExamQuestionsTitle")}
@@ -290,38 +280,43 @@ export default function AdminExamQuestions() {
       />
 
       <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="mt-6">
-        <Select value={catFilter} onValueChange={(v) => setCatFilter(v as typeof catFilter)}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder={t("adminExamQuestionsFilterCategory")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("adminExamQuestionsFilterAll")}</SelectItem>
-            <SelectItem value="rules">{t("adminExamQuestionsCategoryRules")}</SelectItem>
-            <SelectItem value="signs">{t("adminExamQuestionsCategorySigns")}</SelectItem>
-            <SelectItem value="safety">{t("adminExamQuestionsCategorySafety")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex-1" />
-        <Button type="button" variant="outline" size="sm" onClick={() => setResetOpen(true)}>
-          <RotateCcw className="w-4 h-4 mr-1.5" />
-          {t("adminExamQuestionsReset")}
-        </Button>
-        <Button type="button" size="sm" onClick={openAdd}>
-          <Plus className="w-4 h-4 mr-1.5" />
-          {t("adminExamQuestionsAdd")}
-        </Button>
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:justify-end sm:gap-2">
+          <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setResetOpen(true)}>
+            <RotateCcw className="w-4 h-4 mr-1.5" />
+            {t("adminExamQuestionsReset")}
+          </Button>
+          <Button type="button" size="sm" className="w-full sm:w-auto" onClick={openAdd}>
+            <Plus className="w-4 h-4 mr-1.5" />
+            {t("adminExamQuestionsAdd")}
+          </Button>
+        </div>
       </DataTableToolbar>
 
       <AdminTableScroll className="mt-4">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-muted-foreground">
-              <th className="py-2 pr-3 font-medium">{t("adminExamQuestionsColId")}</th>
-              <th className="py-2 pr-3 font-medium">{t("adminExamQuestionsColCategory")}</th>
-              <th className="py-2 pr-3 font-medium">{t("adminExamQuestionsColTopic")}</th>
-              <th className="py-2 pr-3 font-medium w-14">{t("adminExamQuestionsColImage")}</th>
-              <th className="py-2 pr-3 font-medium min-w-[200px]">{t("adminExamQuestionsColPreview")}</th>
-              <th className="py-2 pl-3 text-right font-medium w-[100px]">{t("actions")}</th>
+          <thead className="bg-muted/40">
+            <tr className="border-b border-border">
+              <TableColumnHeaderWithFilter title={t("adminExamQuestionsColId")} />
+              <TableColumnHeaderWithFilter
+                title={t("adminExamQuestionsColCategory")}
+                filter={
+                  <TableColumnFilter
+                    value={catFilter}
+                    onChange={(v) => setCatFilter(v as typeof catFilter)}
+                    ariaLabel={t("adminExamQuestionsFilterCategory")}
+                    options={[
+                      { value: "all", label: t("filterOptionAll") },
+                      { value: "rules", label: t("adminExamQuestionsCategoryRules") },
+                      { value: "signs", label: t("adminExamQuestionsCategorySigns") },
+                      { value: "safety", label: t("adminExamQuestionsCategorySafety") },
+                    ]}
+                  />
+                }
+              />
+              <TableColumnHeaderWithFilter title={t("adminExamQuestionsColTopic")} />
+              <TableColumnHeaderWithFilter title={t("adminExamQuestionsColImage")} className="w-14" />
+              <TableColumnHeaderWithFilter title={t("adminExamQuestionsColPreview")} className="min-w-[200px]" />
+              <TableColumnHeaderWithFilter title={t("actions")} align="end" className="w-[100px]" />
             </tr>
           </thead>
           <tbody>

@@ -10,7 +10,7 @@ export type MarketingPublicDto = {
     primaryMailtoHref: string;
   };
   footer: { addressLine1: string; addressLine2: string };
-  social: { facebook: string; instagram: string; youtube: string; tiktok: string };
+  social: { facebook: string; instagram: string; youtube: string; tiktok: string; whatsapp: string };
 };
 
 export type MarketingTestimonialAdmin = {

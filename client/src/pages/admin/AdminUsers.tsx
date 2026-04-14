@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen } from "lucide-react";
 import { Link } from "wouter";
@@ -22,7 +23,6 @@ import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 
 type PackageRow = { id: string; name: string; lessons: number };
-type InstructorRow = { id: string; name: string };
 
 function parseLessons(lessons: string): { completed: number; total: number } | null {
   const m = /^(\d+)\s*\/\s*(\d+)$/.exec(lessons.trim());
@@ -67,20 +67,18 @@ export default function AdminUsers() {
   const { branches } = useBranches();
   const { instructors } = useInstructors();
   const instructorOptions = useMemo(() => allInstructorNames(instructors), [instructors]);
+  const instructorRows = useMemo(() => instructors.map((i) => ({ id: i.id, name: i.name })), [instructors]);
   const [users, setUsers] = useState<User[]>([]);
   const [packages, setPackages] = useState<PackageRow[]>([]);
-  const [instructorRows, setInstructorRows] = useState<InstructorRow[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [stu, pkg, inst] = await Promise.all([
+      const [stu, pkg] = await Promise.all([
         vivaApiJson<User[]>("/students"),
         vivaApiJson<PackageRow[]>("/packages"),
-        vivaApiJson<InstructorRow[]>("/instructors"),
       ]);
       setUsers(Array.isArray(stu) ? stu : []);
       setPackages(Array.isArray(pkg) ? pkg.map((p) => ({ id: p.id, name: p.name, lessons: p.lessons })) : []);
-      setInstructorRows(Array.isArray(inst) ? inst.map((i) => ({ id: i.id, name: i.name })) : []);
     } catch {
       showToast(t("fillRequired"), "error");
     }
@@ -228,16 +226,18 @@ export default function AdminUsers() {
         title={t("adminSidebarStudents")}
         subtitle={t("adminStudentsPageSubtitle")}
         actions={
-          <div className="flex items-center gap-2">
-            <Link href="/admin/users/analytics">
-              <Button variant="outline">{t("adminStudentsAnalytics")}</Button>
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
+            <Link href="/admin/users/analytics" className="block w-full min-w-0 sm:w-auto">
+              <Button variant="outline" className="w-full sm:w-auto">
+                {t("adminStudentsAnalytics")}
+              </Button>
             </Link>
             <Button
               onClick={() => {
                 setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID }));
                 setAddOpen(true);
               }}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 sm:w-auto"
             >
               <Plus className="w-4 h-4" />
               {t("addNew")}
@@ -248,30 +248,6 @@ export default function AdminUsers() {
 
       <Card className="border-border overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[11rem] sm:w-auto"
-            aria-label={t("filterByBranch")}
-          >
-            <option value="all">{t("adminBranchFilterAll")}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={instructorFilter}
-            onChange={(e) => setInstructorFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[10rem] sm:w-auto"
-            aria-label={t("bookingInstructorLabel")}
-          >
-            <option value="all">{t("filterOptionAll")}</option>
-            {instructorOptions.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
           <CsvExportButton
             filename="admin-students.csv"
             headers={[
@@ -307,9 +283,44 @@ export default function AdminUsers() {
           <table className="w-full text-sm min-w-[62rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("name"), t("email"), t("phone"), t("adminColBranch"), t("cohortColInstructor"), t("adminColPackage"), t("adminColLessons"), t("studentSkillRating"), t("status"), t("studentLicense"), t("adminColJoined"), t("actions")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("name")} />
+                <TableColumnHeaderWithFilter title={t("email")} />
+                <TableColumnHeaderWithFilter title={t("phone")} />
+                <TableColumnHeaderWithFilter
+                  title={t("adminColBranch")}
+                  filter={
+                    <TableColumnFilter
+                      value={branchFilter}
+                      onChange={setBranchFilter}
+                      ariaLabel={t("filterByBranch")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...branches.map((b) => ({ value: b.id, label: b.name })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter
+                  title={t("cohortColInstructor")}
+                  filter={
+                    <TableColumnFilter
+                      value={instructorFilter}
+                      onChange={setInstructorFilter}
+                      ariaLabel={t("bookingInstructorLabel")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...instructorOptions.map((name) => ({ value: name, label: name })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("adminColPackage")} />
+                <TableColumnHeaderWithFilter title={t("adminColLessons")} />
+                <TableColumnHeaderWithFilter title={t("studentSkillRating")} />
+                <TableColumnHeaderWithFilter title={t("status")} />
+                <TableColumnHeaderWithFilter title={t("studentLicense")} />
+                <TableColumnHeaderWithFilter title={t("adminColJoined")} />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

@@ -1,6 +1,13 @@
 import type { TranslationKey } from "src/lib/i18n";
 
-export type StudentDemoBookingStatus = "confirmed" | "pending" | "cancelled" | "completed";
+export type StudentDemoBookingStatus =
+  | "confirmed"
+  | "pending"
+  | "pending_prebook"
+  | "pending_payment"
+  | "cancelled"
+  | "completed"
+  | "refunded";
 
 export type StudentDemoBooking = {
   id: string;
@@ -12,7 +19,7 @@ export type StudentDemoBooking = {
 };
 
 function isUpcomingBooking(b: StudentDemoBooking, todayIso: string): boolean {
-  if (b.status === "cancelled" || b.status === "completed") return false;
+  if (b.status === "cancelled" || b.status === "completed" || b.status === "refunded") return false;
   return b.dateIso >= todayIso;
 }
 

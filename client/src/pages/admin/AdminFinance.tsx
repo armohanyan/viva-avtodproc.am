@@ -9,6 +9,7 @@ import { Button } from "src/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "src/components/ui/dialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Landmark, Wallet, TrendingUp, Clock, AlertCircle, BarChart3, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -390,31 +391,6 @@ export default function AdminFinance() {
           <h3 className="font-semibold text-foreground">{t("adminFinanceTransactionsTitle")}</h3>
         </div>
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[11rem] sm:w-auto"
-            aria-label={t("filterByBranch")}
-          >
-            <option value="all">{t("adminBranchFilterAll")}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | TxStatus)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[10rem] sm:w-auto"
-            aria-label={t("filterByStatus")}
-          >
-            <option value="all">{t("filterOptionAll")}</option>
-            <option value="completed">{t("financeStatusCompleted")}</option>
-            <option value="pending">{t("financeStatusPending")}</option>
-            <option value="failed">{t("financeStatusFailed")}</option>
-            <option value="refunded">{t("financeStatusRefunded")}</option>
-          </select>
           <CsvExportButton
             filename="admin-finance-transactions.csv"
             headers={[
@@ -458,30 +434,50 @@ export default function AdminFinance() {
           <table className="w-full text-sm min-w-[88rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[
-                  t("tableColId"),
-                  t("financeColSource"),
-                  t("financeColDateTime"),
-                  t("financeColCustomer"),
-                  t("accountsColEmail"),
-                  t("financeColProduct"),
-                  t("financeColBooking"),
-                  t("adminColBranch"),
-                  t("financeColChannel"),
-                  t("financeColMethod"),
-                  t("financeColGross"),
-                  t("financeColFee"),
-                  t("financeColNet"),
-                  t("status"),
-                  t("financeColProviderRef"),
-                ].map((h, i) => (
-                  <th
-                    key={i}
-                    className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
-                  >
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter title={t("financeColSource")} />
+                <TableColumnHeaderWithFilter title={t("financeColDateTime")} />
+                <TableColumnHeaderWithFilter title={t("financeColCustomer")} />
+                <TableColumnHeaderWithFilter title={t("accountsColEmail")} />
+                <TableColumnHeaderWithFilter title={t("financeColProduct")} />
+                <TableColumnHeaderWithFilter title={t("financeColBooking")} />
+                <TableColumnHeaderWithFilter
+                  title={t("adminColBranch")}
+                  filter={
+                    <TableColumnFilter
+                      value={branchFilter}
+                      onChange={setBranchFilter}
+                      ariaLabel={t("filterByBranch")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...branches.map((b) => ({ value: b.id, label: b.name })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("financeColChannel")} />
+                <TableColumnHeaderWithFilter title={t("financeColMethod")} />
+                <TableColumnHeaderWithFilter title={t("financeColGross")} />
+                <TableColumnHeaderWithFilter title={t("financeColFee")} />
+                <TableColumnHeaderWithFilter title={t("financeColNet")} />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={(v) => setStatusFilter(v as "all" | TxStatus)}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "completed", label: t("financeStatusCompleted") },
+                        { value: "pending", label: t("financeStatusPending") },
+                        { value: "failed", label: t("financeStatusFailed") },
+                        { value: "refunded", label: t("financeStatusRefunded") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("financeColProviderRef")} />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

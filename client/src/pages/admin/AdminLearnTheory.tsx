@@ -7,8 +7,7 @@ import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Link } from "wouter";
-import { ArrowLeft, UsersRound } from "lucide-react";
+import { UsersRound } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { branchNameById, useBranches } from "src/modules/branches";
@@ -61,7 +60,11 @@ export default function AdminLearnTheory() {
     setStudentId((prev) => prev || students[0]?.id || "");
   }, [students]);
 
-  const activeGroups = useMemo(() => cohorts.filter((c) => c.status === "active"), [cohorts]);
+  /** Cohorts admins can enroll students into (matches AdminCohorts: new rows default to `upcoming`). */
+  const enrollableGroups = useMemo(
+    () => cohorts.filter((c) => c.status === "active" || c.status === "upcoming"),
+    [cohorts],
+  );
 
   const dialogCohort = dialogCohortId ? cohorts.find((c) => c.id === dialogCohortId) : null;
   const seatsLeft = dialogCohort ? dialogCohort.seats - dialogCohort.enrolled : 0;
@@ -89,13 +92,6 @@ export default function AdminLearnTheory() {
 
   return (
     <AdminLayout>
-      <div className="mb-4">
-        <Link href="/admin/learn" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-          {t("adminLearnHubTitle")}
-        </Link>
-      </div>
-
       <Reveal>
         <PanelPageHeader icon={UsersRound} title={t("adminLearnTheoryTitle")} subtitle={t("adminLearnTheorySubtitle")} />
       </Reveal>
@@ -107,11 +103,12 @@ export default function AdminLearnTheory() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {activeGroups.length === 0 ? (
+        {enrollableGroups.length === 0 ? (
           <Card className="p-8 border-border text-center text-muted-foreground">{t("adminTheoryNoActiveGroups")}</Card>
         ) : (
-          activeGroups.map((c, idx) => {
+          enrollableGroups.map((c, idx) => {
             const full = c.enrolled >= c.seats;
+            const isActive = c.status === "active";
             return (
               <Reveal key={c.id} delay={idx * 0.06}>
                 <Card className="p-5 border-border h-full flex flex-col min-w-0">
@@ -120,7 +117,13 @@ export default function AdminLearnTheory() {
                       <h3 className="font-semibold text-foreground">{c.name}</h3>
                       <p className="text-xs text-muted-foreground mt-1">{branchNameById(branches, c.branchId)}</p>
                     </div>
-                    <Badge className="shrink-0 bg-emerald-100 text-emerald-700">{t("active")}</Badge>
+                    <Badge
+                      className={
+                        isActive ? "shrink-0 bg-emerald-100 text-emerald-700" : "shrink-0 bg-blue-100 text-blue-700"
+                      }
+                    >
+                      {isActive ? t("active") : t("cohortStatusLabelUpcoming")}
+                    </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-1">{c.schedule}</p>
                   <p className="text-xs text-muted-foreground mb-4">

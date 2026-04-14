@@ -4,22 +4,20 @@ import type { AdminNavigationLink } from "./admin.types";
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
   { href: "/admin/bookings", translationKey: "bookings" },
-  {
-    href: "/admin/users",
-    translationKey: "adminSidebarStudents",
-    children: [
-      { href: "/admin/users/analytics", translationKey: "adminStudentsAnalytics" },
-    ],
-  },
+  { href: "/admin/booked-calls", translationKey: "adminBookedCalls" },
+  { href: "/admin/users", translationKey: "adminSidebarStudents" },
   {
     href: "/admin/learn",
     translationKey: "adminSidebarLearn",
+    collapsible: true,
     children: [
-      { href: "/admin/learn/groups", translationKey: "adminSidebarGroups" },
+      { href: "/admin/learn/practical", translationKey: "adminLearnNavRegisterPractical" },
+      { href: "/admin/learn/theory", translationKey: "adminLearnNavRegisterTheory" },
       { href: "/admin/learn/packages", translationKey: "packages" },
-      { href: "/admin/learn/exam-questions", translationKey: "adminSidebarExamQuestions" },
+      { href: "/admin/learn/exam-questions", translationKey: "adminLearnNavQuestionnaire" },
     ],
   },
+  { href: "/admin/learn/groups", translationKey: "adminSidebarGroups" },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/cars", translationKey: "adminSidebarCars" },
   { href: "/admin/branches", translationKey: "adminSidebarBranches" },

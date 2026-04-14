@@ -23,6 +23,6 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
-EXPOSE 3002
+EXPOSE 3001
 ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

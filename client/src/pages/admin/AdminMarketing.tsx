@@ -41,6 +41,7 @@ export default function AdminMarketing() {
   const [socialIg, setSocialIg] = useState("");
   const [socialYt, setSocialYt] = useState("");
   const [socialTt, setSocialTt] = useState("");
+  const [socialWhatsapp, setSocialWhatsapp] = useState("");
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editTm, setEditTm] = useState<MarketingTestimonialAdmin | null>(null);
@@ -68,6 +69,7 @@ export default function AdminMarketing() {
     setSocialIg(b.social.instagram);
     setSocialYt(b.social.youtube);
     setSocialTt(b.social.tiktok ?? "");
+    setSocialWhatsapp(b.social.whatsapp ?? "");
   }, []);
 
   const load = useCallback(async () => {
@@ -139,6 +141,7 @@ export default function AdminMarketing() {
             instagram: socialIg.trim(),
             youtube: socialYt.trim(),
             tiktok: socialTt.trim(),
+            whatsapp: socialWhatsapp.trim(),
           },
         },
       });
@@ -379,6 +382,9 @@ export default function AdminMarketing() {
               <Input className="h-10" value={socialYt} onChange={(e) => setSocialYt(e.target.value)} />
               <Label>{t("adminMarketingSocialTt")}</Label>
               <Input className="h-10" value={socialTt} onChange={(e) => setSocialTt(e.target.value)} />
+              <Label>{t("adminMarketingSocialWhatsapp")}</Label>
+              <p className="text-xs text-muted-foreground mb-1">{t("adminMarketingSocialWhatsappHint")}</p>
+              <Input className="h-10" value={socialWhatsapp} onChange={(e) => setSocialWhatsapp(e.target.value)} />
             </div>
             <Button type="submit" className="bg-primary text-primary-foreground">
               {t("adminMarketingSaveContact")}

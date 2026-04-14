@@ -235,12 +235,17 @@ export default function AdminBranches() {
       <PanelPageHeader icon={MapPin} title={t("adminSidebarBranches")} subtitle={t("adminBranchesPageSubtitle")} />
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0 mb-8">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex flex-wrap items-center justify-between gap-2">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <Building2 className="w-4 h-4 text-primary shrink-0" />
             <h3 className="text-sm font-semibold text-foreground">{t("adminBranchesCitiesSectionTitle")}</h3>
           </div>
-          <Button type="button" size="sm" onClick={() => setCityListAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5 shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setCityListAddOpen(true)}
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5 shrink-0 sm:w-auto"
+          >
             <Plus className="w-3.5 h-3.5" />
             {t("cityNewTitle")}
           </Button>
@@ -330,12 +335,17 @@ export default function AdminBranches() {
       </div>
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
-        <div className="px-4 py-3 border-b border-border bg-muted/30 flex flex-wrap items-center justify-between gap-2">
+        <div className="px-4 py-3 border-b border-border bg-muted/30 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 min-w-0">
             <MapPin className="w-4 h-4 text-primary shrink-0" />
             <h3 className="text-sm font-semibold text-foreground">{t("adminBranchesBranchesSectionTitle")}</h3>
           </div>
-          <Button type="button" size="sm" onClick={() => setAddBranchOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5 shrink-0">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setAddBranchOpen(true)}
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5 shrink-0 sm:w-auto"
+          >
             <Plus className="w-3.5 h-3.5" />
             {t("branchNewTitle")}
           </Button>

@@ -14,7 +14,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+In this monorepo, `docker compose` runs marketing on **http://localhost:5173** (`npm run dev -w web` uses `--port 5173`). For plain `npm run dev` inside `apps/web`, the default may still be port 3000 unless overridden.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

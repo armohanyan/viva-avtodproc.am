@@ -10,9 +10,10 @@
 #
 # Production-style stack (baked images): docker compose -f docker-compose.prod.yml up --build
 #
-# Panel (Vite):  http://localhost:3000
-# Marketing:     http://localhost:3001
-# API:             http://localhost:3002/api/v1/health
+# Ports (defaults):
+#   Marketing (Next apps/web):  http://localhost:5173
+#   Panel / accounts (Vite):    http://localhost:3000
+#   API (Express):              http://localhost:3001/api/v1/health
 
 services:
   db:
@@ -44,7 +45,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:3002/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          "node -e \"fetch('http://127.0.0.1:3001/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
         ]
       interval: 5s
       timeout: 5s
@@ -53,7 +54,7 @@ services:
     environment:
       EXPOSE_ERROR_DETAILS: ${EXPOSE_ERROR_DETAILS:-1}
       NODE_ENV: development
-      PORT: "3002"
+      PORT: "3001"
       MYSQL_HOST: db
       MYSQL_PORT: "3306"
       MYSQL_USER: root
@@ -61,10 +62,16 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-viva}
       DB_AUTO_SEED: ${DB_AUTO_SEED:-1}
       DB_SYNC_ALTER: ${DB_SYNC_ALTER:-0}
+      # Set to 1 to run booking payment-window + hold-expiry jobs inside the API process (default off; use jobs:bookings in cron instead if you prefer).
+      BOOKING_CRON_ENABLED: ${BOOKING_CRON_ENABLED:-0}
+      BOOKING_CRON_INTERVAL_MS: ${BOOKING_CRON_INTERVAL_MS:-300000}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-docker-dev-change-me}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3002}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-docker-dev-refresh-change-me}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
+      PANEL_DEFAULT_ORIGIN: ${PANEL_DEFAULT_ORIGIN:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3001,http://127.0.0.1:3001}
     ports:
-      - "${BACKEND_PUBLISH_PORT:-3002}:3002"
+      - "${BACKEND_PUBLISH_PORT:-3001}:3001"
     volumes:
       - ./backend:/app
       - backend_node_modules:/app/node_modules
@@ -83,8 +90,8 @@ services:
     ports:
       - "${FRONTEND_PUBLISH_PORT:-3000}:5173"
     environment:
-      VITE_MARKETING_ORIGIN: ${VITE_MARKETING_ORIGIN:-http://localhost:3001}
-      VITE_API_PROXY_TARGET: http://backend:3002
+      VITE_MARKETING_ORIGIN: ${VITE_MARKETING_ORIGIN:-http://localhost:5173}
+      VITE_API_PROXY_TARGET: http://backend:3001
     volumes:
       - ./client:/app
       - client_node_modules:/app/node_modules
@@ -111,22 +118,20 @@ services:
     container_name: viva-web
     restart: unless-stopped
     ports:
-      - "${WEB_PUBLISH_PORT:-3001}:3001"
+      - "${WEB_PUBLISH_PORT:-5173}:5173"
     environment:
-      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3001}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:5173}
       NEXT_PUBLIC_PANEL_URL: ${NEXT_PUBLIC_PANEL_URL:-http://localhost:3000}
       # Browser → API (host port). Server components in this container use INTERNAL_API_BASE_URL.
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3002}
-      INTERNAL_API_BASE_URL: http://backend:3002
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+      INTERNAL_API_BASE_URL: http://backend:3001
       NODE_ENV: development
     volumes:
       - ./client:/app
       - client_node_modules:/app/node_modules
-    command: ["sh", "-c", "npm ci && npm run dev -w web -- --hostname 0.0.0.0 --port 3001"]
+    command: ["sh", "-c", "npm ci && npm run dev -w web -- --hostname 0.0.0.0 --port 5173"]
     depends_on:
       backend:
-        condition: service_healthy
-      frontend:
         condition: service_healthy
 
 volumes:

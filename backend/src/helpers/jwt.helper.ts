@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import config from '../config';
 import type { AccountType } from '../models/user.model';
+import { parseDurationToSeconds } from '../utils/token-time.util';
 
 export type AccessTokenPayload = {
   sub: string;
@@ -8,15 +9,8 @@ export type AccessTokenPayload = {
   accountType: AccountType;
 };
 
-/** Parse `15m`-style duration to seconds for JWT (fallback 15 minutes). */
 function accessTtlSeconds(): number {
-  const raw = config.AUTH.ACCESS_TOKEN_ACTIVE_TIME.trim();
-  const m = /^(\d+)\s*([smhd])$/i.exec(raw);
-  if (!m) return 15 * 60;
-  const n = Number(m[1]);
-  const u = m[2]!.toLowerCase();
-  const mult = u === 's' ? 1 : u === 'm' ? 60 : u === 'h' ? 3600 : 86400;
-  return n * mult;
+  return parseDurationToSeconds(config.AUTH.ACCESS_TOKEN_ACTIVE_TIME, 15 * 60);
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {

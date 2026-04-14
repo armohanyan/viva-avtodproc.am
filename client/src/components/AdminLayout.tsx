@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { cn } from "src/lib/utils";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
@@ -18,6 +19,9 @@ import {
   Landmark,
   School,
   Sparkles,
+  ChevronDown,
+  Users,
+  PhoneCall,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Button } from "./ui/button";
@@ -56,9 +60,24 @@ export default function AdminLayout({ children }: Props) {
   const { showToast } = useToast();
   const { user, signOut } = useAccount();
   const [location, setLocation] = useLocation();
-  
+
   const [open, setOpen] = useState(false);
+  /** `href` of a `collapsible` nav group that is expanded in the sidebar. */
+  const [openCollapsibleHref, setOpenCollapsibleHref] = useState<string | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const collapsible = ADMIN_NAV_LINKS.find((l) => l.collapsible && l.children?.length);
+    if (!collapsible?.children) return;
+    const onChild = collapsible.children.some(
+      (c) => location === c.href || location.startsWith(`${c.href}/`),
+    );
+    if (onChild) {
+      setOpenCollapsibleHref(collapsible.href);
+    } else if (!location.startsWith(collapsible.href)) {
+      setOpenCollapsibleHref(null);
+    }
+  }, [location]);
 
   useEffect(() => {
     // Admin pages render into a scrollable <main> container.
@@ -71,7 +90,9 @@ export default function AdminLayout({ children }: Props) {
     "/admin/branches": MapPin,
     "/admin/cars": CarFront,
     "/admin/bookings": Calendar,
+    "/admin/booked-calls": PhoneCall,
     "/admin/learn": School,
+    "/admin/learn/groups": Users,
     "/admin/instructors": Car,
     "/admin/users": GraduationCap,
     "/admin/users/analytics": GraduationCap,
@@ -101,8 +122,69 @@ export default function AdminLayout({ children }: Props) {
     const Icon = iconByPath[link.href as keyof typeof iconByPath];
     const hasChildren = Boolean(link.children?.length);
 
+    if (link.collapsible && link.children?.length) {
+      const isOpen = openCollapsibleHref === link.href;
+      const onParent = location === link.href;
+      const underParent = link.children.some(
+        (c) => location === c.href || location.startsWith(`${c.href}/`),
+      );
+      const parentStrong = onParent;
+      const parentSoft = underParent && !onParent;
+
+      return (
+        <div key={link.href} className="space-y-0.5">
+          <button
+            type="button"
+            aria-expanded={isOpen}
+            onClick={() => {
+              setOpenCollapsibleHref((prev) => (prev === link.href ? null : link.href));
+              setOpen(false);
+            }}
+            className={cn(
+              "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              parentStrong
+                ? "bg-primary text-primary-foreground"
+                : parentSoft
+                  ? "bg-white/10 text-hero-foreground"
+                  : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
+            )}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            <span className="flex-1 text-left">{t(link.translationKey)}</span>
+            <ChevronDown
+              className={cn("w-4 h-4 shrink-0 transition-transform opacity-80", isOpen && "rotate-180")}
+              aria-hidden
+            />
+          </button>
+          {isOpen ? (
+            <div className="ml-3 pl-3 border-l border-white/15 space-y-0.5">
+              {link.children.map((child) => {
+                const childActive = location === child.href;
+                return (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      childActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground"
+                    }`}
+                  >
+                    {t(child.translationKey)}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
     if (!hasChildren) {
-      const active = location === link.href;
+      const active =
+        location === link.href ||
+        (link.href === "/admin/users" && location.startsWith("/admin/users/"));
       return (
         <Link
           key={link.href}
@@ -259,7 +341,9 @@ export default function AdminLayout({ children }: Props) {
                         ? t("adminSidebarGroups")
                         : location === "/admin/learn/packages"
                           ? t("packages")
-                          : adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard")}
+                          : location === "/admin/users/analytics"
+                            ? t("adminStudentsAnalytics")
+                            : adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard")}
             </h1>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">

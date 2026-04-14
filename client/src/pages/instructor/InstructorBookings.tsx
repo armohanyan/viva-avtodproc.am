@@ -3,6 +3,7 @@ import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { CalendarClock } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -29,6 +30,7 @@ export default function InstructorBookings() {
   const { t } = useLang();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "practical" | "theory">("all");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -36,41 +38,57 @@ export default function InstructorBookings() {
       const hay = [b.id, b.student, b.date, b.time, b.type, b.status].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchStatus = statusFilter === "all" || b.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchType = typeFilter === "all" || b.type === typeFilter;
+      return matchSearch && matchStatus && matchType;
     });
-  }, [search, statusFilter]);
+  }, [search, statusFilter, typeFilter]);
 
   return (
     <InstructorPanelLayout>
       <PanelPageHeader icon={CalendarClock} title={t("bookings")} subtitle={t("instructorBookingsPageSubtitle")} />
 
       <Card className="border-border overflow-hidden">
-        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <div className="flex gap-2 flex-wrap">
-            {["all", "confirmed", "pending", "cancelled"].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${
-                  statusFilter === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {s === "all" ? t("filterOptionAll") : t(s as "confirmed" | "pending" | "cancelled")}
-              </button>
-            ))}
-          </div>
-        </DataTableToolbar>
+        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40">
               <tr>
-                {[t("tableColId"), t("name"), t("date"), t("bookingTimeLabel"), t("filterByType"), t("status")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter title={t("name")} />
+                <TableColumnHeaderWithFilter title={t("date")} />
+                <TableColumnHeaderWithFilter title={t("bookingTimeLabel")} />
+                <TableColumnHeaderWithFilter
+                  title={t("filterByType")}
+                  filter={
+                    <TableColumnFilter
+                      value={typeFilter}
+                      onChange={(v) => setTypeFilter(v as "all" | "practical" | "theory")}
+                      ariaLabel={t("filterByType")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "practical", label: t("lessonTypePractical") },
+                        { value: "theory", label: t("lessonTypeTheory") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "confirmed", label: t("confirmed") },
+                        { value: "pending", label: t("pending") },
+                        { value: "cancelled", label: t("cancelled") },
+                      ]}
+                    />
+                  }
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

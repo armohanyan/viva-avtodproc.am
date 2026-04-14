@@ -34,14 +34,8 @@ import { cityNameById, useCities } from "src/modules/cities";
 import { usePackages } from "src/modules/packages/usePackages";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
+import { MARKETING_FALLBACK_STATS } from "src/modules/marketing/marketingFallbackStats";
 import type { TranslationKey } from "src/lib/i18n";
-
-const FALLBACK_STATS: { key: string; value: string }[] = [
-  { key: "years_exp", value: "14+" },
-  { key: "students", value: "3,200+" },
-  { key: "instructors", value: "18" },
-  { key: "success_rate", value: "94%" },
-];
 
 const FALLBACK_TESTIMONIALS = [
   { name: "Anahit K.", text: "Passed my exam on the first try! The instructors are incredibly patient and professional.", rating: 5 },
@@ -65,7 +59,7 @@ export default function Home() {
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
   const stats = useMemo(() => {
-    const rows = mkt?.stats?.length ? mkt.stats : FALLBACK_STATS;
+    const rows = mkt?.stats?.length ? mkt.stats : MARKETING_FALLBACK_STATS;
     return rows.map((s) => ({
       value: s.value,
       label: t((MARKETING_STAT_LABEL_KEY[s.key] ?? "yearsExp") as TranslationKey),

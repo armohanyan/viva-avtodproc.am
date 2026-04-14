@@ -1,7 +1,7 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
-import { useLang } from "src/lib/i18n";
+import { useLang, type TranslationKey } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { formatShortDateFromIso, todayIsoDate } from "src/lib/adminFormat";
 import { Card } from "src/components/ui/card";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, CalendarRange } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -19,7 +20,6 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
-
 type StudentRow = { id: string; name: string; email?: string };
 
 type Booking = {
@@ -33,10 +33,34 @@ type Booking = {
   branchId: string;
 };
 
+function bookingStatusTranslationKey(status: string): TranslationKey {
+  switch (status) {
+    case "confirmed":
+      return "confirmed";
+    case "cancelled":
+      return "cancelled";
+    case "completed":
+      return "bookingStatusCompleted";
+    case "pending_prebook":
+      return "bookingStatusPrebook";
+    case "pending_payment":
+      return "bookingStatusPaymentDue";
+    case "refunded":
+      return "bookingStatusRefunded";
+    case "pending":
+    default:
+      return "pending";
+  }
+}
+
 const statusColor: Record<string, string> = {
   confirmed: "bg-emerald-100 text-emerald-700",
   pending: "bg-amber-100 text-amber-700",
+  pending_prebook: "bg-amber-100 text-amber-800",
+  pending_payment: "bg-orange-100 text-orange-800",
   cancelled: "bg-red-100 text-red-600",
+  completed: "bg-muted text-muted-foreground",
+  refunded: "bg-slate-200 text-slate-700",
 };
 const typeColor: Record<string, string> = {
   practical: "bg-blue-100 text-blue-700",
@@ -194,43 +218,6 @@ export default function AdminBookings() {
 
       <Card className="border-border overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[11rem] sm:w-auto"
-            aria-label={t("filterByBranch")}
-          >
-            <option value="all">{t("adminBranchFilterAll")}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={lessonTypeFilter}
-            onChange={(e) => setLessonTypeFilter(e.target.value as "all" | "practical" | "theory")}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[10rem] sm:w-auto"
-            aria-label={t("filterByType")}
-          >
-            <option value="all">{t("adminBookingsFilterAllTypes")}</option>
-            <option value="practical">{t("lessonTypePractical")}</option>
-            <option value="theory">{t("lessonTypeTheory")}</option>
-          </select>
-          <div className="flex gap-2 flex-wrap">
-            {["all", "confirmed", "pending", "cancelled"].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${
-                  statusFilter === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {s === "all" ? t("filterOptionAll") : t(s as "confirmed" | "pending" | "cancelled")}
-              </button>
-            ))}
-          </div>
           <CsvExportButton
             filename="admin-bookings.csv"
             headers={[
@@ -251,7 +238,7 @@ export default function AdminBookings() {
               formatShortDateFromIso(b.dateIso, lang),
               b.time,
               t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical"),
-              t(b.status as "confirmed" | "pending" | "cancelled"),
+              t(bookingStatusTranslationKey(b.status)),
             ])}
           />
         </DataTableToolbar>
@@ -260,11 +247,61 @@ export default function AdminBookings() {
           <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("tableColId"), t("bookingColStudent"), t("adminColBranch"), t("cohortColInstructor"), t("date"), t("bookingColTime"), t("bookingColType"), t("status"), t("actions")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter title={t("bookingColStudent")} />
+                <TableColumnHeaderWithFilter
+                  title={t("adminColBranch")}
+                  filter={
+                    <TableColumnFilter
+                      value={branchFilter}
+                      onChange={setBranchFilter}
+                      ariaLabel={t("filterByBranch")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...branches.map((b) => ({ value: b.id, label: b.name })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
+                <TableColumnHeaderWithFilter title={t("date")} />
+                <TableColumnHeaderWithFilter title={t("bookingColTime")} />
+                <TableColumnHeaderWithFilter
+                  title={t("bookingColType")}
+                  filter={
+                    <TableColumnFilter
+                      value={lessonTypeFilter}
+                      onChange={(v) => setLessonTypeFilter(v as "all" | "practical" | "theory")}
+                      ariaLabel={t("filterByType")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "practical", label: t("lessonTypePractical") },
+                        { value: "theory", label: t("lessonTypeTheory") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "confirmed", label: t("confirmed") },
+                        { value: "pending", label: t("pending") },
+                        { value: "pending_prebook", label: t("bookingStatusPrebook") },
+                        { value: "pending_payment", label: t("bookingStatusPaymentDue") },
+                        { value: "completed", label: t("bookingStatusCompleted") },
+                        { value: "refunded", label: t("bookingStatusRefunded") },
+                        { value: "cancelled", label: t("cancelled") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -302,7 +339,9 @@ export default function AdminBookings() {
                       <Badge className={`text-xs ${typeColor[b.type]}`}>{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}</Badge>
                     </td>
                     <td className="px-4 py-3.5">
-                      <Badge className={`text-xs ${statusColor[b.status]}`}>{t(b.status as "confirmed" | "pending" | "cancelled")}</Badge>
+                      <Badge className={`text-xs ${statusColor[b.status] ?? statusColor.pending}`}>
+                        {t(bookingStatusTranslationKey(b.status))}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3.5">
                       <AdminTableRowActions
@@ -416,6 +455,10 @@ export default function AdminBookings() {
                 >
                   <option value="confirmed">{t("confirmed")}</option>
                   <option value="pending">{t("pending")}</option>
+                  <option value="pending_prebook">{t("bookingStatusPrebook")}</option>
+                  <option value="pending_payment">{t("bookingStatusPaymentDue")}</option>
+                  <option value="completed">{t("bookingStatusCompleted")}</option>
+                  <option value="refunded">{t("bookingStatusRefunded")}</option>
                   <option value="cancelled">{t("cancelled")}</option>
                 </select>
               </div>
@@ -511,6 +554,10 @@ export default function AdminBookings() {
                 >
                   <option value="confirmed">{t("confirmed")}</option>
                   <option value="pending">{t("pending")}</option>
+                  <option value="pending_prebook">{t("bookingStatusPrebook")}</option>
+                  <option value="pending_payment">{t("bookingStatusPaymentDue")}</option>
+                  <option value="completed">{t("bookingStatusCompleted")}</option>
+                  <option value="refunded">{t("bookingStatusRefunded")}</option>
                   <option value="cancelled">{t("cancelled")}</option>
                 </select>
               </div>

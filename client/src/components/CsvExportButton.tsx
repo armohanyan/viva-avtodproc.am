@@ -20,7 +20,7 @@ export default function CsvExportButton({ filename, headers, rows, disabled, cla
       type="button"
       variant="outline"
       size="sm"
-      className={cn("h-9 shrink-0 gap-1.5", className)}
+      className={cn("h-9 min-w-0 w-full shrink-0 gap-1.5 sm:w-auto", className)}
       disabled={disabled || empty}
       aria-label={t("csvExportAriaLabel")}
       onClick={() => downloadCsvFile(filename, buildCsv(headers, rows))}

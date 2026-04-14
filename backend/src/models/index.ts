@@ -23,6 +23,8 @@ import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
 import { TheoryCohortEnrollment } from './theory-cohort-enrollment.model';
 import { User } from './user.model';
+import { RefreshToken } from './refresh-token.model';
+import { OAuthAccount } from './oauth-account.model';
 
 City.hasMany(Branch, { foreignKey: 'cityId', sourceKey: 'id' });
 Branch.belongsTo(City, { foreignKey: 'cityId', targetKey: 'id' });
@@ -67,6 +69,11 @@ TheoryCohortEnrollment.belongsTo(User, { foreignKey: 'studentUserId', targetKey:
 User.hasMany(StudentExtraPractical, { foreignKey: 'userId', sourceKey: 'id' });
 StudentExtraPractical.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 
+User.hasMany(RefreshToken, { foreignKey: 'userId', sourceKey: 'id' });
+RefreshToken.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
+User.hasMany(OAuthAccount, { foreignKey: 'userId', sourceKey: 'id' });
+OAuthAccount.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
+
 FinanceTransaction.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
 export {
@@ -86,7 +93,9 @@ export {
   MarketingSetting,
   MarketingStat,
   MarketingTestimonial,
+  OAuthAccount,
   Package,
+  RefreshToken,
   StudentExtraPractical,
   StudentProfile,
   TheoryCohort,
@@ -178,9 +187,59 @@ async function ensureBookingsPaymentColumns(): Promise<void> {
   }
 }
 
+async function ensureAuthTables(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const rt = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'refresh_tokens'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (rt.length === 0) {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS \`refresh_tokens\` (
+        \`id\` VARCHAR(64) NOT NULL,
+        \`user_id\` VARCHAR(64) NOT NULL,
+        \`token_hash\` VARCHAR(128) NOT NULL,
+        \`expires_at\` DATETIME NOT NULL,
+        \`revoked_at\` DATETIME NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`refresh_tokens_token_hash\` (\`token_hash\`),
+        KEY \`refresh_tokens_user_id\` (\`user_id\`),
+        CONSTRAINT \`refresh_tokens_user_fk\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+  }
+  const oa = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'oauth_accounts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (oa.length === 0) {
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS \`oauth_accounts\` (
+        \`id\` VARCHAR(64) NOT NULL,
+        \`user_id\` VARCHAR(64) NOT NULL,
+        \`provider\` ENUM('google','facebook','apple') NOT NULL,
+        \`provider_user_id\` VARCHAR(255) NOT NULL,
+        \`created_at\` DATETIME NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`oauth_provider_account\` (\`provider\`, \`provider_user_id\`),
+        KEY \`oauth_accounts_user_id\` (\`user_id\`),
+        CONSTRAINT \`oauth_accounts_user_fk\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+  }
+}
+
 export async function syncModels(): Promise<void> {
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
   await ensureBookingsPaymentColumns();
+  await ensureAuthTables();
 }

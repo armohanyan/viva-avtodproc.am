@@ -10,6 +10,8 @@ import {
 } from "src/modules/accounts";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
+import { tryRefreshAccessToken } from "src/lib/authSession";
+import { loadAccountSession } from "src/modules/accounts/account.session";
 
 type CallbackStatus = "loading" | "success" | "error";
 
@@ -24,7 +26,8 @@ export default function AuthCallback() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
 
   useEffect(() => {
-    const errorParam = params.get("error");
+    const authError = params.get("auth_error");
+    const from = params.get("from");
     const code = params.get("code");
     const token = params.get("token");
     const redirect = params.get("redirectTo");
@@ -39,12 +42,49 @@ export default function AuthCallback() {
         ? redirect
         : null;
 
-    if (errorParam) {
-      const errorDescription = params.get("error_description") || errorParam;
+    if (authError) {
       setStatus("error");
-      setMessage(errorDescription);
+      setMessage(authError);
       showToast(t("socialAuthFailed"), "error");
       return;
+    }
+
+    if (from === "oauth") {
+      let cancelled = false;
+      let timer: number | undefined;
+      void (async () => {
+        const ok = await tryRefreshAccessToken();
+        if (cancelled) {
+          return;
+        }
+        if (!ok) {
+          setStatus("error");
+          setMessage(t("socialAuthMissingPayload"));
+          showToast(t("socialAuthFailed"), "error");
+          return;
+        }
+        const session = loadAccountSession();
+        if (!session) {
+          setStatus("error");
+          setMessage(t("socialAuthMissingPayload"));
+          showToast(t("socialAuthFailed"), "error");
+          return;
+        }
+        setStatus("success");
+        showToast(t("socialAuthSuccess"), "success");
+        const fallback = defaultHomePathForAccountType(session.accountType);
+        const dest =
+          safeRedirectCandidate && isSafePanelRedirect(safeRedirectCandidate, session.accountType)
+            ? safeRedirectCandidate
+            : fallback;
+        timer = window.setTimeout(() => setLocation(dest), 600);
+      })();
+      return () => {
+        cancelled = true;
+        if (timer !== undefined) {
+          window.clearTimeout(timer);
+        }
+      };
     }
 
     if (code || token) {
@@ -72,6 +112,7 @@ export default function AuthCallback() {
     setStatus("error");
     setMessage(t("socialAuthMissingPayload"));
     showToast(t("socialAuthFailed"), "error");
+    return undefined;
   }, [params, setLocation, showToast, signIn, t]);
 
   return (

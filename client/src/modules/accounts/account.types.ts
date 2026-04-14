@@ -6,6 +6,6 @@ export interface AccountSessionUser {
   readonly email: string;
   readonly name: string;
   readonly accountType: AccountType;
-  /** Set after `/api/v1/auth/login` for authenticated API calls. */
+  /** Short-lived JWT from `/api/v1/auth/login` | `/register` | `/refresh` (refresh token is httpOnly cookie). */
   readonly accessToken?: string;
 }

@@ -1,7 +1,7 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
-import { useLang } from "src/lib/i18n";
+import { useLang, type Lang, type TranslationKey } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
@@ -10,15 +10,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
-import { Plus, Edit2, Trash2, Calendar, School } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Plus, Edit2, Trash2, Calendar, School, ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Instructor } from "src/data/instructors";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
 import type { City } from "src/modules/cities";
+import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
 
 type InstructorForm = Pick<
@@ -60,6 +62,103 @@ function formatInstructorCities(ins: Instructor, allBranches: readonly Branch[],
   return [...cityIds].map((cid) => cityNameById(citiesList, cid)).join(", ");
 }
 
+type InstructorAvailabilityBlock = {
+  id: string;
+  ruleKind: "weekly_work" | "weekly_break" | "weekday_lunch" | "date_off" | "date_break";
+  weekday: number | null;
+  dateIso: string | null;
+  timeStart: string | null;
+  timeEnd: string | null;
+  allDay: boolean;
+};
+
+const WEEKDAY_KEYS: readonly TranslationKey[] = [
+  "instructorDay1",
+  "instructorDay2",
+  "instructorDay3",
+  "instructorDay4",
+  "instructorDay5",
+  "instructorDay6",
+  "instructorDay7",
+];
+
+function weekdayLabel(weekday: number, t: (k: TranslationKey) => string): string {
+  const key = WEEKDAY_KEYS[weekday - 1];
+  return key ? t(key) : String(weekday);
+}
+
+function describeAvailabilityBlock(
+  b: InstructorAvailabilityBlock,
+  t: (k: TranslationKey) => string,
+  lang: Lang,
+): string {
+  const dateLabel = b.dateIso ? formatShortDateFromIso(b.dateIso, lang) : "—";
+  switch (b.ruleKind) {
+    case "date_off":
+      if (b.allDay) return `${t("instructorAvailabilityListDayOff")}: ${dateLabel}`;
+      return `${t("instructorAvailabilityListPartialOff")}: ${dateLabel} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
+    case "date_break":
+      return `${t("instructorAvailabilityListTimeOff")}: ${dateLabel} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
+    case "weekday_lunch":
+      return `${t("instructorAvailabilityListWeekdayLunch")}: ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
+    case "weekly_break":
+      return `${t("instructorAvailabilityListWeeklyLunch")}: ${weekdayLabel(b.weekday ?? 1, t)} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
+    case "weekly_work":
+      return `${t("instructorAvailabilityListWeeklyWork")}: ${weekdayLabel(b.weekday ?? 1, t)} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
+    default:
+      return b.id;
+  }
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** Match backend: HH:MM only (strips seconds, pads hour). */
+function normalizeTimeForApi(raw: string): string {
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(raw.trim());
+  if (!m) return raw.trim();
+  const h = Math.min(23, Math.max(0, Number(m[1])));
+  const min = Math.min(59, Math.max(0, Number(m[2])));
+  return `${pad2(h)}:${pad2(min)}`;
+}
+
+type MonthCell =
+  | { key: string; type: "blank" }
+  | { key: string; type: "day"; iso: string; day: number };
+
+function buildMonthGridCells(year: number, month1To12: number): MonthCell[] {
+  const dim = new Date(year, month1To12, 0).getDate();
+  const firstJs = new Date(year, month1To12 - 1, 1).getDay();
+  const leading = firstJs === 0 ? 6 : firstJs - 1;
+  const cells: MonthCell[] = [];
+  for (let i = 0; i < leading; i++) {
+    cells.push({ key: `b-${year}-${month1To12}-${i}`, type: "blank" });
+  }
+  for (let d = 1; d <= dim; d++) {
+    const iso = `${year}-${pad2(month1To12)}-${pad2(d)}`;
+    cells.push({ key: iso, type: "day", iso, day: d });
+  }
+  while (cells.length % 7 !== 0) {
+    cells.push({ key: `t-${cells.length}`, type: "blank" });
+  }
+  while (cells.length < 42) {
+    cells.push({ key: `p-${cells.length}`, type: "blank" });
+  }
+  return cells.slice(0, 42);
+}
+
+function weekDayShortHeaders(locale: string): string[] {
+  const base = new Date(2024, 0, 1);
+  const headers: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    headers.push(d.toLocaleDateString(locale, { weekday: "short" }));
+  }
+  return headers;
+}
+
 function formatInstructorBranches(ins: Instructor, allBranches: readonly Branch[], citiesList: readonly City[]): string {
   if (ins.availableBranchIds.length === 0) return "—";
   return ins.availableBranchIds
@@ -71,7 +170,7 @@ function formatInstructorBranches(ins: Instructor, allBranches: readonly Branch[
 }
 
 export default function AdminInstructors() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
   const { cities } = useCities();
@@ -98,8 +197,164 @@ export default function AdminInstructors() {
   const [addOpen, setAddOpen] = useState(false);
   const [teachingFilter, setTeachingFilter] = useState<"all" | "practical_only" | "theory_only" | "both">("all");
   const [newIns, setNewIns] = useState<InstructorForm>(createNewInstructorDraft());
+  const [availabilityInstructorId, setAvailabilityInstructorId] = useState<string | null>(null);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<InstructorAvailabilityBlock[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth() + 1);
+  const [selectedCalendarDays, setSelectedCalendarDays] = useState<string[]>([]);
+  const [dayOffScope, setDayOffScope] = useState<"full_day" | "time_window">("full_day");
+  const [offWindowStart, setOffWindowStart] = useState("14:00");
+  const [offWindowEnd, setOffWindowEnd] = useState("15:00");
+  const [weeklyBreakStart, setWeeklyBreakStart] = useState("14:00");
+  const [weeklyBreakEnd, setWeeklyBreakEnd] = useState("15:00");
 
   const editIns = editId ? instructors.find((i) => i.id === editId) ?? null : null;
+  const availabilityInstructor = availabilityInstructorId
+    ? instructors.find((i) => i.id === availabilityInstructorId) ?? null
+    : null;
+
+  const loadAvailabilityBlocks = useCallback(async (instructorId: string) => {
+    setAvailabilityLoading(true);
+    try {
+      const data = await vivaApiJson<InstructorAvailabilityBlock[]>(
+        `/instructors/${encodeURIComponent(instructorId)}/availability-blocks`,
+      );
+      setAvailabilityBlocks(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setAvailabilityBlocks([]);
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (availabilityInstructorId) {
+      const d = new Date();
+      setCalendarYear(d.getFullYear());
+      setCalendarMonth(d.getMonth() + 1);
+      setSelectedCalendarDays([]);
+      setDayOffScope("full_day");
+      setOffWindowStart("14:00");
+      setOffWindowEnd("15:00");
+      setWeeklyBreakStart("14:00");
+      setWeeklyBreakEnd("15:00");
+    }
+  }, [availabilityInstructorId]);
+
+  useEffect(() => {
+    if (!availabilityInstructorId) {
+      setAvailabilityBlocks([]);
+      return;
+    }
+    void loadAvailabilityBlocks(availabilityInstructorId);
+  }, [availabilityInstructorId, loadAvailabilityBlocks]);
+
+  const calLocale = useMemo(() => localeForLang(lang), [lang]);
+  const monthGridCells = useMemo(() => buildMonthGridCells(calendarYear, calendarMonth), [calendarYear, calendarMonth]);
+  const weekdayHdrs = useMemo(() => weekDayShortHeaders(calLocale), [calLocale]);
+  const calendarMonthLabel = useMemo(
+    () => new Date(calendarYear, calendarMonth - 1, 1).toLocaleDateString(calLocale, { month: "long", year: "numeric" }),
+    [calendarYear, calendarMonth, calLocale],
+  );
+
+  const gotoPrevMonth = () => {
+    if (calendarMonth <= 1) {
+      setCalendarYear((y) => y - 1);
+      setCalendarMonth(12);
+    } else {
+      setCalendarMonth((m) => m - 1);
+    }
+  };
+
+  const gotoNextMonth = () => {
+    if (calendarMonth >= 12) {
+      setCalendarYear((y) => y + 1);
+      setCalendarMonth(1);
+    } else {
+      setCalendarMonth((m) => m + 1);
+    }
+  };
+
+  const toggleCalendarDaySelection = (iso: string) => {
+    setSelectedCalendarDays((prev) => (prev.includes(iso) ? prev.filter((x) => x !== iso) : [...prev, iso]));
+  };
+
+  const applyCalendarDayOffs = async () => {
+    if (!availabilityInstructorId) return;
+    if (selectedCalendarDays.length === 0) {
+      showToast(t("instructorAvailabilityPickDaysHint"), "error");
+      return;
+    }
+    const offStart = normalizeTimeForApi(offWindowStart);
+    const offEnd = normalizeTimeForApi(offWindowEnd);
+    if (dayOffScope === "time_window" && offStart >= offEnd) {
+      showToast(t("instructorAvailabilityTimeOrderHint"), "error");
+      return;
+    }
+    const bodies =
+      dayOffScope === "full_day"
+        ? selectedCalendarDays.map((dateIso) => ({ ruleKind: "date_off" as const, dateIso, allDay: true }))
+        : selectedCalendarDays.map((dateIso) => ({
+            ruleKind: "date_break" as const,
+            dateIso,
+            timeStart: offStart,
+            timeEnd: offEnd,
+          }));
+    try {
+      await Promise.all(
+        bodies.map((body) =>
+          vivaApiJson(`/instructors/${encodeURIComponent(availabilityInstructorId)}/availability-blocks`, {
+            method: "POST",
+            body,
+          }),
+        ),
+      );
+      showToast(t("instructorAvailabilityDaysSavedToast").replace("{count}", String(selectedCalendarDays.length)), "success");
+      setSelectedCalendarDays([]);
+      await loadAvailabilityBlocks(availabilityInstructorId);
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  };
+
+  const applyWeeklyBreakPattern = async () => {
+    if (!availabilityInstructorId) return;
+    const lunchStart = normalizeTimeForApi(weeklyBreakStart);
+    const lunchEnd = normalizeTimeForApi(weeklyBreakEnd);
+    if (lunchStart >= lunchEnd) {
+      showToast(t("instructorAvailabilityTimeOrderHint"), "error");
+      return;
+    }
+    try {
+      await vivaApiJson(`/instructors/${encodeURIComponent(availabilityInstructorId)}/availability-blocks`, {
+        method: "POST",
+        body: {
+          ruleKind: "weekday_lunch",
+          timeStart: lunchStart,
+          timeEnd: lunchEnd,
+        },
+      });
+      showToast(t("instructorAvailabilityWeeklySavedToast"), "success");
+      await loadAvailabilityBlocks(availabilityInstructorId);
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  };
+
+  const deleteAvailabilityBlock = async (blockId: string) => {
+    if (!availabilityInstructorId) return;
+    try {
+      await vivaApiJson(`/instructors/${encodeURIComponent(availabilityInstructorId)}/availability-blocks/${encodeURIComponent(blockId)}`, {
+        method: "DELETE",
+      });
+      showToast(t("instructorAvailabilityRemoved"), "success");
+      await loadAvailabilityBlocks(availabilityInstructorId);
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  };
   const scheduleOptions = Array.from(new Set(instructors.map((i) => i.schedule)));
 
   const teachingFilterMatch = (ins: Instructor) => {
@@ -254,7 +509,6 @@ export default function AdminInstructors() {
       <PanelPageHeader
         icon={School}
         title={t("instructors")}
-        subtitle={t("adminInstructorsPageSubtitle")}
         actions={
           <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
             <Plus className="w-4 h-4" />
@@ -265,107 +519,105 @@ export default function AdminInstructors() {
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}...`}>
-          <div className="flex flex-wrap gap-2 items-center">
-            {["all", "active", "inactive"].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s as "all" | "active" | "inactive")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${
-                  statusFilter === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {s === "all" ? t("filterOptionAll") : t(s as "active" | "inactive")}
-              </button>
-            ))}
-            <select
-              value={scheduleFilter}
-              onChange={(e) => setScheduleFilter(e.target.value)}
-              className="h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground min-w-[8rem]"
-              aria-label={t("filter")}
-            >
-              <option value="all">{t("filterOptionAll")}</option>
-              {scheduleOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <select
-              value={cityFilter}
-              onChange={(e) => setCityFilter(e.target.value as "all" | string)}
-              className="h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground min-w-[10rem]"
-              aria-label={t("instructorCitiesLabel")}
-            >
-              <option value="all">{t("filterOptionAll")}</option>
-              {cities.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={teachingFilter}
-              onChange={(e) => setTeachingFilter(e.target.value as typeof teachingFilter)}
-              className="h-9 rounded-lg border border-input bg-background px-3 text-xs text-foreground min-w-[10rem]"
-              aria-label={t("adminInstructorColTeachingType")}
-            >
-              <option value="all">{t("instructorFilterTeachingAll")}</option>
-              <option value="practical_only">{t("instructorFilterTeachingPracticalOnly")}</option>
-              <option value="theory_only">{t("instructorFilterTeachingTheoryOnly")}</option>
-              <option value="both">{t("instructorFilterTeachingBoth")}</option>
-            </select>
-            <CsvExportButton
-              filename="admin-instructors.csv"
-              headers={[
-                t("adminInstructorColInstructor"),
-                t("emailAddress"),
-                t("adminInstructorColTeachingType"),
-                t("instructorCitiesLabel"),
-                t("instructorBranchesLabel"),
-                t("phone"),
-                t("cohortColSchedule"),
-                t("adminInstructorColRating"),
-                t("adminInstructorColExperience"),
-                t("status"),
-              ]}
-              rows={filteredInstructors.map((ins) => [
-                ins.name,
-                ins.email,
-                [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
-                  .filter(Boolean)
-                  .join(" + ") || "-",
-                formatInstructorCities(ins, branches, cities),
-                formatInstructorBranches(ins, branches, cities),
-                ins.phone,
-                ins.schedule,
-                ins.rating.toFixed(1),
-                `${ins.years} ${t("adminInstructorYearsShort")}`,
-                instructorStatusLabel(ins.status),
-              ])}
-            />
-          </div>
+          <CsvExportButton
+            filename="admin-instructors.csv"
+            headers={[
+              t("adminInstructorColInstructor"),
+              t("emailAddress"),
+              t("adminInstructorColTeachingType"),
+              t("instructorCitiesLabel"),
+              t("instructorBranchesLabel"),
+              t("phone"),
+              t("cohortColSchedule"),
+              t("adminInstructorColRating"),
+              t("adminInstructorColExperience"),
+              t("status"),
+            ]}
+            rows={filteredInstructors.map((ins) => [
+              ins.name,
+              ins.email,
+              [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
+                .filter(Boolean)
+                .join(" + ") || "-",
+              formatInstructorCities(ins, branches, cities),
+              formatInstructorBranches(ins, branches, cities),
+              ins.phone,
+              ins.schedule,
+              ins.rating.toFixed(1),
+              `${ins.years} ${t("adminInstructorYearsShort")}`,
+              instructorStatusLabel(ins.status),
+            ])}
+          />
         </DataTableToolbar>
         <AdminTableScroll>
           <table className="w-full text-sm min-w-[64rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[
-                  t("adminInstructorColInstructor"),
-                  t("adminInstructorColTeachingType"),
-                  t("instructorCitiesLabel"),
-                  t("instructorBranchesLabel"),
-                  t("phone"),
-                  t("cohortColSchedule"),
-                  t("adminInstructorColRating"),
-                  t("adminInstructorColExperience"),
-                  t("status"),
-                  t("actions"),
-                ].map((h) => (
-                  <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("adminInstructorColInstructor")} />
+                <TableColumnHeaderWithFilter
+                  title={t("adminInstructorColTeachingType")}
+                  filter={
+                    <TableColumnFilter
+                      value={teachingFilter}
+                      onChange={(v) => setTeachingFilter(v as typeof teachingFilter)}
+                      ariaLabel={t("adminInstructorColTeachingType")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "practical_only", label: t("instructorFilterTeachingPracticalOnly") },
+                        { value: "theory_only", label: t("instructorFilterTeachingTheoryOnly") },
+                        { value: "both", label: t("instructorFilterTeachingBoth") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter
+                  title={t("instructorCitiesLabel")}
+                  filter={
+                    <TableColumnFilter
+                      value={cityFilter}
+                      onChange={(v) => setCityFilter(v as "all" | string)}
+                      ariaLabel={t("instructorCitiesLabel")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...cities.map((c) => ({ value: c.id, label: c.name })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("instructorBranchesLabel")} />
+                <TableColumnHeaderWithFilter title={t("phone")} />
+                <TableColumnHeaderWithFilter
+                  title={t("cohortColSchedule")}
+                  filter={
+                    <TableColumnFilter
+                      value={scheduleFilter}
+                      onChange={setScheduleFilter}
+                      ariaLabel={t("filter")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...scheduleOptions.map((s) => ({ value: s, label: s })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("adminInstructorColRating")} />
+                <TableColumnHeaderWithFilter title={t("adminInstructorColExperience")} />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={(v) => setStatusFilter(v as "all" | "active" | "inactive")}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "active", label: t("active") },
+                        { value: "inactive", label: t("inactive") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -386,7 +638,7 @@ export default function AdminInstructors() {
                       label: t("ariaScheduleButton"),
                       ariaLabel: t("ariaScheduleButton"),
                       icon: Calendar,
-                      onClick: () => showToast(`${ins.name} - ${t("instructorScheduleSoonToast")}`, "info"),
+                      onClick: () => setAvailabilityInstructorId(ins.id),
                     },
                     {
                       kind: "item",
@@ -449,7 +701,7 @@ export default function AdminInstructors() {
                             label: t("ariaScheduleButton"),
                             ariaLabel: t("ariaScheduleButton"),
                             icon: Calendar,
-                            onClick: () => showToast(`${ins.name} - ${t("instructorScheduleSoonToast")}`, "info"),
+                            onClick: () => setAvailabilityInstructorId(ins.id),
                           },
                           {
                             kind: "item",
@@ -700,6 +952,186 @@ export default function AdminInstructors() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={availabilityInstructorId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAvailabilityInstructorId(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-4xl max-h-[min(94vh,900px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-balance pr-8">{t("instructorAvailabilityDialogTitle")}</DialogTitle>
+          </DialogHeader>
+          {availabilityInstructor && (
+            <div className="space-y-4 mt-2">
+              {availabilityLoading ? (
+                <p className="text-sm text-muted-foreground">{t("loading")}</p>
+              ) : (
+                <>
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground mb-2">{t("instructorAvailabilityActiveRules")}</h4>
+                    {availabilityBlocks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">{t("instructorAvailabilityEmpty")}</p>
+                    ) : (
+                      <ul className="space-y-0 border border-border rounded-lg divide-y divide-border overflow-hidden">
+                        {availabilityBlocks.map((b) => (
+                          <li key={b.id} className="flex items-start justify-between gap-2 px-3 py-2.5 text-sm bg-card">
+                            <span className="text-foreground leading-snug">{describeAvailabilityBlock(b, t, lang)}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="shrink-0 h-8 text-destructive hover:text-destructive"
+                              onClick={() => void deleteAvailabilityBlock(b.id)}
+                            >
+                              {t("delete")}
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="space-y-4 border-t border-border pt-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">{t("instructorAvailabilitySectionCalendarTitle")}</h4>
+                      <p className="text-xs text-muted-foreground mt-1">{t("instructorAvailabilitySectionCalendarHelp")}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-2.5">
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={gotoPrevMonth}
+                          aria-label={t("instructorAvailabilityPrevMonth")}
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <span className="text-xs font-medium text-foreground text-center flex-1 leading-tight px-0.5">{calendarMonthLabel}</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={gotoNextMonth}
+                          aria-label={t("instructorAvailabilityNextMonth")}
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-px text-[9px] font-medium uppercase tracking-wide text-muted-foreground text-center mb-0.5 leading-none">
+                        {weekdayHdrs.map((h, i) => (
+                          <div key={i} className="py-0.5 truncate min-w-0" title={h}>
+                            {h}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="grid w-full grid-cols-7 gap-px">
+                        {monthGridCells.map((cell) => {
+                          if (cell.type === "blank") {
+                            return <div key={cell.key} className="h-[1.85rem] min-w-0" />;
+                          }
+                          const past = cell.iso < todayIsoDate();
+                          const sel = selectedCalendarDays.includes(cell.iso);
+                          return (
+                            <button
+                              key={cell.key}
+                              type="button"
+                              disabled={past}
+                              title={past ? t("instructorAvailabilityPastDay") : cell.iso}
+                              onClick={() => toggleCalendarDaySelection(cell.iso)}
+                              className={[
+                                "h-[1.85rem] w-full min-w-0 rounded-sm text-[11px] font-medium leading-none transition-colors",
+                                past ? "text-muted-foreground/40 cursor-not-allowed" : "text-foreground hover:bg-muted",
+                                sel ? "bg-primary text-primary-foreground hover:bg-primary/90" : "",
+                              ].join(" ")}
+                            >
+                              {cell.day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+                        <p className="text-xs text-muted-foreground">
+                          {t("instructorAvailabilitySelectedCount").replace("{count}", String(selectedCalendarDays.length))}
+                        </p>
+                        {selectedCalendarDays.length > 0 && (
+                          <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setSelectedCalendarDays([])}>
+                            {t("instructorAvailabilityClearSelection")}
+                          </Button>
+                        )}
+                      </div>
+                      <fieldset className="mt-3 space-y-2">
+                        <legend className="sr-only">{t("instructorAvailabilityScopeLegend")}</legend>
+                        <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                          <input
+                            type="radio"
+                            name="dayOffScope"
+                            checked={dayOffScope === "full_day"}
+                            onChange={() => setDayOffScope("full_day")}
+                            className="h-4 w-4 border-input accent-primary"
+                          />
+                          {t("instructorAvailabilityScopeFullDay")}
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                          <input
+                            type="radio"
+                            name="dayOffScope"
+                            checked={dayOffScope === "time_window"}
+                            onChange={() => setDayOffScope("time_window")}
+                            className="h-4 w-4 border-input accent-primary"
+                          />
+                          {t("instructorAvailabilityScopeTimeWindow")}
+                        </label>
+                      </fieldset>
+                      {dayOffScope === "time_window" && (
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityFrom")}</label>
+                            <Input type="time" step={60} value={offWindowStart} onChange={(e) => setOffWindowStart(e.target.value)} className="h-10" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityTo")}</label>
+                            <Input type="time" step={60} value={offWindowEnd} onChange={(e) => setOffWindowEnd(e.target.value)} className="h-10" />
+                          </div>
+                        </div>
+                      )}
+                      <Button
+                        type="button"
+                        className="w-full mt-4 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        onClick={() => void applyCalendarDayOffs()}
+                      >
+                        {t("instructorAvailabilitySaveDays")}
+                      </Button>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-foreground">{t("instructorAvailabilitySectionWeeklyTitle")}</h4>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityFrom")}</label>
+                          <Input type="time" step={60} value={weeklyBreakStart} onChange={(e) => setWeeklyBreakStart(e.target.value)} className="h-10" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityTo")}</label>
+                          <Input type="time" step={60} value={weeklyBreakEnd} onChange={(e) => setWeeklyBreakEnd(e.target.value)} className="h-10" />
+                        </div>
+                      </div>
+                      <Button type="button" variant="secondary" className="w-full" onClick={() => void applyWeeklyBreakPattern()}>
+                        {t("instructorAvailabilitySaveWeekly")}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

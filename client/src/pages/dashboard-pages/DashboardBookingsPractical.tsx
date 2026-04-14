@@ -21,9 +21,11 @@ import {
   type PracticalLessonType,
 } from "src/modules/instructors/instructor-booking";
 import { getFilteredInstructors } from "src/modules/instructors/instructor.api";
+import { useAccount } from "src/modules/accounts";
 
 export default function DashboardBookingsPractical() {
   const { t } = useLang();
+  const { user } = useAccount();
   const { branches } = useBranches();
   const { cities } = useCities();
   const { instructors } = useInstructors();
@@ -32,7 +34,7 @@ export default function DashboardBookingsPractical() {
   const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
   const [cityId, setCityId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
-  const [instructor, setInstructor] = useState("");
+  const [instructorId, setInstructorId] = useState("");
 
   const branchesForCity = useMemo(() => (cityId ? branchesInCity(branches, cityId) : []), [branches, cityId]);
   const branchIdsForCity = useMemo(() => branchesForCity.map((b) => b.id), [branchesForCity]);
@@ -58,9 +60,9 @@ export default function DashboardBookingsPractical() {
     [instructors, lessonType, cityId, selectedBranchIds, branchIdsForCity],
   );
 
-  const instructorNames = filteredInstructors.map((item) => item.name);
+  const instructorOptions = useMemo(() => filteredInstructors.map((item) => ({ id: item.id, name: item.name })), [filteredInstructors]);
 
-  const readyForCalendar = validationErrors.length === 0 && instructorNames.length > 0;
+  const readyForCalendar = validationErrors.length === 0 && instructorOptions.length > 0;
 
   useEffect(() => {
     if (!cityId) {
@@ -74,10 +76,10 @@ export default function DashboardBookingsPractical() {
   }, [cityId, branchIdsForCity]);
 
   useEffect(() => {
-    if (!instructorNames.includes(instructor)) {
-      setInstructor(instructorNames[0] ?? "");
+    if (!instructorOptions.some((o) => o.id === instructorId)) {
+      setInstructorId(instructorOptions[0]?.id ?? "");
     }
-  }, [instructor, instructorNames]);
+  }, [instructorId, instructorOptions]);
 
   return (
     <DashboardLayout>
@@ -175,19 +177,15 @@ export default function DashboardBookingsPractical() {
         {cityId && branchesForCity.length === 0 && (
           <p className="text-xs text-muted-foreground mt-3">{t("bookingNoBranchesInCityHint")}</p>
         )}
-        {validationErrors.length > 0 && (
-          <p className="text-xs text-amber-600 mt-3">
-            {validationErrors.includes("noBranchesInCity") ? t("bookingNoBranchesInCityHint") : t("bookingCompleteFiltersHint")}
-          </p>
-        )}
       </Card>
 
       {readyForCalendar ? (
         <LessonBookingCalendar
           mode="student"
-          instructorNames={instructorNames}
-          selectedInstructor={instructor}
-          onInstructorChange={setInstructor}
+          instructors={instructorOptions}
+          selectedInstructorId={instructorId}
+          onInstructorChange={setInstructorId}
+          studentUserId={user?.accountType === "student" ? user.id : undefined}
         />
       ) : (
         <Card className="p-6 border-border text-sm text-muted-foreground">{t("bookingNoInstructorsByFilter")}</Card>

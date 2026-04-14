@@ -1,0 +1,68 @@
+================================================================================
+THREE APPS — where each .env lives (local dev, no Docker)
+================================================================================
+
+  App              Folder                 Create this file          Command
+  --------------------------------------------------------------------------------
+  1. API (Express)  backend/               backend/.env              cd backend && npm run dev
+  2. Panel (Vite)   client/                client/.env.local         cd client && npm run dev
+  3. Marketing      client/apps/web/       client/apps/web/.env.local   cd client && npm run dev -w web -- --port 3002
+
+Ports used below: API = 3001, Panel = 5173, Marketing = 3002 (change if you like).
+
+================================================================================
+1) backend/.env   — API only
+================================================================================
+
+PORT=3001
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=viva
+
+JWT_ACCESS_SECRET=change-me-in-production
+JWT_REFRESH_SECRET=change-me-refresh-in-production
+
+# Same host the browser uses for the panel (Vite proxies /api → API)
+API_PUBLIC_URL=http://localhost:5173
+PANEL_DEFAULT_ORIGIN=http://localhost:5173
+
+================================================================================
+2) client/.env.local   — React panel (Vite)
+================================================================================
+
+# Tells Vite where to forward /api when you open http://localhost:5173
+VITE_API_PROXY_TARGET=http://127.0.0.1:3001
+
+# Optional: link to marketing site when it runs on another port
+VITE_MARKETING_ORIGIN=http://localhost:3002
+
+================================================================================
+3) client/apps/web/.env.local   — Marketing (Next.js)
+================================================================================
+
+# Public URL of THIS Next app (must match the port you pass to next dev)
+NEXT_PUBLIC_SITE_URL=http://localhost:3002
+
+# Where the logged-in / panel app lives
+NEXT_PUBLIC_PANEL_URL=http://localhost:5173
+
+# Browser calls API here (full URL)
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+
+# Next SERVER must call API on your machine (not the Docker name "backend")
+INTERNAL_API_BASE_URL=http://127.0.0.1:3001
+
+================================================================================
+Docker
+================================================================================
+
+You do not need these three files for a basic `docker compose up` — compose sets
+the variables. Optional overrides: `.env` next to docker-compose.yml (see compose.env.example).
+
+Tracked templates in the repo:
+  backend/.env.example
+  client/.env.example
+  client/.env.local.example
+  client/apps/web/.env.example

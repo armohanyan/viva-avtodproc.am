@@ -118,16 +118,16 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     const trimmedEmail = loginEmail.trim();
     setLoginLoading(true);
     try {
-      const data = await vivaApiJson<{ token: string; user: { id: string; email: string; name: string; accountType: AccountType } }>(
-        "/auth/login",
-        { method: "POST", body: { email: trimmedEmail, password: loginPassword } },
-      );
+      const data = await vivaApiJson<{
+        accessToken: string;
+        user: { id: string; email: string; name: string; accountType: AccountType };
+      }>("/auth/login", { method: "POST", body: { email: trimmedEmail, password: loginPassword } });
       const accountType = data.user.accountType;
       signIn({
         email: data.user.email,
         name: data.user.name,
         accountType,
-        accessToken: data.token,
+        accessToken: data.accessToken,
         id: data.user.id,
       });
       showToast(t("loginSuccess"), "success");
@@ -151,11 +151,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   };
 
   const handleSocialAuthLogin = (provider: SocialProvider) => {
-    const authUrl = buildSocialAuthUrl(provider);
-    if (!authUrl) {
-      showToast(t("socialAuthNotConfigured"), "error");
-      return;
-    }
+    const authUrl = buildSocialAuthUrl(provider, "/auth/callback");
     setLoginSocialLoading(provider);
     window.location.assign(authUrl);
   };
@@ -196,23 +192,23 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     const name = [form.firstName, form.lastName].filter(Boolean).join(" ").trim() || form.firstName.trim();
     setRegisterLoading(true);
     try {
-      const data = await vivaApiJson<{ token: string; user: { id: string; email: string; name: string; accountType: AccountType } }>(
-        "/auth/register",
-        {
-          method: "POST",
-          body: {
-            email: form.email.trim(),
-            password: form.password,
-            name,
-            phone: form.phone.trim() || undefined,
-          },
+      const data = await vivaApiJson<{
+        accessToken: string;
+        user: { id: string; email: string; name: string; accountType: AccountType };
+      }>("/auth/register", {
+        method: "POST",
+        body: {
+          email: form.email.trim(),
+          password: form.password,
+          name,
+          phone: form.phone.trim() || undefined,
         },
-      );
+      });
       signIn({
         email: data.user.email,
         name: data.user.name,
         accountType: "student",
-        accessToken: data.token,
+        accessToken: data.accessToken,
         id: data.user.id,
       });
       showToast(t("registerSuccess"), "success");
@@ -235,11 +231,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   };
 
   const handleSocialAuthRegister = (provider: SocialProvider) => {
-    const authUrl = buildSocialAuthUrl(provider);
-    if (!authUrl) {
-      showToast(t("socialAuthNotConfigured"), "error");
-      return;
-    }
+    const authUrl = buildSocialAuthUrl(provider, "/auth/callback");
     setRegisterSocialLoading(provider);
     window.location.assign(authUrl);
   };

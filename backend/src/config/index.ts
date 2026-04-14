@@ -6,9 +6,9 @@ const rawEnvSchema = z.object({
   NODE_ENV: z.string().optional(),
   EXPOSE_ERROR_DETAILS: z.string().optional(),
   PORT: z.preprocess((v) => {
-    if (v === undefined || v === null || v === '') return 3002;
+    if (v === undefined || v === null || v === '') return 3001;
     const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 3002;
+    return Number.isFinite(n) && n > 0 ? n : 3001;
   }, z.number().int().positive()),
   LOG_LEVEL: z.string().default('info'),
   DISABLE_REQUEST_LOG: z.string().optional(),
@@ -36,6 +36,20 @@ const rawEnvSchema = z.object({
   JWT_REFRESH_SECRET: z.string().optional(),
   ACCESS_TOKEN_ACTIVE_TIME: z.string().optional(),
   REFRESH_TOKEN_ACTIVE_TIME: z.string().optional(),
+  /** Browser-reachable base URL of this API (no trailing slash). Used for OAuth redirect_uri. */
+  API_PUBLIC_URL: z.string().optional(),
+  /** Where to send users after OAuth when `ro` is absent from state (dev default: Vite :5173 / compose :3000). */
+  PANEL_DEFAULT_ORIGIN: z.string().optional(),
+  OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
+  OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
+  OAUTH_FACEBOOK_APP_ID: z.string().optional(),
+  OAUTH_FACEBOOK_APP_SECRET: z.string().optional(),
+  /** Sign in with Apple — Services ID (client id). */
+  OAUTH_APPLE_CLIENT_ID: z.string().optional(),
+  OAUTH_APPLE_TEAM_ID: z.string().optional(),
+  OAUTH_APPLE_KEY_ID: z.string().optional(),
+  /** ES256 private key (.p8) PEM; use literal \\n in .env for newlines. */
+  OAUTH_APPLE_PRIVATE_KEY: z.string().optional(),
 });
 
 function parseCorsOrigins(primary?: string, fallback?: string): CorsOptions['origin'] {
@@ -62,6 +76,9 @@ const mysqlPort = (() => {
 
 const isProduction = raw.NODE_ENV === 'production';
 const exposeErrorDetails = !isProduction || raw.EXPOSE_ERROR_DETAILS === '1';
+
+const apiPublicUrl = (raw.API_PUBLIC_URL?.trim() || `http://127.0.0.1:${raw.PORT}`).replace(/\/+$/, '');
+const panelDefaultOrigin = (raw.PANEL_DEFAULT_ORIGIN?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
 
 const config = {
   NODE_ENV: raw.NODE_ENV,
@@ -93,11 +110,30 @@ const config = {
     DATABASE: raw.PSQL_DATABASE,
     PASSWORD: raw.PSQL_PASSWORD,
   },
+  API_PUBLIC_URL: apiPublicUrl,
+  PANEL_DEFAULT_ORIGIN: panelDefaultOrigin,
   AUTH: {
     JWT_ACCESS_SECRET: raw.JWT_ACCESS_SECRET || 'viva-dev-jwt-secret-change-me',
-    JWT_REFRESH_SECRET: raw.JWT_REFRESH_SECRET,
+    JWT_REFRESH_SECRET:
+      raw.JWT_REFRESH_SECRET || raw.JWT_ACCESS_SECRET || 'viva-dev-jwt-refresh-change-me',
     ACCESS_TOKEN_ACTIVE_TIME: raw.ACCESS_TOKEN_ACTIVE_TIME || '15m',
     REFRESH_TOKEN_ACTIVE_TIME: raw.REFRESH_TOKEN_ACTIVE_TIME || '7d',
+    OAUTH: {
+      google: {
+        clientId: raw.OAUTH_GOOGLE_CLIENT_ID?.trim(),
+        clientSecret: raw.OAUTH_GOOGLE_CLIENT_SECRET?.trim(),
+      },
+      facebook: {
+        appId: raw.OAUTH_FACEBOOK_APP_ID?.trim(),
+        appSecret: raw.OAUTH_FACEBOOK_APP_SECRET?.trim(),
+      },
+      apple: {
+        clientId: raw.OAUTH_APPLE_CLIENT_ID?.trim(),
+        teamId: raw.OAUTH_APPLE_TEAM_ID?.trim(),
+        keyId: raw.OAUTH_APPLE_KEY_ID?.trim(),
+        privateKey: raw.OAUTH_APPLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim(),
+      },
+    },
   },
 };
 

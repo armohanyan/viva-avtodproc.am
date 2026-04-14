@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from "react";
 import { Provider } from "src/components/provider";
+import { VisitorContactFab } from "src/components/VisitorContactFab";
 import { SyncStaffPanelLanguage } from "src/core/providers/SyncStaffPanelLanguage";
 import { AccountProvider } from "src/modules/accounts";
 import { StudentEntitlementsProvider } from "src/modules/dashboard/studentEntitlements";
@@ -12,7 +13,10 @@ export const AppProviders = ({ children }: PropsWithChildren): JSX.Element => (
       <SyncStaffPanelLanguage />
       <ToastProvider>
         <AccountProvider>
-          <StudentEntitlementsProvider>{children}</StudentEntitlementsProvider>
+          <StudentEntitlementsProvider>
+            {children}
+            <VisitorContactFab />
+          </StudentEntitlementsProvider>
         </AccountProvider>
       </ToastProvider>
     </LangProvider>

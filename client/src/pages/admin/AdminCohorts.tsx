@@ -10,10 +10,11 @@ import { formatShortDateFromIso } from "src/lib/adminFormat";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -34,6 +35,14 @@ type Cohort = {
   meetLink: string;
   status: string;
   branchId: string;
+};
+
+type CohortStudentRow = {
+  userId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  isActive: boolean;
 };
 
 const statusColor: Record<string, string> = {
@@ -68,6 +77,9 @@ export default function AdminCohorts() {
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editCohort, setEditCohort] = useState<Cohort | null>(null);
+  const [studentsDialogCohort, setStudentsDialogCohort] = useState<Cohort | null>(null);
+  const [cohortStudents, setCohortStudents] = useState<CohortStudentRow[]>([]);
+  const [cohortStudentsLoading, setCohortStudentsLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newCohort, setNewCohort] = useState({
     name: "",
@@ -162,7 +174,26 @@ export default function AdminCohorts() {
     showToast(t("openingMeetingLinkToast"), "info");
   };
 
-  const handleViewStudents = () => showToast(t("studentListComingSoonToast"), "info");
+  const openStudentsDialog = useCallback(
+    async (cohort: Cohort) => {
+      setStudentsDialogCohort(cohort);
+      setCohortStudents([]);
+      setCohortStudentsLoading(true);
+      try {
+        const data = await vivaApiJson<CohortStudentRow[]>(
+          `/theory-cohorts/${encodeURIComponent(cohort.id)}/enrollments`,
+        );
+        setCohortStudents(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setCohortStudents([]);
+        setStudentsDialogCohort(null);
+        showToast(getApiErrorMessage(e), "error");
+      } finally {
+        setCohortStudentsLoading(false);
+      }
+    },
+    [showToast],
+  );
 
   const filteredCohorts = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -213,30 +244,6 @@ export default function AdminCohorts() {
 
       <div className="rounded-xl border border-border bg-card overflow-hidden min-w-0">
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <select
-            value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[11rem] sm:w-auto"
-            aria-label={t("filterByBranch")}
-          >
-            <option value="all">{t("adminBranchFilterAll")}</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-9 rounded-lg border border-input bg-background px-3 text-sm text-foreground min-w-0 w-full sm:min-w-[9rem] sm:w-auto"
-            aria-label={t("filterByStatus")}
-          >
-            <option value="all">{t("filterOptionAll")}</option>
-            <option value="active">{t("active")}</option>
-            <option value="upcoming">{t("cohortStatusLabelUpcoming")}</option>
-            <option value="completed">{t("cohortStatusLabelCompleted")}</option>
-          </select>
           <CsvExportButton
             filename="admin-cohorts.csv"
             headers={[
@@ -265,11 +272,43 @@ export default function AdminCohorts() {
           <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("tableColId"), t("adminColBranch"), t("name"), t("cohortColInstructor"), t("cohortColSchedule"), t("cohortColPeriod"), t("cohortColEnrollment"), t("status"), t("actions")].map((h) => (
-                  <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
-                    {h}
-                  </th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter
+                  title={t("adminColBranch")}
+                  filter={
+                    <TableColumnFilter
+                      value={branchFilter}
+                      onChange={setBranchFilter}
+                      ariaLabel={t("filterByBranch")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        ...branches.map((b) => ({ value: b.id, label: b.name })),
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("name")} />
+                <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
+                <TableColumnHeaderWithFilter title={t("cohortColSchedule")} />
+                <TableColumnHeaderWithFilter title={t("cohortColPeriod")} />
+                <TableColumnHeaderWithFilter title={t("cohortColEnrollment")} />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  filter={
+                    <TableColumnFilter
+                      value={statusFilter}
+                      onChange={setStatusFilter}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "active", label: t("active") },
+                        { value: "upcoming", label: t("cohortStatusLabelUpcoming") },
+                        { value: "completed", label: t("cohortStatusLabelCompleted") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -299,7 +338,7 @@ export default function AdminCohorts() {
                     label: t("cohortAriaViewStudents"),
                     ariaLabel: t("cohortAriaViewStudents"),
                     icon: Users,
-                    onClick: handleViewStudents,
+                    onClick: () => void openStudentsDialog(c),
                   },
                   {
                     kind: "item",
@@ -427,6 +466,57 @@ export default function AdminCohorts() {
                 </Button>
               </div>
             </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!studentsDialogCohort}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStudentsDialogCohort(null);
+            setCohortStudents([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[min(90vh,560px)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("cohortStudentsDialogTitle")}</DialogTitle>
+            {studentsDialogCohort ? (
+              <DialogDescription className="text-foreground font-medium">{studentsDialogCohort.name}</DialogDescription>
+            ) : null}
+          </DialogHeader>
+          {cohortStudentsLoading ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">{t("loading")}</p>
+          ) : cohortStudents.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">{t("cohortStudentsEmpty")}</p>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden mt-2">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">{t("name")}</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">{t("email")}</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{t("phone")}</th>
+                    <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{t("status")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {cohortStudents.map((s) => (
+                    <tr key={s.userId} className="hover:bg-muted/20">
+                      <td className="px-3 py-2 font-medium text-foreground">{s.name}</td>
+                      <td className="px-3 py-2 text-muted-foreground break-all">{s.email}</td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{s.phone ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        <Badge className={`text-xs ${s.isActive ? statusColor.active : "bg-slate-100 text-slate-500"}`}>
+                          {s.isActive ? t("active") : t("inactive")}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </DialogContent>
       </Dialog>

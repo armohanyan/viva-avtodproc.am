@@ -6,6 +6,7 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Users, Calendar, TrendingUp, Car, ArrowUpRight, ArrowDownRight, LayoutDashboard } from "lucide-react";
 import { useToast } from "src/lib/toast";
@@ -150,20 +151,6 @@ export default function AdminDashboard() {
           <a href="/admin/bookings" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
         </div>
         <DataTableToolbar value={bookingSearch} onChange={setBookingSearch} placeholder={`${t("search")}…`}>
-          <div className="flex flex-wrap gap-2">
-            {["all", "confirmed", "pending", "cancelled"].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setBookingStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors capitalize ${
-                  bookingStatus === s ? "bg-primary text-primary-foreground border-primary" : "border-input text-muted-foreground hover:border-primary/40"
-                }`}
-              >
-                {s === "all" ? t("filterOptionAll") : t(s as "confirmed" | "pending" | "cancelled")}
-              </button>
-            ))}
-          </div>
           <CsvExportButton
             filename="admin-dashboard-recent-bookings.csv"
             headers={[t("bookingColStudent"), t("cohortColInstructor"), t("date"), t("bookingColTime"), t("status")]}
@@ -180,9 +167,28 @@ export default function AdminDashboard() {
           <table className="w-full text-sm min-w-[40rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("bookingColStudent"), t("cohortColInstructor"), t("date"), t("bookingColTime"), t("status"), t("actions")].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-muted-foreground px-5 py-3 uppercase tracking-wider">{h}</th>
-                ))}
+                <TableColumnHeaderWithFilter title={t("bookingColStudent")} className="px-5 py-3" />
+                <TableColumnHeaderWithFilter title={t("cohortColInstructor")} className="px-5 py-3" />
+                <TableColumnHeaderWithFilter title={t("date")} className="px-5 py-3" />
+                <TableColumnHeaderWithFilter title={t("bookingColTime")} className="px-5 py-3" />
+                <TableColumnHeaderWithFilter
+                  title={t("status")}
+                  className="px-5 py-3"
+                  filter={
+                    <TableColumnFilter
+                      value={bookingStatus}
+                      onChange={setBookingStatus}
+                      ariaLabel={t("filterByStatus")}
+                      options={[
+                        { value: "all", label: t("filterOptionAll") },
+                        { value: "confirmed", label: t("confirmed") },
+                        { value: "pending", label: t("pending") },
+                        { value: "cancelled", label: t("cancelled") },
+                      ]}
+                    />
+                  }
+                />
+                <TableColumnHeaderWithFilter title={t("actions")} align="end" className="px-5 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

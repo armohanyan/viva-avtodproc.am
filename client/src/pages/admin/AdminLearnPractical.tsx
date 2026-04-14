@@ -4,8 +4,7 @@ import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import LessonBookingCalendar from "src/components/LessonBookingCalendar";
-import { Link } from "wouter";
-import { ArrowLeft, CalendarClock } from "lucide-react";
+import { CalendarClock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import {
@@ -39,7 +38,7 @@ export default function AdminLearnPractical() {
   const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
   const [cityId, setCityId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
-  const [instructor, setInstructor] = useState("");
+  const [instructorId, setInstructorId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [branchId, setBranchId] = useState(DEFAULT_PRIMARY_BRANCH_ID);
 
@@ -59,14 +58,14 @@ export default function AdminLearnPractical() {
       ),
     [lessonType, cityId, selectedBranchIds, branchIdsForCity],
   );
-  const practicalNames = filteredInstructors.map((item) => item.name);
+  const instructorOptions = useMemo(() => filteredInstructors.map((item) => ({ id: item.id, name: item.name })), [filteredInstructors]);
   const validationErrors = validatePracticalBookingSelection({
     lessonType,
     cityId,
     branchIds: selectedBranchIds,
     branchesForCity: branchIdsForCity,
   });
-  const readyForCalendar = validationErrors.length === 0 && practicalNames.length > 0;
+  const readyForCalendar = validationErrors.length === 0 && instructorOptions.length > 0;
 
   useEffect(() => {
     if (studentFromQuery) setStudentId(studentFromQuery);
@@ -83,10 +82,10 @@ export default function AdminLearnPractical() {
   }, [branchFromQuery, branches]);
 
   useEffect(() => {
-    if (!practicalNames.includes(instructor)) {
-      setInstructor(practicalNames[0] ?? "");
+    if (!instructorOptions.some((o) => o.id === instructorId)) {
+      setInstructorId(instructorOptions[0]?.id ?? "");
     }
-  }, [instructor, practicalNames]);
+  }, [instructorId, instructorOptions]);
 
   useEffect(() => {
     if (!cityId) {
@@ -104,16 +103,6 @@ export default function AdminLearnPractical() {
 
   return (
     <AdminLayout>
-      <div className="mb-4">
-        <Link
-          href="/admin/learn"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          {t("adminLearnHubTitle")}
-        </Link>
-      </div>
-
       <Reveal>
         <PanelPageHeader icon={CalendarClock} title={t("adminLearnPracticalTitle")} subtitle={t("adminLearnPracticalSubtitle")} />
       </Reveal>
@@ -195,21 +184,15 @@ export default function AdminLearnPractical() {
           {cityId && branchesForCity.length === 0 && (
             <p className="text-xs text-muted-foreground mt-3">{t("bookingNoBranchesInCityHint")}</p>
           )}
-          {validationErrors.length > 0 && (
-            <p className="text-xs text-amber-600 mt-3">
-              {validationErrors.includes("noBranchesInCity") ? t("bookingNoBranchesInCityHint") : t("bookingCompleteFiltersHint")}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground mt-3">{t("adminLearnManualBookingNote")}</p>
         </Card>
       </Reveal>
 
       {readyForCalendar ? (
         <LessonBookingCalendar
           mode="admin"
-          instructorNames={practicalNames}
-          selectedInstructor={instructor}
-          onInstructorChange={setInstructor}
+          instructors={instructorOptions}
+          selectedInstructorId={instructorId}
+          onInstructorChange={setInstructorId}
           studentName={studentName}
           onBookingConfirmed={({ instructor: ins, dateIso, time, studentLabel }) => {
             const branch = branchNameById(branches, toastBranchId);

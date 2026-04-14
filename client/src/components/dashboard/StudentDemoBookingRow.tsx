@@ -28,10 +28,16 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
       return t("confirmed");
     case "pending":
       return t("pending");
+    case "pending_prebook":
+      return t("bookingStatusPrebook");
+    case "pending_payment":
+      return t("bookingStatusPaymentDue");
     case "cancelled":
       return t("cancelled");
     case "completed":
       return t("bookingStatusCompleted");
+    case "refunded":
+      return t("bookingStatusRefunded");
     default:
       return "";
   }
@@ -39,8 +45,10 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
 
 function statusBadgeClass(status: StudentDemoBooking["status"]) {
   if (status === "confirmed") return "bg-primary/10 text-primary";
-  if (status === "pending") return "bg-accent text-muted-foreground";
+  if (status === "pending" || status === "pending_prebook") return "bg-accent text-muted-foreground";
+  if (status === "pending_payment") return "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
   if (status === "completed") return "bg-muted text-muted-foreground";
+  if (status === "refunded") return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200";
   return "bg-destructive/10 text-destructive";
 }
 

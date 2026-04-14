@@ -25,9 +25,53 @@ async function hashDemo(): Promise<string> {
   return bcrypt.hash(DEMO_PASSWORD, 10);
 }
 
+/** Demo panel accounts — password for all is `DEMO_PASSWORD` (see env / docs). */
+const DEMO_USERS_SEED: Array<{
+  id: string;
+  email: string;
+  name: string;
+  accountType: 'super_admin' | 'admin' | 'instructor' | 'student';
+  phone?: string;
+}> = [
+  { id: 'acc-superadmin', email: 'superadmin@vivadrive.am', name: 'Super Admin', accountType: 'super_admin' },
+  { id: 'acc-admin', email: 'admin@vivadrive.am', name: 'School Admin', accountType: 'admin' },
+  { id: 'acc-instructor', email: 'instructor@vivadrive.am', name: 'Demo Instructor', accountType: 'instructor' },
+  { id: 'USR-DEMO', email: 'student@example.com', name: 'Demo Student', accountType: 'student', phone: '+374 00 000 000' },
+  { id: 'USR-001', email: 'ani@example.com', name: 'Ani Karapetyan', accountType: 'student', phone: '+374 99 111 222' },
+  { id: 'USR-002', email: 'tigran@example.com', name: 'Tigran Mkhitaryan', accountType: 'student', phone: '+374 77 333 444' },
+  { id: 'USR-003', email: 'nare@example.com', name: 'Nare Harutyunyan', accountType: 'student', phone: '+374 55 555 666' },
+  { id: 'USR-004', email: 'suren@example.com', name: 'Suren Danielyan', accountType: 'student', phone: '+374 98 777 888' },
+  { id: 'USR-005', email: 'mane@example.com', name: 'Mane Poghosyan', accountType: 'student', phone: '+374 91 999 000' },
+  { id: 'USR-006', email: 'artak@example.com', name: 'Artak Sargsyan', accountType: 'student', phone: '+374 95 123 456' },
+  { id: 'INS-001', email: 'armen.p@vivadrive.am', name: 'Armen Petrosyan', accountType: 'instructor', phone: '+374 99 111 111' },
+  { id: 'INS-002', email: 'narine.h@vivadrive.am', name: 'Narine Hovhannisyan', accountType: 'instructor', phone: '+374 77 222 222' },
+  { id: 'INS-003', email: 'vardan.g@vivadrive.am', name: 'Vardan Grigoryan', accountType: 'instructor', phone: '+374 55 333 333' },
+  { id: 'INS-004', email: 'lilit.s@vivadrive.am', name: 'Lilit Sargsyan', accountType: 'instructor', phone: '+374 91 444 444' },
+  { id: 'INS-005', email: 'hov.m@vivadrive.am', name: 'Hovhannes Mkrtchyan', accountType: 'instructor', phone: '+374 95 555 555' },
+];
+
+/** When cities/packages already exist but `users` was wiped, recreate demo logins only. */
+async function seedDemoUserAccountsIfMissing(): Promise<void> {
+  if ((await User.count()) > 0) {
+    return;
+  }
+  const passwordHash = await hashDemo();
+  await User.bulkCreate(
+    DEMO_USERS_SEED.map((u) => ({
+      ...u,
+      passwordHash,
+    })),
+  );
+}
+
 export async function seedDatabaseIfEmpty(): Promise<void> {
   const cityCount = await City.count();
-  if (cityCount > 0) {
+  const userCount = await User.count();
+  if (cityCount > 0 && userCount > 0) {
+    return;
+  }
+  if (cityCount > 0 && userCount === 0) {
+    await seedDemoUserAccountsIfMissing();
     return;
   }
 
@@ -106,32 +150,8 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     },
   ]);
 
-  const usersPayload: Array<{
-    id: string;
-    email: string;
-    name: string;
-    accountType: 'super_admin' | 'admin' | 'instructor' | 'student';
-    phone?: string;
-  }> = [
-    { id: 'acc-superadmin', email: 'superadmin@vivadrive.am', name: 'Super Admin', accountType: 'super_admin' },
-    { id: 'acc-admin', email: 'admin@vivadrive.am', name: 'School Admin', accountType: 'admin' },
-    { id: 'acc-instructor', email: 'instructor@vivadrive.am', name: 'Demo Instructor', accountType: 'instructor' },
-    { id: 'USR-DEMO', email: 'student@example.com', name: 'Demo Student', accountType: 'student', phone: '+374 00 000 000' },
-    { id: 'USR-001', email: 'ani@example.com', name: 'Ani Karapetyan', accountType: 'student', phone: '+374 99 111 222' },
-    { id: 'USR-002', email: 'tigran@example.com', name: 'Tigran Mkhitaryan', accountType: 'student', phone: '+374 77 333 444' },
-    { id: 'USR-003', email: 'nare@example.com', name: 'Nare Harutyunyan', accountType: 'student', phone: '+374 55 555 666' },
-    { id: 'USR-004', email: 'suren@example.com', name: 'Suren Danielyan', accountType: 'student', phone: '+374 98 777 888' },
-    { id: 'USR-005', email: 'mane@example.com', name: 'Mane Poghosyan', accountType: 'student', phone: '+374 91 999 000' },
-    { id: 'USR-006', email: 'artak@example.com', name: 'Artak Sargsyan', accountType: 'student', phone: '+374 95 123 456' },
-    { id: 'INS-001', email: 'armen.p@vivadrive.am', name: 'Armen Petrosyan', accountType: 'instructor', phone: '+374 99 111 111' },
-    { id: 'INS-002', email: 'narine.h@vivadrive.am', name: 'Narine Hovhannisyan', accountType: 'instructor', phone: '+374 77 222 222' },
-    { id: 'INS-003', email: 'vardan.g@vivadrive.am', name: 'Vardan Grigoryan', accountType: 'instructor', phone: '+374 55 333 333' },
-    { id: 'INS-004', email: 'lilit.s@vivadrive.am', name: 'Lilit Sargsyan', accountType: 'instructor', phone: '+374 91 444 444' },
-    { id: 'INS-005', email: 'hov.m@vivadrive.am', name: 'Hovhannes Mkrtchyan', accountType: 'instructor', phone: '+374 95 555 555' },
-  ];
-
   await User.bulkCreate(
-    usersPayload.map((u) => ({
+    DEMO_USERS_SEED.map((u) => ({
       ...u,
       passwordHash,
     })),
