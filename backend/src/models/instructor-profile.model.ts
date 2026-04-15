@@ -23,7 +23,7 @@ InstructorProfile.init(
   {
     userId: { type: DataTypes.STRING(64), primaryKey: true },
     years: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
-    rating: { type: DataTypes.FLOAT, allowNull: false },
+    rating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 5 },
     hourlyPrice: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     schedule: { type: DataTypes.STRING(128), allowNull: false },
     location: { type: DataTypes.STRING(128), allowNull: false },

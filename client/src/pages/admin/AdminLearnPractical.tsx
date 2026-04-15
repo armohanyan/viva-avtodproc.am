@@ -56,7 +56,7 @@ export default function AdminLearnPractical() {
         },
         branchIdsForCity,
       ),
-    [lessonType, cityId, selectedBranchIds, branchIdsForCity],
+    [lessonType, cityId, selectedBranchIds, branchIdsForCity, instructorRecords],
   );
   const instructorOptions = useMemo(() => filteredInstructors.map((item) => ({ id: item.id, name: item.name })), [filteredInstructors]);
   const validationErrors = validatePracticalBookingSelection({

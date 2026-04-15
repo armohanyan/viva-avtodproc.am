@@ -1,4 +1,5 @@
 import { Package, StudentProfile, User } from '../models';
+import InstructorStudentRatingService from './instructor-student-rating.service';
 
 type ProfileJoined = StudentProfile & {
   studentAccount: User;
@@ -148,6 +149,7 @@ export default class StudentAdminService {
   }
 
   static async remove(userId: string): Promise<boolean> {
+    await InstructorStudentRatingService.removeAllForStudent(userId);
     const p = await StudentProfile.destroy({ where: { userId } });
     const u = await User.destroy({ where: { id: userId } });
     return p > 0 && u > 0;

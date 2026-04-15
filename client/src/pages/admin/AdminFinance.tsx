@@ -6,13 +6,13 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Landmark, Wallet, TrendingUp, Clock, AlertCircle, BarChart3, Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useToast } from "src/lib/toast";
 import { useAdminStudentsMini } from "src/modules/admin/useAdminStudents";
@@ -140,6 +140,7 @@ type ManualForm = {
 };
 
 export default function AdminFinance() {
+  const manualTxFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -537,13 +538,24 @@ export default function AdminFinance() {
         </div>
       </Card>
 
-      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-        <DialogContent className="max-w-lg max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("financeManualEntryTitle")}</DialogTitle>
-            <DialogDescription>{t("financeManualEntrySubtitle")}</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={submitManual} className="space-y-4 mt-2">
+      <AppModal
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        title={t("financeManualEntryTitle")}
+        description={t("financeManualEntrySubtitle")}
+        contentClassName="max-w-lg max-h-[min(90vh,720px)]"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setManualOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={manualTxFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("save")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={manualTxFormId} onSubmit={submitManual} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualSelectStudentPlaceholder")}</label>
@@ -707,17 +719,8 @@ export default function AdminFinance() {
                 />
               </div>
             </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setManualOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("save")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
     </AdminLayout>
   );
 }

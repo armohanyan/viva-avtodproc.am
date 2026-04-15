@@ -73,6 +73,11 @@ export default function Packages() {
                         <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                       </div>
                     )}
+                    {pkg.imageUrl ? (
+                      <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
+                        <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
+                      </div>
+                    ) : null}
                     <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
                     <div className="flex items-baseline gap-1 mb-1">
                       <span className="text-4xl font-bold text-foreground">

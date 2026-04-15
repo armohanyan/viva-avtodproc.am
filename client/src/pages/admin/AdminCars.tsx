@@ -5,7 +5,7 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "src/components/ui/select";
 import { Plus, Edit2, Trash2, CarFront, Receipt } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { CarExpense, FleetCar } from "src/modules/cars";
 import { useFleetCars } from "src/modules/cars";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -40,6 +40,9 @@ function toggleEmail(list: string[], email: string) {
 const PURPOSE_SUGGESTIONS = ["Insurance", "Repair", "Inspection", "Tires", "Fuel", "Cleaning", "Other"];
 
 export default function AdminCars() {
+  const editCarFormId = useId();
+  const addCarFormId = useId();
+  const editFleetExpenseFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
   const { instructors } = useInstructors();
@@ -380,13 +383,26 @@ export default function AdminCars() {
         </div>
       </div>
 
-      <Dialog open={!!editCar} onOpenChange={() => setEditCar(null)}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("fleetCarDialogEdit")}</DialogTitle>
-          </DialogHeader>
-          {editCar && (
-            <form onSubmit={handleSaveCar} className="space-y-3 mt-2">
+      <AppModal
+        open={!!editCar}
+        onOpenChange={(o) => !o && setEditCar(null)}
+        title={t("fleetCarDialogEdit")}
+        contentClassName="max-w-md max-h-[90vh]"
+        footer={
+          editCar ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCar(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editCarFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editCar && (
+          <form id={editCarFormId} onSubmit={handleSaveCar} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetFieldPlate")} *</label>
                 <Input
@@ -489,25 +505,27 @@ export default function AdminCars() {
                   })}
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCar(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("fleetCarDialogNew")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAddCar} className="space-y-3 mt-2">
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("fleetCarDialogNew")}
+        contentClassName="max-w-md max-h-[90vh]"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addCarFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addCarFormId} onSubmit={handleAddCar} className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetFieldPlate")} *</label>
               <Input
@@ -601,50 +619,38 @@ export default function AdminCars() {
                 })}
               </div>
             </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
-      <Dialog open={!!expenseCar} onOpenChange={(o) => !o && setExpenseCar(null)}>
-        <DialogContent
-          showCloseButton
-          className={cn(
-            "gap-0 p-0 overflow-hidden flex flex-col",
-            /* Wider than default Dialog sm:max-w-lg; nearly full width on phones */
-            "w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)]",
-            "sm:max-w-5xl md:max-w-6xl lg:max-w-7xl xl:max-w-[90rem]",
-            "max-h-[90dvh] h-[90dvh] sm:h-auto sm:max-h-[min(90dvh,920px)]"
-          )}
-        >
-          <div className="shrink-0 px-4 pt-5 pb-3 sm:px-6 sm:pt-6 border-b border-border/60 bg-muted/15">
-            <DialogHeader className="text-left space-y-1">
-              <DialogTitle className="flex flex-col sm:flex-row sm:items-start gap-2 pr-10 text-base sm:text-lg leading-snug">
-                <span className="inline-flex items-center gap-2 min-w-0">
-                  <Receipt className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                  {expenseCar ? (
-                    <span className="break-words">
-                      {t("fleetExpensesDialogTitle")}: <span className="font-semibold">{expenseCar.plate}</span>
-                      <span className="text-muted-foreground font-normal text-sm block sm:inline sm:ml-1">
-                        ({expenseCar.make} {expenseCar.model})
-                      </span>
-                    </span>
-                  ) : null}
+      <AppModal
+        open={!!expenseCar}
+        onOpenChange={(o) => !o && setExpenseCar(null)}
+        title={
+          expenseCar ? (
+            <span className="inline-flex items-start gap-2 min-w-0">
+              <Receipt className="w-5 h-5 text-primary shrink-0 mt-0.5" aria-hidden />
+              <span className="break-words">
+                {t("fleetExpensesDialogTitle")}: <span className="font-semibold">{expenseCar.plate}</span>
+                <span className="text-muted-foreground font-normal text-sm block sm:inline sm:ml-1">
+                  ({expenseCar.make} {expenseCar.model})
                 </span>
-              </DialogTitle>
-            </DialogHeader>
-          </div>
-
-          {expenseCar && (
-            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-              <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 px-4 py-4 sm:px-6 sm:py-5 space-y-4">
+              </span>
+            </span>
+          ) : (
+            t("fleetExpensesDialogTitle")
+          )
+        }
+        titleClassName="text-base sm:text-lg leading-snug"
+        headerClassName="border-border/60 bg-muted/15"
+        contentClassName={cn(
+          "max-h-[90dvh] h-[90dvh] sm:h-auto sm:max-h-[min(90dvh,920px)]",
+          "w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)]",
+          "sm:max-w-5xl md:max-w-6xl lg:max-w-7xl xl:max-w-[90rem]"
+        )}
+        bodyClassName="px-4 py-4 sm:px-6 sm:py-5"
+      >
+        {expenseCar && (
+          <div className="space-y-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
                   <div className="flex-1 min-w-0 sm:min-w-[220px]">
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetMonthFilterLabel")}</label>
@@ -836,19 +842,30 @@ export default function AdminCars() {
                     {t("fleetAddExpense")}
                   </Button>
                 </form>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+      </AppModal>
 
-      <Dialog open={!!editExpense} onOpenChange={() => setEditExpense(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("fleetEditExpense")}</DialogTitle>
-          </DialogHeader>
-          {editExpense && (
-            <form onSubmit={handleSaveExpense} className="space-y-3 mt-2">
+      <AppModal
+        open={!!editExpense}
+        onOpenChange={(o) => !o && setEditExpense(null)}
+        title={t("fleetEditExpense")}
+        contentClassName="max-w-md"
+        footer={
+          editExpense ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditExpense(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editFleetExpenseFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editExpense && (
+          <form id={editFleetExpenseFormId} onSubmit={handleSaveExpense} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
                 <Input
@@ -890,18 +907,9 @@ export default function AdminCars() {
                   className="h-10"
                 />
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditExpense(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
       <ConfirmDialog
         open={!!deleteId}

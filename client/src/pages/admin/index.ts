@@ -18,3 +18,9 @@ export { default as AdminLearnPracticalPage } from "./AdminLearnPractical";
 export { default as AdminLearnTheoryPage } from "./AdminLearnTheory";
 export { default as AdminExamQuestionsPage } from "./AdminExamQuestions";
 export { AdminRedirectCohortsToLearn, AdminRedirectPackagesToLearn } from "./AdminLearnLegacyRedirects";
+export {
+  AdminRedirectUsersToStudents,
+  AdminRedirectUsersAnalyticsToStudents,
+  AdminRedirectLearnPracticalToStudents,
+  AdminRedirectLearnTheoryToStudents,
+} from "./AdminStudentsLegacyRedirects";

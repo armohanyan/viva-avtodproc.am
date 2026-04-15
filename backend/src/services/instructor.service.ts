@@ -1,4 +1,5 @@
 import { InstructorBranch, InstructorProfile, User } from '../models';
+import InstructorStudentRatingService from './instructor-student-rating.service';
 
 type ProfileWithUser = InstructorProfile & { user: User };
 
@@ -9,6 +10,8 @@ export type InstructorDto = {
   phone: string;
   years: number;
   rating: number;
+  /** Number of student reviews; when positive, `rating` is their average; otherwise public rating is fixed at 5. */
+  studentRatingCount: number;
   hourlyPrice: number;
   status: 'active' | 'inactive';
   schedule: string;
@@ -21,14 +24,25 @@ export type InstructorDto = {
   teachesTheory: boolean;
 };
 
-function toDto(user: User, profile: InstructorProfile, branchIds: string[]): InstructorDto {
+function clampRating(n: number): number {
+  return Math.min(5, Math.max(0, Math.round(n * 10) / 10));
+}
+
+function toDto(
+  user: User,
+  profile: InstructorProfile,
+  branchIds: string[],
+  effectiveRating: number,
+  studentRatingCount: number,
+): InstructorDto {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     phone: user.phone ?? '',
     years: profile.years,
-    rating: profile.rating,
+    rating: clampRating(effectiveRating),
+    studentRatingCount,
     hourlyPrice: profile.hourlyPrice,
     status: profile.status,
     schedule: profile.schedule,
@@ -54,19 +68,27 @@ export default class InstructorService {
       list.push(l.branchId);
       byInstructor.set(l.instructorUserId, list);
     }
+    const aggs = await InstructorStudentRatingService.aggregatesForInstructors(profiles.map((p) => p.userId));
     return profiles
       .map((p) => {
         const u = (p as ProfileWithUser).user;
         if (!u) return null;
-        return toDto(u, p, byInstructor.get(p.userId) ?? []);
+        const agg = aggs.get(p.userId);
+        const studentRatingCount = agg?.count ?? 0;
+        const effective = studentRatingCount > 0 ? (agg?.avg ?? p.rating) : 5;
+        return toDto(u, p, byInstructor.get(p.userId) ?? [], effective, studentRatingCount);
       })
       .filter((row): row is InstructorDto => row != null);
   }
 
-  static async create(input: Omit<InstructorDto, 'id'> & { id?: string }): Promise<InstructorDto> {
+  static async create(
+    input: Omit<InstructorDto, 'id' | 'studentRatingCount' | 'rating'> & { id?: string },
+  ): Promise<InstructorDto> {
     const id =
       input.id?.trim() ||
       `INS-${String((await InstructorProfile.count()) + 1).padStart(3, '0')}`;
+    /** Public rating is always 5 until students rate; never accept a manual seed. */
+    const seedRating = 5;
     await User.create({
       id,
       email: input.email.trim().toLowerCase(),
@@ -78,7 +100,7 @@ export default class InstructorService {
     await InstructorProfile.create({
       userId: id,
       years: input.years,
-      rating: input.rating,
+      rating: seedRating,
       hourlyPrice: input.hourlyPrice,
       schedule: input.schedule,
       location: input.location,
@@ -96,7 +118,10 @@ export default class InstructorService {
     return (await this.getById(id))!;
   }
 
-  static async update(id: string, patch: Partial<Omit<InstructorDto, 'id' | 'availableBranchIds'>> & { availableBranchIds?: string[] }): Promise<InstructorDto | null> {
+  static async update(
+    id: string,
+    patch: Partial<Omit<InstructorDto, 'id' | 'availableBranchIds' | 'studentRatingCount'>> & { availableBranchIds?: string[] },
+  ): Promise<InstructorDto | null> {
     const user = await User.findByPk(id);
     const profile = await InstructorProfile.findByPk(id);
     if (!user || !profile) return null;
@@ -108,7 +133,6 @@ export default class InstructorService {
     });
     await profile.update({
       ...(patch.years !== undefined ? { years: patch.years } : {}),
-      ...(patch.rating !== undefined ? { rating: patch.rating } : {}),
       ...(patch.hourlyPrice !== undefined ? { hourlyPrice: patch.hourlyPrice } : {}),
       ...(patch.schedule !== undefined ? { schedule: patch.schedule } : {}),
       ...(patch.location !== undefined ? { location: patch.location } : {}),
@@ -119,7 +143,7 @@ export default class InstructorService {
       ...(patch.teachesTheory !== undefined ? { teachesTheory: patch.teachesTheory } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
     });
-    if (patch.availableBranchIds) {
+    if (patch.availableBranchIds !== undefined) {
       await InstructorBranch.destroy({ where: { instructorUserId: id } });
       for (const branchId of patch.availableBranchIds) {
         await InstructorBranch.create({ instructorUserId: id, branchId });
@@ -136,14 +160,21 @@ export default class InstructorService {
     const links = await InstructorBranch.findAll({ where: { instructorUserId: id } });
     const u = (profile as ProfileWithUser).user;
     if (!u) return null;
+    const aggs = await InstructorStudentRatingService.aggregatesForInstructors([id]);
+    const agg = aggs.get(id);
+    const studentRatingCount = agg?.count ?? 0;
+    const effective = studentRatingCount > 0 ? (agg?.avg ?? profile.rating) : 5;
     return toDto(
       u,
       profile,
       links.map((l) => l.branchId),
+      effective,
+      studentRatingCount,
     );
   }
 
   static async remove(id: string): Promise<boolean> {
+    await InstructorStudentRatingService.removeAllForInstructor(id);
     await InstructorBranch.destroy({ where: { instructorUserId: id } });
     const p = await InstructorProfile.destroy({ where: { userId: id } });
     const u = await User.destroy({ where: { id } });

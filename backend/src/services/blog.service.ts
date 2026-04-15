@@ -1,3 +1,9 @@
+import { Op } from 'sequelize';
+import {
+  addManagedFilenameFromUrl,
+  deleteManagedUploadFiles,
+  managedFilenamesFromHtml,
+} from '../helpers/managed-upload.helper';
 import { Blog } from '../models';
 
 export type BlogDto = {
@@ -10,6 +16,29 @@ export type BlogDto = {
   published: boolean;
   publishedAt: string;
 };
+
+/** Avoid deleting a disk file if another blog still references that `/upload/…` URL. */
+async function filterUploadsUnreferencedByOtherBlogs(
+  filenames: string[],
+  excludeBlogId: string,
+): Promise<string[]> {
+  if (filenames.length === 0) return [];
+  const out: string[] = [];
+  for (const f of filenames) {
+    const needle = `/upload/${f}`;
+    const n = await Blog.count({
+      where: {
+        id: { [Op.ne]: excludeBlogId },
+        [Op.or]: [
+          { coverImage: { [Op.like]: `%${needle}%` } },
+          { bodyHtml: { [Op.like]: `%${needle}%` } },
+        ],
+      },
+    });
+    if (n === 0) out.push(f);
+  }
+  return out;
+}
 
 function toDto(b: Blog): BlogDto {
   return {
@@ -81,6 +110,20 @@ export default class BlogService {
   ): Promise<BlogDto | null> {
     const row = await Blog.findByPk(id);
     if (!row) return null;
+
+    const oldCover = row.coverImage ?? null;
+    const oldBody = row.bodyHtml;
+    const newCover = patch.coverImage !== undefined ? patch.coverImage ?? null : oldCover;
+    const newBody = patch.bodyHtml !== undefined ? patch.bodyHtml : oldBody;
+
+    const stillReferenced = new Set<string>();
+    addManagedFilenameFromUrl(newCover, stillReferenced);
+    for (const f of managedFilenamesFromHtml(newBody)) stillReferenced.add(f);
+
+    const previouslyReferenced = new Set<string>();
+    addManagedFilenameFromUrl(oldCover, previouslyReferenced);
+    for (const f of managedFilenamesFromHtml(oldBody)) previouslyReferenced.add(f);
+
     await row.update({
       ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
       ...(patch.title !== undefined ? { title: patch.title } : {}),
@@ -90,11 +133,27 @@ export default class BlogService {
       ...(patch.published !== undefined ? { published: patch.published } : {}),
       ...(patch.publishedAt !== undefined ? { publishedAt: new Date(patch.publishedAt) } : {}),
     });
+
+    const toRemove = [...previouslyReferenced].filter((f) => !stillReferenced.has(f));
+    const safeToRemove = await filterUploadsUnreferencedByOtherBlogs(toRemove, id);
+    await deleteManagedUploadFiles(safeToRemove);
+
     return toDto(row);
   }
 
   static async remove(id: string): Promise<boolean> {
+    const row = await Blog.findByPk(id);
+    if (!row) return false;
+
+    const files = new Set<string>();
+    addManagedFilenameFromUrl(row.coverImage, files);
+    for (const f of managedFilenamesFromHtml(row.bodyHtml)) files.add(f);
+
     const n = await Blog.destroy({ where: { id } });
+    if (n > 0) {
+      const safe = await filterUploadsUnreferencedByOtherBlogs([...files], id);
+      await deleteManagedUploadFiles(safe);
+    }
     return n > 0;
   }
 }

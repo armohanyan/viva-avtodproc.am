@@ -6,25 +6,34 @@ import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Shield, UserCircle } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
+import { useAccount } from "src/modules/accounts";
+import { useInstructors } from "src/modules/instructors/useInstructors";
+import { formatInstructorBranches, formatInstructorCities } from "src/modules/instructors/instructorLabels";
+import { useBranches } from "src/modules/branches";
+import { useCities } from "src/modules/cities";
 
-/** Demo mirror of admin-managed record; in production load from API (read-only for instructors). */
 export default function InstructorProfile() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const { user } = useAccount();
+  const { instructors, loading } = useInstructors();
+  const { branches } = useBranches();
+  const { cities } = useCities();
 
-  const [avatarSrc] = useState("/logo.jpg");
-  const [form] = useState({
-    firstName: "Armen",
-    lastName: "Petrosyan",
-    email: "instructor@vivadrive.am",
-    phone: "+374 99 123 456",
-    location: "Yerevan",
-    hourlyPrice: "7000",
-    years: "12",
-    rating: "4.9",
-  });
+  const me = useMemo(
+    () => (user?.accountType === "instructor" ? instructors.find((i) => i.id === user.id) : undefined),
+    [instructors, user?.accountType, user?.id],
+  );
+
+  const displayName = user?.name?.trim() || me?.name || "";
+  const nameParts = displayName.split(/\s+/).filter(Boolean);
+  const firstName = nameParts[0] ?? "";
+  const lastName = nameParts.slice(1).join(" ");
+
+  const avatarSrc = me?.imageSrc ?? "/logo.jpg";
+
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingPass, setSavingPass] = useState(false);
 
@@ -50,7 +59,8 @@ export default function InstructorProfile() {
     }, 600);
   };
 
-  const displayName = `${form.firstName} ${form.lastName}`.trim();
+  const citiesLine = me ? formatInstructorCities(me, branches, cities) : "—";
+  const branchesLine = me ? formatInstructorBranches(me, branches, cities) : "—";
 
   return (
     <InstructorPanelLayout>
@@ -64,7 +74,7 @@ export default function InstructorProfile() {
                 <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
               </div>
             </div>
-            <h3 className="font-bold text-foreground text-lg">{displayName}</h3>
+            <h3 className="font-bold text-foreground text-lg">{displayName || "—"}</h3>
             <p className="text-xs text-muted-foreground text-left leading-relaxed">{t("instructorProfileCardFieldsHint")}</p>
           </Card>
         </Reveal>
@@ -74,38 +84,46 @@ export default function InstructorProfile() {
             <Card className="p-6 border-border gap-3">
               <h3 className="font-semibold text-foreground">{t("personalInformationTitle")}</h3>
               <p className="text-sm text-muted-foreground">{t("instructorProfileReadOnlyNote")}</p>
+              {loading ? <p className="text-sm text-muted-foreground py-4">{t("loading")}</p> : null}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("firstName")}</label>
-                  <Input readOnly value={form.firstName} className="h-10 bg-muted/40" />
+                  <Input readOnly value={firstName} className="h-10 bg-muted/40" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("lastName")}</label>
-                  <Input readOnly value={form.lastName} className="h-10 bg-muted/40" />
+                  <Input readOnly value={lastName} className="h-10 bg-muted/40" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("emailAddress")}</label>
-                  <Input readOnly type="email" value={form.email} className="h-10 bg-muted/40" />
+                  <Input readOnly type="email" value={user?.email ?? me?.email ?? ""} className="h-10 bg-muted/40" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("phoneNumber")}</label>
-                  <Input readOnly type="tel" value={form.phone} className="h-10 bg-muted/40" />
+                  <Input readOnly type="tel" value={me?.phone ?? ""} className="h-10 bg-muted/40" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("location")}</label>
-                  <Input readOnly value={form.location} className="h-10 bg-muted/40" />
+                <div className="sm:col-span-2 space-y-3 rounded-lg border border-border/80 bg-muted/10 p-4">
+                  <h4 className="text-sm font-semibold text-foreground">{t("instructorProfileTeachingAreasTitle")}</h4>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorCitiesLabel")}</label>
+                    <p className="text-sm text-foreground">{citiesLine}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>
+                    <p className="text-sm text-foreground leading-snug">{branchesLine}</p>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("hourlyRateLabel")}</label>
-                  <Input readOnly type="text" inputMode="numeric" value={form.hourlyPrice} className="h-10 bg-muted/40" />
+                  <Input readOnly type="text" inputMode="numeric" value={me ? String(me.hourlyPrice) : ""} className="h-10 bg-muted/40" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("yearsExperienceLabel")}</label>
-                  <Input readOnly type="text" inputMode="numeric" value={form.years} className="h-10 bg-muted/40" />
+                  <Input readOnly type="text" inputMode="numeric" value={me ? String(me.years) : ""} className="h-10 bg-muted/40" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("ratingDisplayLabel")}</label>
-                  <Input readOnly value={form.rating} className="h-10 bg-muted/40" />
+                  <Input readOnly value={me ? String(me.rating) : ""} className="h-10 bg-muted/40" />
                 </div>
               </div>
             </Card>

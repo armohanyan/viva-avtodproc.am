@@ -10,14 +10,14 @@ import { formatShortDateFromIso } from "src/lib/adminFormat";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -52,6 +52,8 @@ const statusColor: Record<string, string> = {
 };
 
 export default function AdminCohorts() {
+  const editCohortFormId = useId();
+  const addCohortFormId = useId();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -378,13 +380,26 @@ export default function AdminCohorts() {
         </AdminTableScroll>
       </div>
 
-      <Dialog open={!!editCohort} onOpenChange={() => setEditCohort(null)}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("cohortDialogEditTitle")}</DialogTitle>
-          </DialogHeader>
-          {editCohort && (
-            <form onSubmit={handleEdit} className="space-y-3 mt-2">
+      <AppModal
+        open={!!editCohort}
+        onOpenChange={(o) => !o && setEditCohort(null)}
+        title={t("cohortDialogEditTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          editCohort ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCohort(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editCohortFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editCohort && (
+          <form id={editCohortFormId} onSubmit={handleEdit} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
                 <select
@@ -457,20 +472,11 @@ export default function AdminCohorts() {
                   <option value="completed">{t("cohortStatusLabelCompleted")}</option>
                 </select>
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCohort(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
-      <Dialog
+      <AppModal
         open={!!studentsDialogCohort}
         onOpenChange={(open) => {
           if (!open) {
@@ -478,20 +484,18 @@ export default function AdminCohorts() {
             setCohortStudents([]);
           }
         }}
+        title={t("cohortStudentsDialogTitle")}
+        contentClassName="max-w-lg max-h-[min(90vh,560px)]"
       >
-        <DialogContent className="max-w-lg max-h-[min(90vh,560px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("cohortStudentsDialogTitle")}</DialogTitle>
-            {studentsDialogCohort ? (
-              <DialogDescription className="text-foreground font-medium">{studentsDialogCohort.name}</DialogDescription>
-            ) : null}
-          </DialogHeader>
-          {cohortStudentsLoading ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">{t("loading")}</p>
-          ) : cohortStudents.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">{t("cohortStudentsEmpty")}</p>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden mt-2">
+        {studentsDialogCohort ? (
+          <p className="text-sm font-medium text-foreground -mt-1 mb-3">{studentsDialogCohort.name}</p>
+        ) : null}
+        {cohortStudentsLoading ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">{t("loading")}</p>
+        ) : cohortStudents.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">{t("cohortStudentsEmpty")}</p>
+        ) : (
+          <div className="rounded-lg border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40">
                   <tr>
@@ -518,15 +522,25 @@ export default function AdminCohorts() {
               </table>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+      </AppModal>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("cohortDialogNewTitle")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAdd} className="space-y-3 mt-2">
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("cohortDialogNewTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addCohortFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addCohortFormId} onSubmit={handleAdd} className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
               <select
@@ -587,17 +601,8 @@ export default function AdminCohorts() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>
               <Input value={newCohort.meetLink} onChange={(e) => setNewCohort({ ...newCohort, meetLink: e.target.value })} placeholder={t("cohortPlaceholderMeetLink")} className="h-10" />
             </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} title={t("cohortDeleteTitle")} description={t("cohortDeleteDesc")} confirmLabel={t("delete")} danger />
     </AdminLayout>

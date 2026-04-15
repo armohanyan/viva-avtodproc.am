@@ -18,6 +18,8 @@ export type Instructor = {
   teachesPractical: boolean;
   /** Classroom / online theory instruction */
   teachesTheory: boolean;
+  /** When > 0, public rating is averaged from student reviews (admin cannot override the number). */
+  studentRatingCount?: number;
 };
 
 export const instructors: Instructor[] = [

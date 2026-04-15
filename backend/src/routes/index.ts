@@ -14,6 +14,7 @@ import marketingRoutes from './marketing.routes';
 import packageRoutes from './package.routes';
 import studentRoutes from './student.routes';
 import theoryCohortRoutes from './theory-cohort.routes';
+import uploadRoutes from './upload.routes';
 import userRoutes from './user.routes';
 
 const router = Router();
@@ -42,5 +43,6 @@ router.use('/exam-questions', examQuestionRoutes);
 router.use('/finance', financeRoutes);
 router.use('/fleet', fleetRoutes);
 router.use('/user', userRoutes);
+router.use('/uploads', uploadRoutes);
 
 export default router;

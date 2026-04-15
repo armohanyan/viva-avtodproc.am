@@ -6,7 +6,7 @@ import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
@@ -14,7 +14,7 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import { Plus, Edit2, Trash2, Calendar, School, ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { Instructor } from "src/data/instructors";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import type { Branch } from "src/modules/branches";
@@ -22,6 +22,12 @@ import { branchNameById, branchOptionLabel, useBranches } from "src/modules/bran
 import type { City } from "src/modules/cities";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
+import { useAccount } from "src/modules/accounts";
+import {
+  deriveInstructorLocationFromBranches,
+  formatInstructorBranches,
+  formatInstructorCities,
+} from "src/modules/instructors/instructorLabels";
 
 type InstructorForm = Pick<
   Instructor,
@@ -50,16 +56,6 @@ const createNewInstructorDraft = (): InstructorForm => ({
 
 function instructorServesCity(ins: Instructor, cityId: string, allBranches: readonly Branch[]): boolean {
   return ins.availableBranchIds.some((id) => allBranches.find((b) => b.id === id)?.cityId === cityId);
-}
-
-function formatInstructorCities(ins: Instructor, allBranches: readonly Branch[], citiesList: readonly City[]): string {
-  const cityIds = new Set<string>();
-  for (const id of ins.availableBranchIds) {
-    const b = allBranches.find((x) => x.id === id);
-    if (b) cityIds.add(b.cityId);
-  }
-  if (cityIds.size === 0) return "—";
-  return [...cityIds].map((cid) => cityNameById(citiesList, cid)).join(", ");
 }
 
 type InstructorAvailabilityBlock = {
@@ -159,19 +155,13 @@ function weekDayShortHeaders(locale: string): string[] {
   return headers;
 }
 
-function formatInstructorBranches(ins: Instructor, allBranches: readonly Branch[], citiesList: readonly City[]): string {
-  if (ins.availableBranchIds.length === 0) return "—";
-  return ins.availableBranchIds
-    .map((id) => {
-      const b = allBranches.find((x) => x.id === id);
-      return b ? branchOptionLabel(b, cityNameById(citiesList, b.cityId)) : branchNameById(allBranches, id);
-    })
-    .join("; ");
-}
-
 export default function AdminInstructors() {
+  const editInstructorFormId = useId();
+  const addInstructorFormId = useId();
   const { t, lang } = useLang();
   const { showToast } = useToast();
+  const { user } = useAccount();
+  const isSuperAdmin = user?.accountType === "super_admin";
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
@@ -179,7 +169,14 @@ export default function AdminInstructors() {
   const loadInstructors = useCallback(async () => {
     try {
       const data = await vivaApiJson<Instructor[]>("/instructors");
-      setInstructors(Array.isArray(data) ? data : []);
+      setInstructors(
+        Array.isArray(data)
+          ? data.map((i) => ({
+              ...i,
+              studentRatingCount: typeof i.studentRatingCount === "number" ? i.studentRatingCount : 0,
+            }))
+          : [],
+      );
     } catch {
       setInstructors([]);
     }
@@ -383,6 +380,7 @@ export default function AdminInstructors() {
       teachingLabels,
       citiesHay,
       branchHay,
+      ins.imageSrc,
       String(ins.years),
       String(ins.rating),
     ]
@@ -406,7 +404,7 @@ export default function AdminInstructors() {
   const validateInstructor = (ins: InstructorForm) => {
     if (!ins.name || !ins.email) return t("fillRequired");
     if (!ins.teachesPractical && !ins.teachesTheory) return t("instructorTeachingRequired");
-    if (ins.teachesPractical && branches.length > 0) {
+    if (ins.teachesPractical && branches.length > 0 && isSuperAdmin) {
       const allowed = new Set(branches.map((b) => b.id));
       const picked = ins.availableBranchIds ?? [];
       if (picked.length === 0 || picked.some((id) => !allowed.has(id))) {
@@ -439,31 +437,33 @@ export default function AdminInstructors() {
     }
 
     try {
+      const body: Record<string, unknown> = {
+        name: editIns.name,
+        email: editIns.email,
+        phone: editIns.phone,
+        years: editIns.years,
+        hourlyPrice: editIns.hourlyPrice,
+        status: editIns.status,
+        schedule: editIns.schedule,
+        location: deriveInstructorLocationFromBranches(editIns.availableBranchIds, branches, cities, "Yerevan"),
+        car: editIns.car,
+        transmission: editIns.transmission,
+        imageSrc: editIns.imageSrc,
+        teachesPractical: editIns.teachesPractical,
+        teachesTheory: editIns.teachesTheory,
+      };
+      if (isSuperAdmin) {
+        body.availableBranchIds = editIns.availableBranchIds;
+      }
       await vivaApiJson(`/instructors/${encodeURIComponent(editIns.id)}`, {
         method: "PATCH",
-        body: {
-          name: editIns.name,
-          email: editIns.email,
-          phone: editIns.phone,
-          years: editIns.years,
-          rating: editIns.rating,
-          hourlyPrice: editIns.hourlyPrice,
-          status: editIns.status,
-          schedule: editIns.schedule,
-          location: editIns.location,
-          car: editIns.car,
-          transmission: editIns.transmission,
-          imageSrc: editIns.imageSrc,
-          availableBranchIds: editIns.availableBranchIds,
-          teachesPractical: editIns.teachesPractical,
-          teachesTheory: editIns.teachesTheory,
-        },
+        body,
       });
       setEditId(null);
       await loadInstructors();
       showToast(t("instructorUpdatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -475,15 +475,12 @@ export default function AdminInstructors() {
       return;
     }
 
-    const firstCityName =
-      newIns.availableBranchIds[0] != null
-        ? cityNameById(cities, branches.find((b) => b.id === newIns.availableBranchIds[0])?.cityId ?? "")
-        : "";
+    const branchIdsForCreate = isSuperAdmin ? newIns.availableBranchIds : [];
     const nextPayload: Omit<Instructor, "id"> = {
       ...newIns,
-      rating: 5.0,
+      availableBranchIds: branchIdsForCreate,
       hourlyPrice: 7000,
-      location: firstCityName || "Yerevan",
+      location: deriveInstructorLocationFromBranches(branchIdsForCreate, branches, cities, "Yerevan"),
       car: "Toyota Corolla",
       transmission: "Manual",
       imageSrc: "/logo.jpg",
@@ -495,8 +492,8 @@ export default function AdminInstructors() {
       setNewIns(createNewInstructorDraft());
       await loadInstructors();
       showToast(t("instructorAddedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -522,6 +519,7 @@ export default function AdminInstructors() {
           <CsvExportButton
             filename="admin-instructors.csv"
             headers={[
+              t("adminInstructorColPhoto"),
               t("adminInstructorColInstructor"),
               t("emailAddress"),
               t("adminInstructorColTeachingType"),
@@ -534,6 +532,7 @@ export default function AdminInstructors() {
               t("status"),
             ]}
             rows={filteredInstructors.map((ins) => [
+              ins.imageSrc,
               ins.name,
               ins.email,
               [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
@@ -550,9 +549,10 @@ export default function AdminInstructors() {
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[64rem]">
+          <table className="w-full text-sm min-w-[68rem]">
             <thead className="bg-muted/40">
               <tr>
+                <TableColumnHeaderWithFilter title={t("adminInstructorColPhoto")} />
                 <TableColumnHeaderWithFilter title={t("adminInstructorColInstructor")} />
                 <TableColumnHeaderWithFilter
                   title={t("adminInstructorColTeachingType")}
@@ -621,7 +621,9 @@ export default function AdminInstructors() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredInstructors.map((ins) => (
+              {filteredInstructors.map((ins) => {
+                const branchesLabel = formatInstructorBranches(ins, branches, cities);
+                return (
                 <AdminTableRowContextMenu
                   key={ins.id}
                   actions={[
@@ -651,6 +653,13 @@ export default function AdminInstructors() {
                   ]}
                 >
                   <tr className="hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3.5 w-14 align-middle">
+                      <img
+                        src={ins.imageSrc}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-cover border border-border bg-muted shrink-0"
+                      />
+                    </td>
                     <td className="px-4 py-3.5 min-w-[220px]">
                       <p className="font-medium text-foreground">{ins.name}</p>
                       <p className="text-xs text-muted-foreground">{ins.email}</p>
@@ -670,8 +679,13 @@ export default function AdminInstructors() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground max-w-[12rem] text-sm">{formatInstructorCities(ins, branches, cities)}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground max-w-[14rem] text-xs leading-snug">
-                      {formatInstructorBranches(ins, branches, cities)}
+                    <td className="px-4 py-3.5 text-muted-foreground max-w-[14rem] text-xs align-top">
+                      <div
+                        className="leading-snug line-clamp-2 break-words"
+                        title={branchesLabel !== "—" ? branchesLabel : undefined}
+                      >
+                        {branchesLabel}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.phone}</td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.schedule}</td>
@@ -716,7 +730,8 @@ export default function AdminInstructors() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </AdminTableScroll>
@@ -725,25 +740,48 @@ export default function AdminInstructors() {
         </div>
       </div>
 
-      <Dialog open={editId !== null} onOpenChange={() => setEditId(null)}>
-        <DialogContent className="max-w-lg max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("instructorDialogEditTitle")}</DialogTitle>
-          </DialogHeader>
-          {editIns && (
-            <form onSubmit={handleEdit} className="space-y-3 mt-2">
+      <AppModal
+        open={editId !== null}
+        onOpenChange={(o) => !o && setEditId(null)}
+        title={t("instructorDialogEditTitle")}
+        contentClassName="max-w-lg max-h-[min(90vh,720px)]"
+        footer={
+          editIns ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditId(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editInstructorFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editIns && (
+          <form id={editInstructorFormId} onSubmit={handleEdit} className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("blogFieldCoverImage")}</label>
-                <Input
-                  value={editIns.imageSrc}
-                  onChange={(e) => updateEdit(editIns.id, { imageSrc: e.target.value })}
-                  placeholder="/logo.jpg"
-                  className="h-10"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
-                <Input value={editIns.name} onChange={(e) => updateEdit(editIns.id, { name: e.target.value })} className="h-10" />
+                <div className="flex items-center gap-4">
+                  <img
+                    src={editIns.imageSrc}
+                    alt=""
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted shrink-0"
+                    onError={(e) => {
+                      e.currentTarget.src = "/logo.jpg";
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor={`${editInstructorFormId}-name`}>
+                      {t("name")}
+                    </label>
+                    <Input
+                      id={`${editInstructorFormId}-name`}
+                      value={editIns.name}
+                      onChange={(e) => updateEdit(editIns.id, { name: e.target.value })}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")}</label>
@@ -766,15 +804,12 @@ export default function AdminInstructors() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("ratingDisplayLabel")}</label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min={0}
-                    max={5}
-                    value={editIns.rating}
-                    onChange={(e) => updateEdit(editIns.id, { rating: Math.min(5, Math.max(0, +e.target.value || 0)) })}
-                    className="h-10"
-                  />
+                  <Input readOnly value={editIns.rating.toFixed(1)} className="h-10 bg-muted/40" />
+                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                    {editIns.studentRatingCount && editIns.studentRatingCount > 0
+                      ? t("instructorRatingFromStudentsHint")
+                      : t("instructorRatingDefaultUntilRatedHint")}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("hourlyRateLabel")}</label>
@@ -788,8 +823,11 @@ export default function AdminInstructors() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("location")}</label>
-                <Input value={editIns.location} onChange={(e) => updateEdit(editIns.id, { location: e.target.value })} className="h-10" />
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorCitiesLabel")}</label>
+                <p className="text-sm text-foreground min-h-[2.5rem] px-3 py-2 rounded-lg border border-input bg-muted/30">
+                  {formatInstructorCities(editIns, branches, cities)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorLocationDerivedHint")}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("carColModel")}</label>
@@ -845,7 +883,11 @@ export default function AdminInstructors() {
                     }
                     placeholder={t("instructorBranchesLabel")}
                     ariaLabel={t("instructorBranchesLabel")}
+                    disabled={!isSuperAdmin}
                   />
+                  {!isSuperAdmin ? (
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorBranchesSuperAdminOnly")}</p>
+                  ) : null}
                 </div>
               )}
               <div>
@@ -859,25 +901,27 @@ export default function AdminInstructors() {
                   <option value="inactive">{t("inactive")}</option>
                 </select>
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditId(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("instructorDialogAddTitle")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAdd} className="space-y-3 mt-2">
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("instructorDialogAddTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addInstructorFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addInstructorFormId} onSubmit={handleAdd} className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
               <Input value={newIns.name} onChange={(e) => setNewIns({ ...newIns, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" />
@@ -940,33 +984,27 @@ export default function AdminInstructors() {
                   }
                   placeholder={t("instructorBranchesLabel")}
                   ariaLabel={t("instructorBranchesLabel")}
+                  disabled={!isSuperAdmin}
                 />
+                {!isSuperAdmin ? (
+                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorBranchesSuperAdminOnly")}</p>
+                ) : null}
               </div>
             )}
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
-      <Dialog
+      <AppModal
         open={availabilityInstructorId !== null}
         onOpenChange={(open) => {
           if (!open) setAvailabilityInstructorId(null);
         }}
+        title={t("instructorAvailabilityDialogTitle")}
+        titleClassName="text-balance pr-8"
+        contentClassName="sm:max-w-4xl max-h-[min(94vh,900px)]"
       >
-        <DialogContent className="sm:max-w-4xl max-h-[min(94vh,900px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-balance pr-8">{t("instructorAvailabilityDialogTitle")}</DialogTitle>
-          </DialogHeader>
-          {availabilityInstructor && (
-            <div className="space-y-4 mt-2">
+        {availabilityInstructor && (
+          <div className="space-y-4">
               {availabilityLoading ? (
                 <p className="text-sm text-muted-foreground">{t("loading")}</p>
               ) : (
@@ -1130,10 +1168,9 @@ export default function AdminInstructors() {
                   </div>
                 </>
               )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+      </AppModal>
 
       <ConfirmDialog open={deleteId !== null} onClose={() => setDeleteId(null)} onConfirm={handleDelete} title={t("instructorRemoveTitle")} description={t("instructorRemoveDesc")} confirmLabel={t("delete")} danger />
     </AdminLayout>

@@ -9,7 +9,7 @@ import InstructorCard from "src/components/InstructorCard";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import {
   Car,
   BookOpen,
@@ -270,6 +270,11 @@ export default function Home() {
                         <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                       </div>
                     )}
+                    {pkg.imageUrl ? (
+                      <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
+                        <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
+                      </div>
+                    ) : null}
                     <div className="mb-6">
                       <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
                       <div className="flex items-baseline gap-1">
@@ -565,26 +570,23 @@ export default function Home() {
         </div>
       </section>
 
-      <Dialog open={!!selectedBranch} onOpenChange={(open) => !open && setSelectedBranch(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden">
-          {selectedBranch && (
-            <>
-              <DialogHeader className="px-6 pt-6 pb-3">
-                <DialogTitle>{selectedBranch.name}</DialogTitle>
-              </DialogHeader>
-              <div className="px-6 pb-6">
-                <iframe
-                  title={`Map for ${selectedBranch.name}`}
-                  src={selectedBranch.mapUrl}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  className="w-full h-[420px] rounded-xl border border-border"
-                />
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {selectedBranch ? (
+        <AppModal
+          open={!!selectedBranch}
+          onOpenChange={(open) => !open && setSelectedBranch(null)}
+          title={selectedBranch.name}
+          contentClassName="max-w-4xl"
+          bodyClassName="px-6 pb-6 pt-0"
+        >
+          <iframe
+            title={`Map for ${selectedBranch.name}`}
+            src={selectedBranch.mapUrl}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            className="w-full h-[420px] rounded-xl border border-border"
+          />
+        </AppModal>
+      ) : null}
 
       {/* CTA */}
       <section className="py-20 bg-primary">

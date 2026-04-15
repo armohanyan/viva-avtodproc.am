@@ -12,6 +12,7 @@ import { Link } from "wouter";
 import { useAccount } from "src/modules/accounts";
 import { useStudentBookings } from "src/modules/bookings/useStudentBookings";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
+import StudentRateInstructorsPanel from "src/components/dashboard/StudentRateInstructorsPanel";
 
 export default function DashboardBookings() {
   const { t } = useLang();
@@ -49,6 +50,10 @@ export default function DashboardBookings() {
             {t("bookingsCreditsPackagePart")}: {packagePracticalRemaining} · {t("bookingsCreditsExtraPart")}: {extraPracticalRemaining}
           </p>
         </Card>
+      </Reveal>
+
+      <Reveal delay={0.07}>
+        <StudentRateInstructorsPanel studentUserId={user?.accountType === "student" ? user.id : undefined} />
       </Reveal>
 
       <Reveal delay={0.08}>

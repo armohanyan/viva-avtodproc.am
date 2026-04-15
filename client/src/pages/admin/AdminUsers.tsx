@@ -8,7 +8,7 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
@@ -16,7 +16,7 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen } from "lucide-react";
 import { Link } from "wouter";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
@@ -54,14 +54,16 @@ const statusColor: Record<string, string> = {
 };
 
 function adminLearnPracticalHref(userId: string, branchId: string) {
-  return `/admin/learn/practical?${new URLSearchParams({ student: userId, branch: branchId }).toString()}`;
+  return `/admin/students/practical?${new URLSearchParams({ student: userId, branch: branchId }).toString()}`;
 }
 
 function adminLearnTheoryHref(userId: string) {
-  return `/admin/learn/theory?${new URLSearchParams({ student: userId }).toString()}`;
+  return `/admin/students/theory?${new URLSearchParams({ student: userId }).toString()}`;
 }
 
 export default function AdminUsers() {
+  const editUserFormId = useId();
+  const addUserFormId = useId();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -227,7 +229,7 @@ export default function AdminUsers() {
         subtitle={t("adminStudentsPageSubtitle")}
         actions={
           <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
-            <Link href="/admin/users/analytics" className="block w-full min-w-0 sm:w-auto">
+            <Link href="/admin/students/analytics" className="block w-full min-w-0 sm:w-auto">
               <Button variant="outline" className="w-full sm:w-auto">
                 {t("adminStudentsAnalytics")}
               </Button>
@@ -432,11 +434,26 @@ export default function AdminUsers() {
         </div>
       </Card>
       {/* Edit Dialog */}
-      <Dialog open={!!editUser} onOpenChange={() => setEditUser(null)}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader><DialogTitle>{t("userDialogEditTitle")}</DialogTitle></DialogHeader>
-          {editUser && (
-            <form onSubmit={handleEdit} className="space-y-3 mt-2">
+      <AppModal
+        open={!!editUser}
+        onOpenChange={(o) => !o && setEditUser(null)}
+        title={t("userDialogEditTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          editUser ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditUser(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editUserFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editUser && (
+            <form id={editUserFormId} onSubmit={handleEdit} className="space-y-3">
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
                 <select value={editUser.branchId} onChange={e => setEditUser({ ...editUser, branchId: e.target.value })}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
@@ -477,20 +494,28 @@ export default function AdminUsers() {
               </label>
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColJoined")}</label>
                 <Input type="date" value={editUser.joinedIso} onChange={e => setEditUser({ ...editUser, joinedIso: e.target.value })} className="h-10" /></div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditUser(null)}>{t("cancel")}</Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("save")}</Button>
-              </div>
             </form>
           )}
-        </DialogContent>
-      </Dialog>
+      </AppModal>
 
       {/* Add Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{t("userDialogAddTitle")}</DialogTitle></DialogHeader>
-          <form onSubmit={handleAdd} className="space-y-3 mt-2">
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("userDialogAddTitle")}
+        contentClassName="max-w-md"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addUserFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addUserFormId} onSubmit={handleAdd} className="space-y-3">
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
               <Input value={newUser.name} onChange={e => setNewUser({ ...newUser, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
@@ -529,13 +554,8 @@ export default function AdminUsers() {
               />
               {t("studentLicenseAchieved")}
             </label>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>{t("cancel")}</Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">{t("addNew")}</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
       <ConfirmDialog
         open={!!deleteId}

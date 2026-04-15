@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useState } from "react";
 import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
@@ -12,7 +12,7 @@ import { Input } from "src/components/ui/input";
 import { Label } from "src/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Sparkles, Plus, Edit2, Trash2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { cn } from "src/lib/utils";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
@@ -24,6 +24,7 @@ const textareaClass = cn(
 );
 
 export default function AdminMarketing() {
+  const testimonialFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -393,7 +394,7 @@ export default function AdminMarketing() {
         </TabsContent>
       </Tabs>
 
-      <Dialog
+      <AppModal
         open={addOpen || !!editTm}
         onOpenChange={(o) => {
           if (!o) {
@@ -401,70 +402,68 @@ export default function AdminMarketing() {
             setEditTm(null);
           }
         }}
+        title={editTm ? t("adminMarketingEditTestimonial") : t("adminMarketingAddTestimonial")}
+        footer={
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => (setAddOpen(false), setEditTm(null))}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={testimonialFormId} className="flex-1 bg-primary text-primary-foreground">
+              {t("save")}
+            </Button>
+          </div>
+        }
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editTm ? t("adminMarketingEditTestimonial") : t("adminMarketingAddTestimonial")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submitTestimonial} className="space-y-3 mt-2">
+        <form id={testimonialFormId} onSubmit={submitTestimonial} className="space-y-3">
+          <div>
+            <Label>{t("adminMarketingTestimonialAuthor")}</Label>
+            <Input
+              className="h-10 mt-1"
+              value={tmDraft.authorName}
+              onChange={(e) => setTmDraft((d) => ({ ...d, authorName: e.target.value }))}
+            />
+          </div>
+          <div>
+            <Label>{t("adminMarketingTestimonialQuote")}</Label>
+            <textarea
+              className={cn(textareaClass, "mt-1 min-h-[120px]")}
+              value={tmDraft.quote}
+              onChange={(e) => setTmDraft((d) => ({ ...d, quote: e.target.value }))}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>{t("adminMarketingTestimonialAuthor")}</Label>
+              <Label>{t("adminMarketingTestimonialRating")}</Label>
               <Input
+                type="number"
+                min={1}
+                max={5}
                 className="h-10 mt-1"
-                value={tmDraft.authorName}
-                onChange={(e) => setTmDraft((d) => ({ ...d, authorName: e.target.value }))}
+                value={tmDraft.rating}
+                onChange={(e) => setTmDraft((d) => ({ ...d, rating: Number(e.target.value) || 1 }))}
               />
             </div>
             <div>
-              <Label>{t("adminMarketingTestimonialQuote")}</Label>
-              <textarea
-                className={cn(textareaClass, "mt-1 min-h-[120px]")}
-                value={tmDraft.quote}
-                onChange={(e) => setTmDraft((d) => ({ ...d, quote: e.target.value }))}
+              <Label>{t("adminMarketingTestimonialOrder")}</Label>
+              <Input
+                type="number"
+                min={0}
+                className="h-10 mt-1"
+                value={tmDraft.sortOrder}
+                onChange={(e) => setTmDraft((d) => ({ ...d, sortOrder: Number(e.target.value) || 0 }))}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>{t("adminMarketingTestimonialRating")}</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={5}
-                  className="h-10 mt-1"
-                  value={tmDraft.rating}
-                  onChange={(e) => setTmDraft((d) => ({ ...d, rating: Number(e.target.value) || 1 }))}
-                />
-              </div>
-              <div>
-                <Label>{t("adminMarketingTestimonialOrder")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  className="h-10 mt-1"
-                  value={tmDraft.sortOrder}
-                  onChange={(e) => setTmDraft((d) => ({ ...d, sortOrder: Number(e.target.value) || 0 }))}
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={tmDraft.published}
-                onChange={(e) => setTmDraft((d) => ({ ...d, published: e.target.checked }))}
-              />
-              {t("adminMarketingTestimonialVisible")}
-            </label>
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => (setAddOpen(false), setEditTm(null))}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary text-primary-foreground">
-                {t("save")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={tmDraft.published}
+              onChange={(e) => setTmDraft((d) => ({ ...d, published: e.target.checked }))}
+            />
+            {t("adminMarketingTestimonialVisible")}
+          </label>
+        </form>
+      </AppModal>
 
       <ConfirmDialog
         open={!!deleteId}

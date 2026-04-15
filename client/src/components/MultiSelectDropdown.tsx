@@ -20,6 +20,7 @@ type MultiSelectDropdownProps<T extends string> = {
   placeholder: string;
   ariaLabel?: string;
   maxVisibleLabels?: number;
+  disabled?: boolean;
 };
 
 export default function MultiSelectDropdown<T extends string>({
@@ -29,6 +30,7 @@ export default function MultiSelectDropdown<T extends string>({
   placeholder,
   ariaLabel,
   maxVisibleLabels = 2,
+  disabled = false,
 }: MultiSelectDropdownProps<T>) {
   const selectedSet = useMemo(() => new Set(value), [value]);
   const selectedLabels = useMemo(
@@ -51,6 +53,7 @@ export default function MultiSelectDropdown<T extends string>({
           variant="outline"
           className="w-full h-10 justify-between border-input bg-background font-normal text-sm"
           aria-label={ariaLabel}
+          disabled={disabled}
         >
           <span className="truncate">{triggerLabel}</span>
           <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />

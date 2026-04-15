@@ -83,5 +83,9 @@ export function sanitizeCoverImageUrl(url: string | null | undefined): string | 
       return null;
     }
   }
+  /** Same-origin files saved under the API static `/upload` route (e.g. dev proxy). */
+  if (t.startsWith("/upload/") && /^\/upload\/[a-z0-9._-]+$/i.test(t)) {
+    return t;
+  }
   return null;
 }

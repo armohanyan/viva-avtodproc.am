@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../helpers';
+import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
 import { SuccessHandlerUtil } from '../utils';
@@ -33,6 +34,11 @@ const entitlementsPackageSchema = z.object({
 
 const entitlementsExtraSchema = z.object({
   practicalTotal: z.number().int().positive().optional(),
+});
+
+const instructorRatingSubmitSchema = z.object({
+  instructorUserId: z.string().min(1),
+  stars: z.number().int().min(1).max(5),
 });
 
 export default class StudentController {
@@ -118,6 +124,25 @@ export default class StudentController {
         );
       }
       SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async instructorRatingsStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await InstructorStudentRatingService.getStatus(req.params.id!);
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async instructorRatingsSubmit(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(instructorRatingSubmitSchema, req.body);
+      await InstructorStudentRatingService.submit(req.params.id!, body.instructorUserId, body.stars);
+      res.sendStatus(204);
     } catch (e) {
       next(e);
     }

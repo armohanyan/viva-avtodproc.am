@@ -1,5 +1,6 @@
 import { API_V1_PREFIX } from "src/constants/api";
 import { tryRefreshAccessToken } from "src/lib/authSession";
+import { loadAccountSession } from "src/modules/accounts/account.session";
 
 function trimTrailingSlashes(s: string): string {
 	return s.replace(/\/+$/, "");
@@ -51,6 +52,15 @@ export function getApiBaseUrl(): string {
 export function apiPath(path: string): string {
 	const p = path.startsWith("/") ? path : `/${path}`;
 	return `${getApiBaseUrl()}${p}`;
+}
+
+function isAbsoluteHttpUrl(path: string): boolean {
+	return /^https?:\/\//i.test(path);
+}
+
+/** Final URL passed to `fetch` (applies API base unless `path` is already absolute). */
+function resolveApiFetchUrl(path: string): string {
+	return isAbsoluteHttpUrl(path) ? path : apiPath(path);
 }
 
 /** Versioned REST prefix as configured for the Viva backend. */
@@ -105,7 +115,7 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 		hdrs.set("Content-Type", "application/json");
 	}
 
-	const res = await fetch(apiPath(path), {
+	const res = await fetch(resolveApiFetchUrl(path), {
 		...rest,
 		credentials: "include",
 		headers: hdrs,
@@ -120,7 +130,15 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 	if (res.status === 401 && !_authRetry && shouldAttemptAuthRefreshRetry(path) && typeof window !== "undefined") {
 		const refreshed = await tryRefreshAccessToken();
 		if (refreshed) {
-			return apiFetch(path, { ...init, _authRetry: true });
+			// `init` still carries the expired Bearer from the first attempt; merge the new token.
+			const retryHeaders = new Headers(headers);
+			const token = loadAccountSession()?.accessToken;
+			if (token) {
+				retryHeaders.set("Authorization", `Bearer ${token}`);
+			} else {
+				retryHeaders.delete("Authorization");
+			}
+			return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
 		}
 	}
 
@@ -137,7 +155,7 @@ function apiJsonDedupeKey(path: string, init: ApiJsonInit): string | null {
 	if (init.signal !== undefined) return null;
 	const hdrs = new Headers(init.headers);
 	const auth = hdrs.get("Authorization") ?? "";
-	return `${apiPath(path)}\u0000${auth}`;
+	return `${resolveApiFetchUrl(path)}\u0000${auth}`;
 }
 
 async function apiJsonOnce<T>(path: string, init: ApiJsonInit = {}): Promise<T> {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, Redirect, useLocation, useRoute } from "wouter";
 import DashboardLayout from "src/components/DashboardLayout";
 import { useLang } from "src/lib/i18n";
@@ -56,7 +56,9 @@ export default function DashboardExamQuiz() {
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
   const liveRef = useRef({ index, selected, answers, questions });
-  liveRef.current = { index, selected, answers, questions };
+  useLayoutEffect(() => {
+    liveRef.current = { index, selected, answers, questions };
+  }, [index, selected, answers, questions]);
 
   const handleTimeExpired = useCallback(() => {
     setEndedByTimeout(true);

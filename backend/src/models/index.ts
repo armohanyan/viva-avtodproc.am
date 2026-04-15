@@ -14,6 +14,7 @@ import { FleetCarInstructor } from './fleet-car-instructor.model';
 import { InstructorAvailabilityBlock } from './instructor-availability-block.model';
 import { InstructorBranch } from './instructor-branch.model';
 import { InstructorProfile } from './instructor-profile.model';
+import { InstructorStudentRating } from './instructor-student-rating.model';
 import { MarketingSetting } from './marketing-setting.model';
 import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
@@ -74,6 +75,11 @@ RefreshToken.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 User.hasMany(OAuthAccount, { foreignKey: 'userId', sourceKey: 'id' });
 OAuthAccount.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 
+InstructorStudentRating.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'ratingStudent' });
+InstructorStudentRating.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'ratedInstructor' });
+User.hasMany(InstructorStudentRating, { foreignKey: 'studentUserId', sourceKey: 'id', as: 'instructorRatingsGiven' });
+User.hasMany(InstructorStudentRating, { foreignKey: 'instructorUserId', sourceKey: 'id', as: 'instructorRatingsReceived' });
+
 FinanceTransaction.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
 export {
@@ -90,6 +96,7 @@ export {
   InstructorAvailabilityBlock,
   InstructorBranch,
   InstructorProfile,
+  InstructorStudentRating,
   MarketingSetting,
   MarketingStat,
   MarketingTestimonial,
@@ -102,6 +109,30 @@ export {
   TheoryCohortEnrollment,
   User,
 };
+
+/** Adds `packages.image_url` when the table predates the Sequelize model field (sync without alter skips new columns). */
+async function ensurePackagesImageUrlColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'packages'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'packages' AND COLUMN_NAME = 'image_url'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `packages` ADD COLUMN `image_url` TEXT NULL');
+}
 
 /** Adds `users.is_active` when the table predates the Sequelize model field (sync without alter skips new columns). */
 async function ensureUsersIsActiveColumn(): Promise<void> {
@@ -238,6 +269,7 @@ async function ensureAuthTables(): Promise<void> {
 
 export async function syncModels(): Promise<void> {
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await ensurePackagesImageUrlColumn();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
   await ensureBookingsPaymentColumns();

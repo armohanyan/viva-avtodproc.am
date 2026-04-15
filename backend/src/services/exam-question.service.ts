@@ -1,3 +1,10 @@
+import { Op } from 'sequelize';
+import {
+  addManagedFilenameFromUrl,
+  deleteManagedUploadFile,
+  deleteManagedUploadFiles,
+  managedFilenameFromUrl,
+} from '../helpers/managed-upload.helper';
 import { ExamQuestion } from '../models';
 
 export type ExamQuestionDto = {
@@ -37,6 +44,16 @@ export default class ExamQuestionService {
   }
 
   static async replaceAll(questions: ExamQuestionDto[]): Promise<void> {
+    const oldRows = await ExamQuestion.findAll();
+    const oldFiles = new Set<string>();
+    for (const r of oldRows) {
+      addManagedFilenameFromUrl(r.imageUrl, oldFiles);
+    }
+    const newFiles = new Set<string>();
+    for (const q of questions) {
+      addManagedFilenameFromUrl(q.imageUrl ?? null, newFiles);
+    }
+
     await ExamQuestion.destroy({ where: {} });
     await ExamQuestion.bulkCreate(
       questions.map((q) => ({
@@ -50,9 +67,16 @@ export default class ExamQuestionService {
         optionExplanationsJson: q.optionExplanations ? JSON.stringify(q.optionExplanations) : null,
       })),
     );
+
+    const toRemove = [...oldFiles].filter((f) => !newFiles.has(f));
+    await deleteManagedUploadFiles(toRemove);
   }
 
   static async upsertOne(q: ExamQuestionDto): Promise<ExamQuestionDto> {
+    const prev = await ExamQuestion.findByPk(q.id);
+    const prevFile = managedFilenameFromUrl(prev?.imageUrl ?? null);
+    const nextFile = managedFilenameFromUrl(q.imageUrl ?? null);
+
     await ExamQuestion.upsert({
       id: q.id,
       category: q.category,
@@ -63,12 +87,38 @@ export default class ExamQuestionService {
       optionsJson: JSON.stringify(q.options),
       optionExplanationsJson: q.optionExplanations ? JSON.stringify(q.optionExplanations) : null,
     });
+
+    if (prevFile && prevFile !== nextFile) {
+      const others = await ExamQuestion.count({
+        where: {
+          id: { [Op.ne]: q.id },
+          imageUrl: { [Op.like]: `%/upload/${prevFile}%` },
+        },
+      });
+      if (others === 0) {
+        await deleteManagedUploadFile(prevFile);
+      }
+    }
+
     const row = await ExamQuestion.findByPk(q.id);
     return toDto(row!);
   }
 
   static async remove(id: string): Promise<boolean> {
+    const found = await ExamQuestion.findByPk(id);
+    const file = managedFilenameFromUrl(found?.imageUrl ?? null);
     const n = await ExamQuestion.destroy({ where: { id } });
+    if (n > 0 && file) {
+      const others = await ExamQuestion.count({
+        where: {
+          id: { [Op.ne]: id },
+          imageUrl: { [Op.like]: `%/upload/${file}%` },
+        },
+      });
+      if (others === 0) {
+        await deleteManagedUploadFile(file);
+      }
+    }
     return n > 0;
   }
 }

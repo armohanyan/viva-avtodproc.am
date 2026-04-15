@@ -11,6 +11,7 @@ import { useAccount } from "src/modules/accounts";
 import { useStudentBookings } from "src/modules/bookings/useStudentBookings";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import StudentDemoBookingRow from "src/components/dashboard/StudentDemoBookingRow";
+import StudentRateInstructorsPanel from "src/components/dashboard/StudentRateInstructorsPanel";
 
 export default function Dashboard() {
   const { t } = useLang();
@@ -45,6 +46,8 @@ export default function Dashboard() {
         }
         subtitle={t("dashboardHomeSubtitle")}
       />
+
+      <StudentRateInstructorsPanel studentUserId={user?.accountType === "student" ? user.id : undefined} />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {stats.map((s, i) => (

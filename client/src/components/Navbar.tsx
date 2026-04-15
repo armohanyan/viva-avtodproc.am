@@ -13,6 +13,10 @@ import { ADMIN_NAV_LINKS } from "src/modules/admin/admin.consts";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { cn } from "src/lib/utils";
 
+type AdminNavEntry =
+  | { kind: "header"; label: string; entryKey: string }
+  | { kind: "link"; href: string; label: string; entryKey: string; indent?: boolean };
+
 export default function Navbar() {
   const { t } = useLang();
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
@@ -32,27 +36,50 @@ export default function Navbar() {
 
   const dashLinks = DASHBOARD_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
 
-  const adminNavEntries = useMemo(() => {
-    const out: { href: string; label: string; indent?: boolean }[] = [];
+  const adminNavEntries = useMemo((): AdminNavEntry[] => {
+    const out: AdminNavEntry[] = [];
     for (const link of ADMIN_NAV_LINKS) {
-      out.push({ href: link.href, label: t(link.translationKey) });
-      if (link.children) {
-        for (const c of link.children) {
-          out.push({ href: c.href, label: t(c.translationKey), indent: true });
-        }
+      if (!link.children?.length) {
+        out.push({
+          kind: "link",
+          href: link.href,
+          label: t(link.translationKey),
+          entryKey: link.translationKey,
+        });
+        continue;
+      }
+      const duplicateParentHref = link.children.some((c) => c.href === link.href);
+      if (link.collapsible && duplicateParentHref) {
+        out.push({ kind: "header", label: t(link.translationKey), entryKey: link.translationKey });
+      } else {
+        out.push({
+          kind: "link",
+          href: link.href,
+          label: t(link.translationKey),
+          entryKey: link.translationKey,
+        });
+      }
+      for (const c of link.children) {
+        out.push({
+          kind: "link",
+          href: c.href,
+          label: t(c.translationKey),
+          indent: true,
+          entryKey: `${link.translationKey}:${c.translationKey}`,
+        });
       }
     }
     return out;
   }, [t]);
-
-  const links = isAdmin ? adminNavEntries : isDashboard ? dashLinks : navLinks;
   const isPublic = !isDashboard && !isAdmin;
   const panelLinkActive = (href: string) =>
     isAdmin && href === "/admin/learn"
       ? location === href || location.startsWith("/admin/learn/")
-      : href === "/dashboard/learn"
-        ? location === href || location.startsWith("/dashboard/learn/") || location.startsWith("/dashboard/exam-tests")
-        : location === href;
+      : isAdmin && href === "/admin/students"
+        ? location === href || location.startsWith("/admin/students/")
+        : href === "/dashboard/learn"
+          ? location === href || location.startsWith("/dashboard/learn/") || location.startsWith("/dashboard/exam-tests")
+          : location === href;
   const isOfferActive = offerLinks.some((link) => location === link.href);
   const learnLinkActive = (href: string) =>
     location === href || (href === "/thematic-questions" && location.startsWith("/thematic-questions"));
@@ -177,14 +204,38 @@ export default function Navbar() {
                       </MarketingLink>
                     ))}
                   </>
+                ) : isAdmin ? (
+                  adminNavEntries.map((l) =>
+                    l.kind === "header" ? (
+                      <span
+                        key={l.entryKey}
+                        className="shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-xs font-semibold text-muted-foreground lg:px-2.5"
+                      >
+                        {l.label}
+                      </span>
+                    ) : (
+                      <Link
+                        key={l.entryKey}
+                        href={l.href}
+                        className={cn(
+                          "shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5",
+                          l.indent ? "pl-4 text-xs" : "",
+                          panelLinkActive(l.href)
+                            ? "text-primary bg-primary/10"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                        )}
+                      >
+                        {l.label}
+                      </Link>
+                    ),
+                  )
                 ) : (
-                  links.map((l) => (
+                  dashLinks.map((l) => (
                     <Link
                       key={l.href}
                       href={l.href}
                       className={cn(
                         "shrink-0 whitespace-nowrap rounded-md px-2 py-2 text-sm font-medium leading-tight transition-colors lg:px-2.5",
-                        "indent" in l && l.indent ? "pl-4 text-xs" : "",
                         panelLinkActive(l.href)
                           ? "text-primary bg-primary/10"
                           : "text-muted-foreground hover:text-foreground hover:bg-accent",
@@ -326,15 +377,40 @@ export default function Navbar() {
                           </MarketingLink>
                         ))}
                       </>
+                    ) : isAdmin ? (
+                      adminNavEntries.map((l) =>
+                        l.kind === "header" ? (
+                          <span
+                            key={l.entryKey}
+                            className="px-3 py-2 text-xs font-semibold text-muted-foreground"
+                          >
+                            {l.label}
+                          </span>
+                        ) : (
+                          <Link
+                            key={l.entryKey}
+                            href={l.href}
+                            onClick={() => setOpen(false)}
+                            className={cn(
+                              "px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                              l.indent ? "pl-6 text-xs" : "",
+                              panelLinkActive(l.href)
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                            )}
+                          >
+                            {l.label}
+                          </Link>
+                        ),
+                      )
                     ) : (
-                      links.map((l) => (
+                      dashLinks.map((l) => (
                         <Link
                           key={l.href}
                           href={l.href}
                           onClick={() => setOpen(false)}
                           className={cn(
                             "px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                            "indent" in l && l.indent ? "pl-6 text-xs" : "",
                             panelLinkActive(l.href)
                               ? "text-primary bg-primary/10"
                               : "text-muted-foreground hover:text-foreground hover:bg-accent",

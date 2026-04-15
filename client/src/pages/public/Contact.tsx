@@ -6,7 +6,7 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import { MapPin, Phone, Mail, Clock } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "src/lib/motion";
@@ -181,26 +181,23 @@ export default function Contact() {
         </div>
       </section>
 
-      <Dialog open={!!selectedBranch} onOpenChange={(open) => !open && setSelectedBranch(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden">
-          {selectedBranch && (
-            <>
-              <DialogHeader className="px-6 pt-6 pb-3">
-                <DialogTitle>{selectedBranch.name}</DialogTitle>
-              </DialogHeader>
-              <div className="px-6 pb-6">
-                <iframe
-                  title={`Map for ${selectedBranch.name}`}
-                  src={selectedBranch.mapUrl}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  className="w-full h-[420px] rounded-xl border border-border"
-                />
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      {selectedBranch ? (
+        <AppModal
+          open={!!selectedBranch}
+          onOpenChange={(open) => !open && setSelectedBranch(null)}
+          title={selectedBranch.name}
+          contentClassName="max-w-4xl"
+          bodyClassName="px-6 pb-6 pt-0"
+        >
+          <iframe
+            title={`Map for ${selectedBranch.name}`}
+            src={selectedBranch.mapUrl}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            className="w-full h-[420px] rounded-xl border border-border"
+          />
+        </AppModal>
+      ) : null}
 
       <Footer />
     </div>

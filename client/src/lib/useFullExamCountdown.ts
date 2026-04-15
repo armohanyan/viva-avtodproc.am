@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /** Duration for full mock exam (theory), aligned with typical official time limits. */
 export const FULL_EXAM_DURATION_MS = 30 * 60 * 1000;
@@ -14,7 +14,9 @@ type UseFullExamCountdownOptions = {
 export function useFullExamCountdown({ active, resetKey, onExpire }: UseFullExamCountdownOptions) {
   const [remainingMs, setRemainingMs] = useState(active ? FULL_EXAM_DURATION_MS : 0);
   const onExpireRef = useRef(onExpire);
-  onExpireRef.current = onExpire;
+  useLayoutEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
 
   useEffect(() => {
     if (!active) {

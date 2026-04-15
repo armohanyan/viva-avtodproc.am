@@ -6,14 +6,8 @@ import { parseWhatsappDigits } from "src/modules/marketing/whatsappDigits";
 import { FaWhatsapp } from "react-icons/fa";
 import { Phone } from "lucide-react";
 import { Button } from "src/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "src/components/ui/dialog";
+import { DialogFooter } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import { Input } from "src/components/ui/input";
 import { Label } from "src/components/ui/label";
 import { Textarea } from "src/components/ui/textarea";
@@ -63,9 +57,6 @@ export function VisitorContactFabCore({ pathname }: VisitorContactFabCoreProps):
   );
   const waHref = useMemo(() => whatsappUrl(waRaw, t("whatsappPrefillMessage")), [waRaw, t]);
 
-  const hidden = shouldHideFab(pathname);
-  if (hidden) return null;
-
   const onSubmitCall = useCallback(async () => {
     const p = phone.trim();
     const s = slot.trim();
@@ -105,6 +96,9 @@ export function VisitorContactFabCore({ pathname }: VisitorContactFabCoreProps):
     }
   }, [name, notes, phone, showToast, slot, t]);
 
+  const hidden = shouldHideFab(pathname);
+  if (hidden) return null;
+
   return (
     <>
       <div
@@ -139,43 +133,14 @@ export function VisitorContactFabCore({ pathname }: VisitorContactFabCoreProps):
         ) : null}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("bookCallDialogTitle")}</DialogTitle>
-            <DialogDescription>{t("bookCallDialogHint")}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-1">
-            <div className="grid gap-1.5">
-              <Label htmlFor="book-call-name">{t("bookCallNameOptional")}</Label>
-              <Input
-                id="book-call-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoComplete="name"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="book-call-phone">{t("bookCallPhone")}</Label>
-              <Input
-                id="book-call-phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                inputMode="tel"
-                autoComplete="tel"
-                required
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="book-call-slot">{t("bookCallTimeSlot")}</Label>
-              <Textarea id="book-call-slot" value={slot} onChange={(e) => setSlot(e.target.value)} rows={3} required />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="book-call-notes">{t("bookCallNotesOptional")}</Label>
-              <Textarea id="book-call-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-            </div>
-          </div>
-          <DialogFooter>
+      <AppModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={t("bookCallDialogTitle")}
+        description={t("bookCallDialogHint")}
+        contentClassName="sm:max-w-md"
+        footer={
+          <DialogFooter className="w-full sm:justify-end">
             <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
               {t("cancel")}
             </Button>
@@ -183,8 +148,39 @@ export function VisitorContactFabCore({ pathname }: VisitorContactFabCoreProps):
               {t("bookCallSubmit")}
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        }
+      >
+        <div className="grid gap-3 py-1">
+          <div className="grid gap-1.5">
+            <Label htmlFor="book-call-name">{t("bookCallNameOptional")}</Label>
+            <Input
+              id="book-call-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="book-call-phone">{t("bookCallPhone")}</Label>
+            <Input
+              id="book-call-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              inputMode="tel"
+              autoComplete="tel"
+              required
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="book-call-slot">{t("bookCallTimeSlot")}</Label>
+            <Textarea id="book-call-slot" value={slot} onChange={(e) => setSlot(e.target.value)} rows={3} required />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="book-call-notes">{t("bookCallNotesOptional")}</Label>
+            <Textarea id="book-call-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+          </div>
+        </div>
+      </AppModal>
     </>
   );
 }

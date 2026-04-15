@@ -8,6 +8,7 @@ export type PackageDto = {
   enrolled: number;
   status: string;
   features: string[];
+  imageUrl: string | null;
 };
 
 export default class PackageService {
@@ -24,13 +25,23 @@ export default class PackageService {
         enrolled,
         status: p.status,
         features: safeJsonArray(p.featuresJson),
+        imageUrl: p.imageUrl?.trim() ? p.imageUrl.trim() : null,
       });
     }
     return out;
   }
 
-  static async create(input: { id?: string; name: string; price: string; lessons: number; status?: string; features?: string[] }): Promise<PackageDto> {
+  static async create(input: {
+    id?: string;
+    name: string;
+    price: string;
+    lessons: number;
+    status?: string;
+    features?: string[];
+    imageUrl?: string | null;
+  }): Promise<PackageDto> {
     const id = input.id?.trim() || `PKG-${String((await Package.count()) + 1).padStart(3, '0')}`;
+    const imageNorm = normalizeImageUrl(input.imageUrl);
     await Package.create({
       id,
       name: input.name,
@@ -38,13 +49,14 @@ export default class PackageService {
       lessons: input.lessons,
       status: input.status ?? 'active',
       featuresJson: JSON.stringify(input.features ?? []),
+      imageUrl: imageNorm,
     });
     return (await this.list()).find((x) => x.id === id)!;
   }
 
   static async update(
     id: string,
-    patch: Partial<{ name: string; price: string; lessons: number; status: string; features: string[] }>,
+    patch: Partial<{ name: string; price: string; lessons: number; status: string; features: string[]; imageUrl: string | null }>,
   ): Promise<PackageDto | null> {
     const row = await Package.findByPk(id);
     if (!row) return null;
@@ -54,6 +66,7 @@ export default class PackageService {
       ...(patch.lessons !== undefined ? { lessons: patch.lessons } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
       ...(patch.features !== undefined ? { featuresJson: JSON.stringify(patch.features) } : {}),
+      ...(patch.imageUrl !== undefined ? { imageUrl: normalizeImageUrl(patch.imageUrl) } : {}),
     });
     return (await this.list()).find((x) => x.id === id) ?? null;
   }
@@ -71,4 +84,10 @@ function safeJsonArray(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+function normalizeImageUrl(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  return s ? s : null;
 }

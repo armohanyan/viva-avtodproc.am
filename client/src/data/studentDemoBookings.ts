@@ -13,6 +13,8 @@ export type StudentDemoBooking = {
   id: string;
   dateIso: string;
   time: string;
+  /** Present when loaded from the API (used for instructor flows). */
+  instructorUserId?: string;
   instructor: string;
   lessonTypeKey: Extract<TranslationKey, "lessonTypePractical" | "lessonTypeTheory">;
   status: StudentDemoBookingStatus;

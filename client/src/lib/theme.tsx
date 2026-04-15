@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -43,10 +44,25 @@ function applyThemeClass(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => getInitialTheme());
+  // Always start with "light" so SSR and the client's first render match. Reading
+  // localStorage / matchMedia in useState would diverge from the server and break hydration.
+  const [theme, setThemeState] = useState<Theme>("light");
+  const didRestoreTheme = useRef(false);
 
-  // Before paint: apply class + persist so toggling feels immediate (no useEffect delay).
+  // Restore persisted / system theme once, then keep class + storage aligned with state.
   useLayoutEffect(() => {
+    if (!didRestoreTheme.current) {
+      didRestoreTheme.current = true;
+      const initial = getInitialTheme();
+      setThemeState(initial);
+      applyThemeClass(initial);
+      try {
+        window.localStorage.setItem(STORAGE_KEY, initial);
+      } catch {
+        // Ignore storage failures (private mode, etc.)
+      }
+      return;
+    }
     applyThemeClass(theme);
     try {
       window.localStorage.setItem(STORAGE_KEY, theme);

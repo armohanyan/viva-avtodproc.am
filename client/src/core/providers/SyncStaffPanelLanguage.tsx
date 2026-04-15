@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useLang, type Lang } from "src/lib/i18n";
 
@@ -12,7 +12,10 @@ export function SyncStaffPanelLanguage(): null {
   const { lang, setLang } = useLang();
   const savedLangRef = useRef<Lang | null>(null);
   const langRef = useRef(lang);
-  langRef.current = lang;
+
+  useLayoutEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
 
   useEffect(() => {
     const staff = location.startsWith("/admin") || location.startsWith("/instructor");

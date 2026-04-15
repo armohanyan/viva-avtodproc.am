@@ -8,6 +8,7 @@ export type MarketingPackageRow = {
   lessons: number;
   status: string;
   features: string[];
+  imageUrl: string | null;
 };
 
 export function usePackages() {
@@ -21,7 +22,15 @@ export function usePackages() {
         setPackages([]);
         return;
       }
-      setPackages(data.filter((p) => (p.status ?? "active") === "active"));
+      setPackages(
+        data
+          .filter((p) => (p.status ?? "active") === "active")
+          .map((p) => ({
+            ...p,
+            imageUrl: p.imageUrl ?? null,
+            features: Array.isArray(p.features) ? p.features : [],
+          })),
+      );
     } catch {
       setPackages([]);
     } finally {

@@ -15,6 +15,7 @@ const createSchema = z.object({
   lessons: z.number().int().positive(),
   status: z.string().optional(),
   features: z.array(z.string()).optional(),
+  imageUrl: z.union([z.string().max(4000), z.literal(''), z.null()]).optional(),
 });
 
 const updateSchema = createSchema.partial().omit({ id: true });

@@ -5,10 +5,10 @@ import { formatShortDateFromIso } from "src/lib/adminFormat";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { UsersRound } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useAdminLearnSearchParams } from "src/lib/adminLearnSearchParams";
@@ -30,6 +30,7 @@ type Cohort = {
 };
 
 export default function AdminLearnTheory() {
+  const enrollFormId = useId();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -149,47 +150,56 @@ export default function AdminLearnTheory() {
         )}
       </div>
 
-      <Dialog open={!!dialogCohortId} onOpenChange={(open) => !open && setDialogCohortId(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("adminTheoryDialogTitle")}</DialogTitle>
-          </DialogHeader>
-          {dialogCohort && (
-            <form onSubmit={handleEnroll} className="space-y-4 mt-2">
-              <div className="rounded-lg bg-muted/40 p-3 text-sm">
-                <p className="font-medium text-foreground">{dialogCohort.name}</p>
-                <p className="text-muted-foreground text-xs mt-1">{dialogCohort.schedule}</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {t("cohortColEnrollment")}: {dialogCohort.enrolled} / {dialogCohort.seats}
-                  {seatsLeft > 0 ? ` · ${seatsLeft} ${t("adminTheorySeatsLeft")}` : ""}
-                </p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("adminLearnStudentFieldLabel")}</label>
-                <select
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setDialogCohortId(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" disabled={seatsLeft <= 0}>
-                  {t("adminTheoryEnrollCta")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+      <AppModal
+        open={!!dialogCohortId}
+        onOpenChange={(open) => !open && setDialogCohortId(null)}
+        title={t("adminTheoryDialogTitle")}
+        contentClassName="max-w-md"
+        footer={
+          dialogCohort ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setDialogCohortId(null)}>
+                {t("cancel")}
+              </Button>
+              <Button
+                type="submit"
+                form={enrollFormId}
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                disabled={seatsLeft <= 0}
+              >
+                {t("adminTheoryEnrollCta")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {dialogCohort && (
+          <form id={enrollFormId} onSubmit={handleEnroll} className="space-y-4">
+            <div className="rounded-lg bg-muted/40 p-3 text-sm">
+              <p className="font-medium text-foreground">{dialogCohort.name}</p>
+              <p className="text-muted-foreground text-xs mt-1">{dialogCohort.schedule}</p>
+              <p className="text-xs text-muted-foreground mt-2">
+                {t("cohortColEnrollment")}: {dialogCohort.enrolled} / {dialogCohort.seats}
+                {seatsLeft > 0 ? ` · ${seatsLeft} ${t("adminTheorySeatsLeft")}` : ""}
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("adminLearnStudentFieldLabel")}</label>
+              <select
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {students.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </form>
+        )}
+      </AppModal>
     </AdminLayout>
   );
 }

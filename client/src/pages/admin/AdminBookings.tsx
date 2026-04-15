@@ -8,14 +8,14 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, CalendarRange } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
@@ -68,6 +68,8 @@ const typeColor: Record<string, string> = {
 };
 
 export default function AdminBookings() {
+  const editBookingFormId = useId();
+  const addBookingFormId = useId();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -135,7 +137,7 @@ export default function AdminBookings() {
       const matchLessonType = lessonTypeFilter === "all" || b.type === lessonTypeFilter;
       return matchSearch && matchStatus && matchBranch && matchLessonType;
     });
-  }, [bookings, search, statusFilter, branchFilter, lessonTypeFilter, branches, lang]);
+  }, [bookings, search, statusFilter, branchFilter, lessonTypeFilter, branches, lang, studentLabel]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -376,13 +378,26 @@ export default function AdminBookings() {
         </div>
       </Card>
 
-      <Dialog open={!!editBooking} onOpenChange={() => setEditBooking(null)}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("bookingDialogEditTitle")}</DialogTitle>
-          </DialogHeader>
-          {editBooking && (
-            <form onSubmit={handleEdit} className="space-y-3 mt-2">
+      <AppModal
+        open={!!editBooking}
+        onOpenChange={(o) => !o && setEditBooking(null)}
+        title={t("bookingDialogEditTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          editBooking ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBooking(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editBookingFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editBooking && (
+          <form id={editBookingFormId} onSubmit={handleEdit} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
                 <select
@@ -462,26 +477,30 @@ export default function AdminBookings() {
                   <option value="cancelled">{t("cancelled")}</option>
                 </select>
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBooking(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("bookingDialogAddTitle")}</DialogTitle>
-          </DialogHeader>
-          {draft && (
-            <form onSubmit={handleAdd} className="space-y-3 mt-2">
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("bookingDialogAddTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          draft ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={addBookingFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("addNew")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {draft && (
+          <form id={addBookingFormId} onSubmit={handleAdd} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
                 <select
@@ -561,18 +580,9 @@ export default function AdminBookings() {
                   <option value="cancelled">{t("cancelled")}</option>
                 </select>
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("addNew")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
       <ConfirmDialog
         open={!!deleteId}

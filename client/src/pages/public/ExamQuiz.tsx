@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
@@ -85,7 +85,9 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const statsSavedRef = useRef(false);
   const discardSessionRef = useRef(false);
   const liveRef = useRef({ index, selected, answers, questions });
-  liveRef.current = { index, selected, answers, questions };
+  useLayoutEffect(() => {
+    liveRef.current = { index, selected, answers, questions };
+  }, [index, selected, answers, questions]);
 
   const handleTimeExpired = useCallback(() => {
     setEndedByTimeout(true);

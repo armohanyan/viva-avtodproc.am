@@ -38,6 +38,10 @@ interface Props {
   placeholder?: string;
   className?: string;
   onImageTooLarge?: () => void;
+  /** When set, inserted images use this URL (e.g. staff upload) instead of base64 data URLs. */
+  resolveUploadedImageSrc?: (file: File) => Promise<string>;
+  /** Called when `resolveUploadedImageSrc` fails for a reason other than size. */
+  onInsertImageError?: (err: unknown) => void;
 }
 
 export default function RichTextEditor({
@@ -46,6 +50,8 @@ export default function RichTextEditor({
   placeholder = "",
   className,
   onImageTooLarge,
+  resolveUploadedImageSrc,
+  onInsertImageError,
 }: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -104,10 +110,13 @@ export default function RichTextEditor({
     const file = e.target.files?.[0];
     if (!file || !editor) return;
     try {
-      const dataUrl = await readFileAsDataUrl(file, BLOG_INLINE_IMAGE_MAX_BYTES);
-      editor.chain().focus().setImage({ src: dataUrl }).run();
+      const src = resolveUploadedImageSrc
+        ? await resolveUploadedImageSrc(file)
+        : await readFileAsDataUrl(file, BLOG_INLINE_IMAGE_MAX_BYTES);
+      editor.chain().focus().setImage({ src }).run();
     } catch (err) {
       if ((err as Error).message === "too_large") onImageTooLarge?.();
+      else onInsertImageError?.(err);
     }
   };
 

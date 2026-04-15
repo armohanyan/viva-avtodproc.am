@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
@@ -7,7 +7,7 @@ import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { Label } from "src/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
@@ -25,7 +25,8 @@ import type { ExamQuestion, ExamQuestionCategory } from "src/data/examSampleQues
 import { EXAM_QUESTION_POOL } from "src/data/examSampleQuestions";
 import { THEMATIC_TOPIC_IDS } from "src/data/thematicTopics";
 import { loadExamQuestions, notifyExamQuestionsUpdated } from "src/lib/examQuestions";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { uploadStaffImageFile } from "src/lib/staffImageUpload";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { cn } from "src/lib/utils";
 
 const LANGS: Lang[] = ["en", "ru", "am"];
@@ -39,16 +40,6 @@ const emptyOptions = (): Record<Lang, string[]> => ({
 const emptyText = (): Record<Lang, string> => ({ en: "", ru: "", am: "" });
 
 const EXAM_IMAGE_MAX_BYTES = 800 * 1024;
-
-function readFileAsDataUrl(file: File, maxBytes: number): Promise<string> {
-  if (file.size > maxBytes) return Promise.reject(new Error("too_large"));
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = () => reject(new Error("read"));
-    r.readAsDataURL(file);
-  });
-}
 
 function questionToForm(q: ExamQuestion): {
   id: string;
@@ -116,6 +107,7 @@ function mapApiToQuestion(q: ExamDto): ExamQuestion {
 }
 
 export default function AdminExamQuestions() {
+  const examQuestionFormId = useId();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
@@ -386,12 +378,23 @@ export default function AdminExamQuestions() {
         {filtered.length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">{t("adminExamQuestionsEmpty")}</p> : null}
       </AdminTableScroll>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{form.id ? t("adminExamQuestionsEdit") : t("adminExamQuestionsAdd")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submit} className="space-y-4">
+      <AppModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={form.id ? t("adminExamQuestionsEdit") : t("adminExamQuestionsAdd")}
+        contentClassName="max-w-lg max-h-[90vh]"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={examQuestionFormId}>
+              {t("save")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={examQuestionFormId} onSubmit={submit} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>{t("adminExamQuestionsColCategory")}</Label>
@@ -454,15 +457,19 @@ export default function AdminExamQuestions() {
                     const file = e.target.files?.[0];
                     e.target.value = "";
                     if (!file) return;
+                    if (file.size > EXAM_IMAGE_MAX_BYTES) {
+                      showToast(t("adminExamQuestionsImageTooLarge"), "error");
+                      return;
+                    }
                     try {
-                      const data = await readFileAsDataUrl(file, EXAM_IMAGE_MAX_BYTES);
-                      if (!sanitizeCoverImageUrl(data)) {
+                      const url = await uploadStaffImageFile(file);
+                      if (!sanitizeCoverImageUrl(url)) {
                         showToast(t("adminExamQuestionsImageInvalid"), "error");
                         return;
                       }
-                      setForm((f) => ({ ...f, imageUrl: data }));
-                    } catch {
-                      showToast(t("adminExamQuestionsImageTooLarge"), "error");
+                      setForm((f) => ({ ...f, imageUrl: url }));
+                    } catch (err) {
+                      showToast(getApiErrorMessage(err), "error");
                     }
                   }}
                 />
@@ -548,15 +555,8 @@ export default function AdminExamQuestions() {
               </div>
             ))}
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit">{t("save")}</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
       <ConfirmDialog
         open={Boolean(deleteId)}

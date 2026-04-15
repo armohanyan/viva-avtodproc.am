@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from "react";
+import {JSX, PropsWithChildren} from "react";
 import { Provider } from "src/components/provider";
 import { VisitorContactFab } from "src/components/VisitorContactFab";
 import { SyncStaffPanelLanguage } from "src/core/providers/SyncStaffPanelLanguage";

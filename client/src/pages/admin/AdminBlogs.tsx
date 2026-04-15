@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from "react";
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
@@ -8,7 +8,7 @@ import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { Label } from "src/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
@@ -16,9 +16,10 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, ImageIcon, Newspaper } from "lucide-react";
 import { slugify, ensureUniqueSlug, type Blog } from "src/lib/blogs";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { isRichTextEmpty } from "src/lib/blogHtml";
-import RichTextEditor from "src/components/RichTextEditor";
+import { uploadStaffImageFile } from "src/lib/staffImageUpload";
+import RichTextEditor, { BLOG_INLINE_IMAGE_MAX_BYTES } from "src/components/RichTextEditor";
 import { cn } from "src/lib/utils";
 
 const textareaClass = cn(
@@ -41,17 +42,9 @@ function datetimeLocalToIso(local: string): string {
   return new Date(t).toISOString();
 }
 
-function readFileAsDataUrl(file: File, maxBytes: number): Promise<string> {
-  if (file.size > maxBytes) return Promise.reject(new Error("too_large"));
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = () => reject(new Error("read"));
-    r.readAsDataURL(file);
-  });
-}
-
 export default function AdminBlogs() {
+  const editBlogFormId = useId();
+  const addBlogFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
   const [blogs, setBlogs] = useState<Blog[]>([]);
@@ -197,13 +190,24 @@ export default function AdminBlogs() {
 
   const onCoverFile = async (file: File | undefined, mode: "new" | "edit") => {
     if (!file) return;
-    try {
-      const dataUrl = await readFileAsDataUrl(file, COVER_MAX_BYTES);
-      if (mode === "new") setNewBlog((b) => ({ ...b, coverImage: dataUrl }));
-      else if (editBlog) setEditBlog({ ...editBlog, coverImage: dataUrl });
-    } catch {
+    if (file.size > COVER_MAX_BYTES) {
       showToast(t("blogImageTooLarge"), "error");
+      return;
     }
+    try {
+      const url = await uploadStaffImageFile(file);
+      if (mode === "new") setNewBlog((b) => ({ ...b, coverImage: url }));
+      else if (editBlog) setEditBlog({ ...editBlog, coverImage: url });
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  };
+
+  const resolveBlogInlineImage = async (file: File) => {
+    if (file.size > BLOG_INLINE_IMAGE_MAX_BYTES) {
+      throw new Error("too_large");
+    }
+    return uploadStaffImageFile(file);
   };
 
   return (
@@ -362,13 +366,26 @@ export default function AdminBlogs() {
         </AdminTableScroll>
       </div>
 
-      <Dialog open={!!editBlog} onOpenChange={() => setEditBlog(null)}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("blogEditTitle")}</DialogTitle>
-          </DialogHeader>
-          {editBlog && (
-            <form onSubmit={handleEdit} className="space-y-4 mt-2">
+      <AppModal
+        open={!!editBlog}
+        onOpenChange={(o) => !o && setEditBlog(null)}
+        title={t("blogEditTitle")}
+        contentClassName="max-w-3xl max-h-[92vh]"
+        footer={
+          editBlog ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBlog(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editBlogFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editBlog && (
+          <form id={editBlogFormId} onSubmit={handleEdit} className="space-y-4">
               <div>
                 <Label className="text-muted-foreground">{t("blogFieldTitle")} *</Label>
                 <Input
@@ -423,7 +440,9 @@ export default function AdminBlogs() {
                   onChange={(html) => setEditBlog({ ...editBlog, bodyHtml: html })}
                   placeholder={t("blogEditorPlaceholder")}
                   className="mt-1"
+                  resolveUploadedImageSrc={resolveBlogInlineImage}
                   onImageTooLarge={() => showToast(t("blogImageTooLarge"), "error")}
+                  onInsertImageError={(e) => showToast(getApiErrorMessage(e), "error")}
                 />
                 <p className="text-xs text-muted-foreground mt-1">{t("blogInlineImageHint")}</p>
               </div>
@@ -448,25 +467,27 @@ export default function AdminBlogs() {
                 />
                 <span className="text-sm text-foreground">{t("blogFieldPublished")}</span>
               </label>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBlog(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("blogNewTitle")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAdd} className="space-y-4 mt-2">
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("blogNewTitle")}
+        contentClassName="max-w-3xl max-h-[92vh]"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addBlogFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addBlogFormId} onSubmit={handleAdd} className="space-y-4">
             <div>
               <Label className="text-muted-foreground">{t("blogFieldTitle")} *</Label>
               <Input
@@ -521,7 +542,9 @@ export default function AdminBlogs() {
                 onChange={(html) => setNewBlog((prev) => ({ ...prev, bodyHtml: html }))}
                 placeholder={t("blogEditorPlaceholder")}
                 className="mt-1"
+                resolveUploadedImageSrc={resolveBlogInlineImage}
                 onImageTooLarge={() => showToast(t("blogImageTooLarge"), "error")}
+                onInsertImageError={(e) => showToast(getApiErrorMessage(e), "error")}
               />
               <p className="text-xs text-muted-foreground mt-1">{t("blogInlineImageHint")}</p>
             </div>
@@ -535,17 +558,8 @@ export default function AdminBlogs() {
               />
               <span className="text-sm text-foreground">{t("blogFieldPublished")}</span>
             </label>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
       <ConfirmDialog
         open={!!deleteId}

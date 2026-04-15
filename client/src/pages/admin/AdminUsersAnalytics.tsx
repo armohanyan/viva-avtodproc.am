@@ -61,7 +61,7 @@ export default function AdminUsersAnalytics() {
         title={t("adminStudentsAnalytics")}
         subtitle={t("studentRatingStatsSubtitle")}
         actions={
-          <Link href="/admin/users" className="block w-full min-w-0 sm:w-auto">
+          <Link href="/admin/students" className="block w-full min-w-0 sm:w-auto">
             <Button variant="outline" className="w-full sm:w-auto">
               {t("adminSidebarStudents")}
             </Button>

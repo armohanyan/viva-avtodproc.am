@@ -7,13 +7,13 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { AccountType } from "src/modules/accounts";
 import { canInviteAccountType, isStaffAccountType, useAccount } from "src/modules/accounts";
 import type { TranslationKey } from "src/lib/i18n";
@@ -56,6 +56,8 @@ function roleLabelKey(r: AccountType): TranslationKey {
 }
 
 export default function AdminAccounts() {
+  const editAccountFormId = useId();
+  const addAccountFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
@@ -297,99 +299,103 @@ export default function AdminAccounts() {
         {filtered.length === 0 && <p className="p-6 text-sm text-muted-foreground text-center">{t("tableNoMatches")}</p>}
       </Card>
 
-      <Dialog open={!!edit} onOpenChange={() => setEdit(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("edit")}</DialogTitle>
-          </DialogHeader>
-          {edit && (
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">{t("name")}</label>
-                <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">{t("accountsColEmail")}</label>
-                <Input type="email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">{t("phoneNumber")}</label>
-                <Input value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} />
-              </div>
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">{t("accountsColRole")}</label>
-                <select
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={edit.role}
-                  onChange={(e) => setEdit({ ...edit, role: e.target.value as AccountType })}
-                >
-                  {roleOptionsForEdit(editor, edit.role).map((r) => (
-                    <option key={r} value={r}>
-                      {roleLabel(r)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {editor === "admin" ? <p className="text-xs text-muted-foreground">{t("accountsInviteAdminRolesHint")}</p> : null}
-              <div>
-                <label className="block text-sm text-muted-foreground mb-1">{t("status")}</label>
-                <select
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={edit.status}
-                  onChange={(e) => setEdit({ ...edit, status: e.target.value as "active" | "inactive" })}
-                >
-                  <option value="active">{t("active")}</option>
-                  <option value="inactive">{t("inactive")}</option>
-                </select>
-              </div>
-              <Button type="submit" className="w-full bg-primary text-primary-foreground">
-                {t("saveChanges")}
-              </Button>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("sendInvite")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAdd} className="space-y-4">
+      <AppModal
+        open={!!edit}
+        onOpenChange={(o) => !o && setEdit(null)}
+        title={t("edit")}
+        footer={
+          edit ? (
+            <Button type="submit" form={editAccountFormId} className="w-full bg-primary text-primary-foreground">
+              {t("saveChanges")}
+            </Button>
+          ) : null
+        }
+      >
+        {edit && (
+          <form id={editAccountFormId} onSubmit={handleSave} className="space-y-4">
             <div>
               <label className="block text-sm text-muted-foreground mb-1">{t("name")}</label>
-              <Input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+              <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm text-muted-foreground mb-1">{t("accountsColEmail")}</label>
-              <Input type="email" value={draft.email} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
+              <Input type="email" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm text-muted-foreground mb-1">{t("phoneNumber")}</label>
-              <Input value={draft.phone} onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))} />
+              <Input value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} />
             </div>
             <div>
               <label className="block text-sm text-muted-foreground mb-1">{t("accountsColRole")}</label>
               <select
                 className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                value={draft.role as AccountType}
-                onChange={(e) => setDraft((d) => ({ ...d, role: e.target.value as AccountType }))}
+                value={edit.role}
+                onChange={(e) => setEdit({ ...edit, role: e.target.value as AccountType })}
               >
-                {assignableRoles.map((r) => (
+                {roleOptionsForEdit(editor, edit.role).map((r) => (
                   <option key={r} value={r}>
                     {roleLabel(r)}
                   </option>
                 ))}
               </select>
             </div>
-            <p className="text-xs text-muted-foreground">{t("accountsInviteHint")}</p>
             {editor === "admin" ? <p className="text-xs text-muted-foreground">{t("accountsInviteAdminRolesHint")}</p> : null}
-            <Button type="submit" className="w-full bg-primary text-primary-foreground">
-              {t("sendInvite")}
-            </Button>
+            <div>
+              <label className="block text-sm text-muted-foreground mb-1">{t("status")}</label>
+              <select
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={edit.status}
+                onChange={(e) => setEdit({ ...edit, status: e.target.value as "active" | "inactive" })}
+              >
+                <option value="active">{t("active")}</option>
+                <option value="inactive">{t("inactive")}</option>
+              </select>
+            </div>
           </form>
-        </DialogContent>
-      </Dialog>
+        )}
+      </AppModal>
+
+      <AppModal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title={t("sendInvite")}
+        footer={
+          <Button type="submit" form={addAccountFormId} className="w-full bg-primary text-primary-foreground">
+            {t("sendInvite")}
+          </Button>
+        }
+      >
+        <form id={addAccountFormId} onSubmit={handleAdd} className="space-y-4">
+          <div>
+            <label className="block text-sm text-muted-foreground mb-1">{t("name")}</label>
+            <Input value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm text-muted-foreground mb-1">{t("accountsColEmail")}</label>
+            <Input type="email" value={draft.email} onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm text-muted-foreground mb-1">{t("phoneNumber")}</label>
+            <Input value={draft.phone} onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm text-muted-foreground mb-1">{t("accountsColRole")}</label>
+            <select
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={draft.role as AccountType}
+              onChange={(e) => setDraft((d) => ({ ...d, role: e.target.value as AccountType }))}
+            >
+              {assignableRoles.map((r) => (
+                <option key={r} value={r}>
+                  {roleLabel(r)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("accountsInviteHint")}</p>
+          {editor === "admin" ? <p className="text-xs text-muted-foreground">{t("accountsInviteAdminRolesHint")}</p> : null}
+        </form>
+      </AppModal>
     </AdminLayout>
   );
 }

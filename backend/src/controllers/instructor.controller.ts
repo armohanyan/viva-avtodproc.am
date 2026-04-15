@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseQuery } from '../helpers';
+import { parseBody, parseQuery, verifyAccessToken } from '../helpers';
 import BookingService from '../services/booking.service';
 import InstructorAvailabilityService from '../services/instructor-availability.service';
 import InstructorService from '../services/instructor.service';
@@ -8,7 +8,18 @@ import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
-const { ResourceNotFoundError, InputValidationError } = ErrorsUtil;
+const { ResourceNotFoundError, InputValidationError, PermissionError } = ErrorsUtil;
+
+function readBearerStaff(req: Request): { accountType: string } | null {
+  const raw = req.headers.authorization;
+  const token = raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+  if (!token) return null;
+  try {
+    return verifyAccessToken(token);
+  } catch {
+    return null;
+  }
+}
 
 const createSchema = z.object({
   id: z.string().optional(),
@@ -16,7 +27,6 @@ const createSchema = z.object({
   email: z.string().email(),
   phone: z.string(),
   years: z.number().int().nonnegative(),
-  rating: z.number().min(0).max(5),
   hourlyPrice: z.number().int().nonnegative(),
   status: z.enum(['active', 'inactive']),
   schedule: z.string(),
@@ -60,6 +70,17 @@ export default class InstructorController {
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(createSchema, req.body);
+      if (body.availableBranchIds.length > 0) {
+        const staff = readBearerStaff(req);
+        if (!staff || staff.accountType !== 'super_admin') {
+          return next(
+            new PermissionError(
+              'Only a super administrator can assign instructor branches.',
+              HttpStatusCodesUtil.FORBIDDEN,
+            ),
+          );
+        }
+      }
       const row = await InstructorService.create(body);
 
       SuccessHandlerUtil.handleAdd(res, next, row);
@@ -71,6 +92,17 @@ export default class InstructorController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
+      if ('availableBranchIds' in body) {
+        const staff = readBearerStaff(req);
+        if (!staff || staff.accountType !== 'super_admin') {
+          return next(
+            new PermissionError(
+              'Only a super administrator can change instructor branches.',
+              HttpStatusCodesUtil.FORBIDDEN,
+            ),
+          );
+        }
+      }
       const row = await InstructorService.update(req.params.id!, body);
 
       if (!row) {

@@ -24,6 +24,7 @@ export type StudentBookingDto = {
   id: string;
   dateIso: string;
   time: string;
+  instructorUserId: string;
   instructor: string;
   lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory';
   status:
@@ -140,6 +141,7 @@ export default class BookingService {
         id: b.id,
         dateIso: dateIsoString(b.dateIso),
         time: b.time,
+        instructorUserId: b.instructorUserId,
         instructor: inst.name,
         lessonTypeKey: b.lessonType === 'theory' ? 'lessonTypeTheory' : 'lessonTypePractical',
         status: normalizeStudentBookingStatus(b.status),

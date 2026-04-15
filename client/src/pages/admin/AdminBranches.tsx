@@ -5,19 +5,24 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, MapPin, Building2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Branch } from "src/modules/branches";
 import { useBranches } from "src/modules/branches";
 import type { City } from "src/modules/cities";
 import { cityNameById, DEFAULT_PRIMARY_CITY_ID, useCities } from "src/modules/cities";
 
 export default function AdminBranches() {
+  const editCityFormId = useId();
+  const addCityListFormId = useId();
+  const editBranchFormId = useId();
+  const addBranchFormId = useId();
+  const cityQuickAddFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches, addBranch, updateBranch, removeBranch } = useBranches();
@@ -456,65 +461,84 @@ export default function AdminBranches() {
         </div>
       </div>
 
-      <Dialog open={!!editCity} onOpenChange={() => setEditCity(null)}>
-        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("cityEditTitle")}</DialogTitle>
-          </DialogHeader>
-          {editCity && (
-            <form onSubmit={handleEditCity} className="space-y-3 mt-2">
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-                <Input value={editCity.name} onChange={(e) => setEditCity({ ...editCity, name: e.target.value })} className="h-10" />
-              </div>
-              <p className="text-xs text-muted-foreground">{t("cityIdReadonlyHint")}</p>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCity(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={cityListAddOpen} onOpenChange={setCityListAddOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("cityNewTitle")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAddCityFromList} className="space-y-3 mt-2">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-              <Input
-                value={newCityName}
-                onChange={(e) => setNewCityName(e.target.value)}
-                className="h-10"
-                placeholder={t("cityNamePlaceholder")}
-              />
-            </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setCityListAddOpen(false)}>
+      <AppModal
+        open={!!editCity}
+        onOpenChange={(o) => !o && setEditCity(null)}
+        title={t("cityEditTitle")}
+        contentClassName="max-w-md max-h-[90vh]"
+        footer={
+          editCity ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditCity(null)}>
                 {t("cancel")}
               </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
+              <Button type="submit" form={editCityFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
               </Button>
             </div>
+          ) : null
+        }
+      >
+        {editCity && (
+          <form id={editCityFormId} onSubmit={handleEditCity} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
+              <Input value={editCity.name} onChange={(e) => setEditCity({ ...editCity, name: e.target.value })} className="h-10" />
+            </div>
+            <p className="text-xs text-muted-foreground">{t("cityIdReadonlyHint")}</p>
           </form>
-        </DialogContent>
-      </Dialog>
+        )}
+      </AppModal>
 
-      <Dialog open={!!editBranch} onOpenChange={() => setEditBranch(null)}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("branchEditTitle")}</DialogTitle>
-          </DialogHeader>
-          {editBranch && (
-            <form onSubmit={handleEditBranch} className="space-y-3 mt-2">
+      <AppModal
+        open={cityListAddOpen}
+        onOpenChange={setCityListAddOpen}
+        title={t("cityNewTitle")}
+        contentClassName="max-w-md"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setCityListAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addCityListFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addCityListFormId} onSubmit={handleAddCityFromList} className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
+            <Input
+              value={newCityName}
+              onChange={(e) => setNewCityName(e.target.value)}
+              className="h-10"
+              placeholder={t("cityNamePlaceholder")}
+            />
+          </div>
+        </form>
+      </AppModal>
+
+      <AppModal
+        open={!!editBranch}
+        onOpenChange={(o) => !o && setEditBranch(null)}
+        title={t("branchEditTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          editBranch ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBranch(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form={editBranchFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {editBranch && (
+          <form id={editBranchFormId} onSubmit={handleEditBranch} className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchCityLabel")} *</label>
                 <select
@@ -572,25 +596,27 @@ export default function AdminBranches() {
                   className="h-10"
                 />
               </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => setEditBranch(null)}>
-                  {t("cancel")}
-                </Button>
-                <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                  {t("save")}
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
+          </form>
+        )}
+      </AppModal>
 
-      <Dialog open={addBranchOpen} onOpenChange={setAddBranchOpen}>
-        <DialogContent className="max-w-md max-h-[min(90vh,720px)] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("branchNewTitle")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAddBranch} className="space-y-3 mt-2">
+      <AppModal
+        open={addBranchOpen}
+        onOpenChange={setAddBranchOpen}
+        title={t("branchNewTitle")}
+        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddBranchOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addBranchFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={addBranchFormId} onSubmit={handleAddBranch} className="space-y-3">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchCityLabel")} *</label>
               <select
@@ -636,46 +662,39 @@ export default function AdminBranches() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("workHours")}</label>
               <Input value={newBranch.workHours} onChange={(e) => setNewBranch({ ...newBranch, workHours: e.target.value })} className="h-10" />
             </div>
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setAddBranchOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+        </form>
+      </AppModal>
 
-      <Dialog open={cityQuickAddOpen} onOpenChange={setCityQuickAddOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("cityQuickAddTitle")}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleQuickAddCity} className="space-y-3 mt-1">
-            <p className="text-xs text-muted-foreground">{t("cityQuickAddHint")}</p>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-              <Input
-                value={cityQuickAddName}
-                onChange={(e) => setCityQuickAddName(e.target.value)}
-                className="h-10"
-                placeholder={t("cityNamePlaceholder")}
-                autoFocus
-              />
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setCityQuickAddOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("addNew")}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <AppModal
+        open={cityQuickAddOpen}
+        onOpenChange={setCityQuickAddOpen}
+        title={t("cityQuickAddTitle")}
+        contentClassName="max-w-sm"
+        footer={
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setCityQuickAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={cityQuickAddFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("addNew")}
+            </Button>
+          </div>
+        }
+      >
+        <form id={cityQuickAddFormId} onSubmit={handleQuickAddCity} className="space-y-3">
+          <p className="text-xs text-muted-foreground">{t("cityQuickAddHint")}</p>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
+            <Input
+              value={cityQuickAddName}
+              onChange={(e) => setCityQuickAddName(e.target.value)}
+              className="h-10"
+              placeholder={t("cityNamePlaceholder")}
+              autoFocus
+            />
+          </div>
+        </form>
+      </AppModal>
 
       <ConfirmDialog
         open={!!deleteBranchId}
