@@ -1,8 +1,9 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk } from './auto-id';
 
 export class Package extends Model<InferAttributes<Package>, InferCreationAttributes<Package>> {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare name: string;
   declare priceDisplay: string;
   declare lessons: number;
@@ -13,7 +14,7 @@ export class Package extends Model<InferAttributes<Package>, InferCreationAttrib
 
 Package.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     name: { type: DataTypes.STRING(255), allowNull: false },
     priceDisplay: { type: DataTypes.STRING(64), allowNull: false },
     lessons: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },

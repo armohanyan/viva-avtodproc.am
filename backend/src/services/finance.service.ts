@@ -9,12 +9,12 @@ import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 
 export type FinanceTxDto = {
-  id: string;
+  id: number;
   createdAt: string;
   customer: string;
   email: string;
   description: string;
-  branchId: string;
+  branchId: number;
   channel: FinanceTxChannel;
   method: FinanceTxMethod;
   grossAmd: number;
@@ -22,7 +22,7 @@ export type FinanceTxDto = {
   status: FinanceTxStatus;
   providerRef: string;
   source: FinanceTxSource;
-  bookingId: string | null;
+  bookingId: number | null;
 };
 
 function toDto(row: FinanceTransaction): FinanceTxDto {
@@ -47,15 +47,6 @@ function toDto(row: FinanceTransaction): FinanceTxDto {
   };
 }
 
-function newTxId(prefix: string): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const r = Math.floor(Math.random() * 900 + 100);
-  return `${prefix}-${y}${m}${day}-${r}`;
-}
-
 export default class FinanceService {
   static async list(): Promise<FinanceTxDto[]> {
     const rows = await FinanceTransaction.findAll({ order: [['createdAt', 'DESC']] });
@@ -63,11 +54,10 @@ export default class FinanceService {
   }
 
   static async create(input: {
-    id?: string;
     customer: string;
     email?: string;
     description: string;
-    branchId: string;
+    branchId: number;
     channel: FinanceTxChannel;
     method: FinanceTxMethod;
     grossAmd: number;
@@ -76,13 +66,11 @@ export default class FinanceService {
     providerRef?: string;
     source: FinanceTxSource;
     createdAt?: string;
-    bookingId?: string | null;
+    bookingId?: number | null;
   }): Promise<FinanceTxDto> {
     const bookingIdNorm =
-      input.bookingId === undefined || input.bookingId === null
-        ? null
-        : String(input.bookingId).trim() || null;
-    if (bookingIdNorm) {
+      input.bookingId === undefined || input.bookingId === null ? null : Number(input.bookingId);
+    if (bookingIdNorm != null && Number.isFinite(bookingIdNorm)) {
       const booking = await Booking.findByPk(bookingIdNorm);
       if (!booking) {
         throw new ErrorsUtil.InputValidationError('Linked booking was not found.', HttpStatusCodesUtil.BAD_REQUEST);
@@ -95,10 +83,8 @@ export default class FinanceService {
       }
     }
 
-    const id = input.id?.trim() || newTxId(input.source === 'manual' ? 'TX-MAN' : 'TX');
     const createdAt = input.createdAt ? new Date(input.createdAt) : new Date();
     const row = await FinanceTransaction.create({
-      id,
       customer: input.customer.trim(),
       email: (input.email ?? '').trim(),
       description: input.description.trim(),

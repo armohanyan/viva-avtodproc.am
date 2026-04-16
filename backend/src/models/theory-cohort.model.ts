@@ -1,8 +1,9 @@
-import { DataTypes, Model, type InferAttributes, type InferCreationAttributes } from 'sequelize';
+import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 
 export class TheoryCohort extends Model<InferAttributes<TheoryCohort>, InferCreationAttributes<TheoryCohort>> {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare name: string;
   declare startDateIso: string;
   declare endDateIso: string;
@@ -11,12 +12,12 @@ export class TheoryCohort extends Model<InferAttributes<TheoryCohort>, InferCrea
   declare instructorName: string;
   declare meetLink: string;
   declare status: string;
-  declare branchId: string;
+  declare branchId: number;
 }
 
 TheoryCohort.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     name: { type: DataTypes.STRING(255), allowNull: false },
     startDateIso: { type: DataTypes.DATEONLY, allowNull: false },
     endDateIso: { type: DataTypes.DATEONLY, allowNull: false },
@@ -25,7 +26,7 @@ TheoryCohort.init(
     instructorName: { type: DataTypes.STRING(255), allowNull: false },
     meetLink: { type: DataTypes.STRING(512), allowNull: false, defaultValue: '' },
     status: { type: DataTypes.STRING(32), allowNull: false },
-    branchId: { type: DataTypes.STRING(64), allowNull: false },
+    branchId: fkUnsignedInt(),
   },
   { sequelize, tableName: 'theory_cohorts', modelName: 'TheoryCohort' },
 );

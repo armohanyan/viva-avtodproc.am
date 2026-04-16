@@ -11,7 +11,6 @@ const { ResourceNotFoundError } = ErrorsUtil;
 const accountTypeZ = z.enum(['super_admin', 'admin', 'instructor', 'student']);
 
 const createSchema = z.object({
-  id: z.string().optional(),
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().optional(),
@@ -45,7 +44,6 @@ export default class AccountsController {
     try {
       const body = parseBody(createSchema, req.body);
       const row = await AccountsService.create({
-        id: body.id,
         name: body.name,
         email: body.email,
         phone: body.phone,
@@ -62,7 +60,7 @@ export default class AccountsController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await AccountsService.update(req.params.id!, body);
+      const row = await AccountsService.update(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Account not found', HttpStatusCodesUtil.NOT_FOUND));
       }

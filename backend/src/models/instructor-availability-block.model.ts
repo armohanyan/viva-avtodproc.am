@@ -1,5 +1,6 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 
 /** 1 = Mon … 7 = Sun (ISO-Monday style for admin UI). */
 export type InstructorWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -15,8 +16,8 @@ export class InstructorAvailabilityBlock extends Model<
   InferAttributes<InstructorAvailabilityBlock>,
   InferCreationAttributes<InstructorAvailabilityBlock>
 > {
-  declare id: string;
-  declare instructorUserId: string;
+  declare id: CreationOptional<number>;
+  declare instructorUserId: number;
   declare ruleKind: InstructorAvailabilityRuleKind;
   /** For `weekly_*`: 1=Mon … 7=Sun. Null for date-based rules. */
   declare weekday: CreationOptional<number | null>;
@@ -28,8 +29,8 @@ export class InstructorAvailabilityBlock extends Model<
 
 InstructorAvailabilityBlock.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
-    instructorUserId: { type: DataTypes.STRING(64), allowNull: false },
+    id: autoIncrementPk(),
+    instructorUserId: fkUnsignedInt(),
     ruleKind: {
       type: DataTypes.ENUM('weekly_work', 'weekly_break', 'weekday_lunch', 'date_off', 'date_break'),
       allowNull: false,

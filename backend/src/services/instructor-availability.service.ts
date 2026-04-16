@@ -27,7 +27,7 @@ function requireValidTime(label: string, raw: string | null | undefined): string
 }
 
 export type InstructorAvailabilityBlockDto = {
-  id: string;
+  id: number;
   ruleKind: InstructorAvailabilityRuleKind;
   weekday: number | null;
   dateIso: string | null;
@@ -160,7 +160,7 @@ export function isSlotBlockedByAvailabilityBlocks(
 }
 
 export default class InstructorAvailabilityService {
-  static async listForInstructor(instructorUserId: string): Promise<InstructorAvailabilityBlockDto[]> {
+  static async listForInstructor(instructorUserId: number): Promise<InstructorAvailabilityBlockDto[]> {
     const inst = await User.findOne({
       where: { id: instructorUserId, accountType: 'instructor' },
       attributes: ['id'],
@@ -185,10 +185,9 @@ export default class InstructorAvailabilityService {
    * Removes prior `weekday_lunch` and Mon–Fri `weekly_break` rows for this instructor to avoid duplicates.
    */
   static async replaceWeekdayLunch(
-    instructorUserId: string,
+    instructorUserId: number,
     timeStart: string,
     timeEnd: string,
-    preferredId?: string,
   ): Promise<InstructorAvailabilityBlockDto | null> {
     const inst = await User.findOne({
       where: { id: instructorUserId, accountType: 'instructor' },
@@ -197,10 +196,7 @@ export default class InstructorAvailabilityService {
     if (!inst) return null;
 
     const sequelize = InstructorAvailabilityBlock.sequelize!;
-    const id =
-      preferredId && preferredId.length > 0
-        ? preferredId
-        : `IAB-${String((await InstructorAvailabilityBlock.count()) + 1).padStart(4, '0')}`;
+    let createdId = 0;
 
     await sequelize.transaction(async (transaction) => {
       await InstructorAvailabilityBlock.destroy({
@@ -215,9 +211,8 @@ export default class InstructorAvailabilityService {
         },
         transaction,
       });
-      await InstructorAvailabilityBlock.create(
+      const row = await InstructorAvailabilityBlock.create(
         {
-          id,
           instructorUserId,
           ruleKind: 'weekday_lunch',
           weekday: null,
@@ -228,15 +223,15 @@ export default class InstructorAvailabilityService {
         },
         { transaction },
       );
+      createdId = row.id;
     });
 
-    const row = await InstructorAvailabilityBlock.findByPk(id);
+    const row = await InstructorAvailabilityBlock.findByPk(createdId);
     return row ? toDto(row) : null;
   }
 
   static async create(input: {
-    id?: string;
-    instructorUserId: string;
+    instructorUserId: number;
     ruleKind: InstructorAvailabilityRuleKind;
     weekday?: number | null;
     dateIso?: string | null;
@@ -256,7 +251,7 @@ export default class InstructorAvailabilityService {
       if (parseTimeToMinutes(ts) >= parseTimeToMinutes(te)) {
         throw new Error('timeStart must be before timeEnd');
       }
-      return this.replaceWeekdayLunch(input.instructorUserId, ts, te, input.id?.trim());
+      return this.replaceWeekdayLunch(input.instructorUserId, ts, te);
     }
 
     const allDay = Boolean(input.allDay);
@@ -300,11 +295,7 @@ export default class InstructorAvailabilityService {
       weekday = null;
     }
 
-    const id =
-      input.id?.trim() ||
-      `IAB-${String((await InstructorAvailabilityBlock.count()) + 1).padStart(4, '0')}`;
-    await InstructorAvailabilityBlock.create({
-      id,
+    const created = await InstructorAvailabilityBlock.create({
       instructorUserId: input.instructorUserId,
       ruleKind: input.ruleKind,
       weekday,
@@ -313,11 +304,11 @@ export default class InstructorAvailabilityService {
       timeEnd,
       allDay: input.ruleKind === 'date_off' ? allDay : false,
     });
-    const row = await InstructorAvailabilityBlock.findByPk(id);
+    const row = await InstructorAvailabilityBlock.findByPk(created.id);
     return row ? toDto(row) : null;
   }
 
-  static async remove(instructorUserId: string, blockId: string): Promise<boolean> {
+  static async remove(instructorUserId: number, blockId: number): Promise<boolean> {
     const n = await InstructorAvailabilityBlock.destroy({
       where: { id: blockId, instructorUserId },
     });
@@ -325,14 +316,18 @@ export default class InstructorAvailabilityService {
   }
 
   /** True if the instructor account exists (any type check done at route). */
-  static async instructorExists(instructorUserId: string): Promise<boolean> {
+  static async instructorExists(instructorUserId: number): Promise<boolean> {
     const n = await User.count({
       where: { id: instructorUserId, accountType: 'instructor' },
     });
     return n > 0;
   }
 
-  static async isSlotUnavailableForInstructor(instructorUserId: string, dateIso: string, timeSlot: string): Promise<boolean> {
+  static async isSlotUnavailableForInstructor(
+    instructorUserId: number,
+    dateIso: string,
+    timeSlot: string,
+  ): Promise<boolean> {
     const blocks = await this.listForInstructor(instructorUserId);
     return isSlotBlockedByAvailabilityBlocks(dateIso, timeSlot, blocks);
   }

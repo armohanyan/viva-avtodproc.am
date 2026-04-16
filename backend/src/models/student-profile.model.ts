@@ -1,14 +1,16 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { fkUnsignedInt, fkUnsignedIntNullable } from './auto-id';
 
+/** One profile per student user — legacy schema uses `user_id` as the primary key (no surrogate `id`). */
 export class StudentProfile extends Model<
   InferAttributes<StudentProfile>,
   InferCreationAttributes<StudentProfile>
 > {
-  declare userId: string;
-  declare branchId: string;
-  declare packageId: string;
-  declare instructorUserId: CreationOptional<string | null>;
+  declare userId: number;
+  declare branchId: number;
+  declare packageId: number;
+  declare instructorUserId: CreationOptional<number | null>;
   declare lessonsCompleted: number;
   declare lessonsTotal: number;
   declare enrollmentStatus: string;
@@ -19,10 +21,10 @@ export class StudentProfile extends Model<
 
 StudentProfile.init(
   {
-    userId: { type: DataTypes.STRING(64), primaryKey: true },
-    branchId: { type: DataTypes.STRING(64), allowNull: false },
-    packageId: { type: DataTypes.STRING(64), allowNull: false },
-    instructorUserId: { type: DataTypes.STRING(64), allowNull: true },
+    userId: { ...fkUnsignedInt(), primaryKey: true },
+    branchId: fkUnsignedInt(),
+    packageId: fkUnsignedInt(),
+    instructorUserId: fkUnsignedIntNullable(),
     lessonsCompleted: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
     lessonsTotal: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     enrollmentStatus: { type: DataTypes.STRING(32), allowNull: false },

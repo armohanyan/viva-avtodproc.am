@@ -1,5 +1,6 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt, fkUnsignedIntNullable } from './auto-id';
 
 export type FinanceTxStatus = 'completed' | 'pending' | 'failed' | 'refunded';
 export type FinanceTxChannel = 'online' | 'pos' | 'office' | 'bank';
@@ -10,11 +11,11 @@ export class FinanceTransaction extends Model<
   InferAttributes<FinanceTransaction>,
   InferCreationAttributes<FinanceTransaction>
 > {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare customer: string;
   declare email: string;
   declare description: string;
-  declare branchId: string;
+  declare branchId: number;
   declare channel: FinanceTxChannel;
   declare method: FinanceTxMethod;
   declare grossAmd: number;
@@ -23,16 +24,16 @@ export class FinanceTransaction extends Model<
   declare providerRef: string;
   declare source: FinanceTxSource;
   /** When set, this payment line is tied to a scheduled lesson (e.g. single lesson or extra hour). Package / exam fees typically stay null. */
-  declare bookingId: CreationOptional<string | null>;
+  declare bookingId: CreationOptional<number | null>;
 }
 
 FinanceTransaction.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     customer: { type: DataTypes.STRING(255), allowNull: false },
     email: { type: DataTypes.STRING(255), allowNull: false, defaultValue: '' },
     description: { type: DataTypes.STRING(512), allowNull: false },
-    branchId: { type: DataTypes.STRING(64), allowNull: false },
+    branchId: fkUnsignedInt(),
     channel: {
       type: DataTypes.ENUM('online', 'pos', 'office', 'bank'),
       allowNull: false,
@@ -54,8 +55,7 @@ FinanceTransaction.init(
       defaultValue: 'system',
     },
     bookingId: {
-      type: DataTypes.STRING(64),
-      allowNull: true,
+      ...fkUnsignedIntNullable(),
       references: { model: 'bookings', key: 'id' },
       onUpdate: 'CASCADE',
       onDelete: 'RESTRICT',

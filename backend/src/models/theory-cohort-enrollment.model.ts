@@ -1,18 +1,26 @@
-import { DataTypes, Model, type InferAttributes, type InferCreationAttributes } from 'sequelize';
+import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 
 export class TheoryCohortEnrollment extends Model<
   InferAttributes<TheoryCohortEnrollment>,
   InferCreationAttributes<TheoryCohortEnrollment>
 > {
-  declare cohortId: string;
-  declare studentUserId: string;
+  declare id: CreationOptional<number>;
+  declare cohortId: number;
+  declare studentUserId: number;
 }
 
 TheoryCohortEnrollment.init(
   {
-    cohortId: { type: DataTypes.STRING(64), primaryKey: true },
-    studentUserId: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
+    cohortId: fkUnsignedInt(),
+    studentUserId: fkUnsignedInt(),
   },
-  { sequelize, tableName: 'theory_cohort_enrollments', modelName: 'TheoryCohortEnrollment' },
+  {
+    sequelize,
+    tableName: 'theory_cohort_enrollments',
+    modelName: 'TheoryCohortEnrollment',
+    indexes: [{ unique: true, fields: ['cohort_id', 'student_user_id'] }],
+  },
 );

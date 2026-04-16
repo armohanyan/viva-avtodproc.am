@@ -82,22 +82,29 @@ export default class OAuthController {
     const q = req.query;
     const base = OAuthController.baseFromState(pickQuery(q, 'state'));
     const err = pickQuery(q, 'error');
+
     if (err) {
       OAuthController.redirectOAuthError(res, base, err);
       return;
     }
+
     const code = pickQuery(q, 'code');
     const state = pickQuery(q, 'state');
+
     if (!code || !state) {
       OAuthController.redirectOAuthError(res, base, 'missing_oauth_params');
       return;
     }
+
     try {
       const st = verifyOAuthState(state);
       const profile = await exchangeGoogleCode(code, state);
       const tokens = await AuthService.findOrCreateOAuthUser(profile);
+
       attachRefreshCookie(res, tokens.refreshPlain);
+
       const ok = new URL(`${base}${st.next.startsWith('/') ? st.next : `/${st.next}`}`);
+
       ok.searchParams.set('from', 'oauth');
       res.redirect(ok.toString());
     } catch (e) {
@@ -110,22 +117,29 @@ export default class OAuthController {
     const q = req.query;
     const base = OAuthController.baseFromState(pickQuery(q, 'state'));
     const err = pickQuery(q, 'error');
+
     if (err) {
       OAuthController.redirectOAuthError(res, base, err);
       return;
     }
+
     const code = pickQuery(q, 'code');
     const state = pickQuery(q, 'state');
+
     if (!code || !state) {
       OAuthController.redirectOAuthError(res, base, 'missing_oauth_params');
       return;
     }
+
     try {
       const st = verifyOAuthState(state);
       const profile = await exchangeFacebookCode(code, state);
       const tokens = await AuthService.findOrCreateOAuthUser(profile);
+
       attachRefreshCookie(res, tokens.refreshPlain);
+
       const ok = new URL(`${base}${st.next.startsWith('/') ? st.next : `/${st.next}`}`);
+
       ok.searchParams.set('from', 'oauth');
       res.redirect(ok.toString());
     } catch (e) {
@@ -138,23 +152,30 @@ export default class OAuthController {
     const q = req.query;
     const base = OAuthController.baseFromState(pickQuery(q, 'state'));
     const err = pickQuery(q, 'error');
+
     if (err) {
       OAuthController.redirectOAuthError(res, base, err);
       return;
     }
+
+
     const code = pickQuery(q, 'code');
     const state = pickQuery(q, 'state');
+
     if (!code || !state) {
       OAuthController.redirectOAuthError(res, base, 'missing_oauth_params');
       return;
     }
+
     try {
       const st = verifyOAuthState(state);
       const idToken = readOptionalQuery(q, 'id_token');
       const userJson = readOptionalQuery(q, 'user');
       const profile = await exchangeAppleCode(code, state, idToken, userJson);
       const tokens = await AuthService.findOrCreateOAuthUser(profile);
+
       attachRefreshCookie(res, tokens.refreshPlain);
+
       const ok = new URL(`${base}${st.next.startsWith('/') ? st.next : `/${st.next}`}`);
       ok.searchParams.set('from', 'oauth');
       res.redirect(ok.toString());

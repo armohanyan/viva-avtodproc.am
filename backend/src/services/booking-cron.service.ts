@@ -6,11 +6,12 @@ import LoggerUtil from '../utils/logger.util';
 const PAYMENT_HOLD_MS = 10 * 60 * 1000;
 
 /**
- * Background jobs for practical-style bookings with pre-book + payment window.
+ * Background jobs for `pending` bookings with a payment window (`hold_expires_at`).
  *
- * 1) `pending_prebook` + unpaid + lesson date entered the “≤ same calendar day next month” window
- *    → `pending_payment` and a 10-minute payment hold (slot stays busy until paid or hold expires).
- * 2) `pending_payment` + unpaid + hold expired → `cancelled` (slot freed).
+ * 1) `pending` + unpaid + lesson in pay horizon + no hold yet → start 10-minute hold (still `pending`).
+ * 2) `pending` + unpaid + active hold expired → `cancelled` (slot freed).
+ *
+ * Also migrates legacy statuses from older rows into the same flow once per row.
  */
 export default class BookingCronService {
   static async runDueJobs(): Promise<{ promoted: number; expiredHolds: number }> {
@@ -18,13 +19,26 @@ export default class BookingCronService {
     const payHorizonEnd = addOneCalendarMonth(today);
 
     const holdUntil = new Date(Date.now() + PAYMENT_HOLD_MS);
-    const [promoted] = await Booking.update(
-      { status: 'pending_payment', holdExpiresAt: holdUntil },
+
+    const [legacyToPending] = await Booking.update(
+      { status: 'pending' },
       {
         where: {
-          status: 'pending_prebook',
+          status: { [Op.in]: ['pending_prebook', 'pending_payment'] },
+          paidAt: { [Op.is]: null },
+        },
+      },
+    );
+
+    const [promoted] = await Booking.update(
+      { holdExpiresAt: holdUntil },
+      {
+        where: {
+          status: 'pending',
+          lessonType: 'practical',
           paidAt: { [Op.is]: null },
           dateIso: { [Op.lte]: payHorizonEnd },
+          holdExpiresAt: { [Op.is]: null },
         },
       },
     );
@@ -33,16 +47,16 @@ export default class BookingCronService {
       { status: 'cancelled', holdExpiresAt: null },
       {
         where: {
-          status: 'pending_payment',
+          status: 'pending',
           paidAt: { [Op.is]: null },
           holdExpiresAt: { [Op.lt]: new Date() },
         },
       },
     );
 
-    if (promoted > 0 || expiredHolds > 0) {
+    if (legacyToPending > 0 || promoted > 0 || expiredHolds > 0) {
       LoggerUtil.info(
-        `Booking cron: promoted ${promoted} pre-book(s) to payment due; cancelled ${expiredHolds} expired unpaid hold(s)`,
+        `Booking cron: normalized ${legacyToPending} legacy status row(s); started ${promoted} payment hold(s); cancelled ${expiredHolds} expired unpaid hold(s)`,
       );
     }
 

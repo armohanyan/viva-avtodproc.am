@@ -9,7 +9,6 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ResourceNotFoundError } = ErrorsUtil;
 
 const createSchema = z.object({
-  id: z.string().optional(),
   name: z.string().min(1),
   price: z.string().min(1),
   lessons: z.number().int().positive(),
@@ -18,7 +17,7 @@ const createSchema = z.object({
   imageUrl: z.union([z.string().max(4000), z.literal(''), z.null()]).optional(),
 });
 
-const updateSchema = createSchema.partial().omit({ id: true });
+const updateSchema = createSchema.partial();
 
 export default class PackageController {
   static async list(_req: Request, res: Response, next: NextFunction) {
@@ -43,7 +42,7 @@ export default class PackageController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await PackageService.update(req.params.id!, body);
+      const row = await PackageService.update(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Package not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -55,7 +54,7 @@ export default class PackageController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await PackageService.remove(req.params.id!);
+      const ok = await PackageService.remove(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Package not found', HttpStatusCodesUtil.NOT_FOUND));
       }

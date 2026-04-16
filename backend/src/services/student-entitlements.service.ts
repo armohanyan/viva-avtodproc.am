@@ -1,19 +1,6 @@
 import { Branch, Package, StudentExtraPractical, StudentProfile, User } from '../models';
 
-const THEORY_BY_PACKAGE_ID: Record<string, number> = {
-  PKG001: 8,
-  PKG002: 12,
-  PKG003: 16,
-  PKG004: 6,
-};
-
-function normalizePkgKey(id: string): string {
-  return id.replace(/-/g, '');
-}
-
 function theorySessionsForPackage(pkg: Package): number {
-  const k = normalizePkgKey(pkg.id);
-  if (THEORY_BY_PACKAGE_ID[k] != null) return THEORY_BY_PACKAGE_ID[k]!;
   const name = pkg.name.toLowerCase();
   if (name.includes('premium')) return 16;
   if (name.includes('standard')) return 12;
@@ -32,7 +19,7 @@ function tierFromPackage(pkg: Package): PackageTierId {
 
 export type StudentEntitlementsDto = {
   packages: Array<{
-    purchaseId: string;
+    purchaseId: number;
     tier: PackageTierId;
     purchasedAt: string;
     practicalTotal: number;
@@ -40,7 +27,7 @@ export type StudentEntitlementsDto = {
     theorySessions: number;
   }>;
   extras: Array<{
-    id: string;
+    id: number;
     purchasedAt: string;
     practicalTotal: number;
     practicalUsed: number;
@@ -49,10 +36,10 @@ export type StudentEntitlementsDto = {
 };
 
 export default class StudentEntitlementsService {
-  static async get(userId: string): Promise<StudentEntitlementsDto | null> {
+  static async get(userId: number): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
     if (!user || user.accountType !== 'student') return null;
-    const profile = await StudentProfile.findByPk(userId);
+    const profile = await StudentProfile.findOne({ where: { userId } });
     if (!profile) {
       return { packages: [], extras: await this.listExtras(userId) };
     }
@@ -76,7 +63,7 @@ export default class StudentEntitlementsService {
     };
   }
 
-  private static async listExtras(userId: string): Promise<StudentEntitlementsDto['extras']> {
+  private static async listExtras(userId: number): Promise<StudentEntitlementsDto['extras']> {
     const rows = await StudentExtraPractical.findAll({ where: { userId }, order: [['purchasedAt', 'DESC']] });
     return rows.map((r) => ({
       id: r.id,
@@ -87,12 +74,12 @@ export default class StudentEntitlementsService {
     }));
   }
 
-  static async assignPackage(userId: string, packageId: string): Promise<StudentEntitlementsDto | null> {
+  static async assignPackage(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
     if (!user || user.accountType !== 'student') return null;
     const pkg = await Package.findByPk(packageId);
     if (!pkg) return null;
-    let profile = await StudentProfile.findByPk(userId);
+    let profile = await StudentProfile.findOne({ where: { userId } });
     if (!profile) {
       const branch = await Branch.findOne({ order: [['id', 'ASC']] });
       if (!branch) return null;
@@ -119,15 +106,13 @@ export default class StudentEntitlementsService {
     return this.get(userId);
   }
 
-  static async addExtraPractical(userId: string, practicalTotal = 3): Promise<StudentEntitlementsDto | null> {
+  static async addExtraPractical(userId: number, practicalTotal = 3): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
     if (!user || user.accountType !== 'student') return null;
-    const profile = await StudentProfile.findByPk(userId);
+    const profile = await StudentProfile.findOne({ where: { userId } });
     if (!profile) return null;
-    const id = `PL-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const purchasedAt = new Date().toISOString().slice(0, 10);
     await StudentExtraPractical.create({
-      id,
       userId,
       practicalTotal,
       practicalUsed: 0,

@@ -7,7 +7,7 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ResourceNotFoundError, ConflictError } = ErrorsUtil;
 
 export type TheoryCohortDto = {
-  id: string;
+  id: number;
   name: string;
   startDateIso: string;
   endDateIso: string;
@@ -17,11 +17,11 @@ export type TheoryCohortDto = {
   instructorName: string;
   meetLink: string;
   status: string;
-  branchId: string;
+  branchId: number;
 };
 
 export type TheoryCohortEnrollmentStudentDto = {
-  userId: string;
+  userId: number;
   name: string;
   email: string;
   phone: string | null;
@@ -34,7 +34,7 @@ function dateIso(v: unknown): string {
   return String(v).slice(0, 10);
 }
 
-async function enrolledCount(cohortId: string): Promise<number> {
+async function enrolledCount(cohortId: number): Promise<number> {
   return TheoryCohortEnrollment.count({ where: { cohortId } });
 }
 
@@ -65,7 +65,6 @@ export default class TheoryCohortService {
   }
 
   static async create(input: {
-    id?: string;
     name: string;
     startDateIso: string;
     endDateIso: string;
@@ -74,11 +73,9 @@ export default class TheoryCohortService {
     instructorName: string;
     meetLink?: string;
     status: string;
-    branchId: string;
+    branchId: number;
   }): Promise<TheoryCohortDto> {
-    const id = input.id?.trim() || `COH-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     const c = await TheoryCohort.create({
-      id,
       name: input.name.trim(),
       startDateIso: input.startDateIso,
       endDateIso: input.endDateIso,
@@ -93,7 +90,7 @@ export default class TheoryCohortService {
   }
 
   static async update(
-    id: string,
+    id: number,
     patch: Partial<{
       name: string;
       startDateIso: string;
@@ -103,7 +100,7 @@ export default class TheoryCohortService {
       instructorName: string;
       meetLink: string;
       status: string;
-      branchId: string;
+      branchId: number;
     }>,
   ): Promise<TheoryCohortDto | null> {
     const c = await TheoryCohort.findByPk(id);
@@ -127,14 +124,14 @@ export default class TheoryCohortService {
     return toDto(c, enc);
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     await TheoryCohortEnrollment.destroy({ where: { cohortId: id } });
     const n = await TheoryCohort.destroy({ where: { id } });
     return n > 0;
   }
 
   /** Returns `null` if the cohort does not exist. */
-  static async listEnrollments(cohortId: string): Promise<TheoryCohortEnrollmentStudentDto[] | null> {
+  static async listEnrollments(cohortId: number): Promise<TheoryCohortEnrollmentStudentDto[] | null> {
     const exists = await TheoryCohort.findByPk(cohortId);
     if (!exists) return null;
     const rows = await TheoryCohortEnrollment.findAll({
@@ -157,7 +154,7 @@ export default class TheoryCohortService {
     return out;
   }
 
-  static async enroll(cohortId: string, studentUserId: string): Promise<TheoryCohortDto | null> {
+  static async enroll(cohortId: number, studentUserId: number): Promise<TheoryCohortDto | null> {
     return sequelize.transaction(async (t) => {
       const cohort = await TheoryCohort.findByPk(cohortId, { transaction: t, lock: Transaction.LOCK.UPDATE });
       if (!cohort) return null;

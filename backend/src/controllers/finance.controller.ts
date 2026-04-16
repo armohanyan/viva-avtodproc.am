@@ -5,11 +5,10 @@ import FinanceService from '../services/finance.service';
 import { SuccessHandlerUtil } from '../utils';
 
 const createSchema = z.object({
-  id: z.string().optional(),
   customer: z.string().min(1),
   email: z.string().optional(),
   description: z.string().min(1),
-  branchId: z.string().min(1),
+  branchId: z.coerce.number().int().positive(),
   channel: z.enum(['online', 'pos', 'office', 'bank']),
   method: z.enum(['card', 'idram', 'cash', 'transfer']),
   grossAmd: z.number().int().nonnegative(),
@@ -18,15 +17,7 @@ const createSchema = z.object({
   providerRef: z.string().optional(),
   source: z.enum(['system', 'manual']),
   createdAt: z.string().optional(),
-  bookingId: z
-    .string()
-    .max(64)
-    .nullish()
-    .transform((s) => {
-      if (s == null) return undefined;
-      const t = s.trim();
-      return t.length ? t : undefined;
-    }),
+  bookingId: z.coerce.number().int().positive().nullish(),
 });
 
 export default class FinanceController {

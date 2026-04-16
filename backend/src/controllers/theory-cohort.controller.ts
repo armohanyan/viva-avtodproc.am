@@ -9,7 +9,6 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ResourceNotFoundError } = ErrorsUtil;
 
 const createSchema = z.object({
-  id: z.string().optional(),
   name: z.string().min(1),
   startDateIso: z.string().min(1),
   endDateIso: z.string().min(1),
@@ -18,13 +17,13 @@ const createSchema = z.object({
   instructorName: z.string().min(1),
   meetLink: z.string().optional(),
   status: z.string().min(1),
-  branchId: z.string().min(1),
+  branchId: z.coerce.number().int().positive(),
 });
 
-const updateSchema = createSchema.partial().omit({ id: true });
+const updateSchema = createSchema.partial();
 
 const enrollSchema = z.object({
-  studentUserId: z.string().min(1),
+  studentUserId: z.coerce.number().int().positive(),
 });
 
 export default class TheoryCohortController {
@@ -50,7 +49,7 @@ export default class TheoryCohortController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await TheoryCohortService.update(req.params.id!, body);
+      const row = await TheoryCohortService.update(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -62,7 +61,7 @@ export default class TheoryCohortController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await TheoryCohortService.remove(req.params.id!);
+      const ok = await TheoryCohortService.remove(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -75,7 +74,7 @@ export default class TheoryCohortController {
   static async enroll(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(enrollSchema, req.body);
-      const row = await TheoryCohortService.enroll(req.params.id!, body.studentUserId);
+      const row = await TheoryCohortService.enroll(Number(req.params.id), body.studentUserId);
       if (!row) {
         return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -87,7 +86,7 @@ export default class TheoryCohortController {
 
   static async listEnrollments(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await TheoryCohortService.listEnrollments(req.params.id!);
+      const data = await TheoryCohortService.listEnrollments(Number(req.params.id));
       if (data === null) {
         return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
       }

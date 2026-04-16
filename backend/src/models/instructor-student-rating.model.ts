@@ -1,20 +1,28 @@
-import { DataTypes, Model, type InferAttributes, type InferCreationAttributes } from 'sequelize';
+import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 
 export class InstructorStudentRating extends Model<
   InferAttributes<InstructorStudentRating>,
   InferCreationAttributes<InstructorStudentRating>
 > {
-  declare studentUserId: string;
-  declare instructorUserId: string;
+  declare id: CreationOptional<number>;
+  declare studentUserId: number;
+  declare instructorUserId: number;
   declare stars: number;
 }
 
 InstructorStudentRating.init(
   {
-    studentUserId: { type: DataTypes.STRING(64), primaryKey: true },
-    instructorUserId: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
+    studentUserId: fkUnsignedInt(),
+    instructorUserId: fkUnsignedInt(),
     stars: { type: DataTypes.TINYINT.UNSIGNED, allowNull: false },
   },
-  { sequelize, tableName: 'instructor_student_ratings', modelName: 'InstructorStudentRating' },
+  {
+    sequelize,
+    tableName: 'instructor_student_ratings',
+    modelName: 'InstructorStudentRating',
+    indexes: [{ unique: true, fields: ['student_user_id', 'instructor_user_id'] }],
+  },
 );

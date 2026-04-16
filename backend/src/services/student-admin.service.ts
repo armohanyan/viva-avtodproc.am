@@ -8,7 +8,7 @@ type ProfileJoined = StudentProfile & {
 };
 
 export type AdminStudentRow = {
-  id: string;
+  id: number;
   name: string;
   email: string;
   phone: string;
@@ -17,7 +17,7 @@ export type AdminStudentRow = {
   lessons: string;
   status: string;
   joinedIso: string;
-  branchId: string;
+  branchId: number;
   skillRating: number;
   licenseAchieved: boolean;
 };
@@ -59,13 +59,12 @@ export default class StudentAdminService {
   }
 
   static async create(input: {
-    id?: string;
     name: string;
     email: string;
     phone?: string;
-    branchId: string;
-    packageId: string;
-    instructorUserId?: string | null;
+    branchId: number;
+    packageId: number;
+    instructorUserId?: number | null;
     lessonsCompleted?: number;
     lessonsTotal?: number;
     enrollmentStatus?: string;
@@ -74,11 +73,7 @@ export default class StudentAdminService {
     joinedIso?: string;
   }): Promise<AdminStudentRow | null> {
     const email = input.email.trim().toLowerCase();
-    const id =
-      input.id?.trim() ||
-      `USR-${String((await User.count({ where: { accountType: 'student' } })) + 1).padStart(3, '0')}`;
-    await User.create({
-      id,
+    const user = await User.create({
       email,
       name: input.name.trim(),
       phone: input.phone?.trim() || null,
@@ -87,11 +82,11 @@ export default class StudentAdminService {
     });
     const pkg = await Package.findByPk(input.packageId);
     if (!pkg) {
-      await User.destroy({ where: { id } });
+      await User.destroy({ where: { id: user.id } });
       return null;
     }
     await StudentProfile.create({
-      userId: id,
+      userId: user.id,
       branchId: input.branchId,
       packageId: input.packageId,
       instructorUserId: input.instructorUserId ?? null,
@@ -103,18 +98,18 @@ export default class StudentAdminService {
       joinedAt: input.joinedIso ?? new Date().toISOString().slice(0, 10),
     });
     const list = await this.list();
-    return list.find((r) => r.id === id) ?? null;
+    return list.find((r) => r.id === user.id) ?? null;
   }
 
   static async update(
-    userId: string,
+    userId: number,
     patch: Partial<{
       name: string;
       email: string;
       phone: string | null;
-      branchId: string;
-      packageId: string;
-      instructorUserId: string | null;
+      branchId: number;
+      packageId: number;
+      instructorUserId: number | null;
       lessonsCompleted: number;
       lessonsTotal: number;
       enrollmentStatus: string;
@@ -124,7 +119,7 @@ export default class StudentAdminService {
     }>,
   ): Promise<AdminStudentRow | null> {
     const user = await User.findByPk(userId);
-    const profile = await StudentProfile.findByPk(userId);
+    const profile = await StudentProfile.findOne({ where: { userId } });
     if (!user || !profile) return null;
     if (patch.name !== undefined || patch.email !== undefined || patch.phone !== undefined) {
       await user.update({
@@ -148,7 +143,7 @@ export default class StudentAdminService {
     return list.find((r) => r.id === userId) ?? null;
   }
 
-  static async remove(userId: string): Promise<boolean> {
+  static async remove(userId: number): Promise<boolean> {
     await InstructorStudentRatingService.removeAllForStudent(userId);
     const p = await StudentProfile.destroy({ where: { userId } });
     const u = await User.destroy({ where: { id: userId } });

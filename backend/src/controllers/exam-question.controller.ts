@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../helpers';
-import ExamQuestionService, { type ExamQuestionDto } from '../services/exam-question.service';
+import ExamQuestionService from '../services/exam-question.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -10,8 +10,7 @@ const { ResourceNotFoundError } = ErrorsUtil;
 
 const langRecord = z.record(z.string(), z.string());
 
-const questionSchema: z.ZodType<ExamQuestionDto> = z.object({
-  id: z.string().min(1),
+const questionPayloadSchema = z.object({
   text: langRecord,
   options: z.record(z.string(), z.array(z.string())),
   optionExplanations: z.record(z.string(), z.array(z.string().nullable())).optional(),
@@ -21,8 +20,12 @@ const questionSchema: z.ZodType<ExamQuestionDto> = z.object({
   imageUrl: z.string().nullable().optional(),
 });
 
+const questionUpsertSchema = questionPayloadSchema.extend({
+  id: z.coerce.number().int().positive().optional(),
+});
+
 const replaceSchema = z.object({
-  questions: z.array(questionSchema),
+  questions: z.array(questionPayloadSchema),
 });
 
 export default class ExamQuestionController {
@@ -48,7 +51,7 @@ export default class ExamQuestionController {
 
   static async upsert(req: Request, res: Response, next: NextFunction) {
     try {
-      const body = parseBody(questionSchema, req.body);
+      const body = parseBody(questionUpsertSchema, req.body);
       const row = await ExamQuestionService.upsertOne(body);
       SuccessHandlerUtil.handleUpdate(res, next, row);
     } catch (e) {
@@ -58,7 +61,7 @@ export default class ExamQuestionController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await ExamQuestionService.remove(req.params.id!);
+      const ok = await ExamQuestionService.remove(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Question not found', HttpStatusCodesUtil.NOT_FOUND));
       }

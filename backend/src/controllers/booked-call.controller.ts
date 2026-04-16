@@ -42,7 +42,7 @@ export default class BookedCallController {
   static async updateStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(statusSchema, req.body);
-      const row = await BookedCallService.updateStatus(req.params.id!, body.status);
+      const row = await BookedCallService.updateStatus(Number(req.params.id), body.status);
       if (!row) {
         return next(new ResourceNotFoundError('Callback request not found', HttpStatusCodesUtil.NOT_FOUND));
       }

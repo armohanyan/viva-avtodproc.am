@@ -4,7 +4,7 @@ import InstructorStudentRatingService from './instructor-student-rating.service'
 type ProfileWithUser = InstructorProfile & { user: User };
 
 export type InstructorDto = {
-  id: string;
+  id: number;
   name: string;
   email: string;
   phone: string;
@@ -19,7 +19,7 @@ export type InstructorDto = {
   car: string;
   transmission: string;
   imageSrc: string;
-  availableBranchIds: string[];
+  availableBranchIds: number[];
   teachesPractical: boolean;
   teachesTheory: boolean;
 };
@@ -31,7 +31,7 @@ function clampRating(n: number): number {
 function toDto(
   user: User,
   profile: InstructorProfile,
-  branchIds: string[],
+  branchIds: number[],
   effectiveRating: number,
   studentRatingCount: number,
 ): InstructorDto {
@@ -62,7 +62,7 @@ export default class InstructorService {
       include: [{ model: User, as: 'user', required: true }],
     });
     const links = await InstructorBranch.findAll();
-    const byInstructor = new Map<string, string[]>();
+    const byInstructor = new Map<number, number[]>();
     for (const l of links) {
       const list = byInstructor.get(l.instructorUserId) ?? [];
       list.push(l.branchId);
@@ -82,15 +82,11 @@ export default class InstructorService {
   }
 
   static async create(
-    input: Omit<InstructorDto, 'id' | 'studentRatingCount' | 'rating'> & { id?: string },
+    input: Omit<InstructorDto, 'id' | 'studentRatingCount' | 'rating'>,
   ): Promise<InstructorDto> {
-    const id =
-      input.id?.trim() ||
-      `INS-${String((await InstructorProfile.count()) + 1).padStart(3, '0')}`;
     /** Public rating is always 5 until students rate; never accept a manual seed. */
     const seedRating = 5;
-    await User.create({
-      id,
+    const user = await User.create({
       email: input.email.trim().toLowerCase(),
       name: input.name,
       phone: input.phone || null,
@@ -98,7 +94,7 @@ export default class InstructorService {
       passwordHash: null,
     });
     await InstructorProfile.create({
-      userId: id,
+      userId: user.id,
       years: input.years,
       rating: seedRating,
       hourlyPrice: input.hourlyPrice,
@@ -111,19 +107,21 @@ export default class InstructorService {
       teachesTheory: input.teachesTheory,
       status: input.status,
     });
-    await InstructorBranch.destroy({ where: { instructorUserId: id } });
+    await InstructorBranch.destroy({ where: { instructorUserId: user.id } });
     for (const branchId of input.availableBranchIds) {
-      await InstructorBranch.create({ instructorUserId: id, branchId });
+      await InstructorBranch.create({ instructorUserId: user.id, branchId });
     }
-    return (await this.getById(id))!;
+    return (await this.getById(user.id))!;
   }
 
   static async update(
-    id: string,
-    patch: Partial<Omit<InstructorDto, 'id' | 'availableBranchIds' | 'studentRatingCount'>> & { availableBranchIds?: string[] },
+    id: number,
+    patch: Partial<Omit<InstructorDto, 'id' | 'availableBranchIds' | 'studentRatingCount'>> & {
+      availableBranchIds?: number[];
+    },
   ): Promise<InstructorDto | null> {
     const user = await User.findByPk(id);
-    const profile = await InstructorProfile.findByPk(id);
+    const profile = await InstructorProfile.findOne({ where: { userId: id } });
     if (!user || !profile) return null;
 
     await user.update({
@@ -152,8 +150,9 @@ export default class InstructorService {
     return this.getById(id);
   }
 
-  static async getById(id: string): Promise<InstructorDto | null> {
-    const profile = await InstructorProfile.findByPk(id, {
+  static async getById(id: number): Promise<InstructorDto | null> {
+    const profile = await InstructorProfile.findOne({
+      where: { userId: id },
       include: [{ model: User, as: 'user', required: true }],
     });
     if (!profile) return null;
@@ -173,7 +172,7 @@ export default class InstructorService {
     );
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     await InstructorStudentRatingService.removeAllForInstructor(id);
     await InstructorBranch.destroy({ where: { instructorUserId: id } });
     const p = await InstructorProfile.destroy({ where: { userId: id } });

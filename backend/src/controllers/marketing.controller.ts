@@ -110,7 +110,7 @@ export default class MarketingController {
   static async updateTestimonial(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(testimonialUpdateSchema, req.body);
-      const row = await MarketingService.updateTestimonial(req.params.id!, body);
+      const row = await MarketingService.updateTestimonial(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Testimonial not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -122,7 +122,7 @@ export default class MarketingController {
 
   static async removeTestimonial(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await MarketingService.removeTestimonial(req.params.id!);
+      const ok = await MarketingService.removeTestimonial(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Testimonial not found', HttpStatusCodesUtil.NOT_FOUND));
       }

@@ -9,7 +9,6 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ResourceNotFoundError } = ErrorsUtil;
 
 const createSchema = z.object({
-  id: z.string().min(1).max(64),
   name: z.string().min(1),
 });
 
@@ -40,7 +39,7 @@ export default class CityController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await CityService.update(req.params.id!, body);
+      const row = await CityService.update(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('City not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -52,7 +51,7 @@ export default class CityController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await CityService.remove(req.params.id!);
+      const ok = await CityService.remove(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('City not found', HttpStatusCodesUtil.NOT_FOUND));
       }

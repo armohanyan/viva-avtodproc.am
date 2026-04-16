@@ -1,11 +1,13 @@
-import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
+import { DataTypes, Model, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { fkUnsignedInt } from './auto-id';
 
+/** One profile per instructor user — legacy schema uses `user_id` as the primary key (no surrogate `id`). */
 export class InstructorProfile extends Model<
   InferAttributes<InstructorProfile>,
   InferCreationAttributes<InstructorProfile>
 > {
-  declare userId: string;
+  declare userId: number;
   declare years: number;
   declare rating: number;
   declare hourlyPrice: number;
@@ -21,7 +23,7 @@ export class InstructorProfile extends Model<
 
 InstructorProfile.init(
   {
-    userId: { type: DataTypes.STRING(64), primaryKey: true },
+    userId: { ...fkUnsignedInt(), primaryKey: true },
     years: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     rating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 5 },
     hourlyPrice: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },

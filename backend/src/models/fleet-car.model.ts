@@ -1,8 +1,9 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk } from './auto-id';
 
 export class FleetCar extends Model<InferAttributes<FleetCar>, InferCreationAttributes<FleetCar>> {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare plate: string;
   declare vin: CreationOptional<string | null>;
   declare make: string;
@@ -14,7 +15,7 @@ export class FleetCar extends Model<InferAttributes<FleetCar>, InferCreationAttr
 
 FleetCar.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     plate: { type: DataTypes.STRING(32), allowNull: false },
     vin: { type: DataTypes.STRING(64), allowNull: true },
     make: { type: DataTypes.STRING(128), allowNull: false },

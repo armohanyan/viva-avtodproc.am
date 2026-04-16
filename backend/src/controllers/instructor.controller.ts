@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseQuery, verifyAccessToken } from '../helpers';
+import { parseBody, parseParams, parseQuery, verifyAccessToken } from '../helpers';
 import BookingService from '../services/booking.service';
 import InstructorAvailabilityService from '../services/instructor-availability.service';
 import InstructorService from '../services/instructor.service';
@@ -22,7 +22,6 @@ function readBearerStaff(req: Request): { accountType: string } | null {
 }
 
 const createSchema = z.object({
-  id: z.string().optional(),
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string(),
@@ -34,15 +33,14 @@ const createSchema = z.object({
   car: z.string(),
   transmission: z.string(),
   imageSrc: z.string(),
-  availableBranchIds: z.array(z.string()),
+  availableBranchIds: z.array(z.coerce.number().int().positive()),
   teachesPractical: z.boolean(),
   teachesTheory: z.boolean(),
 });
 
-const updateSchema = createSchema.partial().omit({ id: true });
+const updateSchema = createSchema.partial();
 
 const availabilityCreateSchema = z.object({
-  id: z.string().optional(),
   ruleKind: z.enum(['weekly_work', 'weekly_break', 'weekday_lunch', 'date_off', 'date_break']),
   weekday: z.number().int().min(1).max(7).optional().nullable(),
   dateIso: z.string().min(1).optional().nullable(),
@@ -54,6 +52,23 @@ const availabilityCreateSchema = z.object({
 const busySlotsQuerySchema = z.object({
   from: z.string().min(10),
   to: z.string().min(10),
+});
+
+/** `users.id` for an instructor — path segments are strings; reject slugs like "acc-instructor" with a clear message. */
+const instructorPathUserIdSchema = z
+  .string()
+  .trim()
+  .regex(/^\d+$/, 'Must be the instructor numeric user id (from GET /instructors)')
+  .transform((s) => Number.parseInt(s, 10))
+  .pipe(z.number().int().positive());
+
+const instructorUserIdParamsSchema = z.object({
+  id: instructorPathUserIdSchema,
+});
+
+const instructorAvailabilityBlockParamsSchema = z.object({
+  id: instructorPathUserIdSchema,
+  blockId: instructorPathUserIdSchema,
 });
 
 export default class InstructorController {
@@ -103,7 +118,8 @@ export default class InstructorController {
           );
         }
       }
-      const row = await InstructorService.update(req.params.id!, body);
+      const { id } = parseParams(instructorUserIdParamsSchema, req.params);
+      const row = await InstructorService.update(id, body);
 
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -117,7 +133,8 @@ export default class InstructorController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await InstructorService.remove(req.params.id!);
+      const { id } = parseParams(instructorUserIdParamsSchema, req.params);
+      const ok = await InstructorService.remove(id);
 
       if (!ok) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -132,7 +149,7 @@ export default class InstructorController {
   /** Public read — occupied lesson slots for calendar (includes student id for “mine” styling). */
   static async listBusySlots(req: Request, res: Response, next: NextFunction) {
     try {
-      const instructorUserId = req.params.id!;
+      const { id: instructorUserId } = parseParams(instructorUserIdParamsSchema, req.params);
       const exists = await InstructorAvailabilityService.instructorExists(instructorUserId);
 
       if (!exists) {
@@ -140,7 +157,11 @@ export default class InstructorController {
       }
 
       const q = parseQuery(busySlotsQuerySchema, { from: req.query.from, to: req.query.to });
-      const data = await BookingService.listBusySlotsForInstructor(instructorUserId, q.from.slice(0, 10), q.to.slice(0, 10));
+      const data = await BookingService.listBusySlotsForInstructor(
+        instructorUserId,
+        q.from.slice(0, 10),
+        q.to.slice(0, 10),
+      );
 
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
@@ -151,7 +172,7 @@ export default class InstructorController {
   /** Public read — used by booking UI to hide busy/break slots. */
   static async listAvailabilityBlocks(req: Request, res: Response, next: NextFunction) {
     try {
-      const instructorUserId = req.params.id!;
+      const { id: instructorUserId } = parseParams(instructorUserIdParamsSchema, req.params);
       const exists = await InstructorAvailabilityService.instructorExists(instructorUserId);
 
       if (!exists) {
@@ -168,7 +189,7 @@ export default class InstructorController {
 
   static async createAvailabilityBlock(req: Request, res: Response, next: NextFunction) {
     try {
-      const instructorUserId = req.params.id!;
+      const { id: instructorUserId } = parseParams(instructorUserIdParamsSchema, req.params);
       const exists = await InstructorAvailabilityService.instructorExists(instructorUserId);
 
       if (!exists) {
@@ -201,8 +222,10 @@ export default class InstructorController {
 
   static async removeAvailabilityBlock(req: Request, res: Response, next: NextFunction) {
     try {
-      const instructorUserId = req.params.id!;
-      const blockId = req.params.blockId!;
+      const { id: instructorUserId, blockId } = parseParams(
+        instructorAvailabilityBlockParamsSchema,
+        req.params,
+      );
       const ok = await InstructorAvailabilityService.remove(instructorUserId, blockId);
 
       if (!ok) {

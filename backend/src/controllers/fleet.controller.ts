@@ -22,14 +22,14 @@ const carSchema = z.object({
 const carUpdateSchema = carSchema.partial();
 
 const expenseSchema = z.object({
-  carId: z.string().min(1),
+  carId: z.coerce.number().int().positive(),
   amount: z.number().int(),
   date: z.string().min(1),
   purpose: z.string().min(1),
   note: z.string().optional(),
 });
 
-const expenseUpdateSchema = expenseSchema.partial().omit({ carId: true });
+const expenseUpdateSchema = expenseSchema.partial();
 
 export default class FleetController {
   static async listCars(_req: Request, res: Response, next: NextFunction) {
@@ -63,7 +63,7 @@ export default class FleetController {
   static async updateCar(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(carUpdateSchema, req.body);
-      const row = await FleetService.updateCar(req.params.id!, body);
+      const row = await FleetService.updateCar(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Car not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -75,7 +75,7 @@ export default class FleetController {
 
   static async removeCar(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await FleetService.removeCar(req.params.id!);
+      const ok = await FleetService.removeCar(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Car not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -98,7 +98,7 @@ export default class FleetController {
   static async updateExpense(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(expenseUpdateSchema, req.body);
-      const row = await FleetService.updateExpense(req.params.id!, body);
+      const row = await FleetService.updateExpense(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Expense not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -110,7 +110,7 @@ export default class FleetController {
 
   static async removeExpense(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await FleetService.removeExpense(req.params.id!);
+      const ok = await FleetService.removeExpense(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Expense not found', HttpStatusCodesUtil.NOT_FOUND));
       }

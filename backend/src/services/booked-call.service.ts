@@ -1,7 +1,7 @@
 import { BookedCall, type BookedCallStatus } from '../models/booked-call.model';
 
 export type BookedCallDto = {
-  id: string;
+  id: number;
   name: string | null;
   phone: string;
   preferredTimeSlot: string;
@@ -31,10 +31,6 @@ function toDto(row: BookedCall): BookedCallDto {
   };
 }
 
-function newId(): string {
-  return `bcall-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
 export default class BookedCallService {
   static async create(input: {
     name?: string | null;
@@ -43,7 +39,6 @@ export default class BookedCallService {
     notes?: string | null;
   }): Promise<BookedCallDto> {
     const row = await BookedCall.create({
-      id: newId(),
       name: input.name?.trim() ? input.name.trim() : null,
       phone: input.phone.trim(),
       preferredTimeSlot: input.preferredTimeSlot.trim(),
@@ -58,7 +53,7 @@ export default class BookedCallService {
     return rows.map(toDto);
   }
 
-  static async updateStatus(id: string, status: BookedCallStatus): Promise<BookedCallDto | null> {
+  static async updateStatus(id: number, status: BookedCallStatus): Promise<BookedCallDto | null> {
     const row = await BookedCall.findByPk(id);
     if (!row) return null;
     await row.update({ status });

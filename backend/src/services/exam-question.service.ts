@@ -8,7 +8,7 @@ import {
 import { ExamQuestion } from '../models';
 
 export type ExamQuestionDto = {
-  id: string;
+  id: number;
   text: Record<string, string>;
   options: Record<string, string[]>;
   optionExplanations?: Record<string, (string | null)[]>;
@@ -37,13 +37,25 @@ function toDto(row: ExamQuestion): ExamQuestionDto {
   };
 }
 
+function rowPayload(q: Omit<ExamQuestionDto, 'id'>) {
+  return {
+    category: q.category,
+    topicId: q.topicId ?? null,
+    correctIndex: q.correctIndex,
+    imageUrl: q.imageUrl ?? null,
+    textJson: JSON.stringify(q.text),
+    optionsJson: JSON.stringify(q.options),
+    optionExplanationsJson: q.optionExplanations ? JSON.stringify(q.optionExplanations) : null,
+  };
+}
+
 export default class ExamQuestionService {
   static async list(): Promise<ExamQuestionDto[]> {
     const rows = await ExamQuestion.findAll({ order: [['id', 'ASC']] });
     return rows.map(toDto);
   }
 
-  static async replaceAll(questions: ExamQuestionDto[]): Promise<void> {
+  static async replaceAll(questions: Omit<ExamQuestionDto, 'id'>[]): Promise<void> {
     const oldRows = await ExamQuestion.findAll();
     const oldFiles = new Set<string>();
     for (const r of oldRows) {
@@ -55,43 +67,30 @@ export default class ExamQuestionService {
     }
 
     await ExamQuestion.destroy({ where: {} });
-    await ExamQuestion.bulkCreate(
-      questions.map((q) => ({
-        id: q.id,
-        category: q.category,
-        topicId: q.topicId ?? null,
-        correctIndex: q.correctIndex,
-        imageUrl: q.imageUrl ?? null,
-        textJson: JSON.stringify(q.text),
-        optionsJson: JSON.stringify(q.options),
-        optionExplanationsJson: q.optionExplanations ? JSON.stringify(q.optionExplanations) : null,
-      })),
-    );
+    await ExamQuestion.bulkCreate(questions.map((q) => rowPayload(q)));
 
     const toRemove = [...oldFiles].filter((f) => !newFiles.has(f));
     await deleteManagedUploadFiles(toRemove);
   }
 
-  static async upsertOne(q: ExamQuestionDto): Promise<ExamQuestionDto> {
-    const prev = await ExamQuestion.findByPk(q.id);
+  static async upsertOne(q: Omit<ExamQuestionDto, 'id'> & { id?: number }): Promise<ExamQuestionDto> {
+    const hasId = q.id != null && Number.isFinite(q.id) && q.id > 0;
+    const prev = hasId ? await ExamQuestion.findByPk(q.id!) : null;
     const prevFile = managedFilenameFromUrl(prev?.imageUrl ?? null);
     const nextFile = managedFilenameFromUrl(q.imageUrl ?? null);
 
-    await ExamQuestion.upsert({
-      id: q.id,
-      category: q.category,
-      topicId: q.topicId ?? null,
-      correctIndex: q.correctIndex,
-      imageUrl: q.imageUrl ?? null,
-      textJson: JSON.stringify(q.text),
-      optionsJson: JSON.stringify(q.options),
-      optionExplanationsJson: q.optionExplanations ? JSON.stringify(q.optionExplanations) : null,
-    });
+    let row: ExamQuestion;
+    if (hasId && prev) {
+      await prev.update(rowPayload(q));
+      row = (await ExamQuestion.findByPk(q.id!))!;
+    } else {
+      row = await ExamQuestion.create(rowPayload(q));
+    }
 
     if (prevFile && prevFile !== nextFile) {
       const others = await ExamQuestion.count({
         where: {
-          id: { [Op.ne]: q.id },
+          id: { [Op.ne]: row.id },
           imageUrl: { [Op.like]: `%/upload/${prevFile}%` },
         },
       });
@@ -100,11 +99,10 @@ export default class ExamQuestionService {
       }
     }
 
-    const row = await ExamQuestion.findByPk(q.id);
-    return toDto(row!);
+    return toDto(row);
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     const found = await ExamQuestion.findByPk(id);
     const file = managedFilenameFromUrl(found?.imageUrl ?? null);
     const n = await ExamQuestion.destroy({ where: { id } });

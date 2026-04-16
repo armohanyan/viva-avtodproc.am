@@ -9,13 +9,13 @@ const { InputValidationError } = ErrorsUtil;
 export type InstructorRatingAgg = { count: number; avg: number };
 
 export type PendingInstructorRatingDto = {
-  instructorUserId: string;
+  instructorUserId: number;
   instructorName: string;
   lastCompletedDateIso: string;
 };
 
 export type MyInstructorRatingDto = {
-  instructorUserId: string;
+  instructorUserId: number;
   instructorName: string;
   stars: number;
 };
@@ -31,17 +31,17 @@ function todayIsoUtc(): string {
 
 /** Matches student dashboard “upcoming” partition (date + status). */
 function bookingIsUpcoming(dateIso: string, status: string, todayIso: string): boolean {
-  if (status === 'cancelled' || status === 'completed' || status === 'refunded') return false;
+  if (status === 'cancelled' || status === 'refunded') return false;
   return dateIso >= todayIso;
 }
 
 export default class InstructorStudentRatingService {
-  static async aggregatesForInstructors(instructorIds: readonly string[]): Promise<Map<string, InstructorRatingAgg>> {
-    const out = new Map<string, InstructorRatingAgg>();
+  static async aggregatesForInstructors(instructorIds: readonly number[]): Promise<Map<number, InstructorRatingAgg>> {
+    const out = new Map<number, InstructorRatingAgg>();
     if (instructorIds.length === 0) return out;
     const uniq = [...new Set(instructorIds)];
     const placeholders = uniq.map(() => '?').join(',');
-    const rows = await sequelize.query<{ instructorUserId: string; cnt: number; avgStars: string }>(
+    const rows = await sequelize.query<{ instructorUserId: number; cnt: number; avgStars: string }>(
       `SELECT instructor_user_id AS instructorUserId, COUNT(*) AS cnt, AVG(stars) AS avgStars
        FROM instructor_student_ratings
        WHERE instructor_user_id IN (${placeholders})
@@ -56,11 +56,11 @@ export default class InstructorStudentRatingService {
     return out;
   }
 
-  static async countForInstructor(instructorUserId: string): Promise<number> {
+  static async countForInstructor(instructorUserId: number): Promise<number> {
     return InstructorStudentRating.count({ where: { instructorUserId } });
   }
 
-  static async syncProfileRatingFromReviews(instructorUserId: string): Promise<void> {
+  static async syncProfileRatingFromReviews(instructorUserId: number): Promise<void> {
     const agg = (await this.aggregatesForInstructors([instructorUserId])).get(instructorUserId);
     if (!agg || agg.count === 0) {
       await InstructorProfile.update({ rating: 5 }, { where: { userId: instructorUserId } });
@@ -70,7 +70,7 @@ export default class InstructorStudentRatingService {
     await InstructorProfile.update({ rating: rounded }, { where: { userId: instructorUserId } });
   }
 
-  static async listPendingForStudent(studentUserId: string): Promise<PendingInstructorRatingDto[]> {
+  static async listPendingForStudent(studentUserId: number): Promise<PendingInstructorRatingDto[]> {
     const user = await User.findByPk(studentUserId);
     if (!user || user.accountType !== 'student') return [];
 
@@ -89,7 +89,7 @@ export default class InstructorStudentRatingService {
       ).map((r) => r.instructorUserId),
     );
 
-    type InstKey = string;
+    type InstKey = number;
     const lastCompletedByInstructor = new Map<InstKey, { dateIso: string; name: string }>();
     const hasUpcoming = new Set<InstKey>();
 
@@ -104,11 +104,12 @@ export default class InstructorStudentRatingService {
     }
 
     for (const b of bookings) {
-      if (b.status !== 'completed') continue;
       const inst = (b as Booking & { instructor?: User }).instructor;
       if (!inst) continue;
       const dateIso =
         typeof b.dateIso === 'string' ? b.dateIso.slice(0, 10) : (b.dateIso as Date).toISOString().slice(0, 10);
+      const delivered = (b.status === 'confirmed' || b.status === 'completed') && dateIso < todayIso;
+      if (!delivered) continue;
       const prev = lastCompletedByInstructor.get(inst.id);
       if (!prev || dateIso > prev.dateIso) {
         lastCompletedByInstructor.set(inst.id, { dateIso, name: inst.name });
@@ -128,7 +129,7 @@ export default class InstructorStudentRatingService {
     return pending;
   }
 
-  static async listMyRatings(studentUserId: string): Promise<MyInstructorRatingDto[]> {
+  static async listMyRatings(studentUserId: number): Promise<MyInstructorRatingDto[]> {
     const user = await User.findByPk(studentUserId);
     if (!user || user.accountType !== 'student') return [];
 
@@ -147,7 +148,7 @@ export default class InstructorStudentRatingService {
     });
   }
 
-  static async getStatus(studentUserId: string): Promise<InstructorRatingStatusDto> {
+  static async getStatus(studentUserId: number): Promise<InstructorRatingStatusDto> {
     const [pending, myRatings] = await Promise.all([
       this.listPendingForStudent(studentUserId),
       this.listMyRatings(studentUserId),
@@ -155,7 +156,7 @@ export default class InstructorStudentRatingService {
     return { pending, myRatings };
   }
 
-  static async submit(studentUserId: string, instructorUserId: string, stars: number): Promise<void> {
+  static async submit(studentUserId: number, instructorUserId: number, stars: number): Promise<void> {
     if (stars < 1 || stars > 5 || !Number.isInteger(stars)) {
       throw new InputValidationError('Stars must be an integer from 1 to 5.', HttpStatusCodesUtil.BAD_REQUEST);
     }
@@ -195,12 +196,12 @@ export default class InstructorStudentRatingService {
     await this.syncProfileRatingFromReviews(instructorUserId);
   }
 
-  static async removeAllForInstructor(instructorUserId: string): Promise<void> {
+  static async removeAllForInstructor(instructorUserId: number): Promise<void> {
     await InstructorStudentRating.destroy({ where: { instructorUserId } });
     await this.syncProfileRatingFromReviews(instructorUserId);
   }
 
-  static async removeAllForStudent(studentUserId: string): Promise<void> {
+  static async removeAllForStudent(studentUserId: number): Promise<void> {
     const rows = await InstructorStudentRating.findAll({
       where: { studentUserId },
       attributes: ['instructorUserId'],

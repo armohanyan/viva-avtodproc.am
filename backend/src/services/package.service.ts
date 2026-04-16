@@ -1,7 +1,7 @@
 import { Package, StudentProfile } from '../models';
 
 export type PackageDto = {
-  id: string;
+  id: number;
   name: string;
   price: string;
   lessons: number;
@@ -32,7 +32,6 @@ export default class PackageService {
   }
 
   static async create(input: {
-    id?: string;
     name: string;
     price: string;
     lessons: number;
@@ -40,10 +39,8 @@ export default class PackageService {
     features?: string[];
     imageUrl?: string | null;
   }): Promise<PackageDto> {
-    const id = input.id?.trim() || `PKG-${String((await Package.count()) + 1).padStart(3, '0')}`;
     const imageNorm = normalizeImageUrl(input.imageUrl);
-    await Package.create({
-      id,
+    const row = await Package.create({
       name: input.name,
       priceDisplay: input.price,
       lessons: input.lessons,
@@ -51,11 +48,11 @@ export default class PackageService {
       featuresJson: JSON.stringify(input.features ?? []),
       imageUrl: imageNorm,
     });
-    return (await this.list()).find((x) => x.id === id)!;
+    return (await this.list()).find((x) => x.id === row.id)!;
   }
 
   static async update(
-    id: string,
+    id: number,
     patch: Partial<{ name: string; price: string; lessons: number; status: string; features: string[]; imageUrl: string | null }>,
   ): Promise<PackageDto | null> {
     const row = await Package.findByPk(id);
@@ -71,7 +68,7 @@ export default class PackageService {
     return (await this.list()).find((x) => x.id === id) ?? null;
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     const n = await Package.destroy({ where: { id } });
     return n > 0;
   }

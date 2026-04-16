@@ -1,8 +1,9 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk } from './auto-id';
 
 export class Blog extends Model<InferAttributes<Blog>, InferCreationAttributes<Blog>> {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare slug: string;
   declare title: string;
   declare excerpt: string;
@@ -14,7 +15,7 @@ export class Blog extends Model<InferAttributes<Blog>, InferCreationAttributes<B
 
 Blog.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     slug: { type: DataTypes.STRING(160), allowNull: false, unique: true },
     title: { type: DataTypes.STRING(512), allowNull: false },
     excerpt: { type: DataTypes.TEXT, allowNull: false },

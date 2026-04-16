@@ -1,8 +1,9 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk } from './auto-id';
 
 export class ExamQuestion extends Model<InferAttributes<ExamQuestion>, InferCreationAttributes<ExamQuestion>> {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare category: 'rules' | 'signs' | 'safety';
   declare topicId: CreationOptional<string | null>;
   declare correctIndex: number;
@@ -14,7 +15,7 @@ export class ExamQuestion extends Model<InferAttributes<ExamQuestion>, InferCrea
 
 ExamQuestion.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     category: { type: DataTypes.ENUM('rules', 'signs', 'safety'), allowNull: false },
     topicId: { type: DataTypes.STRING(32), allowNull: true },
     correctIndex: { type: DataTypes.TINYINT.UNSIGNED, allowNull: false },

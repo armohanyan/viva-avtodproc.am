@@ -6,10 +6,11 @@ import {
   type InferCreationAttributes,
 } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 
 export class RefreshToken extends Model<InferAttributes<RefreshToken>, InferCreationAttributes<RefreshToken>> {
-  declare id: string;
-  declare userId: string;
+  declare id: CreationOptional<number>;
+  declare userId: number;
   declare tokenHash: string;
   declare expiresAt: Date;
   declare revokedAt: CreationOptional<Date | null>;
@@ -18,8 +19,8 @@ export class RefreshToken extends Model<InferAttributes<RefreshToken>, InferCrea
 
 RefreshToken.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
-    userId: { type: DataTypes.STRING(64), allowNull: false, field: 'user_id' },
+    id: autoIncrementPk(),
+    userId: { ...fkUnsignedInt(), field: 'user_id' },
     tokenHash: { type: DataTypes.STRING(128), allowNull: false, unique: true, field: 'token_hash' },
     expiresAt: { type: DataTypes.DATE, allowNull: false, field: 'expires_at' },
     revokedAt: { type: DataTypes.DATE, allowNull: true, field: 'revoked_at' },

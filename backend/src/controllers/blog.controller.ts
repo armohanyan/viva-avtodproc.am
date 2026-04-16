@@ -9,7 +9,6 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ResourceNotFoundError } = ErrorsUtil;
 
 const createSchema = z.object({
-  id: z.string().optional(),
   slug: z.string().min(1),
   title: z.string().min(1),
   excerpt: z.string(),
@@ -19,7 +18,7 @@ const createSchema = z.object({
   publishedAt: z.string().optional(),
 });
 
-const updateSchema = createSchema.partial().omit({ id: true });
+const updateSchema = createSchema.partial();
 
 export default class BlogController {
   static async listPublished(_req: Request, res: Response, next: NextFunction) {
@@ -62,7 +61,7 @@ export default class BlogController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await BlogService.update(req.params.id!, body);
+      const row = await BlogService.update(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Blog not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -74,7 +73,7 @@ export default class BlogController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await BlogService.remove(req.params.id!);
+      const ok = await BlogService.remove(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Blog not found', HttpStatusCodesUtil.NOT_FOUND));
       }

@@ -6,8 +6,7 @@ export default class BranchService {
   }
 
   static async create(data: {
-    id: string;
-    cityId: string;
+    cityId: number;
     name: string;
     mapUrl: string;
     phone?: string | null;
@@ -18,9 +17,9 @@ export default class BranchService {
   }
 
   static async update(
-    id: string,
+    id: number,
     patch: Partial<{
-      cityId: string;
+      cityId: number;
       name: string;
       mapUrl: string;
       phone: string | null;
@@ -34,7 +33,7 @@ export default class BranchService {
     return row;
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     const n = await Branch.destroy({ where: { id } });
     return n > 0;
   }

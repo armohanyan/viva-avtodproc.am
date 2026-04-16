@@ -9,8 +9,7 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ResourceNotFoundError } = ErrorsUtil;
 
 const createSchema = z.object({
-  id: z.string().min(1).max(64),
-  cityId: z.string().min(1),
+  cityId: z.coerce.number().int().positive(),
   name: z.string().min(1),
   mapUrl: z.string().min(1),
   phone: z.string().optional(),
@@ -18,7 +17,7 @@ const createSchema = z.object({
   workHours: z.string().optional(),
 });
 
-const updateSchema = createSchema.partial().omit({ id: true });
+const updateSchema = createSchema.partial();
 
 function toBranchJson(b: Awaited<ReturnType<typeof BranchService.list>>[number]) {
   return {
@@ -60,7 +59,7 @@ export default class BranchController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await BranchService.update(req.params.id!, {
+      const row = await BranchService.update(Number(req.params.id), {
         ...body,
         phone: body.phone === undefined ? undefined : body.phone ?? null,
         email: body.email === undefined ? undefined : body.email ?? null,
@@ -77,7 +76,7 @@ export default class BranchController {
 
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await BranchService.remove(req.params.id!);
+      const ok = await BranchService.remove(Number(req.params.id));
       if (!ok) {
         return next(new ResourceNotFoundError('Branch not found', HttpStatusCodesUtil.NOT_FOUND));
       }

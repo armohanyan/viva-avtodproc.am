@@ -8,7 +8,7 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 const { ConflictError } = ErrorsUtil;
 
 export type AccountRow = {
-  id: string;
+  id: number;
   name: string;
   email: string;
   phone: string;
@@ -43,7 +43,6 @@ export default class AccountsService {
   }
 
   static async create(input: {
-    id?: string;
     name: string;
     email: string;
     phone?: string;
@@ -56,15 +55,11 @@ export default class AccountsService {
     if (dup) {
       throw new ConflictError('Email already in use', HttpStatusCodesUtil.CONFLICT);
     }
-    const id =
-      input.id?.trim() ||
-      `acc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     let passwordHash: string | null = null;
     if (input.password && input.password.length > 0) {
       passwordHash = await bcrypt.hash(input.password, 10);
     }
     const u = await User.create({
-      id,
       email,
       name: input.name.trim(),
       phone: input.phone?.trim() || null,
@@ -76,7 +71,7 @@ export default class AccountsService {
   }
 
   static async update(
-    id: string,
+    id: number,
     patch: Partial<{
       name: string;
       email: string;
@@ -108,7 +103,7 @@ export default class AccountsService {
     return toRow(u);
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     const n = await User.destroy({ where: { id } });
     return n > 0;
   }

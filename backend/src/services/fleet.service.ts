@@ -1,7 +1,7 @@
 import { CarExpense, FleetCar, FleetCarInstructor, User } from '../models';
 
 export type FleetCarDto = {
-  id: string;
+  id: number;
   plate: string;
   vin?: string;
   make: string;
@@ -13,8 +13,8 @@ export type FleetCarDto = {
 };
 
 export type CarExpenseDto = {
-  id: string;
-  carId: string;
+  id: number;
+  carId: number;
   amount: number;
   date: string;
   purpose: string;
@@ -26,10 +26,12 @@ async function carToDto(car: FleetCar): Promise<FleetCarDto> {
     where: { carId: car.id },
     include: [{ model: User, as: 'user', required: true, attributes: ['email'] }],
   });
-  const emails = links.map((l) => {
-    const row = l as FleetCarInstructor & { user?: User };
-    return row.user?.email ?? '';
-  }).filter(Boolean);
+  const emails = links
+    .map((l) => {
+      const row = l as FleetCarInstructor & { user?: User };
+      return row.user?.email ?? '';
+    })
+    .filter(Boolean);
   return {
     id: car.id,
     plate: car.plate,
@@ -62,9 +64,7 @@ export default class FleetService {
   }
 
   static async createCar(input: Omit<FleetCarDto, 'id'>): Promise<FleetCarDto> {
-    const id = `car-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    await FleetCar.create({
-      id,
+    const row = await FleetCar.create({
       plate: input.plate,
       vin: input.vin ?? null,
       make: input.make,
@@ -73,11 +73,11 @@ export default class FleetService {
       transmission: input.transmission ?? null,
       notes: input.notes ?? null,
     });
-    await this.setCarInstructors(id, input.assignedInstructorEmails ?? []);
-    return (await this.listCars()).find((c) => c.id === id)!;
+    await this.setCarInstructors(row.id, input.assignedInstructorEmails ?? []);
+    return (await this.listCars()).find((c) => c.id === row.id)!;
   }
 
-  static async updateCar(id: string, patch: Partial<Omit<FleetCarDto, 'id'>>): Promise<FleetCarDto | null> {
+  static async updateCar(id: number, patch: Partial<Omit<FleetCarDto, 'id'>>): Promise<FleetCarDto | null> {
     const row = await FleetCar.findByPk(id);
     if (!row) return null;
     await row.update({
@@ -95,7 +95,7 @@ export default class FleetService {
     return (await this.listCars()).find((c) => c.id === id) ?? null;
   }
 
-  static async removeCar(id: string): Promise<boolean> {
+  static async removeCar(id: number): Promise<boolean> {
     await CarExpense.destroy({ where: { carId: id } });
     await FleetCarInstructor.destroy({ where: { carId: id } });
     const n = await FleetCar.destroy({ where: { id } });
@@ -103,9 +103,7 @@ export default class FleetService {
   }
 
   static async addExpense(input: Omit<CarExpenseDto, 'id'>): Promise<CarExpenseDto> {
-    const id = `exp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     const row = await CarExpense.create({
-      id,
       carId: input.carId,
       amount: input.amount,
       date: input.date,
@@ -123,8 +121,8 @@ export default class FleetService {
   }
 
   static async updateExpense(
-    id: string,
-    patch: Partial<{ carId: string; amount: number; date: string; purpose: string; note: string | null }>,
+    id: number,
+    patch: Partial<{ carId: number; amount: number; date: string; purpose: string; note: string | null }>,
   ): Promise<CarExpenseDto | null> {
     const row = await CarExpense.findByPk(id);
     if (!row) return null;
@@ -133,12 +131,12 @@ export default class FleetService {
     return list.find((e) => e.id === id) ?? null;
   }
 
-  static async removeExpense(id: string): Promise<boolean> {
+  static async removeExpense(id: number): Promise<boolean> {
     const n = await CarExpense.destroy({ where: { id } });
     return n > 0;
   }
 
-  private static async setCarInstructors(carId: string, emails: string[]): Promise<void> {
+  private static async setCarInstructors(carId: number, emails: string[]): Promise<void> {
     await FleetCarInstructor.destroy({ where: { carId } });
     for (const email of emails) {
       const u = await User.findOne({

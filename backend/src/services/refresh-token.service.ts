@@ -12,10 +12,6 @@ export function hashRefreshToken(plain: string): string {
   return crypto.createHash('sha256').update(`${plain}:${pepper()}`, 'utf8').digest('hex');
 }
 
-function newTokenId(): string {
-  return `RT-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}`;
-}
-
 function newPlainRefresh(): string {
   return crypto.randomBytes(48).toString('base64url');
 }
@@ -26,12 +22,11 @@ function refreshExpiresAt(): Date {
 }
 
 export default class RefreshTokenService {
-  static async createForUser(userId: string): Promise<{ plain: string; expiresAt: Date }> {
+  static async createForUser(userId: number): Promise<{ plain: string; expiresAt: Date }> {
     const plain = newPlainRefresh();
     const tokenHash = hashRefreshToken(plain);
     const expiresAt = refreshExpiresAt();
     await RefreshToken.create({
-      id: newTokenId(),
       userId,
       tokenHash,
       expiresAt,
@@ -52,21 +47,19 @@ export default class RefreshTokenService {
   }
 
   /** Rotates refresh token: revokes the current row and returns a new plain token persisted for the same user. */
-  static async rotate(plain: string): Promise<{ plain: string; userId: string } | null> {
+  static async rotate(plain: string): Promise<{ plain: string; userId: number } | null> {
     const row = await this.findValidByPlain(plain);
     if (!row) {
       return null;
     }
     const plainNext = newPlainRefresh();
     const tokenHashNext = hashRefreshToken(plainNext);
-    const nextId = newTokenId();
     const expiresAt = refreshExpiresAt();
 
     await RefreshToken.sequelize!.transaction(async (t) => {
       await row.update({ revokedAt: new Date() }, { transaction: t });
       await RefreshToken.create(
         {
-          id: nextId,
           userId: row.userId,
           tokenHash: tokenHashNext,
           expiresAt,
@@ -83,7 +76,7 @@ export default class RefreshTokenService {
     await RefreshToken.update({ revokedAt: new Date() }, { where: { tokenHash, revokedAt: { [Op.is]: null } } });
   }
 
-  static async revokeAllForUser(userId: string): Promise<void> {
+  static async revokeAllForUser(userId: number): Promise<void> {
     await RefreshToken.update({ revokedAt: new Date() }, { where: { userId, revokedAt: { [Op.is]: null } } });
   }
 }

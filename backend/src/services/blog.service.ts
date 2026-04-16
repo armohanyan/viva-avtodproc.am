@@ -7,7 +7,7 @@ import {
 import { Blog } from '../models';
 
 export type BlogDto = {
-  id: string;
+  id: number;
   slug: string;
   title: string;
   excerpt: string;
@@ -20,7 +20,7 @@ export type BlogDto = {
 /** Avoid deleting a disk file if another blog still references that `/upload/…` URL. */
 async function filterUploadsUnreferencedByOtherBlogs(
   filenames: string[],
-  excludeBlogId: string,
+  excludeBlogId: number,
 ): Promise<string[]> {
   if (filenames.length === 0) return [];
   const out: string[] = [];
@@ -73,7 +73,6 @@ export default class BlogService {
   }
 
   static async create(input: {
-    id?: string;
     slug: string;
     title: string;
     excerpt: string;
@@ -82,9 +81,7 @@ export default class BlogService {
     published?: boolean;
     publishedAt?: string;
   }): Promise<BlogDto> {
-    const id = input.id?.trim() || `blog-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     const row = await Blog.create({
-      id,
       slug: input.slug,
       title: input.title,
       excerpt: input.excerpt,
@@ -97,7 +94,7 @@ export default class BlogService {
   }
 
   static async update(
-    id: string,
+    id: number,
     patch: Partial<{
       slug: string;
       title: string;
@@ -141,7 +138,7 @@ export default class BlogService {
     return toDto(row);
   }
 
-  static async remove(id: string): Promise<boolean> {
+  static async remove(id: number): Promise<boolean> {
     const row = await Blog.findByPk(id);
     if (!row) return false;
 

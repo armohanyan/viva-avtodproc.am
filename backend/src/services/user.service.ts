@@ -12,9 +12,12 @@ export default class UserService {
       name: String(o.name ?? ''),
       email: String(o.email ?? ''),
       phone: o.phone != null ? String(o.phone) : undefined,
-      branchId: String(o.branchId ?? ''),
-      packageId: String(o.packageId ?? ''),
-      instructorUserId: o.instructorUserId != null ? String(o.instructorUserId) : null,
+      branchId: Number(o.branchId ?? 0),
+      packageId: Number(o.packageId ?? 0),
+      instructorUserId:
+        o.instructorUserId != null && o.instructorUserId !== ''
+          ? Number(o.instructorUserId)
+          : null,
     });
   }
 }

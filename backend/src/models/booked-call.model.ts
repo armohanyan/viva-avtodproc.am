@@ -1,10 +1,11 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk } from './auto-id';
 
 export type BookedCallStatus = 'pending' | 'contacted' | 'cancelled';
 
 export class BookedCall extends Model<InferAttributes<BookedCall>, InferCreationAttributes<BookedCall>> {
-  declare id: string;
+  declare id: CreationOptional<number>;
   declare name: CreationOptional<string | null>;
   declare phone: string;
   declare preferredTimeSlot: string;
@@ -14,7 +15,7 @@ export class BookedCall extends Model<InferAttributes<BookedCall>, InferCreation
 
 BookedCall.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
+    id: autoIncrementPk(),
     name: { type: DataTypes.STRING(255), allowNull: true },
     phone: { type: DataTypes.STRING(64), allowNull: false },
     preferredTimeSlot: { type: DataTypes.TEXT, allowNull: false },

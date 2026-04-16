@@ -5,7 +5,7 @@ export type StatKey = (typeof STAT_KEYS)[number];
 
 export type MarketingStatDto = { key: StatKey; value: string; sortOrder: number };
 export type MarketingTestimonialDto = {
-  id: string;
+  id: number;
   authorName: string;
   quote: string;
   rating: number;
@@ -34,7 +34,7 @@ export type MarketingSocialDto = {
 
 export type MarketingPublicBundle = {
   stats: { key: string; value: string }[];
-  testimonials: { id: string; authorName: string; quote: string; rating: number }[];
+  testimonials: { id: number; authorName: string; quote: string; rating: number }[];
   contact: MarketingContactDto;
   footer: MarketingFooterDto;
   social: MarketingSocialDto;
@@ -163,7 +163,6 @@ export default class MarketingService {
     if (n > 0) return;
     await MarketingTestimonial.bulkCreate([
       {
-        id: 'mt-seed-1',
         authorName: 'Anahit K.',
         quote:
           'Passed my exam on the first try! The instructors are incredibly patient and professional.',
@@ -172,7 +171,6 @@ export default class MarketingService {
         published: true,
       },
       {
-        id: 'mt-seed-2',
         authorName: 'Tigran M.',
         quote: 'Great experience from start to finish. The booking system made it so easy to schedule lessons.',
         rating: 5,
@@ -180,7 +178,6 @@ export default class MarketingService {
         published: true,
       },
       {
-        id: 'mt-seed-3',
         authorName: 'Mariam S.',
         quote: 'I was terrified of driving but Viva helped me become confident behind the wheel.',
         rating: 5,
@@ -240,9 +237,7 @@ export default class MarketingService {
     sortOrder?: number;
     published?: boolean;
   }): Promise<MarketingTestimonialDto> {
-    const id = `mt-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const row = await MarketingTestimonial.create({
-      id,
       authorName: input.authorName.trim(),
       quote: input.quote.trim(),
       rating: Math.min(5, Math.max(1, input.rating ?? 5)),
@@ -253,7 +248,7 @@ export default class MarketingService {
   }
 
   static async updateTestimonial(
-    id: string,
+    id: number,
     patch: Partial<{
       authorName: string;
       quote: string;
@@ -276,7 +271,7 @@ export default class MarketingService {
     return testimonialToDto(row);
   }
 
-  static async removeTestimonial(id: string): Promise<boolean> {
+  static async removeTestimonial(id: number): Promise<boolean> {
     const n = await MarketingTestimonial.destroy({ where: { id } });
     return n > 0;
   }
@@ -303,7 +298,7 @@ export default class MarketingService {
       { settingKey: SK.SOCIAL_WHATSAPP, valueText: social.whatsapp },
     ];
     for (const u of upserts) {
-      await MarketingSetting.upsert(u);
+      await MarketingSetting.upsert(u, { conflictFields: ['settingKey'] });
     }
   }
 

@@ -6,12 +6,13 @@ import {
   type InferCreationAttributes,
 } from 'sequelize';
 import { sequelize } from '../database/sequelize';
+import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 
 export type OAuthProvider = 'google' | 'facebook' | 'apple';
 
 export class OAuthAccount extends Model<InferAttributes<OAuthAccount>, InferCreationAttributes<OAuthAccount>> {
-  declare id: string;
-  declare userId: string;
+  declare id: CreationOptional<number>;
+  declare userId: number;
   declare provider: OAuthProvider;
   declare providerUserId: string;
   declare createdAt: CreationOptional<Date>;
@@ -19,8 +20,8 @@ export class OAuthAccount extends Model<InferAttributes<OAuthAccount>, InferCrea
 
 OAuthAccount.init(
   {
-    id: { type: DataTypes.STRING(64), primaryKey: true },
-    userId: { type: DataTypes.STRING(64), allowNull: false, field: 'user_id' },
+    id: autoIncrementPk(),
+    userId: { ...fkUnsignedInt(), field: 'user_id' },
     provider: {
       type: DataTypes.ENUM('google', 'facebook', 'apple'),
       allowNull: false,
