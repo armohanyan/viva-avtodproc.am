@@ -1,27 +1,55 @@
 import type { TranslationKey } from "src/lib/i18n";
 
-export type StudentDemoBookingStatus =
-  | "confirmed"
-  | "pending"
-  | "pending_prebook"
-  | "pending_payment"
-  | "cancelled"
-  | "completed"
-  | "refunded";
+export type StudentDemoBookingStatus = "confirmed" | "pending" | "cancelled" | "refunded";
+
+/** Human-readable range for hourly bookings (`endTime` is exclusive end from the API). */
+export function formatBookingSlotRangeLabel(time: string, endTime?: string | null): string {
+  if (endTime == null || endTime === "") return time;
+  const sm = parseSlotMinutes(time);
+  const em = parseSlotMinutes(endTime);
+  if (!Number.isFinite(sm) || !Number.isFinite(em) || em <= sm + 60) return time;
+  const hours = (em - sm) / 60;
+  const lastStartM = em - 60;
+  return `${normalizeSlot(time)}–${minutesToSlotLabel(lastStartM)} (${hours}h)`;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function parseSlotMinutes(t: string): number {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t).trim());
+  if (!m) return NaN;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+function minutesToSlotLabel(totalM: number): string {
+  const h = Math.floor(totalM / 60) % 24;
+  const min = totalM % 60;
+  return `${pad2(h)}:${pad2(min)}`;
+}
+
+function normalizeSlot(t: string): string {
+  return minutesToSlotLabel(parseSlotMinutes(t));
+}
 
 export type StudentDemoBooking = {
-  id: string;
+  id: string | number;
   dateIso: string;
   time: string;
+  /** Present when loaded from the API (multi-hour bookings). */
+  endTime?: string | null;
+  /** Total price in AMD when known. */
+  totalPriceAmd?: number | null;
   /** Present when loaded from the API (used for instructor flows). */
-  instructorUserId?: string;
+  instructorUserId?: string | number;
   instructor: string;
   lessonTypeKey: Extract<TranslationKey, "lessonTypePractical" | "lessonTypeTheory">;
   status: StudentDemoBookingStatus;
 };
 
 function isUpcomingBooking(b: StudentDemoBooking, todayIso: string): boolean {
-  if (b.status === "cancelled" || b.status === "completed" || b.status === "refunded") return false;
+  if (b.status === "cancelled" || b.status === "refunded") return false;
   return b.dateIso >= todayIso;
 }
 

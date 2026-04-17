@@ -8,9 +8,19 @@ type StudentRow = {
 	id: string;
 	name: string;
 	email: string;
+	status?: string;
 };
 
-export function useAdminStudentsMini() {
+export type UseAdminStudentsMiniOptions = {
+	/**
+	 * Enrollment status filter from the student profile.
+	 * `"active"` limits pickers to active (ակտիվ) students; `"all"` returns every row from the API.
+	 */
+	enrollmentStatus?: "active" | "all";
+};
+
+export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) {
+	const { enrollmentStatus = "active" } = options;
 	const [students, setStudents] = useState<AdminStudentMini[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -20,18 +30,18 @@ export function useAdminStudentsMini() {
 		setError(null);
 		try {
 			const data = await vivaApiJson<StudentRow[]>("/students");
-			setStudents(
-				Array.isArray(data)
-					? data.map((r) => ({ id: r.id, name: r.name, email: r.email }))
-					: [],
-			);
+			const rows = Array.isArray(data) ? data : [];
+			const mapped = rows
+				.filter((r) => enrollmentStatus === "all" || (r.status ?? "active") === "active")
+				.map((r) => ({ id: r.id, name: r.name, email: r.email }));
+			setStudents(mapped);
 		} catch (e) {
 			setStudents([]);
 			setError(getApiErrorMessage(e));
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [enrollmentStatus]);
 
 	useEffect(() => {
 		void refresh();

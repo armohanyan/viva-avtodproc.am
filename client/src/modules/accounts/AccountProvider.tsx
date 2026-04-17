@@ -19,7 +19,7 @@ export interface AccountContextValue {
   readonly user: AccountSessionUser | null;
   /** True after we've read localStorage (avoids guard flash in SPA). */
   readonly hydrated: boolean;
-  readonly signIn: (input: { email: string; name: string; accountType?: AccountType; accessToken?: string; id?: string }) => void;
+  readonly signIn: (input: { email: string; name: string; accountType?: AccountType; accessToken?: string; id?: string | number }) => void;
   readonly signOut: () => void;
   readonly defaultHomePath: string;
 }
@@ -63,10 +63,12 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
     };
   }, []);
 
-  const signIn = useCallback((input: { email: string; name: string; accountType?: AccountType; accessToken?: string; id?: string }) => {
+  const signIn = useCallback((input: { email: string; name: string; accountType?: AccountType; accessToken?: string; id?: string | number }) => {
     const accountType = input.accountType ?? inferAccountTypeFromEmail(input.email);
+    const idRaw = input.id;
+    const idStr = idRaw == null || idRaw === "" ? "" : typeof idRaw === "string" ? idRaw.trim() : String(idRaw).trim();
     const next: AccountSessionUser = {
-      id: (input.id && input.id.trim()) || newSessionId(),
+      id: idStr || newSessionId(),
       email: input.email.trim(),
       name: input.name.trim() || input.email.split("@")[0] || "User",
       accountType,

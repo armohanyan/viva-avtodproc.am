@@ -1,5 +1,6 @@
 import { Button } from "./ui/button";
 import { AppModal } from "./AppModal";
+import { useLang } from "src/lib/i18n";
 
 interface Props {
   open: boolean;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = "Confirm", danger = false }: Props) {
+  const { t } = useLang();
   return (
     <AppModal
       open={open}
@@ -24,7 +26,7 @@ export default function ConfirmDialog({ open, onClose, onConfirm, title, descrip
       footer={
         <div className="flex gap-3">
           <Button variant="outline" className="flex-1" onClick={onClose}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             variant={danger ? "destructive" : "default"}

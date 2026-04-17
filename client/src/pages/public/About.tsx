@@ -12,21 +12,21 @@ import {
   ABOUT_MARKETING_STAT_LABEL_KEY,
   ABOUT_MARKETING_STATS_ORDER,
 } from "src/modules/marketing/statLabels";
-import { MARKETING_FALLBACK_STATS } from "src/modules/marketing/marketingFallbackStats";
 
 export default function About() {
   const { t } = useLang();
   const { data: mkt } = useMarketingPublic();
 
-  const storyStats = useMemo(() => {
-    const rows = mkt?.stats?.length ? mkt.stats : MARKETING_FALLBACK_STATS;
-    const fallbackByKey = Object.fromEntries(MARKETING_FALLBACK_STATS.map((s) => [s.key, s.value]));
-    const byKey = { ...fallbackByKey, ...Object.fromEntries(rows.map((s) => [s.key, s.value])) };
-    return ABOUT_MARKETING_STATS_ORDER.map((key) => ({
-      value: byKey[key] ?? "",
+  const { storyStats, marketingStatByKey } = useMemo(() => {
+    const byKey = Object.fromEntries((mkt?.stats ?? []).map((s) => [s.key, s.value])) as Record<string, string>;
+    const storyStats = ABOUT_MARKETING_STATS_ORDER.filter((key) => byKey[key]).map((key) => ({
+      value: byKey[key]!,
       label: t((ABOUT_MARKETING_STAT_LABEL_KEY[key] ?? "aboutStatYearsActive") as TranslationKey),
     }));
+    return { storyStats, marketingStatByKey: byKey };
   }, [mkt, t]);
+
+  const graduateCountDisplay = marketingStatByKey.students ?? "3,200+";
 
   const values = [
     { icon: Target, title: t("aboutValueSafetyTitle"), desc: t("aboutValueSafetyDesc") },
@@ -39,7 +39,7 @@ export default function About() {
     { year: "2023", event: t("aboutMilestone2023") },
     { year: "2024", event: t("aboutMilestone2024") },
     { year: "2025", event: t("aboutMilestone2025") },
-    { year: "2026", event: t("aboutMilestone2026") },
+    { year: "2026", event: t("aboutMilestone2026").replace("{count}", graduateCountDisplay) },
   ];
 
   return (
@@ -81,16 +81,18 @@ export default function About() {
             <div className="bg-gradient-to-br from-primary to-primary/60 rounded-2xl p-6 sm:p-8 md:p-10 text-primary-foreground">
               <h3 className="text-2xl font-bold mb-4">{t("ourMission")}</h3>
               <p className="text-primary-foreground/80 leading-relaxed text-lg">{t("missionText")}</p>
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                {storyStats.map((s, i) => (
-                  <Reveal key={i} delay={i * 0.06}>
-                    <div className="text-3xl font-bold">
-                      <CountUpText value={s.value} />
-                    </div>
-                    <div className="text-primary-foreground/80 text-sm">{s.label}</div>
-                  </Reveal>
-                ))}
-              </div>
+              {storyStats.length > 0 ? (
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                  {storyStats.map((s, i) => (
+                    <Reveal key={i} delay={i * 0.06}>
+                      <div className="text-3xl font-bold">
+                        <CountUpText value={s.value} />
+                      </div>
+                      <div className="text-primary-foreground/80 text-sm">{s.label}</div>
+                    </Reveal>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

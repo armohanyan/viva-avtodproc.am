@@ -1,10 +1,11 @@
 import { ReactNode, useMemo } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useRouter } from "wouter";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
 	LayoutDashboard,
 	Calendar,
+	CalendarClock,
 	ShoppingBag,
 	CreditCard,
 	User,
@@ -26,6 +27,8 @@ import {
 } from "./ui/dropdown-menu";
 import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
+import { cn } from "src/lib/utils";
+import { absWouterHref, fullBrowserPathFromRouter } from "src/lib/wouterFullPath";
 
 interface Props {
 	children: ReactNode;
@@ -35,22 +38,48 @@ export default function DashboardLayout({ children }: Props) {
 	const { t } = useLang();
 	const { showToast } = useToast();
 	const { user, signOut } = useAccount();
-	const [location, setLocation] = useLocation();
+	const router = useRouter();
+	const [locRelative, setLocation] = useLocation();
+	const location = useMemo(() => fullBrowserPathFromRouter(router, locRelative), [router, locRelative]);
 
 	const iconByPath = {
 		"/dashboard": LayoutDashboard,
 		"/dashboard/learn": BookOpen,
 		"/dashboard/bookings": Calendar,
+		"/dashboard/bookings/package": ShoppingBag,
+		"/dashboard/bookings/practical": CalendarClock,
 		"/dashboard/purchases": ShoppingBag,
 		"/dashboard/payments": CreditCard,
 		"/dashboard/profile": User,
 	} as const;
 
-	const nav = DASHBOARD_NAV_LINKS.map((link) => ({
-		href: link.href,
-		icon: iconByPath[link.href as keyof typeof iconByPath],
-		label: t(link.translationKey),
-	}));
+	type NavRow =
+		| { type: "single"; href: string; label: string; icon: (typeof iconByPath)[keyof typeof iconByPath] }
+		| {
+				type: "group";
+				href: string;
+				label: string;
+				icon: (typeof iconByPath)[keyof typeof iconByPath];
+				children: { href: string; label: string; icon: (typeof iconByPath)[keyof typeof iconByPath] }[];
+		  };
+
+	const nav: NavRow[] = DASHBOARD_NAV_LINKS.map((link) => {
+		const icon = iconByPath[link.href as keyof typeof iconByPath];
+		if (link.children?.length) {
+			return {
+				type: "group" as const,
+				href: link.href,
+				label: t(link.translationKey),
+				icon,
+				children: link.children.map((c) => ({
+					href: c.href,
+					label: t(c.translationKey),
+					icon: iconByPath[c.href as keyof typeof iconByPath],
+				})),
+			};
+		}
+		return { type: "single" as const, href: link.href, label: t(link.translationKey), icon };
+	});
 
 	const headerTitle = useMemo(() => {
 		if (location.startsWith("/dashboard/learn/exam-tests") || location.startsWith("/dashboard/exam-tests")) {
@@ -62,11 +91,11 @@ export default function DashboardLayout({ children }: Props) {
 		if (location.startsWith("/dashboard/learn")) {
 			return t("learn");
 		}
-		if (location.startsWith("/dashboard/bookings/package")) {
-			return t("bookingsSubnavPackage");
-		}
-		if (location.startsWith("/dashboard/bookings/practical")) {
-			return t("bookingsSubnavPractical");
+		if (location.startsWith("/dashboard/bookings")) {
+			const bookingsEntry = DASHBOARD_NAV_LINKS.find((l) => l.href === "/dashboard/bookings");
+			const child = bookingsEntry?.children?.find((c) => location === c.href);
+			if (child) return t(child.translationKey);
+			return t("bookings");
 		}
 		const hit = DASHBOARD_NAV_LINKS.find((l) => l.href === location);
 		return hit ? t(hit.translationKey) : t("dashboard");
@@ -76,16 +105,13 @@ export default function DashboardLayout({ children }: Props) {
 		if (href === "/dashboard/learn") {
 			return location.startsWith("/dashboard/learn") || location.startsWith("/dashboard/exam-tests");
 		}
-		if (href === "/dashboard/bookings") {
-			return location.startsWith("/dashboard/bookings");
-		}
 		return location === href;
 	};
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
 		signOut();
-		setTimeout(() => setLocation("/"), 800);
+		setTimeout(() => setLocation(absWouterHref("/")), 800);
 	};
 
 	return (
@@ -113,7 +139,7 @@ export default function DashboardLayout({ children }: Props) {
 							</DropdownMenuLabel>
 							<DropdownMenuSeparator />
 							<DropdownMenuItem asChild>
-								<Link href="/dashboard/profile" className="cursor-pointer" onClick={() => closeMobileNav()}>
+								<Link href={absWouterHref("/dashboard/profile")} className="cursor-pointer" onClick={() => closeMobileNav()}>
 									<Settings className="w-4 h-4" />
 									{t("profileSettings")}
 								</Link>
@@ -130,7 +156,7 @@ export default function DashboardLayout({ children }: Props) {
 			renderSidebar={({ closeMobileNav }) => (
 				<div className="flex flex-col h-full min-h-0 bg-card">
 					<div className="p-5 border-b border-border shrink-0">
-						<Link href="/dashboard" className="flex items-center gap-2">
+						<Link href={absWouterHref("/dashboard")} className="flex items-center gap-2">
 							<div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
 								<img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
 							</div>
@@ -141,21 +167,69 @@ export default function DashboardLayout({ children }: Props) {
 						</Link>
 					</div>
 					<nav className="px-3 py-4 flex-1 min-h-0 overflow-y-auto space-y-1">
-						{nav.map((item) => (
-							<Link
-								key={item.href}
-								href={item.href}
-								onClick={() => closeMobileNav()}
-								className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-									isNavActive(item.href)
-										? "bg-primary text-primary-foreground"
-										: "text-foreground/80 hover:bg-primary/10 hover:text-foreground"
-								}`}
-							>
-								<item.icon className="w-4 h-4 shrink-0" />
-								{item.label}
-							</Link>
-						))}
+						{nav.map((item) => {
+							if (item.type === "single") {
+								return (
+									<Link
+										key={item.href}
+										href={absWouterHref(item.href)}
+										onClick={() => closeMobileNav()}
+										className={cn(
+											"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+											isNavActive(item.href)
+												? "bg-primary text-primary-foreground"
+												: "text-foreground/80 hover:bg-primary/10 hover:text-foreground",
+										)}
+									>
+										<item.icon className="w-4 h-4 shrink-0" />
+										{item.label}
+									</Link>
+								);
+							}
+
+							const inBookings = location.startsWith("/dashboard/bookings");
+							const onBookingsRoot = location === "/dashboard/bookings" || location === "/dashboard/bookings/";
+							return (
+								<div key={item.href} className="space-y-0.5">
+									<Link
+										href={absWouterHref(item.href)}
+										onClick={() => closeMobileNav()}
+										className={cn(
+											"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+											onBookingsRoot
+												? "bg-primary text-primary-foreground"
+												: inBookings
+													? "text-foreground bg-muted/50 hover:bg-muted"
+													: "text-foreground/80 hover:bg-primary/10 hover:text-foreground",
+										)}
+									>
+										<item.icon className="w-4 h-4 shrink-0" />
+										{item.label}
+									</Link>
+									<div className="ml-2 pl-2 border-l border-border/80 space-y-0.5 py-0.5">
+										{item.children.map((child) => {
+											const childActive = location === child.href || location.startsWith(`${child.href}/`);
+											return (
+												<Link
+													key={child.href}
+													href={absWouterHref(child.href)}
+													onClick={() => closeMobileNav()}
+													className={cn(
+														"flex items-center gap-2.5 pl-2 pr-2 py-2 rounded-md text-sm transition-colors",
+														childActive
+															? "bg-primary text-primary-foreground font-medium"
+															: "text-muted-foreground hover:text-foreground hover:bg-muted/80",
+													)}
+												>
+													<child.icon className="w-3.5 h-3.5 shrink-0 opacity-90" />
+													<span className="truncate">{child.label}</span>
+												</Link>
+											);
+										})}
+									</div>
+								</div>
+							);
+						})}
 					</nav>
 				</div>
 			)}

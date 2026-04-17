@@ -2,7 +2,7 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Clock } from "lucide-react";
 import { useLang, type TranslationKey } from "src/lib/i18n";
-import type { StudentDemoBooking } from "src/data/studentDemoBookings";
+import { formatBookingSlotRangeLabel, type StudentDemoBooking } from "src/data/studentDemoBookings";
 
 function localeFromLang(lang: "en" | "ru" | "am") {
   if (lang === "am") return "hy-AM";
@@ -28,28 +28,19 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
       return t("confirmed");
     case "pending":
       return t("pending");
-    case "pending_prebook":
-      return t("bookingStatusPrebook");
-    case "pending_payment":
-      return t("bookingStatusPaymentDue");
     case "cancelled":
       return t("cancelled");
-    case "completed":
-      return t("bookingStatusCompleted");
     case "refunded":
-      return t("bookingStatusRefunded");
-    default:
-      return "";
+      return t("refunded");
   }
 }
 
 function statusBadgeClass(status: StudentDemoBooking["status"]) {
   if (status === "confirmed") return "bg-primary/10 text-primary";
-  if (status === "pending" || status === "pending_prebook") return "bg-accent text-muted-foreground";
-  if (status === "pending_payment") return "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200";
-  if (status === "completed") return "bg-muted text-muted-foreground";
+  if (status === "pending") return "bg-accent text-muted-foreground";
+  if (status === "cancelled") return "bg-destructive/10 text-destructive";
   if (status === "refunded") return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200";
-  return "bg-destructive/10 text-destructive";
+  return "bg-accent text-muted-foreground";
 }
 
 type Props = {
@@ -83,7 +74,12 @@ export default function StudentDemoBookingRow({ booking, variant = "bookings" }:
             </p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
-              <span className="text-xs text-muted-foreground">{booking.time}</span>
+              <span className="text-xs text-muted-foreground">
+                {formatBookingSlotRangeLabel(booking.time, booking.endTime)}
+                {booking.totalPriceAmd != null && booking.totalPriceAmd > 0 ? (
+                  <span className="text-muted-foreground/80"> · {booking.totalPriceAmd.toLocaleString()} ֏</span>
+                ) : null}
+              </span>
               <Badge variant="secondary" className="text-xs px-2 py-0 bg-accent text-foreground">
                 {t(booking.lessonTypeKey)}
               </Badge>

@@ -24,23 +24,30 @@ export default function Footer() {
 
   const socialLinks = useMemo((): { icon: SocialIcon; href: string; label: string }[] => {
     const s = mkt?.social;
-    return [
-      { icon: Facebook, href: s?.facebook?.trim() || "https://facebook.com", label: "Facebook" },
-      { icon: Instagram, href: s?.instagram?.trim() || "https://instagram.com", label: "Instagram" },
-      { icon: Youtube, href: s?.youtube?.trim() || "https://youtube.com", label: "YouTube" },
-      { icon: TikTokIcon, href: s?.tiktok?.trim() || "https://www.tiktok.com", label: "TikTok" },
-    ];
+    const out: { icon: SocialIcon; href: string; label: string }[] = [];
+    const push = (href: string | undefined, icon: SocialIcon, label: string) => {
+      const h = href?.trim();
+      if (h) out.push({ icon, href: h, label });
+    };
+    push(s?.facebook, Facebook, "Facebook");
+    push(s?.instagram, Instagram, "Instagram");
+    push(s?.youtube, Youtube, "YouTube");
+    push(s?.tiktok, TikTokIcon, "TikTok");
+    return out;
   }, [mkt]);
 
-  const footerPhone = mkt?.contact?.phones?.[0]?.trim() || "+374 10 123 456";
-  const footerEmail = mkt?.contact?.emails?.[0]?.trim() || "info@vivadrive.am";
-  const addr1 = mkt?.footer?.addressLine1?.trim() || "Yerevan, Armenia";
-  const addr2 = mkt?.footer?.addressLine2?.trim() || "Mashtots Ave, 45";
+  const footerPhone = mkt?.contact?.phones?.[0]?.trim();
+  const footerEmail = mkt?.contact?.emails?.[0]?.trim();
+  const addr1 = mkt?.footer?.addressLine1?.trim();
+  const addr2 = mkt?.footer?.addressLine2?.trim();
+  const hasFooterContact = !!(footerPhone || footerEmail || addr1 || addr2);
 
   return (
     <footer className="bg-hero text-hero-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+        <div
+          className={`grid grid-cols-1 md:grid-cols-2 gap-10 ${hasFooterContact ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}
+        >
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center overflow-hidden">
@@ -48,20 +55,22 @@ export default function Footer() {
               </div>
             </div>
             <p className="text-sm text-hero-foreground/80 leading-relaxed mb-5">{t("aboutSub")}</p>
-            <div className="flex gap-3">
-              {socialLinks.map((item) => (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={item.label}
-                  className="w-9 h-9 rounded-lg bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors"
-                >
-                  <item.icon className="w-4 h-4" />
-                </a>
-              ))}
-            </div>
+            {socialLinks.length > 0 ? (
+              <div className="flex gap-3">
+                {socialLinks.map((item) => (
+                  <a
+                    key={item.label}
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={item.label}
+                    className="w-9 h-9 rounded-lg bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors"
+                  >
+                    <item.icon className="w-4 h-4" />
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -88,27 +97,35 @@ export default function Footer() {
             </ul>
           </div>
 
-          <div>
-            <h4 className="font-semibold text-hero-foreground mb-4">{t("contact")}</h4>
-            <ul className="space-y-3">
-              <li className="flex items-start gap-2 text-sm">
-                <MapPin className="w-4 h-4 mt-0.5 text-primary shrink-0" />
-                <span>
-                  {addr1}
-                  <br />
-                  {addr2}
-                </span>
-              </li>
-              <li className="flex items-center gap-2 text-sm">
-                <Phone className="w-4 h-4 text-primary shrink-0" />
-                <span>{footerPhone}</span>
-              </li>
-              <li className="flex items-center gap-2 text-sm">
-                <Mail className="w-4 h-4 text-primary shrink-0" />
-                <span>{footerEmail}</span>
-              </li>
-            </ul>
-          </div>
+          {hasFooterContact ? (
+            <div>
+              <h4 className="font-semibold text-hero-foreground mb-4">{t("contact")}</h4>
+              <ul className="space-y-3">
+                {addr1 || addr2 ? (
+                  <li className="flex items-start gap-2 text-sm">
+                    <MapPin className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+                    <span>
+                      {addr1 ? <>{addr1}</> : null}
+                      {addr1 && addr2 ? <br /> : null}
+                      {addr2 ? <>{addr2}</> : null}
+                    </span>
+                  </li>
+                ) : null}
+                {footerPhone ? (
+                  <li className="flex items-center gap-2 text-sm">
+                    <Phone className="w-4 h-4 text-primary shrink-0" />
+                    <span>{footerPhone}</span>
+                  </li>
+                ) : null}
+                {footerEmail ? (
+                  <li className="flex items-center gap-2 text-sm">
+                    <Mail className="w-4 h-4 text-primary shrink-0" />
+                    <span>{footerEmail}</span>
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
 

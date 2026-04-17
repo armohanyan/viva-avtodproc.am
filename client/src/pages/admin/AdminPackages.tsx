@@ -13,9 +13,13 @@ import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, Package } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
+import { uploadStaffImageFile } from "src/lib/staffImageUpload";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { Textarea } from "src/components/ui/textarea";
+
+const PACKAGE_PROMO_IMAGE_MAX_BYTES = 800 * 1024;
 
 function featuresFromMultiline(text: string): string[] {
   return text
@@ -38,9 +42,32 @@ type Pkg = {
 export default function AdminPackages() {
   const editPkgFormId = useId();
   const addPkgFormId = useId();
+  const editPackageImageFileRef = useRef<HTMLInputElement | null>(null);
+  const addPackageImageFileRef = useRef<HTMLInputElement | null>(null);
   const { t } = useLang();
   const { showToast } = useToast();
   const [packages, setPackages] = useState<Pkg[]>([]);
+
+  const applyUploadedPackageImage = useCallback(
+    async (file: File | undefined, onUrl: (url: string) => void) => {
+      if (!file) return;
+      if (file.size > PACKAGE_PROMO_IMAGE_MAX_BYTES) {
+        showToast(t("adminExamQuestionsImageTooLarge"), "error");
+        return;
+      }
+      try {
+        const url = await uploadStaffImageFile(file);
+        if (!sanitizeCoverImageUrl(url)) {
+          showToast(t("adminExamQuestionsImageInvalid"), "error");
+          return;
+        }
+        onUrl(url);
+      } catch (err) {
+        showToast(getApiErrorMessage(err), "error");
+      }
+    },
+    [showToast, t],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -171,7 +198,7 @@ export default function AdminPackages() {
               t("name"),
               t("packageColImage"),
               t("adminColPrice"),
-              t("lessons"),
+              t("adminPackageColPracticalLessons"),
               t("adminColEnrolled"),
               t("adminColFeatures"),
               t("status"),
@@ -196,7 +223,7 @@ export default function AdminPackages() {
                 <TableColumnHeaderWithFilter title={t("name")} />
                 <TableColumnHeaderWithFilter title={t("packageColImage")} />
                 <TableColumnHeaderWithFilter title={t("adminColPrice")} />
-                <TableColumnHeaderWithFilter title={t("lessons")} />
+                <TableColumnHeaderWithFilter title={t("adminPackageColPracticalLessons")} />
                 <TableColumnHeaderWithFilter title={t("adminColEnrolled")} />
                 <TableColumnHeaderWithFilter title={t("adminColFeatures")} />
                 <TableColumnHeaderWithFilter
@@ -358,6 +385,22 @@ export default function AdminPackages() {
                 placeholder={t("adminExamQuestionsImageUrlPlaceholder")}
                 className="h-10"
               />
+              <div className="flex flex-wrap gap-2 items-center mt-2">
+                <input
+                  ref={editPackageImageFileRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                  className="sr-only"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    await applyUploadedPackageImage(file, (url) => setEditPkg((p) => (p ? { ...p, imageUrl: url } : p)));
+                  }}
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => editPackageImageFileRef.current?.click()}>
+                  {t("adminExamQuestionsImagePickFile")}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">{t("packageImageUrlHint")}</p>
             </div>
             <div>
@@ -422,6 +465,22 @@ export default function AdminPackages() {
               placeholder={t("adminExamQuestionsImageUrlPlaceholder")}
               className="h-10"
             />
+            <div className="flex flex-wrap gap-2 items-center mt-2">
+              <input
+                ref={addPackageImageFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                className="sr-only"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  await applyUploadedPackageImage(file, (url) => setNewPkg((p) => ({ ...p, imageUrl: url })));
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => addPackageImageFileRef.current?.click()}>
+                {t("adminExamQuestionsImagePickFile")}
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground mt-1">{t("packageImageUrlHint")}</p>
           </div>
           <div>

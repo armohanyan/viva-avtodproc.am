@@ -11,10 +11,11 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Landmark, Wallet, TrendingUp, Clock, AlertCircle, BarChart3, Plus } from "lucide-react";
+import { Landmark, Wallet, Plus } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useToast } from "src/lib/toast";
+import AdminStudentSearchSelect from "src/components/admin/AdminStudentSearchSelect";
 import { useAdminStudentsMini } from "src/modules/admin/useAdminStudents";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 
@@ -24,7 +25,7 @@ type TxMethod = "card" | "idram" | "cash" | "transfer";
 type TxSource = "system" | "manual";
 
 type FinanceTx = {
-  id: string;
+  id: number;
   createdAt: string;
   customer: string;
   email: string;
@@ -55,15 +56,6 @@ function formatAmd(n: number): string {
 function toDatetimeLocalValue(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function newManualTxId(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const r = Math.floor(Math.random() * 900 + 100);
-  return `TX-MAN-${y}${m}${day}-${r}`;
 }
 
 function parseAmdInput(raw: string): number {
@@ -144,8 +136,9 @@ export default function AdminFinance() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
-  const { students: studentDirectory } = useAdminStudentsMini();
+  const { students: studentDirectory, loading: studentDirectoryLoading } = useAdminStudentsMini({ enrollmentStatus: "all" });
   const [transactions, setTransactions] = useState<FinanceTx[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | TxStatus>("all");
@@ -167,6 +160,7 @@ export default function AdminFinance() {
   }));
 
   const refreshTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
     try {
       const data = await vivaApiJson<FinanceTx[]>("/finance/transactions");
       setTransactions(
@@ -177,6 +171,8 @@ export default function AdminFinance() {
     } catch (e) {
       setTransactions([]);
       showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setTransactionsLoading(false);
     }
   }, [showToast]);
 
@@ -233,12 +229,21 @@ export default function AdminFinance() {
       return;
     }
 
+    const bookingIdTrim = manualForm.bookingIdStr.trim();
+    let bookingId: number | undefined;
+    if (bookingIdTrim) {
+      const parsed = Number.parseInt(bookingIdTrim, 10);
+      if (!Number.isFinite(parsed) || parsed <= 0 || String(parsed) !== bookingIdTrim) {
+        showToast(t("financeManualErrorBookingId"), "error");
+        return;
+      }
+      bookingId = parsed;
+    }
+
     try {
-      const bookingIdTrim = manualForm.bookingIdStr.trim();
       await vivaApiJson("/finance/transactions", {
         method: "POST",
         body: {
-          id: newManualTxId(),
           createdAt: created.toISOString(),
           customer: manualForm.customer.trim(),
           email: manualForm.email.trim(),
@@ -251,7 +256,7 @@ export default function AdminFinance() {
           status: manualForm.status,
           providerRef: manualForm.ref.trim() || "—",
           source: "manual",
-          ...(bookingIdTrim ? { bookingId: bookingIdTrim } : {}),
+          ...(bookingId !== undefined ? { bookingId } : {}),
         },
       });
       setManualOpen(false);
@@ -291,67 +296,16 @@ export default function AdminFinance() {
     });
   }, [search, branchFilter, statusFilter, branches, t, transactions]);
 
-  const kpis = useMemo(() => {
+  const grossRevenueMonth = useMemo(() => {
     const { start: MONTH_START, end: MONTH_END } = monthRange();
     const inMonth = (tx: FinanceTx) => {
       const d = new Date(tx.createdAt);
       return d >= MONTH_START && d <= MONTH_END;
     };
-    const completedInMonth = transactions.filter((tx) => tx.status === "completed" && inMonth(tx));
-    const grossMonth = completedInMonth.reduce((s, tx) => s + tx.grossAmd, 0);
-    const netMonth = completedInMonth.reduce((s, tx) => s + netOf(tx), 0);
-    const pendingTotal = transactions.filter((tx) => tx.status === "pending").reduce((s, tx) => s + netOf(tx), 0);
-    const failedRefunded = transactions.filter((tx) => tx.status === "failed" || tx.status === "refunded");
-    const failedRefundedGross = failedRefunded.reduce((s, tx) => s + tx.grossAmd, 0);
-    const avgTicket =
-      completedInMonth.length > 0 ? Math.round(grossMonth / completedInMonth.length) : 0;
-    return {
-      grossMonth,
-      netMonth,
-      pendingTotal,
-      failedRefundedCount: failedRefunded.length,
-      failedRefundedGross,
-      avgTicket,
-    };
+    return transactions
+      .filter((tx) => tx.status === "completed" && inMonth(tx))
+      .reduce((s, tx) => s + tx.grossAmd, 0);
   }, [transactions]);
-
-  const kpiCards = [
-    {
-      labelKey: "adminFinanceKpiGrossMonth" as const,
-      value: formatAmd(kpis.grossMonth),
-      icon: Wallet,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      labelKey: "adminFinanceKpiNetMonth" as const,
-      value: formatAmd(kpis.netMonth),
-      icon: TrendingUp,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    {
-      labelKey: "adminFinanceKpiPendingSettlement" as const,
-      value: formatAmd(kpis.pendingTotal),
-      icon: Clock,
-      color: "text-amber-600",
-      bg: "bg-amber-500/10",
-    },
-    {
-      labelKey: "adminFinanceKpiFailedRefunded" as const,
-      value: `${kpis.failedRefundedCount} · ${formatAmd(kpis.failedRefundedGross)}`,
-      icon: AlertCircle,
-      color: "text-red-600",
-      bg: "bg-red-500/10",
-    },
-    {
-      labelKey: "adminFinanceKpiAvgTicket" as const,
-      value: formatAmd(kpis.avgTicket),
-      icon: BarChart3,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-  ];
 
   return (
     <AdminLayout>
@@ -371,20 +325,20 @@ export default function AdminFinance() {
         }
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
-        {kpiCards.map((k, i) => (
-          <Card key={i} className="p-5 border-border">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground mb-1 leading-snug">{t(k.labelKey)}</p>
-                <p className="text-lg font-bold text-foreground tabular-nums break-words">{k.value}</p>
-              </div>
-              <div className={`w-10 h-10 ${k.bg} rounded-xl flex items-center justify-center shrink-0`}>
-                <k.icon className={`w-5 h-5 ${k.color}`} />
-              </div>
+      <div className="grid grid-cols-1 max-w-md gap-4 mb-8">
+        <Card className="p-5 border-border">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground mb-1 leading-snug">{t("adminFinanceKpiGrossMonth")}</p>
+              <p className="text-lg font-bold text-foreground tabular-nums break-words">
+                {transactionsLoading ? "…" : formatAmd(grossRevenueMonth)}
+              </p>
             </div>
-          </Card>
-        ))}
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
+              <Wallet className="w-5 h-5 text-primary" />
+            </div>
+          </div>
+        </Card>
       </div>
 
       <Card className="border-border overflow-hidden min-w-0">
@@ -412,7 +366,7 @@ export default function AdminFinance() {
               t("financeColProviderRef"),
             ]}
             rows={filtered.map((tx) => [
-              tx.id,
+              String(tx.id),
               tx.source === "manual" ? t("financeOriginManual") : t("financeOriginSystem"),
               new Date(tx.createdAt).toLocaleString(),
               tx.customer,
@@ -559,10 +513,10 @@ export default function AdminFinance() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualSelectStudentPlaceholder")}</label>
-                <select
+                <AdminStudentSearchSelect
+                  students={studentDirectory}
                   value={manualForm.studentDirectoryId}
-                  onChange={(e) => {
-                    const id = e.target.value;
+                  onChange={(id) => {
                     if (!id) {
                       setManualForm((f) => ({ ...f, studentDirectoryId: "" }));
                       return;
@@ -575,15 +529,13 @@ export default function AdminFinance() {
                       email: s?.email ?? "",
                     }));
                   }}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">—</option>
-                  {studentDirectory.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                  allowClear
+                  disabled={studentDirectoryLoading}
+                  searchPlaceholder={t("adminStudentPickerSearchPlaceholder")}
+                  selectPlaceholder="—"
+                  noResultsLabel={t("tableNoMatches")}
+                  emptyListLabel={t("couldNotLoadData")}
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColCustomer")}</label>

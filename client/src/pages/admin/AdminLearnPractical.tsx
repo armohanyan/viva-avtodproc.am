@@ -16,6 +16,7 @@ import {
 } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 import { useAdminLearnSearchParams } from "src/lib/adminLearnSearchParams";
+import AdminStudentSearchSelect from "src/components/admin/AdminStudentSearchSelect";
 import { useAdminStudentsMini } from "src/modules/admin/useAdminStudents";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
@@ -32,7 +33,7 @@ export default function AdminLearnPractical() {
   const { showToast } = useToast();
   const { branches } = useBranches();
   const { cities } = useCities();
-  const { students } = useAdminStudentsMini();
+  const { students, loading: studentsLoading } = useAdminStudentsMini();
   const { instructors: instructorRecords } = useInstructors();
   const { studentId: studentFromQuery, branchId: branchFromQuery } = useAdminLearnSearchParams();
   const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
@@ -68,12 +69,17 @@ export default function AdminLearnPractical() {
   const readyForCalendar = validationErrors.length === 0 && instructorOptions.length > 0;
 
   useEffect(() => {
-    if (studentFromQuery) setStudentId(studentFromQuery);
-  }, [studentFromQuery]);
-
-  useEffect(() => {
-    setStudentId((prev) => prev || students[0]?.id || "");
-  }, [students]);
+    if (students.length === 0) {
+      setStudentId("");
+      return;
+    }
+    const fromQueryOk = studentFromQuery && students.some((s) => s.id === studentFromQuery);
+    if (fromQueryOk) {
+      setStudentId(studentFromQuery);
+      return;
+    }
+    setStudentId((prev) => (prev && students.some((s) => s.id === prev) ? prev : students[0]!.id));
+  }, [students, studentFromQuery]);
 
   useEffect(() => {
     if (branchFromQuery && branches.some((b) => b.id === branchFromQuery)) {
@@ -117,17 +123,16 @@ export default function AdminLearnPractical() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("adminLearnStudentFieldLabel")}</label>
-              <select
+              <AdminStudentSearchSelect
+                students={students}
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setStudentId}
+                disabled={studentsLoading}
+                searchPlaceholder={t("adminStudentPickerSearchPlaceholder")}
+                selectPlaceholder={t("adminStudentPickerSelectPlaceholder")}
+                noResultsLabel={t("tableNoMatches")}
+                emptyListLabel={t("adminStudentPickerNoStudents")}
+              />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
@@ -194,10 +199,11 @@ export default function AdminLearnPractical() {
           selectedInstructorId={instructorId}
           onInstructorChange={setInstructorId}
           studentName={studentName}
-          onBookingConfirmed={({ instructor: ins, dateIso, time, studentLabel }) => {
+          onBookingConfirmed={({ instructor: ins, dateIso, time, times, studentLabel }) => {
             const branch = branchNameById(branches, toastBranchId);
+            const slotLabel = times.length > 1 ? times.join(", ") : time;
             showToast(
-              `${t("adminPracticalBookedToast")} ${studentLabel} · ${ins} · ${dateIso} ${time} · ${branch}`,
+              `${t("adminPracticalBookedToast")} ${studentLabel} · ${ins} · ${dateIso} ${slotLabel} · ${branch}`,
               "success",
             );
           }}

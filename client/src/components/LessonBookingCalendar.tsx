@@ -6,7 +6,8 @@ import TableColumnFilter from "src/components/TableColumnFilter";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useToast } from "src/lib/toast";
 import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
 import {
   isSlotBlockedByAvailabilityRules,
@@ -24,7 +25,10 @@ export type LessonBookingPayload = {
   instructorUserId: string;
   instructor: string;
   dateIso: string;
+  /** First hour (same as legacy single-slot `time`). */
   time: string;
+  /** All selected hour starts, sorted. */
+  times: string[];
   studentLabel?: string;
 };
 
@@ -71,6 +75,31 @@ function localeFromLang(lang: "en" | "ru" | "am") {
   return "en-US";
 }
 
+function padSlot(t: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t.trim());
+  if (!m) return t;
+  return `${String(Number(m[1])).padStart(2, "0")}:${String(Number(m[2])).padStart(2, "0")}`;
+}
+
+function sortTimesUnique(times: readonly string[]): string[] {
+  const set = new Set(times.map((x) => padSlot(x)));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+/** True if sorted times are each on the hour and consecutive. */
+function isConsecutiveHourlySlots(sorted: string[]): boolean {
+  if (sorted.length === 0) return false;
+  for (const t of sorted) {
+    if (!/^\d{2}:\d{2}$/.test(t) || !t.endsWith(":00")) return false;
+  }
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = Number(sorted[i - 1].slice(0, 2)) * 60 + Number(sorted[i - 1].slice(3, 5));
+    const cur = Number(sorted[i].slice(0, 2)) * 60 + Number(sorted[i].slice(3, 5));
+    if (cur !== prev + 60) return false;
+  }
+  return true;
+}
+
 export type LessonBookingCalendarProps = {
   mode: "student" | "admin";
   instructors: readonly InstructorCalendarOption[];
@@ -78,6 +107,8 @@ export type LessonBookingCalendarProps = {
   onInstructorChange: (instructorUserId: string) => void;
   /** When set in student mode, “my” slots are resolved from `/bookings`. */
   studentUserId?: string;
+  /** Required for student mode API (`POST /bookings`) — use one branch id (e.g. first selected). */
+  branchId?: string;
   /** Required in admin mode to enable Confirm */
   studentName?: string;
   onBookingConfirmed?: (payload: LessonBookingPayload) => void;
@@ -89,14 +120,19 @@ export default function LessonBookingCalendar({
   selectedInstructorId,
   onInstructorChange,
   studentUserId,
+  branchId = "",
   studentName = "",
   onBookingConfirmed,
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
+  const { showToast } = useToast();
   const locale = localeFromLang(lang);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [selected, setSelected] = useState<{ date: string; time: string } | null>(null);
+  /** Multiple hour starts on the same calendar date. */
+  const [selected, setSelected] = useState<{ date: string; times: string[] } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [createdSummary, setCreatedSummary] = useState<{ totalPriceAmd: number; slots: string[] } | null>(null);
   const [slotSearch, setSlotSearch] = useState("");
   const [periodFilter, setPeriodFilter] = useState<"all" | "morning" | "afternoon">("all");
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
@@ -147,6 +183,12 @@ export default function LessonBookingCalendar({
     };
   }, [selectedInstructorId, weekOffset]);
 
+  useEffect(() => {
+    setSelected(null);
+    setConfirmed(false);
+    setCreatedSummary(null);
+  }, [selectedInstructorId]);
+
   const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
   const visibleTimeSlots = useMemo(() => {
@@ -170,9 +212,11 @@ export default function LessonBookingCalendar({
       const mySlot =
         mode === "student" &&
         studentUserId &&
-        busySlots.some((b) => b.dateIso === dateIso && b.time === time && b.studentUserId === studentUserId);
+        busySlots.some(
+          (b) => b.dateIso === dateIso && padSlot(b.time) === padSlot(time) && String(b.studentUserId) === studentUserId,
+        );
       if (mySlot) return "mine";
-      if (busySlots.some((b) => b.dateIso === dateIso && b.time === time)) return "unavailable";
+      if (busySlots.some((b) => b.dateIso === dateIso && padSlot(b.time) === padSlot(time))) return "unavailable";
       if (isSlotBlockedByAvailabilityRules(dateIso, time, availabilityBlocks)) return "unavailable";
       return "available";
     },
@@ -193,22 +237,84 @@ export default function LessonBookingCalendar({
     [instructors, selectedInstructorId],
   );
 
-  const handleConfirm = () => {
+  const toggleSlotSelection = (dateStr: string, time: string, status: SlotStatus) => {
+    if (!canClick(status)) return;
+    const slot = padSlot(time);
+    setConfirmed(false);
+    setCreatedSummary(null);
+    setSelected((prev) => {
+      if (!prev || prev.date !== dateStr) {
+        return { date: dateStr, times: [slot] };
+      }
+      const has = prev.times.some((x) => padSlot(x) === slot);
+      const nextTimes = has ? prev.times.filter((x) => padSlot(x) !== slot) : [...prev.times, slot];
+      const sorted = sortTimesUnique(nextTimes);
+      if (sorted.length === 0) return null;
+      return { date: dateStr, times: sorted };
+    });
+  };
+
+  const handleConfirm = async () => {
     if (!selected || !selectedInstructorId) return;
     if (mode === "admin" && !studentName.trim()) return;
+
+    const sorted = sortTimesUnique(selected.times);
+    if (!isConsecutiveHourlySlots(sorted)) {
+      showToast(t("bookingSlotsMustBeConsecutive"), "error");
+      return;
+    }
+
+    if (mode === "student") {
+      if (!studentUserId) {
+        showToast(t("bookingStudentAuthRequired"), "error");
+        return;
+      }
+      if (!branchId.trim()) {
+        showToast(t("bookingBranchRequired"), "error");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const res = await vivaApiJson<{
+          totalPriceAmd: number;
+          slots: string[];
+          startTime: string;
+          status: string;
+        }>("/bookings", {
+          method: "POST",
+          body: {
+            instructorId: Number(selectedInstructorId),
+            date: selected.date,
+            slots: sorted,
+            branchId: Number(branchId),
+          },
+        });
+        setCreatedSummary({ totalPriceAmd: res.totalPriceAmd, slots: res.slots ?? sorted });
+        setConfirmed(true);
+        showToast(t("bookingCreatedToast"), "success");
+      } catch (e) {
+        showToast(getApiErrorMessage(e), "error");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setConfirmed(true);
     onBookingConfirmed?.({
       instructorUserId: selectedInstructorId,
       instructor: selectedInstructorName,
       dateIso: selected.date,
-      time: selected.time,
-      ...(mode === "admin" ? { studentLabel: studentName.trim() } : {}),
+      time: sorted[0],
+      times: sorted,
+      studentLabel: studentName.trim(),
     });
   };
 
   const resetBooking = () => {
     setSelected(null);
     setConfirmed(false);
+    setCreatedSummary(null);
   };
 
   const adminReady = mode === "admin" && !!studentName.trim();
@@ -313,7 +419,8 @@ export default function LessonBookingCalendar({
                       {days.map((d, j) => {
                         const dateStr = fmt(d);
                         const status = getStatus(time, dateStr);
-                        const isSelected = selected?.date === dateStr && selected?.time === time;
+                        const isSelected =
+                          selected?.date === dateStr && selected.times.some((x) => padSlot(x) === padSlot(time));
                         return (
                           <td key={j} className="py-1 px-1">
                             <div
@@ -323,18 +430,10 @@ export default function LessonBookingCalendar({
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
-                                  if (canClick(status)) {
-                                    setSelected({ date: dateStr, time });
-                                    setConfirmed(false);
-                                  }
+                                  toggleSlotSelection(dateStr, time, status);
                                 }
                               }}
-                              onClick={() => {
-                                if (canClick(status)) {
-                                  setSelected({ date: dateStr, time });
-                                  setConfirmed(false);
-                                }
-                              }}
+                              onClick={() => toggleSlotSelection(dateStr, time, status)}
                               className={`h-8 rounded-md border text-xs text-center flex items-center justify-center transition-colors ${slotStyle(status, isSelected)}`}
                             >
                               {status === "mine" ? t("mine") : status === "unavailable" ? "—" : ""}
@@ -382,8 +481,13 @@ export default function LessonBookingCalendar({
                 </div>
                 <p className="font-semibold text-foreground text-sm">{t("bookingConfirmed")}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {selected.date} {t("bookingAt")} {selected.time}
+                  {selected.date} · {sortTimesUnique(selected.times).join(", ")}
                 </p>
+                {createdSummary ? (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t("bookingTotalLabel")}: {createdSummary.totalPriceAmd.toLocaleString()} ֏
+                  </p>
+                ) : null}
                 <Button variant="outline" size="sm" className="mt-4 w-full text-xs" onClick={resetBooking}>
                   {t("bookAnother")}
                 </Button>
@@ -407,19 +511,23 @@ export default function LessonBookingCalendar({
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{t("bookingTimeLabel")}</span>
-                    <span className="font-medium text-foreground text-xs">{selected.time}</span>
+                    <span className="font-medium text-foreground text-xs text-right">
+                      {sortTimesUnique(selected.times).join(", ")}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">{t("bookingDurationLabel")}</span>
-                    <span className="font-medium text-foreground text-xs">{t("bookingDurationMinutes")}</span>
+                    <span className="font-medium text-foreground text-xs">
+                      {selected.times.length} {t("bookingHoursUnit")}
+                    </span>
                   </div>
                 </div>
                 <Button
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
-                  disabled={mode === "admin" && !adminReady}
-                  onClick={handleConfirm}
+                  disabled={(mode === "admin" && !adminReady) || submitting}
+                  onClick={() => void handleConfirm()}
                 >
-                  {t("confirmBooking")}
+                  {submitting ? t("loading") : t("confirmBooking")}
                 </Button>
                 {mode === "admin" && !studentName.trim() && (
                   <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminLearnPickStudentHint")}</p>

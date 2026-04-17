@@ -41,7 +41,8 @@ export default function ExamTests() {
       THEMATIC_TOPIC_IDS.map((topicId, i) => {
         const total = countThematicTopicQuestions(pool, topicId);
         const isFree = topicId === "5";
-        return {
+
+      return {
           iconSrc: THEMATIC_TOPIC_ICON[topicId],
           title: t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
           topicId,

@@ -14,8 +14,11 @@ export default function RedirectToMarketing(): ReactElement | null {
 
   useEffect(() => {
     const base = marketingBase.replace(/\/$/, "");
+
     if (!base) return;
+
     const target = `${base}${pathname}${window.location.search}${window.location.hash}`;
+
     if (target !== window.location.href) {
       window.location.replace(target);
     }
@@ -24,7 +27,7 @@ export default function RedirectToMarketing(): ReactElement | null {
   if (marketingBase) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 text-center text-muted-foreground text-sm">
-        Opening marketing site…
+      Loading...
       </div>
     );
   }

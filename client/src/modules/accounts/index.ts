@@ -6,5 +6,6 @@ export {
   staffAccountTypes,
   isStaffAccountType,
   isSafePanelRedirect,
+  resolvePostAuthPanelPath,
   canInviteAccountType,
 } from "./accountRouting";

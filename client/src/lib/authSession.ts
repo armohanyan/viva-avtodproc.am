@@ -27,16 +27,20 @@ export async function tryRefreshAccessToken(): Promise<boolean> {
 		try {
 			const res = await fetch(authRefreshUrl(), { method: "POST", credentials: "include" });
 			const text = await res.text();
+
 			if (!res.ok) {
 				return false;
 			}
+
 			const data = JSON.parse(text) as {
 				accessToken?: string;
 				user?: { id: string; email: string; name: string; accountType: string };
 			};
+
 			if (!data.accessToken || !data.user || !isAccountType(data.user.accountType)) {
 				return false;
 			}
+
 			const next: AccountSessionUser = {
 				id: data.user.id,
 				email: data.user.email,

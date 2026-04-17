@@ -52,70 +52,70 @@ export default function Packages() {
         </div>
       </section>
 
-      <section className="py-20 bg-background">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          {loading ? (
-            <p className="text-center text-muted-foreground py-12">{t("loading")}</p>
-          ) : sorted.length === 0 ? (
-            <p className="text-center text-muted-foreground py-12">{t("packagesSub")}</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {sorted.map((pkg, i) => {
-                const popular = pkg.id === "PKG-002";
-                return (
-                  <Reveal
-                    key={pkg.id}
-                    className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-6 sm:p-8 flex flex-col h-full`}
-                    delay={i * 0.06}
-                  >
-                    {popular && (
-                      <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
+      {(loading || sorted.length > 0) && (
+        <section className="py-20 bg-background">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            {loading ? (
+              <p className="text-center text-muted-foreground py-12">{t("loading")}</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {sorted.map((pkg, i) => {
+                  const popular = pkg.id === "PKG-002";
+                  return (
+                    <Reveal
+                      key={pkg.id}
+                      className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-6 sm:p-8 flex flex-col h-full`}
+                      delay={i * 0.06}
+                    >
+                      {popular && (
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                          <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
+                        </div>
+                      )}
+                      {pkg.imageUrl ? (
+                        <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
+                          <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
+                        </div>
+                      ) : null}
+                      <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="text-4xl font-bold text-foreground">
+                          <CountUpText value={pkg.price} />
+                        </span>
+                        <span className="text-muted-foreground">֏</span>
                       </div>
-                    )}
-                    {pkg.imageUrl ? (
-                      <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
-                        <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
+                      <p className="text-sm text-muted-foreground mb-7">
+                        {pkg.lessons} {t("lessons")} · {t("lessonTypePractical")}
+                      </p>
+                      <ul className="space-y-3 mb-8">
+                        {pkg.features.map((feat, j) => (
+                          <li key={j} className="flex items-center gap-2.5 text-sm">
+                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                            <span className="text-foreground">{feat}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-auto">
+                        <a href={panelHref("/register")}>
+                          <Button
+                            className={`w-full ${
+                              popular
+                                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                                : "bg-accent hover:bg-accent/80 text-foreground"
+                            }`}
+                          >
+                            {t("choosePackage")}
+                          </Button>
+                        </a>
                       </div>
-                    ) : null}
-                    <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
-                    <div className="flex items-baseline gap-1 mb-1">
-                      <span className="text-4xl font-bold text-foreground">
-                        <CountUpText value={pkg.price} />
-                      </span>
-                      <span className="text-muted-foreground">֏</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-7">
-                      {pkg.lessons} {t("lessons")}
-                    </p>
-                    <ul className="space-y-3 mb-8">
-                      {pkg.features.map((feat, j) => (
-                        <li key={j} className="flex items-center gap-2.5 text-sm">
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                          <span className="text-foreground">{feat}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-auto">
-                      <a href={panelHref("/register")}>
-                        <Button
-                          className={`w-full ${
-                            popular
-                              ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                              : "bg-accent hover:bg-accent/80 text-foreground"
-                          }`}
-                        >
-                          {t("choosePackage")}
-                        </Button>
-                      </a>
-                    </div>
-                  </Reveal>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+                    </Reveal>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">

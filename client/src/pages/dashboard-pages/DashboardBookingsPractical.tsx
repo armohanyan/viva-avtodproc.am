@@ -1,15 +1,7 @@
-import DashboardLayout from "src/components/DashboardLayout";
-import PanelPageHeader from "src/components/PanelPageHeader";
 import LessonBookingCalendar from "src/components/LessonBookingCalendar";
-import DashboardBookingsSubnav from "src/components/dashboard/DashboardBookingsSubnav";
 import { useLang } from "src/lib/i18n";
-import { CalendarClock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
-import { Button } from "src/components/ui/button";
-import { Link } from "wouter";
-import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import { branchOptionLabel, branchesInCity, useBranches } from "src/modules/branches";
@@ -23,14 +15,12 @@ import {
 import { getFilteredInstructors } from "src/modules/instructors/instructor.api";
 import { useAccount } from "src/modules/accounts";
 
-export default function DashboardBookingsPractical() {
+export function DashboardBookingsPracticalTab() {
   const { t } = useLang();
   const { user } = useAccount();
   const { branches } = useBranches();
   const { cities } = useCities();
   const { instructors } = useInstructors();
-  const { practicalCreditsRemaining, packagePracticalRemaining, extraPracticalRemaining } = useStudentEntitlements();
-
   const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
   const [cityId, setCityId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
@@ -82,48 +72,7 @@ export default function DashboardBookingsPractical() {
   }, [instructorId, instructorOptions]);
 
   return (
-    <DashboardLayout>
-      <Reveal>
-        <PanelPageHeader
-          icon={CalendarClock}
-          title={t("bookingsSubnavPractical")}
-          subtitle={t("bookingsPracticalPageSubtitle")}
-          actions={
-            <Link href="/dashboard/purchases">
-              <Button type="button" variant="outline" size="sm" className="border-input">
-                {t("bookingsViewMyServices")}
-              </Button>
-            </Link>
-          }
-        />
-      </Reveal>
-
-      <Reveal delay={0.04}>
-        <DashboardBookingsSubnav active="practical" />
-      </Reveal>
-
-      <Reveal delay={0.06}>
-        <Card className="p-5 border-border mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-            <div>
-              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{t("bookingsCreditsSummary")}</p>
-              <p className="text-2xl font-bold text-foreground tabular-nums mt-1">{practicalCreditsRemaining}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t("bookingsCreditsPackagePart")}: {packagePracticalRemaining} · {t("bookingsCreditsExtraPart")}: {extraPracticalRemaining}
-              </p>
-            </div>
-            {practicalCreditsRemaining === 0 ? (
-              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 max-w-md">
-                <p>{t("bookingsNoCreditsWarning")}</p>
-                <Link href="/dashboard/bookings/package" className="inline-block mt-2 text-primary font-medium hover:underline">
-                  {t("bookingsGoToPackageTab")}
-                </Link>
-              </div>
-            ) : null}
-          </div>
-        </Card>
-      </Reveal>
-
+    <>
       <Card className="p-5 border-border mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -185,11 +134,12 @@ export default function DashboardBookingsPractical() {
           instructors={instructorOptions}
           selectedInstructorId={instructorId}
           onInstructorChange={setInstructorId}
-          studentUserId={user?.accountType === "student" ? user.id : undefined}
+          studentUserId={user?.accountType === "student" ? String(user.id) : undefined}
+          branchId={selectedBranchIds[0] ?? ""}
         />
       ) : (
         <Card className="p-6 border-border text-sm text-muted-foreground">{t("bookingNoInstructorsByFilter")}</Card>
       )}
-    </DashboardLayout>
+    </>
   );
 }

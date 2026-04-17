@@ -1,7 +1,7 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
-import { useLang } from "src/lib/i18n";
+import { useLang, type TranslationKey } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
@@ -29,6 +29,13 @@ type StudentMini = { id: string; name: string };
 type FinanceTx = { status: string; grossAmd: number; createdAt: string };
 
 type RecentBookingRow = { student: string; instructor: string; date: string; time: string; status: string };
+
+function canonicalBookingStatusForDashboard(raw: string): TranslationKey {
+  if (raw === "confirmed" || raw === "pending" || raw === "cancelled" || raw === "refunded") return raw;
+  if (raw === "completed") return "confirmed";
+  if (raw === "pending_prebook" || raw === "pending_payment") return "pending";
+  return "pending";
+}
 
 export default function AdminDashboard() {
   const { t, lang } = useLang();
@@ -85,7 +92,8 @@ export default function AdminDashboard() {
     return recentBookingsData.filter((b) => {
       const hay = [b.student, b.instructor, b.date, b.time, b.status].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
-      const matchStatus = bookingStatus === "all" || b.status === bookingStatus;
+      const matchStatus =
+        bookingStatus === "all" || canonicalBookingStatusForDashboard(b.status) === bookingStatus;
       return matchSearch && matchStatus;
     });
   }, [bookingSearch, bookingStatus, recentBookingsData]);
@@ -109,6 +117,7 @@ export default function AdminDashboard() {
     confirmed: "bg-emerald-100 text-emerald-700",
     pending: "bg-amber-100 text-amber-700",
     cancelled: "bg-red-100 text-red-600",
+    refunded: "bg-slate-200 text-slate-700",
   };
 
   return (
@@ -159,7 +168,7 @@ export default function AdminDashboard() {
               b.instructor,
               b.date,
               b.time,
-              t(b.status as "confirmed" | "pending" | "cancelled"),
+              t(canonicalBookingStatusForDashboard(b.status)),
             ])}
           />
         </DataTableToolbar>
@@ -184,6 +193,7 @@ export default function AdminDashboard() {
                         { value: "confirmed", label: t("confirmed") },
                         { value: "pending", label: t("pending") },
                         { value: "cancelled", label: t("cancelled") },
+                        { value: "refunded", label: t("refunded") },
                       ]}
                     />
                   }
@@ -217,8 +227,8 @@ export default function AdminDashboard() {
                     <td className="px-5 py-3.5 text-muted-foreground">{b.date}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{b.time}</td>
                     <td className="px-5 py-3.5">
-                      <Badge className={`text-xs ${statusColor[b.status]}`}>
-                        {t(b.status as any)}
+                      <Badge className={`text-xs ${statusColor[canonicalBookingStatusForDashboard(b.status)] ?? statusColor.pending}`}>
+                        {t(canonicalBookingStatusForDashboard(b.status))}
                       </Badge>
                     </td>
                     <td className="px-5 py-3.5">

@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import type React from "react";
 import { Link, useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, EyeOff, Star } from "lucide-react";
 
-import { defaultHomePathForAccountType, isSafePanelRedirect, useAccount } from "src/modules/accounts";
+import { resolvePostAuthPanelPath, useAccount } from "src/modules/accounts";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -13,6 +13,7 @@ import { buildSocialAuthUrl, type SocialProvider } from "src/lib/socialAuth";
 import { Tabs, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
+import { absWouterHref } from "src/lib/wouterFullPath";
 
 const STUDENT_TESTIMONIALS = [
   {
@@ -77,7 +78,7 @@ type AuthTabKey = "login" | "register";
 export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   const { t } = useLang();
   const { showToast } = useToast();
-  const { user, hydrated, signIn, defaultHomePath } = useAccount();
+  const { user, hydrated, signIn } = useAccount();
 
   // Keep URL stable: tab switching should update only the form, not the left panel.
   const [activeTab, setActiveTab] = useState<AuthTabKey>(initialTab);
@@ -92,12 +93,18 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   }, [activeTestimonial]);
 
   // --- Login state/handlers ---
-  const [, setLocation] = useLocation();
+  const [pathname, setLocation] = useLocation();
 
-  useEffect(() => {
+  /** Session restored on /login etc. — leave auth routes as soon as we have a user. */
+  useLayoutEffect(() => {
     if (!hydrated || !user) return;
-    setLocation(defaultHomePath);
-  }, [hydrated, user, defaultHomePath, setLocation]);
+    let p = (pathname.split("?")[0] || "/").trim();
+    if (p.length > 1 && p.endsWith("/")) p = p.slice(0, -1) || "/";
+    const onAuthForm = p === "/login" || p === "/register" || p === "/forgot-password";
+    if (!onAuthForm) return;
+    const dest = resolvePostAuthPanelPath(user.accountType, window.location.search);
+    setLocation(absWouterHref(dest));
+  }, [hydrated, user, pathname, setLocation]);
 
   const [showPass, setShowPass] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
@@ -107,22 +114,27 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!loginEmail || !loginPassword) {
       showToast(t("fillRequired"), "error");
       return;
     }
+
     if (!loginEmail.includes("@")) {
       showToast(t("invalidEmail"), "error");
       return;
     }
+
     const trimmedEmail = loginEmail.trim();
     setLoginLoading(true);
+
     try {
       const data = await vivaApiJson<{
         accessToken: string;
-        user: { id: string; email: string; name: string; accountType: AccountType };
+        user: { id: string | number; email: string; name: string; accountType: AccountType };
       }>("/auth/login", { method: "POST", body: { email: trimmedEmail, password: loginPassword } });
       const accountType = data.user.accountType;
+
       signIn({
         email: data.user.email,
         name: data.user.name,
@@ -130,19 +142,9 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         accessToken: data.accessToken,
         id: data.user.id,
       });
+
       showToast(t("loginSuccess"), "success");
-      const params = new URLSearchParams(window.location.search);
-      const redirect = params.get("redirect");
-      const safe =
-        redirect &&
-        redirect.startsWith("/") &&
-        !redirect.startsWith("//") &&
-        !redirect.includes("://")
-          ? redirect
-          : null;
-      const fallback = defaultHomePathForAccountType(accountType);
-      const dest = safe && isSafePanelRedirect(safe, accountType) ? safe : fallback;
-      setLocation(dest);
+      setLocation(absWouterHref(resolvePostAuthPanelPath(accountType, window.location.search)));
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     } finally {
@@ -194,7 +196,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     try {
       const data = await vivaApiJson<{
         accessToken: string;
-        user: { id: string; email: string; name: string; accountType: AccountType };
+        user: { id: string | number; email: string; name: string; accountType: AccountType };
       }>("/auth/register", {
         method: "POST",
         body: {
@@ -204,25 +206,16 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
           phone: form.phone.trim() || undefined,
         },
       });
+      const accountType = data.user.accountType;
       signIn({
         email: data.user.email,
         name: data.user.name,
-        accountType: "student",
+        accountType,
         accessToken: data.accessToken,
         id: data.user.id,
       });
       showToast(t("registerSuccess"), "success");
-      const params = new URLSearchParams(window.location.search);
-      const redirect = params.get("redirect");
-      const safe =
-        redirect &&
-        redirect.startsWith("/") &&
-        !redirect.startsWith("//") &&
-        !redirect.includes("://")
-          ? redirect
-          : null;
-      const dest = safe && isSafePanelRedirect(safe, "student") ? safe : "/dashboard";
-      setLocation(dest);
+      setLocation(absWouterHref(resolvePostAuthPanelPath(accountType, window.location.search)));
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     } finally {

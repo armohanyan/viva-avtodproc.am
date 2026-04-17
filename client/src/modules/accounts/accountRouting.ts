@@ -30,6 +30,14 @@ export function isSafePanelRedirect(path: string, accountType: AccountType): boo
   return false;
 }
 
+/** Where to send the user after auth, using optional `?redirect=` when it is panel-safe for this account. */
+export function resolvePostAuthPanelPath(accountType: AccountType, search: string): string {
+  const q = search.startsWith("?") ? search.slice(1) : search;
+  const redirect = new URLSearchParams(q).get("redirect");
+  if (redirect && isSafePanelRedirect(redirect, accountType)) return redirect;
+  return defaultHomePathForAccountType(accountType);
+}
+
 export function canInviteAccountType(
   inviter: AccountType,
   target: AccountType,

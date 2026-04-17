@@ -34,14 +34,12 @@ import { cityNameById, useCities } from "src/modules/cities";
 import { usePackages } from "src/modules/packages/usePackages";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
-import { MARKETING_FALLBACK_STATS } from "src/modules/marketing/marketingFallbackStats";
 import type { TranslationKey } from "src/lib/i18n";
 
-const FALLBACK_TESTIMONIALS = [
-  { name: "Anahit K.", text: "Passed my exam on the first try! The instructors are incredibly patient and professional.", rating: 5 },
-  { name: "Tigran M.", text: "Great experience from start to finish. The booking system made it so easy to schedule lessons.", rating: 5 },
-  { name: "Mariam S.", text: "I was terrified of driving but Viva helped me become confident behind the wheel.", rating: 5 },
-];
+function telHrefFromListedPhone(phone: string): string {
+  const compact = phone.replace(/[^\d+]/g, "");
+  return compact ? `tel:${compact}` : "tel:";
+}
 
 export default function Home() {
   const { t } = useLang();
@@ -59,7 +57,7 @@ export default function Home() {
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
   const stats = useMemo(() => {
-    const rows = mkt?.stats?.length ? mkt.stats : MARKETING_FALLBACK_STATS;
+    const rows = mkt?.stats ?? [];
     return rows.map((s) => ({
       value: s.value,
       label: t((MARKETING_STAT_LABEL_KEY[s.key] ?? "yearsExp") as TranslationKey),
@@ -67,53 +65,71 @@ export default function Home() {
   }, [mkt, t]);
 
   const testimonials = useMemo(() => {
-    if (mkt?.testimonials?.length) {
-      return mkt.testimonials.map((x) => ({ name: x.authorName, text: x.quote, rating: x.rating }));
-    }
-    return FALLBACK_TESTIMONIALS;
+    if (!mkt?.testimonials?.length) return [];
+
+    return mkt.testimonials.map((x) => ({ name: x.authorName, text: x.quote, rating: x.rating }));
   }, [mkt]);
 
   type ContactTabKey = "phone" | "email" | "address" | "hours";
-  const contactTabs = useMemo(
-    () => {
-      const c = mkt?.contact;
-      const phones = c?.phones?.length ? c.phones : ["+374 10 123 456", "+374 99 123 456"];
-      const emails = c?.emails?.length ? c.emails : ["info@vivadrive.am", "support@vivadrive.am"];
-      const hoursW = c?.hoursWeekdays?.trim() ? c.hoursWeekdays : t("monFri");
-      const hoursS = c?.hoursSaturday?.trim() ? c.hoursSaturday : t("sat");
-      return [
-        {
-          key: "phone" as const,
-          icon: Phone,
+  const contactTabs = useMemo(() => {
+    const c = mkt?.contact;
+    const tabs: {
+      key: ContactTabKey;
+      icon: typeof Phone;
+      label: string;
+      lines: string[];
+      primaryAction: { label: string; href: string };
+    }[] = [];
+
+    if (c?.phones?.length) {
+      const first = c.phones[0]!.trim();
+      tabs.push({
+        key: "phone",
+        icon: Phone,
+        label: t("phone"),
+        lines: c.phones,
+        primaryAction: {
           label: t("phone"),
-          lines: phones,
-          primaryAction: { label: t("phone"), href: c?.primaryTelHref?.trim() || "tel:+37410123456" },
+          href: c.primaryTelHref?.trim() || telHrefFromListedPhone(first),
         },
-        {
-          key: "email" as const,
-          icon: Mail,
+      });
+    }
+    if (c?.emails?.length) {
+      const first = c.emails[0]!.trim();
+      tabs.push({
+        key: "email",
+        icon: Mail,
+        label: t("email"),
+        lines: c.emails,
+        primaryAction: {
           label: t("email"),
-          lines: emails,
-          primaryAction: { label: t("email"), href: c?.primaryMailtoHref?.trim() || "mailto:info@vivadrive.am" },
+          href: c.primaryMailtoHref?.trim() || `mailto:${first}`,
         },
-        {
-          key: "address" as const,
-          icon: MapPin,
-          label: t("address"),
-          lines: [] as string[],
-          primaryAction: { label: "Open map", href: "#" },
-        },
-        {
-          key: "hours" as const,
-          icon: Clock,
-          label: t("workHours"),
-          lines: [hoursW, hoursS],
-          primaryAction: { label: t("workHours"), href: "/contact" },
-        },
-      ];
-    },
-    [mkt, t],
-  );
+      });
+    }
+    if (branches.length > 0) {
+      tabs.push({
+        key: "address",
+        icon: MapPin,
+        label: t("address"),
+        lines: [],
+        primaryAction: { label: t("address"), href: "/contact" },
+      });
+    }
+    const hourLines: string[] = [];
+    if (c?.hoursWeekdays?.trim()) hourLines.push(c.hoursWeekdays.trim());
+    if (c?.hoursSaturday?.trim()) hourLines.push(c.hoursSaturday.trim());
+    if (hourLines.length > 0) {
+      tabs.push({
+        key: "hours",
+        icon: Clock,
+        label: t("workHours"),
+        lines: hourLines,
+        primaryAction: { label: t("workHours"), href: "/contact" },
+      });
+    }
+    return tabs;
+  }, [mkt, t, branches]);
 
   const services = [
     { icon: Car, title: t("practicalLessons"), desc: t("practicalDesc"), color: "text-primary", bg: "bg-primary/10", href: "/services" },
@@ -132,14 +148,23 @@ export default function Home() {
 
   useEffect(() => {
     if (testimonials.length === 0) return;
+
     const timer = window.setTimeout(() => {
       setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
     }, 5000);
+
     return () => window.clearTimeout(timer);
   }, [activeTestimonial, testimonials.length]);
 
   useEffect(() => {
-    // Keep the address map dialog scoped to the Address tab.
+    if (contactTabs.length === 0) return;
+    if (!contactTabs.some((tab) => tab.key === activeContactTab)) {
+      setActiveContactTab(contactTabs[0]!.key);
+    }
+
+  }, [contactTabs, activeContactTab]);
+
+  useEffect(() => {
     if (activeContactTab !== "address") setSelectedBranch(null);
   }, [activeContactTab]);
 
@@ -155,9 +180,7 @@ export default function Home() {
     <div className="min-h-screen">
       <Navbar />
 
-      {/* Hero */}
       <section className="relative bg-hero text-hero-foreground overflow-hidden">
-        {/* Background photo */}
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('/home-hero-2.svg')" }}
@@ -194,24 +217,24 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Stats bar */}
-        <div className="relative border-t border-border/40 bg-hero/80 backdrop-blur">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              {stats.map((s, i) => (
-                <Reveal key={i} className="text-center" delay={i * 0.05}>
-                  <div className="text-3xl font-bold text-hero-foreground">
-                    <CountUpText value={s.value} />
-                  </div>
-                  <div className="text-sm text-hero-foreground/70 mt-1">{s.label}</div>
-                </Reveal>
-              ))}
+        {stats.length > 0 ? (
+          <div className="relative border-t border-border/40 bg-hero/80 backdrop-blur">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                {stats.map((s, i) => (
+                  <Reveal key={i} className="text-center" delay={i * 0.05}>
+                    <div className="text-3xl font-bold text-hero-foreground">
+                      <CountUpText value={s.value} />
+                    </div>
+                    <div className="text-sm text-hero-foreground/70 mt-1">{s.label}</div>
+                  </Reveal>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
       </section>
 
-      {/* Services */}
       <section className="py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
@@ -241,109 +264,108 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Packages */}
-      <section className="py-20 bg-accent">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-              {t("packagesEyebrow")}
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("packagesTitle")}</h2>
-            <p className="text-muted-foreground text-lg">{t("packagesSub")}</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {packagesLoading ? (
-              <p className="text-center text-muted-foreground md:col-span-3 py-6">{t("loading")}</p>
-            ) : displayPackages.length === 0 ? (
-              <p className="text-center text-muted-foreground md:col-span-3 py-6">{t("packagesSub")}</p>
-            ) : (
-              displayPackages.map((pkg) => {
-                const popular = pkg.id === "PKG-002";
-                const borderClass = popular ? "border-primary" : "border-border";
-                return (
-                  <div
-                    key={pkg.id}
-                    className={`relative bg-card rounded-2xl border-2 ${borderClass} p-6 sm:p-8 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
-                  >
-                    {popular && (
-                      <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
+      {(packagesLoading || displayPackages.length > 0) && (
+        <section className="py-20 bg-accent">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-14">
+              <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
+                {t("packagesEyebrow")}
+              </p>
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("packagesTitle")}</h2>
+              <p className="text-muted-foreground text-lg">{t("packagesSub")}</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+              {packagesLoading ? (
+                <p className="text-center text-muted-foreground md:col-span-3 py-6">{t("loading")}</p>
+              ) : (
+                displayPackages.map((pkg) => {
+                  const popular = pkg.id === "PKG-002";
+                  const borderClass = popular ? "border-primary" : "border-border";
+                  return (
+                    <div
+                      key={pkg.id}
+                      className={`relative bg-card rounded-2xl border-2 ${borderClass} p-6 sm:p-8 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
+                    >
+                      {popular && (
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                          <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
+                        </div>
+                      )}
+                      {pkg.imageUrl ? (
+                        <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
+                          <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
+                        </div>
+                      ) : null}
+                      <div className="mb-6">
+                        <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-4xl font-bold text-foreground">{pkg.price}</span>
+                          <span className="text-lg text-muted-foreground">֏</span>
+                        </div>
+                        <p className="text-muted-foreground text-sm mt-1">
+                          {pkg.lessons} {t("lessons")} · {t("lessonTypePractical")}
+                        </p>
                       </div>
-                    )}
-                    {pkg.imageUrl ? (
-                      <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
-                        <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
+                      <ul className="space-y-3 mb-8">
+                        {pkg.features.map((f, j) => (
+                          <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-auto">
+                        <a href={panelHref("/register")}>
+                          <Button
+                            className={`w-full ${
+                              popular
+                                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                                : "bg-background hover:bg-accent text-foreground"
+                            }`}
+                          >
+                            {t("choosePackage")}
+                          </Button>
+                        </a>
                       </div>
-                    ) : null}
-                    <div className="mb-6">
-                      <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-bold text-foreground">{pkg.price}</span>
-                        <span className="text-lg text-muted-foreground">֏</span>
-                      </div>
-                      <p className="text-muted-foreground text-sm mt-1">
-                        {pkg.lessons} {t("lessons")}
-                      </p>
                     </div>
-                    <ul className="space-y-3 mb-8">
-                      {pkg.features.map((f, j) => (
-                        <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-auto">
-                      <a href={panelHref("/register")}>
-                        <Button
-                          className={`w-full ${
-                            popular
-                              ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                              : "bg-background hover:bg-accent text-foreground"
-                          }`}
-                        >
-                          {t("choosePackage")}
-                        </Button>
-                      </a>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      {/* Instructors */}
-      <section className="py-20 bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-              {t("instructorsEyebrow")}
-            </p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
+      {visibleInstructors.length > 0 ? (
+        <section className="py-20 bg-background">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-14">
+              <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
+                {t("instructorsEyebrow")}
+              </p>
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {visibleInstructors.map((ins, i) => (
+                <InstructorCard
+                  key={i}
+                  instructor={ins}
+                  showBookButton={true}
+                  imageHeightClassName="h-64"
+                />
+              ))}
+            </div>
+            <div className="text-center mt-10">
+              <MarketingLink href="/instructors">
+                <Button variant="outline" className="border-border">
+                  {t("viewAll")} <ArrowRight className="ml-2 w-4 h-4" />
+                </Button>
+              </MarketingLink>
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {visibleInstructors.map((ins, i) => (
-              <InstructorCard
-                key={i}
-                instructor={ins}
-                showBookButton={true}
-                imageHeightClassName="h-64"
-              />
-            ))}
-          </div>
-          <div className="text-center mt-10">
-            <MarketingLink href="/instructors">
-              <Button variant="outline" className="border-border">
-                {t("viewAll")} <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-            </MarketingLink>
-          </div>
-        </div>
-      </section>
+        </section>
+      ) : null}
 
-      {/* Testimonials */}
       {testimonials.length > 0 ? (
         <section className="py-20 bg-hero text-hero-foreground">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -411,12 +433,13 @@ export default function Home() {
         </section>
       ) : null}
 
-      {/* Contact overview */}
-      <section className="py-20 bg-accent/40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {(() => {
-            const activeContact = contactTabs.find((tab) => tab.key === activeContactTab)!;
-            const ActiveIcon = activeContact.icon;
+      {contactTabs.length > 0 ? (
+        <section className="py-20 bg-accent/40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {(() => {
+              const activeContact =
+                contactTabs.find((tab) => tab.key === activeContactTab) ?? contactTabs[0]!;
+              const ActiveIcon = activeContact.icon;
             return (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
                 <div>
@@ -440,9 +463,6 @@ export default function Home() {
                         {t("contactSendMessageTitle")} <ArrowRight className="ml-2 w-4 h-4" />
                       </Button>
                     </MarketingLink>
-                    <div className="text-xs text-muted-foreground">
-                      Select info below
-                    </div>
                   </div>
 
                   <div className="mt-8 rounded-2xl border border-border/70 bg-card/60 p-2">
@@ -566,9 +586,10 @@ export default function Home() {
                 </div>
               </div>
             );
-          })()}
-        </div>
-      </section>
+            })()}
+          </div>
+        </section>
+      ) : null}
 
       {selectedBranch ? (
         <AppModal
@@ -588,7 +609,6 @@ export default function Home() {
         </AppModal>
       ) : null}
 
-      {/* CTA */}
       <section className="py-20 bg-primary">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <Trophy className="w-12 h-12 text-primary-foreground/80 mx-auto mb-6" />

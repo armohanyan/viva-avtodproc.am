@@ -13,7 +13,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
@@ -21,6 +21,8 @@ import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
+
+type QuizLayoutMode = "step" | "scroll";
 
 function isExamMode(s: string): s is ExamQuizMode {
   return VALID_MODES.includes(s as ExamQuizMode);
@@ -70,8 +72,15 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
   const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
+  const [layoutMode, setLayoutMode] = useState<QuizLayoutMode>("step");
 
   const finished = Boolean(questions.length > 0 && index >= questions.length);
+
+  const allAnswered = useMemo(() => {
+    if (questions.length === 0) return false;
+    if (answers.length < questions.length) return false;
+    return questions.every((_, i) => answers[i] !== null && answers[i] !== undefined);
+  }, [questions, answers]);
 
   const correctCount = useMemo(() => {
     if (!finished) return 0;
@@ -82,18 +91,19 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
       return acc + (a === question.correctIndex ? 1 : 0);
     }, 0);
   }, [finished, questions, answers]);
+
   const statsSavedRef = useRef(false);
   const discardSessionRef = useRef(false);
-  const liveRef = useRef({ index, selected, answers, questions });
+  const liveRef = useRef({ index, selected, answers, questions, layoutMode });
   useLayoutEffect(() => {
-    liveRef.current = { index, selected, answers, questions };
-  }, [index, selected, answers, questions]);
+    liveRef.current = { index, selected, answers, questions, layoutMode };
+  }, [index, selected, answers, questions, layoutMode]);
 
   const handleTimeExpired = useCallback(() => {
     setEndedByTimeout(true);
-    const { index: i, selected: sel, answers: ans, questions: qs } = liveRef.current;
+    const { index: i, selected: sel, answers: ans, questions: qs, layoutMode: lm } = liveRef.current;
     const next: (number | null)[] = qs.map((_, idx) => (idx < ans.length ? ans[idx] ?? null : null));
-    if (sel !== null && i < qs.length) next[i] = sel;
+    if (lm === "step" && sel !== null && i < qs.length) next[i] = sel;
     setAnswers(next);
     setIndex(qs.length);
   }, []);
@@ -170,13 +180,42 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   }, [answers, finished, topicId, questions]);
 
   useEffect(() => {
-    if (finished) return;
+    if (questions.length === 0) return;
+    setAnswers((prev) => {
+      if (prev.length === questions.length) return prev;
+      return questions.map((_, i) => (i < prev.length ? prev[i] ?? null : null));
+    });
+  }, [questions]);
+
+  useEffect(() => {
+    if (finished || layoutMode !== "step") return;
     setSelected(answers[index] ?? null);
-  }, [index, answers, finished]);
+  }, [index, answers, finished, layoutMode]);
 
   useEffect(() => {
     setEndedByTimeout(false);
   }, [round, mode]);
+
+  const setLayoutModeAndSyncIndex = (mode: QuizLayoutMode) => {
+    setLayoutMode(mode);
+    if (mode !== "step") return;
+    const firstUnanswered = answers.findIndex((a) => a === null || a === undefined);
+    setIndex(firstUnanswered === -1 ? Math.max(0, questions.length - 1) : firstUnanswered);
+  };
+
+  const setAnswerAt = (qIdx: number, optionIdx: number) => {
+    setAnswers((prev) => {
+      const next = [...prev];
+      while (next.length < questions.length) next.push(null);
+      next[qIdx] = optionIdx;
+      return next;
+    });
+  };
+
+  const finishScrollMode = () => {
+    if (!allAnswered) return;
+    setIndex(questions.length);
+  };
 
   const q = questions[index];
   const isLast = questions.length > 0 && index === questions.length - 1;
@@ -336,13 +375,21 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
             </>
           ) : (
             <>
-              <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
+                  {layoutMode === "step" ? (
+                    <>
+                      {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
+                    </>
+                  ) : (
+                    <>
+                      {t("examQuizScrollViewSubtitle")} ({questions.length})
+                    </>
+                  )}
                 </p>
                 {countdownActive ? (
                   <div
-                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums ${
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums lg:order-3 ${
                       isCritical
                         ? "border-red-600/60 bg-red-500/10 text-red-800 dark:text-red-300"
                         : isWarning
@@ -356,79 +403,195 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                     <span>{countdownFormatted}</span>
                   </div>
                 ) : null}
-                <Button variant="ghost" size="sm" className="text-muted-foreground sm:ml-auto" onClick={exitToExamTests}>
-                  {t("examQuizBackToList")}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={exitToExamTests}>
+                    {t("examQuizBackToList")}
+                  </Button>
+                  <div
+                    role="group"
+                    aria-label={t("examQuizLayoutModeLabel")}
+                    className="inline-flex shrink-0 rounded-lg border border-border bg-muted/40 p-0.5"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setLayoutModeAndSyncIndex("step")}
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                        layoutMode === "step"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <SquareStack className="size-3.5 shrink-0 sm:size-4" aria-hidden />
+                      {t("examQuizLayoutOneByOne")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLayoutModeAndSyncIndex("scroll")}
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                        layoutMode === "scroll"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Scroll className="size-3.5 shrink-0 sm:size-4" aria-hidden />
+                      {t("examQuizLayoutScroll")}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <Reveal delay={0.06}>
-                <Card className="p-8 border-border">
-                  {q?.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
-                  <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{current?.text ?? ""}</h2>
-                  <div className="space-y-2">
-                    {current?.options.map((opt, i) => {
-                      const hideImmediateFeedback = timedExam;
-                      return (
-                      <div key={i} className="rounded-xl border border-transparent">
-                        <button
-                          type="button"
-                          onClick={() => setSelected(i)}
-                          className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                            hideImmediateFeedback
-                              ? selected === i
-                                ? "border-primary bg-primary/10 text-foreground"
-                                : "border-border hover:border-muted-foreground/30 text-foreground"
-                              : selected === null
-                                ? selected === i
-                                  ? "border-primary bg-primary/10 text-foreground"
-                                  : "border-border hover:border-muted-foreground/30 text-foreground"
-                                : i === q.correctIndex
-                                  ? "border-emerald-600 text-foreground"
-                                  : selected === i
-                                    ? "border-red-600 text-foreground"
-                                    : "border-border text-foreground"
-                          }`}
-                        >
-                          {opt}
-                        </button>
-                        {!hideImmediateFeedback && selected !== null && current.optionExplanations[i] ? (
-                          <div className="mt-1 ml-2">
+              {layoutMode === "step" ? (
+                <Reveal delay={0.06}>
+                  <Card className="p-8 border-border">
+                    {q?.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
+                    <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{current?.text ?? ""}</h2>
+                    <div className="space-y-2">
+                      {current?.options.map((opt, i) => {
+                        const hideImmediateFeedback = timedExam;
+                        return (
+                          <div key={i} className="rounded-xl border border-transparent">
                             <button
                               type="button"
-                              className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-                              onClick={() =>
-                                setOpenExplanations((prev) => ({
-                                  ...prev,
-                                  [`q-${index}-${i}`]: !prev[`q-${index}-${i}`],
-                                }))
-                              }
-                              aria-label={t("examQuizShowExplanation")}
+                              onClick={() => setSelected(i)}
+                              className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                                hideImmediateFeedback
+                                  ? selected === i
+                                    ? "border-primary bg-primary/10 text-foreground"
+                                    : "border-border hover:border-muted-foreground/30 text-foreground"
+                                  : selected === null
+                                    ? selected === i
+                                      ? "border-primary bg-primary/10 text-foreground"
+                                      : "border-border hover:border-muted-foreground/30 text-foreground"
+                                    : i === q!.correctIndex
+                                      ? "border-emerald-600 text-foreground"
+                                      : selected === i
+                                        ? "border-red-600 text-foreground"
+                                        : "border-border text-foreground"
+                              }`}
                             >
-                              <CircleHelp className="w-3.5 h-3.5" />
-                              <span>{t("examQuizShowExplanation")}</span>
+                              {opt}
                             </button>
-                            {openExplanations[`q-${index}-${i}`] ? (
-                              <p className="mt-1 text-xs text-muted-foreground">{current.optionExplanations[i]}</p>
+                            {!hideImmediateFeedback && selected !== null && current.optionExplanations[i] ? (
+                              <div className="mt-1 ml-2">
+                                <button
+                                  type="button"
+                                  className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                                  onClick={() =>
+                                    setOpenExplanations((prev) => ({
+                                      ...prev,
+                                      [`q-${index}-${i}`]: !prev[`q-${index}-${i}`],
+                                    }))
+                                  }
+                                  aria-label={t("examQuizShowExplanation")}
+                                >
+                                  <CircleHelp className="w-3.5 h-3.5" />
+                                  <span>{t("examQuizShowExplanation")}</span>
+                                </button>
+                                {openExplanations[`q-${index}-${i}`] ? (
+                                  <p className="mt-1 text-xs text-muted-foreground">{current.optionExplanations[i]}</p>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
-                        ) : null}
-                      </div>
-                    );
+                        );
+                      })}
+                    </div>
+                    <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">
+                        {t("examQuizPrevious")}
+                      </Button>
+                      <Button
+                        onClick={goNext}
+                        disabled={selected === null}
+                        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground sm:w-auto sm:min-w-[120px]"
+                      >
+                        {isLast ? t("examQuizFinish") : t("examQuizNext")}
+                      </Button>
+                    </div>
+                  </Card>
+                </Reveal>
+              ) : (
+                <>
+                  <div className="space-y-6">
+                    {questions.map((question, qIdx) => {
+                      const loc = getQuestionInLang(question, lang);
+                      const sel = answers[qIdx] ?? null;
+                      const hideImmediateFeedback = timedExam;
+                      return (
+                        <Reveal key={question.id} delay={Math.min(qIdx, 10) * 0.03}>
+                          <Card className="p-6 sm:p-8 border-border">
+                            <p className="text-xs font-medium text-muted-foreground mb-3">
+                              {t("examQuizQuestion")} {qIdx + 1} {t("examQuizOf")} {questions.length}
+                            </p>
+                            {question.imageUrl ? (
+                              <ExamQuestionFigure url={question.imageUrl} alt={t("examQuizQuestionImageAlt")} />
+                            ) : null}
+                            <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{loc.text}</h2>
+                            <div className="space-y-2">
+                              {loc.options.map((opt, optIdx) => (
+                                <div key={optIdx} className="rounded-xl border border-transparent">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAnswerAt(qIdx, optIdx)}
+                                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                                      hideImmediateFeedback
+                                        ? sel === optIdx
+                                          ? "border-primary bg-primary/10 text-foreground"
+                                          : "border-border hover:border-muted-foreground/30 text-foreground"
+                                        : sel === null
+                                          ? sel === optIdx
+                                            ? "border-primary bg-primary/10 text-foreground"
+                                            : "border-border hover:border-muted-foreground/30 text-foreground"
+                                          : optIdx === question.correctIndex
+                                            ? "border-emerald-600 text-foreground"
+                                            : sel === optIdx
+                                              ? "border-red-600 text-foreground"
+                                              : "border-border text-foreground"
+                                    }`}
+                                  >
+                                    {opt}
+                                  </button>
+                                  {!hideImmediateFeedback && sel !== null && loc.optionExplanations[optIdx] ? (
+                                    <div className="mt-1 ml-2">
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                                        onClick={() =>
+                                          setOpenExplanations((prev) => ({
+                                            ...prev,
+                                            [`q-${qIdx}-${optIdx}`]: !prev[`q-${qIdx}-${optIdx}`],
+                                          }))
+                                        }
+                                        aria-label={t("examQuizShowExplanation")}
+                                      >
+                                        <CircleHelp className="w-3.5 h-3.5" />
+                                        <span>{t("examQuizShowExplanation")}</span>
+                                      </button>
+                                      {openExplanations[`q-${qIdx}-${optIdx}`] ? (
+                                        <p className="mt-1 text-xs text-muted-foreground">{loc.optionExplanations[optIdx]}</p>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          </Card>
+                        </Reveal>
+                      );
                     })}
                   </div>
-                  <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">
-                      {t("examQuizPrevious")}
-                    </Button>
+                  <div className="mt-6 flex justify-end">
                     <Button
-                      onClick={goNext}
-                      disabled={selected === null}
-                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground sm:w-auto sm:min-w-[120px]"
+                      type="button"
+                      onClick={finishScrollMode}
+                      disabled={!allAnswered}
+                      title={!allAnswered ? t("examQuizScrollAnswerAllHint") : undefined}
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground sm:w-auto sm:min-w-[140px]"
                     >
-                      {isLast ? t("examQuizFinish") : t("examQuizNext")}
+                      {t("examQuizFinish")}
                     </Button>
                   </div>
-                </Card>
-              </Reveal>
+                </>
+              )}
             </>
           )}
         </div>

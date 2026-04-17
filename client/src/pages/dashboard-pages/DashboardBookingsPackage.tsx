@@ -1,6 +1,3 @@
-import DashboardLayout from "src/components/DashboardLayout";
-import PanelPageHeader from "src/components/PanelPageHeader";
-import DashboardBookingsSubnav from "src/components/dashboard/DashboardBookingsSubnav";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { ShoppingBag, CheckCircle2, Car } from "lucide-react";
@@ -17,7 +14,7 @@ import {
   type PackageTierId,
 } from "src/modules/dashboard/studentEntitlements";
 
-export default function DashboardBookingsPackage() {
+export function DashboardBookingsPackageTab() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { practicalCreditsRemaining, packagePracticalRemaining, extraPracticalRemaining, purchasePackage, purchaseExtraPracticalBlock } =
@@ -42,27 +39,7 @@ export default function DashboardBookingsPackage() {
   };
 
   return (
-    <DashboardLayout>
-      <Reveal>
-        <PanelPageHeader
-          icon={ShoppingBag}
-          title={t("bookingsSubnavPackage")}
-          subtitle={t("bookingsPackagePageSubtitle")}
-          actions={
-            <Link href="/dashboard/purchases">
-              <Button type="button" variant="outline" size="sm" className="border-input">
-                {t("bookingsViewMyServices")}
-              </Button>
-            </Link>
-          }
-        />
-      </Reveal>
-
-      <Reveal delay={0.04}>
-        <DashboardBookingsSubnav active="package" />
-      </Reveal>
-
-      <Reveal delay={0.06}>
+    <Reveal delay={0.06}>
         <Card className="p-5 border-border mb-6">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
             <div>
@@ -136,12 +113,11 @@ export default function DashboardBookingsPackage() {
 
           <p className="text-sm text-muted-foreground mt-5">
             {t("bookingsPackageToPracticalHint")}{" "}
-            <Link href="/dashboard/bookings/practical" className="text-primary font-medium hover:underline">
+            <Link href="/practical" className="text-primary font-medium hover:underline">
               {t("bookingsSubnavPractical")}
             </Link>
           </p>
         </Card>
       </Reveal>
-    </DashboardLayout>
   );
 }

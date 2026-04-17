@@ -17,6 +17,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, CalendarRange } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -28,38 +29,27 @@ type Booking = {
   instructorName: string;
   dateIso: string;
   time: string;
+  endTime?: string | null;
+  totalPriceAmd?: number | null;
   type: "practical" | "theory";
   status: string;
   branchId: string;
 };
 
-function bookingStatusTranslationKey(status: string): TranslationKey {
-  switch (status) {
-    case "confirmed":
-      return "confirmed";
-    case "cancelled":
-      return "cancelled";
-    case "completed":
-      return "bookingStatusCompleted";
-    case "pending_prebook":
-      return "bookingStatusPrebook";
-    case "pending_payment":
-      return "bookingStatusPaymentDue";
-    case "refunded":
-      return "bookingStatusRefunded";
-    case "pending":
-    default:
-      return "pending";
-  }
+/** Canonical booking statuses; coerce legacy API/DB values for labels and filters. */
+type CanonicalBookingStatus = "confirmed" | "pending" | "cancelled" | "refunded";
+
+function toCanonicalBookingStatus(raw: string): CanonicalBookingStatus {
+  if (raw === "confirmed" || raw === "pending" || raw === "cancelled" || raw === "refunded") return raw;
+  if (raw === "completed") return "confirmed";
+  if (raw === "pending_prebook" || raw === "pending_payment") return "pending";
+  return "pending";
 }
 
-const statusColor: Record<string, string> = {
+const statusColor: Record<CanonicalBookingStatus, string> = {
   confirmed: "bg-emerald-100 text-emerald-700",
   pending: "bg-amber-100 text-amber-700",
-  pending_prebook: "bg-amber-100 text-amber-800",
-  pending_payment: "bg-orange-100 text-orange-800",
   cancelled: "bg-red-100 text-red-600",
-  completed: "bg-muted text-muted-foreground",
   refunded: "bg-slate-200 text-slate-700",
 };
 const typeColor: Record<string, string> = {
@@ -130,9 +120,10 @@ export default function AdminBookings() {
       const branchLabel = branchNameById(branches, b.branchId);
       const stu = studentLabel(b.studentId);
       const dateLabel = formatShortDateFromIso(b.dateIso, lang);
-      const hay = [b.id, stu, b.instructorName, dateLabel, b.time, b.type, b.status, branchLabel].join(" ").toLowerCase();
+      const timeLabel = formatBookingSlotRangeLabel(b.time, b.endTime);
+      const hay = [b.id, stu, b.instructorName, dateLabel, timeLabel, b.time, b.type, b.status, branchLabel].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
-      const matchStatus = statusFilter === "all" || b.status === statusFilter;
+      const matchStatus = statusFilter === "all" || toCanonicalBookingStatus(b.status) === statusFilter;
       const matchBranch = branchFilter === "all" || b.branchId === branchFilter;
       const matchLessonType = lessonTypeFilter === "all" || b.type === lessonTypeFilter;
       return matchSearch && matchStatus && matchBranch && matchLessonType;
@@ -238,9 +229,9 @@ export default function AdminBookings() {
               branchNameById(branches, b.branchId),
               b.instructorName,
               formatShortDateFromIso(b.dateIso, lang),
-              b.time,
+              formatBookingSlotRangeLabel(b.time, b.endTime),
               t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical"),
-              t(bookingStatusTranslationKey(b.status)),
+              t(toCanonicalBookingStatus(b.status) as TranslationKey),
             ])}
           />
         </DataTableToolbar>
@@ -294,11 +285,8 @@ export default function AdminBookings() {
                         { value: "all", label: t("filterOptionAll") },
                         { value: "confirmed", label: t("confirmed") },
                         { value: "pending", label: t("pending") },
-                        { value: "pending_prebook", label: t("bookingStatusPrebook") },
-                        { value: "pending_payment", label: t("bookingStatusPaymentDue") },
-                        { value: "completed", label: t("bookingStatusCompleted") },
-                        { value: "refunded", label: t("bookingStatusRefunded") },
                         { value: "cancelled", label: t("cancelled") },
+                        { value: "refunded", label: t("refunded") },
                       ]}
                     />
                   }
@@ -316,7 +304,7 @@ export default function AdminBookings() {
                       id: "edit",
                       label: t("edit"),
                       icon: Edit2,
-                      onClick: () => setEditBooking({ ...b }),
+                      onClick: () => setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) }),
                     },
                     {
                       kind: "item",
@@ -336,13 +324,20 @@ export default function AdminBookings() {
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.instructorName}</td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{formatShortDateFromIso(b.dateIso, lang)}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.time}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">
+                      <span className="block">{formatBookingSlotRangeLabel(b.time, b.endTime)}</span>
+                      {b.totalPriceAmd != null && b.totalPriceAmd > 0 ? (
+                        <span className="text-xs text-muted-foreground/80">{b.totalPriceAmd.toLocaleString()} ֏</span>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3.5">
                       <Badge className={`text-xs ${typeColor[b.type]}`}>{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}</Badge>
                     </td>
                     <td className="px-4 py-3.5">
-                      <Badge className={`text-xs ${statusColor[b.status] ?? statusColor.pending}`}>
-                        {t(bookingStatusTranslationKey(b.status))}
+                      <Badge
+                        className={`text-xs ${statusColor[toCanonicalBookingStatus(b.status)] ?? statusColor.pending}`}
+                      >
+                        {t(toCanonicalBookingStatus(b.status) as TranslationKey)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3.5">
@@ -354,7 +349,7 @@ export default function AdminBookings() {
                             id: "edit",
                             label: t("edit"),
                             icon: Edit2,
-                            onClick: () => setEditBooking({ ...b }),
+                            onClick: () => setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) }),
                           },
                           {
                             kind: "item",
@@ -470,11 +465,8 @@ export default function AdminBookings() {
                 >
                   <option value="confirmed">{t("confirmed")}</option>
                   <option value="pending">{t("pending")}</option>
-                  <option value="pending_prebook">{t("bookingStatusPrebook")}</option>
-                  <option value="pending_payment">{t("bookingStatusPaymentDue")}</option>
-                  <option value="completed">{t("bookingStatusCompleted")}</option>
-                  <option value="refunded">{t("bookingStatusRefunded")}</option>
                   <option value="cancelled">{t("cancelled")}</option>
+                  <option value="refunded">{t("refunded")}</option>
                 </select>
               </div>
           </form>
@@ -573,11 +565,8 @@ export default function AdminBookings() {
                 >
                   <option value="confirmed">{t("confirmed")}</option>
                   <option value="pending">{t("pending")}</option>
-                  <option value="pending_prebook">{t("bookingStatusPrebook")}</option>
-                  <option value="pending_payment">{t("bookingStatusPaymentDue")}</option>
-                  <option value="completed">{t("bookingStatusCompleted")}</option>
-                  <option value="refunded">{t("bookingStatusRefunded")}</option>
                   <option value="cancelled">{t("cancelled")}</option>
+                  <option value="refunded">{t("refunded")}</option>
                 </select>
               </div>
           </form>
