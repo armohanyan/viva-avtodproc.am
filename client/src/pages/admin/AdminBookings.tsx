@@ -17,6 +17,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Plus, Edit2, Trash2, CalendarRange } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import LessonBookingCalendar, { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
@@ -44,7 +45,7 @@ type Booking = {
   time: string;
   endTime?: string | null;
   totalPriceAmd?: number | null;
-  type: "practical" | "theory";
+  type: "practical" | "theory" | "theory_personal";
   status: string;
   branchId: string;
 };
@@ -68,7 +69,14 @@ const statusColor: Record<CanonicalBookingStatus, string> = {
 const typeColor: Record<string, string> = {
   practical: "bg-blue-100 text-blue-700",
   theory: "bg-purple-100 text-purple-700",
+  theory_personal: "bg-amber-100 text-amber-800",
 };
+
+function bookingLessonTypeTKey(type: Booking["type"]): TranslationKey {
+  if (type === "theory") return "lessonTypeTheory";
+  if (type === "theory_personal") return "lessonTypeTheoryPersonal";
+  return "lessonTypePractical";
+}
 
 type BookingPaymentFields = {
   description: string;
@@ -95,7 +103,8 @@ function defaultPaymentFields(): BookingPaymentFields {
 }
 
 function paymentDescriptionLine(b: Pick<Booking, "type" | "dateIso" | "id">): string {
-  const typeEn = b.type === "theory" ? "Theory" : "Practical";
+  const typeEn =
+    b.type === "theory" ? "Theory" : b.type === "theory_personal" ? "Personal theory" : "Practical";
   return b.id ? `${typeEn} lesson ${b.dateIso} · #${b.id}` : `${typeEn} lesson ${b.dateIso}`;
 }
 
@@ -149,7 +158,7 @@ export default function AdminBookings() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
-  const [lessonTypeFilter, setLessonTypeFilter] = useState<"all" | "practical" | "theory">("all");
+  const [lessonTypeFilter, setLessonTypeFilter] = useState<"all" | "practical" | "theory" | "theory_personal">("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -161,18 +170,102 @@ export default function AdminBookings() {
   const [editManualTxId, setEditManualTxId] = useState<number | null>(null);
   /** When set, booking has a system-generated payment — show notice instead of form. */
   const [editSystemPayment, setEditSystemPayment] = useState<FinanceTx | null>(null);
+  const [slotPick, setSlotPick] = useState<LessonBookingPayload | null>(null);
+  const [theoryCohortId, setTheoryCohortId] = useState("");
+  const [theoryCohorts, setTheoryCohorts] = useState<
+    { id: string; name: string; branchId: string; instructorName: string; status: string }[]
+  >([]);
+
+  const activeTheoryCohorts = useMemo(
+    () => theoryCohorts.filter((c) => String(c.status).toLowerCase() === "active"),
+    [theoryCohorts],
+  );
+
+  const practicalInstructorsForCalendar = useMemo(
+    () => instructors.filter((i) => i.status === "active" && i.teachesPractical),
+    [instructors],
+  );
+
+  const defaultPracticalInstructorName = useMemo(
+    () => instructors.find((i) => i.status === "active" && i.teachesPractical)?.name ?? instructorNames[0] ?? "",
+    [instructors, instructorNames],
+  );
+
+  const theoryPersonalInstructorNames = useMemo(
+    () =>
+      instructors.filter((i) => i.status === "active" && i.teachesTheory).map((i) => i.name),
+    [instructors],
+  );
+
+  const theoryCalendarInstructors = useMemo(() => {
+    const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
+    if (draft?.type !== "theory" || !theoryCohortId) return base;
+    const c = theoryCohorts.find((x) => x.id === theoryCohortId);
+    if (!c) return base;
+    const full = instructors.find((i) => i.name === c.instructorName);
+    if (full && !base.some((b) => b.id === full.id)) {
+      return [...base, full];
+    }
+    return base;
+  }, [draft?.type, theoryCohortId, theoryCohorts, instructors]);
+
+  const calendarInstructorId = useMemo(() => {
+    if (!draft) return "";
+    if (draft.type === "practical") {
+      const m = instructors.find((i) => i.name === draft.instructorName);
+      return m?.id ?? "";
+    }
+    if (draft.type === "theory" && theoryCohortId) {
+      const c = theoryCohorts.find((x) => x.id === theoryCohortId);
+      if (!c) return "";
+      const m = instructors.find((i) => i.name === c.instructorName);
+      return m?.id ?? "";
+    }
+    return "";
+  }, [draft, instructors, theoryCohortId, theoryCohorts]);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await vivaApiJson<
+          { id: number; name: string; branchId: number; instructorName: string; status: string }[]
+        >("/theory-cohorts");
+        if (cancelled) return;
+        setTheoryCohorts(
+          Array.isArray(data)
+            ? data.map((c) => ({
+                id: String(c.id),
+                name: c.name,
+                branchId: String(c.branchId),
+                instructorName: c.instructorName,
+                status: c.status,
+              }))
+            : [],
+        );
+      } catch {
+        if (!cancelled) setTheoryCohorts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen]);
 
   const openAdd = () => {
     const newDraft: Booking = {
       id: "",
       studentId: studentsMini[0]?.id ?? "",
-      instructorName: instructorNames[0] ?? "",
+      instructorName: defaultPracticalInstructorName,
       dateIso: todayIsoDate(),
       time: "10:00",
       type: "practical",
       status: "confirmed",
       branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID,
     };
+    setSlotPick(null);
+    setTheoryCohortId("");
     setDraft(newDraft);
     setAddPayment({
       ...defaultPaymentFields(),
@@ -390,7 +483,20 @@ export default function AdminBookings() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft) return;
-    if (!draft.studentId || !draft.instructorName || !draft.dateIso) {
+    if (!draft.studentId) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    if (draft.type === "practical" || draft.type === "theory") {
+      if (!slotPick || slotPick.times.length === 0) {
+        showToast(t("adminBookingSlotsNotSelected"), "error");
+        return;
+      }
+      if (draft.type === "theory" && !theoryCohortId.trim()) {
+        showToast(t("adminBookingTheoryCohortRequired"), "error");
+        return;
+      }
+    } else if (!draft.instructorName || !draft.dateIso || !draft.time) {
       showToast(t("fillRequired"), "error");
       return;
     }
@@ -401,17 +507,31 @@ export default function AdminBookings() {
       if (!ok) return;
     }
     try {
+      const body =
+        draft.type === "practical" || draft.type === "theory"
+          ? {
+              studentId: Number(draft.studentId),
+              branchId: Number(draft.branchId),
+              status: draft.status,
+              type: draft.type,
+              dateIso: slotPick!.dateIso,
+              slots: slotPick!.times,
+              ...(draft.type === "practical"
+                ? { instructorName: slotPick!.instructor || draft.instructorName }
+                : { theoryCohortId: Number(theoryCohortId) }),
+            }
+          : {
+              studentId: Number(draft.studentId),
+              instructorName: draft.instructorName,
+              dateIso: draft.dateIso,
+              time: draft.time,
+              type: draft.type,
+              status: draft.status,
+              branchId: Number(draft.branchId),
+            };
       const created = await vivaApiJson<{ id: number }>("/bookings", {
         method: "POST",
-        body: {
-          studentId: draft.studentId,
-          instructorName: draft.instructorName,
-          dateIso: draft.dateIso,
-          time: draft.time,
-          type: draft.type,
-          status: draft.status,
-          branchId: draft.branchId,
-        },
+        body,
       });
       const bookingIdNum = Number(created.id);
       if (wantsPayment && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
@@ -564,7 +684,7 @@ export default function AdminBookings() {
               b.instructorName,
               formatShortDateFromIso(b.dateIso, lang),
               formatBookingSlotRangeLabel(b.time, b.endTime),
-              t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical"),
+              t(bookingLessonTypeTKey(b.type)),
               t(toCanonicalBookingStatus(b.status) as TranslationKey),
             ])}
           />
@@ -598,12 +718,13 @@ export default function AdminBookings() {
                   filter={
                     <TableColumnFilter
                       value={lessonTypeFilter}
-                      onChange={(v) => setLessonTypeFilter(v as "all" | "practical" | "theory")}
+                      onChange={(v) => setLessonTypeFilter(v as "all" | "practical" | "theory" | "theory_personal")}
                       ariaLabel={t("filterByType")}
                       options={[
                         { value: "all", label: t("filterOptionAll") },
                         { value: "practical", label: t("lessonTypePractical") },
                         { value: "theory", label: t("lessonTypeTheory") },
+                        { value: "theory_personal", label: t("lessonTypeTheoryPersonal") },
                       ]}
                     />
                   }
@@ -668,7 +789,7 @@ export default function AdminBookings() {
                       ) : null}
                     </td>
                     <td className="px-4 py-3.5">
-                      <Badge className={`text-xs ${typeColor[b.type]}`}>{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}</Badge>
+                      <Badge className={`text-xs ${typeColor[b.type] ?? typeColor.practical}`}>{t(bookingLessonTypeTKey(b.type))}</Badge>
                     </td>
                     <td className="px-4 py-3.5">
                       <Badge
@@ -794,11 +915,17 @@ export default function AdminBookings() {
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
                   <select
                     value={editBooking.type}
-                    onChange={(e) => setEditBooking({ ...editBooking, type: e.target.value as "practical" | "theory" })}
+                    onChange={(e) =>
+                      setEditBooking({
+                        ...editBooking,
+                        type: e.target.value as Booking["type"],
+                      })
+                    }
                     className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <option value="practical">{t("lessonTypePractical")}</option>
                     <option value="theory">{t("lessonTypeTheory")}</option>
+                    <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -853,7 +980,11 @@ export default function AdminBookings() {
           }
         }}
         title={t("bookingDialogAddTitle")}
-        contentClassName="max-w-2xl w-[min(100%,42rem)] max-h-[min(92vh,880px)]"
+        contentClassName={
+          draft && (draft.type === "practical" || draft.type === "theory")
+            ? "max-w-5xl w-[min(100%,56rem)] max-h-[min(92vh,920px)] overflow-y-auto"
+            : "max-w-2xl w-[min(100%,42rem)] max-h-[min(92vh,880px)]"
+        }
         footer={
           draft ? (
             <div className="flex gap-3 w-full">
@@ -894,11 +1025,37 @@ export default function AdminBookings() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
+                  <select
+                    value={draft.type}
+                    onChange={(e) => {
+                      const type = e.target.value as Booking["type"];
+                      const next: Booking = { ...draft, type };
+                      setSlotPick(null);
+                      if (type !== "theory") setTheoryCohortId("");
+                      if (type === "practical") {
+                        next.instructorName = defaultPracticalInstructorName || next.instructorName;
+                      }
+                      if (type === "theory_personal") {
+                        next.instructorName = theoryPersonalInstructorNames[0] ?? next.instructorName;
+                      }
+                      setDraft(next);
+                      setAddPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                    }}
+                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="practical">{t("lessonTypePractical")}</option>
+                    <option value="theory">{t("lessonTypeTheory")}</option>
+                    <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
                   <select
                     value={draft.branchId}
                     onChange={(e) => setDraft({ ...draft, branchId: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={draft.type === "theory" && !!theoryCohortId}
+                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
                   >
                     {branches.map((br) => (
                       <option key={br.id} value={br.id}>
@@ -907,56 +1064,143 @@ export default function AdminBookings() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                  <select
-                    value={draft.instructorName}
-                    onChange={(e) => setDraft({ ...draft, instructorName: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {instructorNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
-                  <select
-                    value={draft.type}
-                    onChange={(e) => {
-                      const type = e.target.value as "practical" | "theory";
-                      const next = { ...draft, type };
-                      setDraft(next);
-                      setAddPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
-                    }}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="practical">{t("lessonTypePractical")}</option>
-                    <option value="theory">{t("lessonTypeTheory")}</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {draft.type === "theory" ? (
                   <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
-                    <Input
-                      type="date"
-                      value={draft.dateIso}
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminBookingTheoryCohortLabel")}</label>
+                    <select
+                      value={theoryCohortId}
                       onChange={(e) => {
-                        const dateIso = e.target.value;
-                        const next = { ...draft, dateIso };
-                        setDraft(next);
-                        setAddPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                        const id = e.target.value;
+                        setTheoryCohortId(id);
+                        setSlotPick(null);
+                        const c = activeTheoryCohorts.find((x) => x.id === id);
+                        if (c) {
+                          setDraft((d) =>
+                            d
+                              ? {
+                                  ...d,
+                                  branchId: c.branchId,
+                                  instructorName: c.instructorName,
+                                }
+                              : d,
+                          );
+                        }
                       }}
-                      className="h-10"
-                    />
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
+                      {activeTheoryCohorts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">{t("adminBookingTheoryCohortHint")}</p>
                   </div>
+                ) : null}
+                {draft.type === "practical" ? (
                   <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColTime")}</label>
-                    <Input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} className="h-10" step={60} />
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
+                    <select
+                      value={draft.instructorName}
+                      onChange={(e) => {
+                        setDraft({ ...draft, instructorName: e.target.value });
+                        setSlotPick(null);
+                      }}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {practicalInstructorsForCalendar.map((ins) => (
+                        <option key={ins.id} value={ins.name}>
+                          {ins.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
+                ) : null}
+                {draft.type === "theory_personal" ? (
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
+                    <select
+                      value={draft.instructorName}
+                      onChange={(e) => setDraft({ ...draft, instructorName: e.target.value })}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {theoryPersonalInstructorNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {draft.type === "practical" || draft.type === "theory" ? (
+                  <div className="space-y-2 pt-2 border-t border-border">
+                    <p className="text-sm text-muted-foreground">{t("adminBookingSlotCalendarHint")}</p>
+                    {draft.type === "theory" && !theoryCohortId ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingTheoryPickCohortFirst")}</p>
+                    ) : !calendarInstructorId ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
+                    ) : (
+                      <LessonBookingCalendar
+                        key={`${draft.type}-${draft.type === "practical" ? draft.instructorName : theoryCohortId}-${draft.branchId}`}
+                        mode="admin"
+                        instructors={draft.type === "practical" ? practicalInstructorsForCalendar : theoryCalendarInstructors}
+                        selectedInstructorId={calendarInstructorId}
+                        onInstructorChange={(id) => {
+                          const ins = instructors.find((i) => i.id === id);
+                          if (ins) {
+                            setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
+                            setSlotPick(null);
+                          }
+                        }}
+                        branchId={draft.branchId}
+                        studentName={studentLabel(draft.studentId)}
+                        showInstructorPicker={draft.type === "practical"}
+                        onBookingConfirmed={(payload) => {
+                          setSlotPick(payload);
+                          setDraft((d) => {
+                            if (!d) return d;
+                            const next: Booking = {
+                              ...d,
+                              dateIso: payload.dateIso,
+                              time: payload.time,
+                              instructorName: payload.instructor || d.instructorName,
+                            };
+                            setAddPayment((p) => ({ ...p, description: paymentDescriptionLine({ ...next, id: "" }) }));
+                            return next;
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
+                      <Input
+                        type="date"
+                        value={draft.dateIso}
+                        onChange={(e) => {
+                          const dateIso = e.target.value;
+                          const next = { ...draft, dateIso };
+                          setDraft(next);
+                          setAddPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                        }}
+                        className="h-10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColTime")}</label>
+                      <Input
+                        type="time"
+                        value={draft.time}
+                        onChange={(e) => setDraft({ ...draft, time: e.target.value })}
+                        className="h-10"
+                        step={60}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                   <select

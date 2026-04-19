@@ -1,12 +1,28 @@
 import { Op, UniqueConstraintError, literal, type Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { Booking, BookingSlot, InstructorBranch, InstructorProfile, User } from '../models';
+import { Booking, BookingSlot, InstructorBranch, InstructorProfile, TheoryCohort, User } from '../models';
+import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 import { addOneCalendarMonth, todayIsoUtc } from '../utils/calendar-month.util';
 
 const { InputValidationError, ConflictError } = ErrorsUtil;
+
+function assertInstructorTeachesLessonType(
+  profile: InstructorProfile | null,
+  lessonType: 'practical' | 'theory' | 'theory_personal',
+): asserts profile is InstructorProfile {
+  if (!profile || profile.status !== 'active') {
+    throw new InputValidationError('Instructor is not available for booking.', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  if (lessonType === 'practical' && !profile.teachesPractical) {
+    throw new InputValidationError('This instructor does not teach practical lessons.', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  if ((lessonType === 'theory' || lessonType === 'theory_personal') && !profile.teachesTheory) {
+    throw new InputValidationError('This instructor does not teach theory lessons.', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+}
 
 const SLOT_NO_LONGER_AVAILABLE = 'Selected slot(s) are no longer available';
 
@@ -35,7 +51,7 @@ export type BookingAdminDto = {
   time: string;
   endTime: string | null;
   totalPriceAmd: number | null;
-  type: 'practical' | 'theory';
+  type: 'practical' | 'theory' | 'theory_personal';
   status: string;
   branchId: number;
 };
@@ -51,7 +67,7 @@ export type StudentBookingDto = {
   totalPriceAmd: number | null;
   instructorUserId: number;
   instructor: string;
-  lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory';
+  lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory' | 'lessonTypeTheoryPersonal';
   status: BookingStatus;
 };
 
@@ -64,7 +80,7 @@ export type InstructorBookingDto = {
   time: string;
   endTime: string | null;
   totalPriceAmd: number | null;
-  type: 'practical' | 'theory';
+  type: 'practical' | 'theory' | 'theory_personal';
   status: BookingStatus;
   branchId: number;
 };
@@ -285,7 +301,7 @@ export default class BookingService {
         dateIso: { [Op.between]: [fromIso.slice(0, 10), toIso.slice(0, 10)] },
         status: { [Op.in]: [...SLOT_RESERVING_STATUSES] },
         [Op.and]: literal(
-          'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `bookings`.`id`)',
+          'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)',
         ),
       },
     });
@@ -317,7 +333,12 @@ export default class BookingService {
         totalPriceAmd: b.totalPriceAmd ?? null,
         instructorUserId: b.instructorUserId,
         instructor: inst.name,
-        lessonTypeKey: b.lessonType === 'theory' ? 'lessonTypeTheory' : 'lessonTypePractical',
+        lessonTypeKey:
+          b.lessonType === 'theory'
+            ? 'lessonTypeTheory'
+            : b.lessonType === 'theory_personal'
+              ? 'lessonTypeTheoryPersonal'
+              : 'lessonTypePractical',
         status: normalizeStudentBookingStatus(b.status),
       };
     });
@@ -392,12 +413,7 @@ export default class BookingService {
     }
 
     const profile = await InstructorProfile.findOne({ where: { userId: input.instructorUserId } });
-    if (!profile || profile.status !== 'active') {
-      throw new InputValidationError('Instructor is not available for booking.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
-    if (!profile.teachesPractical) {
-      throw new InputValidationError('This instructor does not teach practical lessons.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
+    assertInstructorTeachesLessonType(profile, 'practical');
 
     const hourly = Number(profile.hourlyPrice);
     if (!Number.isFinite(hourly) || hourly < 0) {
@@ -497,15 +513,35 @@ export default class BookingService {
     instructorName: string;
     dateIso: string;
     time: string;
-    type: 'practical' | 'theory';
+    type: 'practical' | 'theory' | 'theory_personal';
     status: string;
     branchId: number;
+    slots?: readonly string[];
+    theoryCohortId?: number;
   }): Promise<BookingAdminDto | null> {
+    const dateIso = input.dateIso.slice(0, 10);
+    const slotList = input.slots?.filter((s) => typeof s === 'string' && s.trim().length > 0) ?? [];
+    const useMulti =
+      slotList.length > 0 && (input.type === 'practical' || input.type === 'theory');
+
+    if (useMulti) {
+      const lessonType: 'practical' | 'theory' = input.type === 'theory' ? 'theory' : 'practical';
+      return BookingService.createAdminWithConsecutiveSlots({
+        studentId: input.studentId,
+        dateIso,
+        slots: slotList,
+        lessonType,
+        status: input.status,
+        branchId: input.branchId,
+        instructorName: input.instructorName,
+        theoryCohortId: input.theoryCohortId,
+      });
+    }
+
     const instructor = await User.findOne({
       where: { name: input.instructorName, accountType: 'instructor' },
     });
     if (!instructor) return null;
-    const dateIso = input.dateIso.slice(0, 10);
     const sorted = normalizeAndSortSlots([input.time]);
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
@@ -522,6 +558,7 @@ export default class BookingService {
     }
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
+    assertInstructorTeachesLessonType(profile, input.type);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
     const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : 0;
 
@@ -564,6 +601,147 @@ export default class BookingService {
     return rows.find((x) => x.id === newId) ?? null;
   }
 
+  /** Admin: one booking spanning consecutive hourly slots (practical or theory group). */
+  private static async createAdminWithConsecutiveSlots(input: {
+    studentId: number;
+    dateIso: string;
+    slots: readonly string[];
+    lessonType: 'practical' | 'theory';
+    status: string;
+    branchId: number;
+    instructorName: string;
+    theoryCohortId?: number;
+  }): Promise<BookingAdminDto | null> {
+    const dateIso = input.dateIso.slice(0, 10);
+    const sorted = normalizeAndSortSlots(input.slots);
+    assertConsecutiveHourly(sorted);
+    if (sorted.length === 0) {
+      throw new InputValidationError('At least one slot is required.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    let instructorUserId: number;
+    let branchId = input.branchId;
+
+    if (input.lessonType === 'theory') {
+      if (input.theoryCohortId == null || !Number.isFinite(input.theoryCohortId)) {
+        throw new InputValidationError('theoryCohortId is required for theory group bookings.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      const cohort = await TheoryCohort.findByPk(input.theoryCohortId);
+      if (!cohort) {
+        throw new InputValidationError('Theory cohort not found.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (String(cohort.status).toLowerCase() !== 'active') {
+        throw new InputValidationError('Only active theory cohorts can be used for new bookings.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      branchId = cohort.branchId;
+      const instructor = await User.findOne({
+        where: { name: cohort.instructorName, accountType: 'instructor' },
+      });
+      if (!instructor) {
+        throw new InputValidationError(
+          `No instructor user matches cohort instructor "${cohort.instructorName}".`,
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      instructorUserId = instructor.id;
+      try {
+        await TheoryCohortService.enroll(cohort.id, input.studentId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '';
+        if (!(e instanceof ConflictError) || !msg.includes('already enrolled')) {
+          throw e;
+        }
+      }
+    } else {
+      const instructor = await User.findOne({
+        where: { name: input.instructorName, accountType: 'instructor' },
+      });
+      if (!instructor) return null;
+      instructorUserId = instructor.id;
+    }
+
+    const branchOk = await InstructorBranch.findOne({
+      where: { instructorUserId, branchId },
+    });
+    if (!branchOk) {
+      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
+    assertInstructorTeachesLessonType(profile, input.lessonType);
+    const hourly = profile ? Number(profile.hourlyPrice) : 0;
+    const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : 0;
+    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
+
+    for (const slot of sorted) {
+      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+        instructorUserId,
+        dateIso,
+        slot,
+      );
+      if (unavailable) {
+        throw new InputValidationError(
+          'Instructor is not available at this time (day off, break, or outside work hours).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+    }
+
+    let newId = 0;
+    try {
+      await sequelize.transaction(async (transaction) => {
+        for (const slot of sorted) {
+          const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+            instructorUserId,
+            dateIso,
+            slot,
+          );
+          if (unavailable) {
+            throw new InputValidationError(
+              'Instructor is not available at this time (day off, break, or outside work hours).',
+              HttpStatusCodesUtil.BAD_REQUEST,
+            );
+          }
+        }
+
+        const created = await Booking.create(
+          {
+            studentUserId: input.studentId,
+            instructorUserId,
+            branchId,
+            dateIso,
+            time: sorted[0],
+            endTime: exclusiveEnd,
+            totalPriceAmd,
+            lessonType: input.lessonType,
+            status: input.status,
+            paidAt: null,
+            holdExpiresAt: null,
+          },
+          { transaction },
+        );
+        newId = created.id;
+        await BookingSlot.bulkCreate(
+          sorted.map((slotTime) => ({
+            bookingId: created.id,
+            instructorUserId,
+            dateIso,
+            slotTime,
+          })),
+          { transaction },
+        );
+      });
+    } catch (e) {
+      if (isDuplicateSlotClaimError(e)) {
+        throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
+      }
+      throw e;
+    }
+
+    const rows = await this.listAdmin();
+    return rows.find((x) => x.id === newId) ?? null;
+  }
+
   static async updateAdmin(
     id: number,
     patch: Partial<{
@@ -571,7 +749,7 @@ export default class BookingService {
       instructorName: string;
       dateIso: string;
       time: string;
-      type: 'practical' | 'theory';
+      type: 'practical' | 'theory' | 'theory_personal';
       status: string;
       branchId: number;
     }>,

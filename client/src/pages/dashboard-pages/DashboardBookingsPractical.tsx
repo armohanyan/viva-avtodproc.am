@@ -50,9 +50,7 @@ export function DashboardBookingsPracticalTab() {
     [instructors, lessonType, cityId, selectedBranchIds, branchIdsForCity],
   );
 
-  const instructorOptions = useMemo(() => filteredInstructors.map((item) => ({ id: item.id, name: item.name })), [filteredInstructors]);
-
-  const readyForCalendar = validationErrors.length === 0 && instructorOptions.length > 0;
+  const readyForCalendar = validationErrors.length === 0 && filteredInstructors.length > 0;
 
   useEffect(() => {
     if (!cityId) {
@@ -66,10 +64,10 @@ export function DashboardBookingsPracticalTab() {
   }, [cityId, branchIdsForCity]);
 
   useEffect(() => {
-    if (!instructorOptions.some((o) => o.id === instructorId)) {
-      setInstructorId(instructorOptions[0]?.id ?? "");
+    if (!filteredInstructors.some((o) => o.id === instructorId)) {
+      setInstructorId(filteredInstructors[0]?.id ?? "");
     }
-  }, [instructorId, instructorOptions]);
+  }, [instructorId, filteredInstructors]);
 
   return (
     <>
@@ -131,11 +129,12 @@ export function DashboardBookingsPracticalTab() {
       {readyForCalendar ? (
         <LessonBookingCalendar
           mode="student"
-          instructors={instructorOptions}
+          instructors={filteredInstructors}
           selectedInstructorId={instructorId}
           onInstructorChange={setInstructorId}
           studentUserId={user?.accountType === "student" ? String(user.id) : undefined}
           branchId={selectedBranchIds[0] ?? ""}
+          instructorPickerVariant="cards"
         />
       ) : (
         <Card className="p-6 border-border text-sm text-muted-foreground">{t("bookingNoInstructorsByFilter")}</Card>

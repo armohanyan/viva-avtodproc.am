@@ -1,10 +1,26 @@
 /**
- * Client-side rules matching backend `InstructorAvailabilityBlock` (see GET /instructors/:id/availability-blocks).
+ * Client-side rules matching backend `InstructorScheduleRule` (GET /instructors/:id/availability-blocks).
  */
+
+export type ScheduleRuleKind =
+  | "work_hours"
+  | "lunch"
+  | "recurring_busy"
+  | "day_off"
+  | "date_busy";
+
+/** Legacy API values (pre–schedule-rules rename); normalized to {@link ScheduleRuleKind}. */
+const LEGACY_RULE_KIND: Record<string, ScheduleRuleKind> = {
+  weekly_work: "work_hours",
+  weekly_break: "recurring_busy",
+  weekday_lunch: "lunch",
+  date_off: "day_off",
+  date_break: "date_busy",
+};
 
 export type AvailabilityBlock = {
   id: string;
-  ruleKind: "weekly_work" | "weekly_break" | "weekday_lunch" | "date_off" | "date_break";
+  ruleKind: ScheduleRuleKind;
   weekday: number | null;
   dateIso: string | null;
   timeStart: string | null;
@@ -35,16 +51,23 @@ export function weekdayMon1ToSun7FromDateIso(dateIso: string): number {
   return js === 0 ? 7 : js;
 }
 
-const RULE_KINDS: readonly AvailabilityBlock["ruleKind"][] = [
-  "weekly_work",
-  "weekly_break",
-  "weekday_lunch",
-  "date_off",
-  "date_break",
+const RULE_KINDS: readonly ScheduleRuleKind[] = [
+  "work_hours",
+  "lunch",
+  "recurring_busy",
+  "day_off",
+  "date_busy",
 ];
 
-function isRuleKind(x: string): x is AvailabilityBlock["ruleKind"] {
+function isRuleKind(x: string): x is ScheduleRuleKind {
   return (RULE_KINDS as readonly string[]).includes(x);
+}
+
+function normalizeRuleKind(raw: string): ScheduleRuleKind | null {
+  const t = raw.trim();
+  if (isRuleKind(t)) return t;
+  const mapped = LEGACY_RULE_KIND[t];
+  return mapped ?? null;
 }
 
 /**
@@ -76,7 +99,7 @@ export function normalizeAvailabilityBlockFromApi(raw: Record<string, unknown>):
   };
   const timeStart = normTime(tsRaw);
   const timeEnd = normTime(teRaw);
-  let ruleKind: AvailabilityBlock["ruleKind"] | null = isRuleKind(rkRaw) ? rkRaw : null;
+  let ruleKind = normalizeRuleKind(rkRaw);
   if (
     ruleKind == null &&
     timeStart &&
@@ -84,7 +107,7 @@ export function normalizeAvailabilityBlockFromApi(raw: Record<string, unknown>):
     (weekday == null || Number.isNaN(weekday)) &&
     !dateIso
   ) {
-    ruleKind = "weekday_lunch";
+    ruleKind = "lunch";
   }
   if (ruleKind == null) return null;
   const allDay = Boolean(raw.allDay ?? raw.all_day);
@@ -130,35 +153,29 @@ function slotFullyInsideWorkWindow(
 }
 
 /**
- * Returns true if this hour slot cannot be booked due to admin-defined availability rules.
+ * Returns true if this hour slot cannot be booked due to admin-defined schedule rules.
  */
 export function isSlotBlockedByAvailabilityRules(dateIso: string, timeSlot: string, blocks: readonly AvailabilityBlock[]): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
   const slotRange = slotRangeMinutes(timeSlot);
 
   for (const b of blocks) {
-    if (
-      b.ruleKind === "weekday_lunch" &&
-      b.timeStart &&
-      b.timeEnd &&
-      weekday >= 1 &&
-      weekday <= 5
-    ) {
+    if (b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
     }
-    if (b.ruleKind === "weekly_break" && b.weekday === weekday && b.timeStart && b.timeEnd) {
+    if (b.ruleKind === "recurring_busy" && b.weekday === weekday && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
     }
-    if (b.ruleKind === "date_break" && b.dateIso === dateIso && b.timeStart && b.timeEnd) {
+    if (b.ruleKind === "date_busy" && b.dateIso === dateIso && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
     }
-    if (b.ruleKind === "date_off" && b.dateIso === dateIso) {
+    if (b.ruleKind === "day_off" && b.dateIso === dateIso) {
       if (b.allDay) return true;
       if (b.timeStart && b.timeEnd && rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
@@ -166,9 +183,9 @@ export function isSlotBlockedByAvailabilityRules(dateIso: string, timeSlot: stri
     }
   }
 
-  const hasAnyWeeklyWork = blocks.some((b) => b.ruleKind === "weekly_work");
-  if (hasAnyWeeklyWork) {
-    const workRows = blocks.filter((b) => b.ruleKind === "weekly_work" && b.weekday === weekday && b.timeStart && b.timeEnd);
+  const hasAnyWorkHours = blocks.some((b) => b.ruleKind === "work_hours");
+  if (hasAnyWorkHours) {
+    const workRows = blocks.filter((b) => b.ruleKind === "work_hours" && b.weekday === weekday && b.timeStart && b.timeEnd);
     if (workRows.length === 0) {
       return true;
     }

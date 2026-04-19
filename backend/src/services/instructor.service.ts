@@ -1,4 +1,4 @@
-import { InstructorBranch, InstructorProfile, User } from '../models';
+import { InstructorBranch, InstructorProfile, InstructorScheduleRule, User } from '../models';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 
 type ProfileWithUser = InstructorProfile & { user: User };
@@ -111,6 +111,16 @@ export default class InstructorService {
     for (const branchId of input.availableBranchIds) {
       await InstructorBranch.create({ instructorUserId: user.id, branchId });
     }
+    /** Default daily lunch break for practical booking slots (admin can change in Availability). */
+    await InstructorScheduleRule.create({
+      instructorUserId: user.id,
+      ruleKind: 'lunch',
+      weekday: null,
+      dateIso: null,
+      timeStart: '14:00',
+      timeEnd: '15:00',
+      allDay: false,
+    });
     return (await this.getById(user.id))!;
   }
 
@@ -174,6 +184,7 @@ export default class InstructorService {
 
   static async remove(id: number): Promise<boolean> {
     await InstructorStudentRatingService.removeAllForInstructor(id);
+    await InstructorScheduleRule.destroy({ where: { instructorUserId: id } });
     await InstructorBranch.destroy({ where: { instructorUserId: id } });
     const p = await InstructorProfile.destroy({ where: { userId: id } });
     const u = await User.destroy({ where: { id } });

@@ -59,14 +59,13 @@ export default function AdminLearnPractical() {
       ),
     [lessonType, cityId, selectedBranchIds, branchIdsForCity, instructorRecords],
   );
-  const instructorOptions = useMemo(() => filteredInstructors.map((item) => ({ id: item.id, name: item.name })), [filteredInstructors]);
   const validationErrors = validatePracticalBookingSelection({
     lessonType,
     cityId,
     branchIds: selectedBranchIds,
     branchesForCity: branchIdsForCity,
   });
-  const readyForCalendar = validationErrors.length === 0 && instructorOptions.length > 0;
+  const readyForCalendar = validationErrors.length === 0 && filteredInstructors.length > 0;
 
   useEffect(() => {
     if (students.length === 0) {
@@ -88,10 +87,10 @@ export default function AdminLearnPractical() {
   }, [branchFromQuery, branches]);
 
   useEffect(() => {
-    if (!instructorOptions.some((o) => o.id === instructorId)) {
-      setInstructorId(instructorOptions[0]?.id ?? "");
+    if (!filteredInstructors.some((o) => o.id === instructorId)) {
+      setInstructorId(filteredInstructors[0]?.id ?? "");
     }
-  }, [instructorId, instructorOptions]);
+  }, [instructorId, filteredInstructors]);
 
   useEffect(() => {
     if (!cityId) {
@@ -195,7 +194,7 @@ export default function AdminLearnPractical() {
       {readyForCalendar ? (
         <LessonBookingCalendar
           mode="admin"
-          instructors={instructorOptions}
+          instructors={filteredInstructors}
           selectedInstructorId={instructorId}
           onInstructorChange={setInstructorId}
           studentName={studentName}

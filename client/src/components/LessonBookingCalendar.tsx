@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
+import type { Instructor } from "src/data/instructors";
+import InstructorCard from "src/components/InstructorCard";
 import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
 import {
   isSlotBlockedByAvailabilityRules,
@@ -18,8 +20,6 @@ import {
 const timeSlots = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
 ];
-
-export type InstructorCalendarOption = { id: string; name: string };
 
 export type LessonBookingPayload = {
   instructorUserId: string;
@@ -50,11 +50,11 @@ function startOfIsoWeekMonday(from: Date): Date {
 
 export type InstructorBusySlot = { dateIso: string; time: string; studentUserId: string };
 
-/** Five weekdays (Mon–Fri) starting Monday of current week + `weekOffset` weeks. */
+/** Full week Mon–Sun starting Monday of current week + `weekOffset` weeks. */
 function getWeekDays(weekOffset: number): Date[] {
   const monday = startOfIsoWeekMonday(new Date());
   monday.setDate(monday.getDate() + weekOffset * 7);
-  return [0, 1, 2, 3, 4].map((i) => {
+  return Array.from({ length: 7 }, (_, i) => {
     const x = new Date(monday);
     x.setDate(monday.getDate() + i);
     return x;
@@ -102,7 +102,7 @@ function isConsecutiveHourlySlots(sorted: string[]): boolean {
 
 export type LessonBookingCalendarProps = {
   mode: "student" | "admin";
-  instructors: readonly InstructorCalendarOption[];
+  instructors: readonly Instructor[];
   selectedInstructorId: string;
   onInstructorChange: (instructorUserId: string) => void;
   /** When set in student mode, “my” slots are resolved from `/bookings`. */
@@ -112,6 +112,10 @@ export type LessonBookingCalendarProps = {
   /** Required in admin mode to enable Confirm */
   studentName?: string;
   onBookingConfirmed?: (payload: LessonBookingPayload) => void;
+  /** When false, instructor is fixed by parent (e.g. theory cohort teacher). Default true. */
+  showInstructorPicker?: boolean;
+  /** Student dashboard: marketing-style instructor cards; admin keeps compact chips by default. */
+  instructorPickerVariant?: "chips" | "cards";
 };
 
 export default function LessonBookingCalendar({
@@ -123,6 +127,8 @@ export default function LessonBookingCalendar({
   branchId = "",
   studentName = "",
   onBookingConfirmed,
+  showInstructorPicker = true,
+  instructorPickerVariant = "chips",
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -148,7 +154,7 @@ export default function LessonBookingCalendar({
     }
     const week = getWeekDays(weekOffset);
     const from = fmt(week[0]);
-    const to = fmt(week[4]);
+    const to = fmt(week[6]);
     let cancelled = false;
     const run = async () => {
       setBlocksLoading(true);
@@ -237,6 +243,19 @@ export default function LessonBookingCalendar({
     [instructors, selectedInstructorId],
   );
 
+  const selectedInstructorRecord = useMemo(
+    () => instructors.find((i) => i.id === selectedInstructorId),
+    [instructors, selectedInstructorId],
+  );
+
+  /** One grid slot = one hour; price matches instructor card hourly rate. */
+  const estimatedTotalAmd = useMemo(() => {
+    if (!selected?.times.length || !selectedInstructorRecord) return null;
+    const rate = selectedInstructorRecord.hourlyPrice;
+    if (!Number.isFinite(rate) || rate < 0) return null;
+    return Math.round(rate * selected.times.length);
+  }, [selected, selectedInstructorRecord]);
+
   const toggleSlotSelection = (dateStr: string, time: string, status: SlotStatus) => {
     if (!canClick(status)) return;
     const slot = padSlot(time);
@@ -320,29 +339,64 @@ export default function LessonBookingCalendar({
   const adminReady = mode === "admin" && !!studentName.trim();
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-      <div className="xl:col-span-3 space-y-6">
-        <Reveal delay={0.06}>
-          <Card className="p-5 border-border">
-            <h3 className="font-semibold text-foreground mb-3">{t("selectInstructor")}</h3>
-            <div className="flex flex-wrap gap-2">
-              {instructors.map((ins) => (
-                <button
-                  key={ins.id}
-                  type="button"
-                  onClick={() => onInstructorChange(ins.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    selectedInstructorId === ins.id
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border text-muted-foreground hover:border-primary/30"
-                  }`}
-                >
-                  {ins.name}
-                </button>
-              ))}
-            </div>
-          </Card>
-        </Reveal>
+    <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 xl:items-stretch">
+      <div className="xl:col-span-3 space-y-6 min-w-0">
+        {showInstructorPicker ? (
+          <Reveal delay={0.06}>
+            <Card
+              className={
+                instructorPickerVariant === "cards"
+                  ? "p-3 sm:p-4 border-border overflow-hidden"
+                  : "p-5 border-border"
+              }
+            >
+              <h3
+                className={
+                  instructorPickerVariant === "cards"
+                    ? "text-sm font-semibold text-foreground mb-2"
+                    : "font-semibold text-foreground mb-3"
+                }
+              >
+                {t("selectInstructor")}
+              </h3>
+              {instructorPickerVariant === "cards" ? (
+                <div className="flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 pt-0.5 snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch]">
+                  {instructors.map((ins) => (
+                    <div
+                      key={ins.id}
+                      className="snap-start shrink-0 w-[min(13.75rem,calc(100vw-4rem))] sm:w-52 flex flex-col self-stretch min-h-0"
+                    >
+                      <InstructorCard
+                        instructor={ins}
+                        pickerMode
+                        compact
+                        isPicked={selectedInstructorId === ins.id}
+                        onPick={() => onInstructorChange(ins.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {instructors.map((ins) => (
+                    <button
+                      key={ins.id}
+                      type="button"
+                      onClick={() => onInstructorChange(ins.id)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        selectedInstructorId === ins.id
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border text-muted-foreground hover:border-primary/30"
+                      }`}
+                    >
+                      {ins.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </Reveal>
+        ) : null}
 
         <Reveal delay={0.12}>
           <Card className="p-5 border-border">
@@ -361,7 +415,7 @@ export default function LessonBookingCalendar({
                 </button>
                 <span className="text-sm font-medium text-foreground">
                   {days[0].toLocaleDateString(locale, { month: "short", day: "numeric" })} –{" "}
-                  {days[4].toLocaleDateString(locale, { month: "short", day: "numeric" })}
+                  {days[6].toLocaleDateString(locale, { month: "short", day: "numeric" })}
                 </span>
                 <button
                   type="button"
@@ -466,9 +520,9 @@ export default function LessonBookingCalendar({
         </Reveal>
       </div>
 
-      <div>
-        <Reveal delay={0.18}>
-          <Card className="p-5 border-border sticky top-6">
+      <div className="min-h-0 xl:h-full xl:min-h-0 flex flex-col">
+        <Reveal delay={0.18} className="xl:h-full xl:min-h-0 flex flex-col">
+          <Card className="p-5 border-border xl:sticky xl:top-4 xl:z-10 xl:self-start w-full">
             <h3 className="font-semibold text-foreground mb-4">{t("bookingSummaryTitle")}</h3>
             {!selected ? (
               <p className="text-sm text-muted-foreground">{t("bookingSelectSlotHint")}</p>
@@ -485,7 +539,7 @@ export default function LessonBookingCalendar({
                 </p>
                 {createdSummary ? (
                   <p className="text-xs text-muted-foreground mt-1">
-                    {t("bookingTotalLabel")}: {createdSummary.totalPriceAmd.toLocaleString()} ֏
+                    {t("bookingTotalLabel")}: {createdSummary.totalPriceAmd.toLocaleString(locale)} ֏
                   </p>
                 ) : null}
                 <Button variant="outline" size="sm" className="mt-4 w-full text-xs" onClick={resetBooking}>
@@ -521,6 +575,22 @@ export default function LessonBookingCalendar({
                       {selected.times.length} {t("bookingHoursUnit")}
                     </span>
                   </div>
+                  {estimatedTotalAmd != null && selectedInstructorRecord ? (
+                    <>
+                      <div className="flex justify-between text-sm gap-2 border-t border-border/60 pt-2 mt-1">
+                        <span className="text-muted-foreground shrink-0">{t("lessonPrice")}</span>
+                        <span className="font-medium text-foreground text-xs text-right tabular-nums">
+                          {Math.round(selectedInstructorRecord.hourlyPrice).toLocaleString(locale)} ֏ / {t("perHour")}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm gap-2">
+                        <span className="text-muted-foreground shrink-0">{t("bookingTotalLabel")}</span>
+                        <span className="font-semibold text-foreground text-sm tabular-nums">
+                          {estimatedTotalAmd.toLocaleString(locale)} ֏
+                        </span>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
                 <Button
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"

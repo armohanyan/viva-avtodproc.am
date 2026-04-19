@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
-import { InstructorAvailabilityBlock, User } from '../models';
-import type { InstructorAvailabilityRuleKind } from '../models/instructor-availability-block.model';
+import { InstructorScheduleRule, User } from '../models';
+import type { InstructorScheduleRuleKind } from '../models/instructor-schedule-rule.model';
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -26,9 +26,9 @@ function requireValidTime(label: string, raw: string | null | undefined): string
   return n;
 }
 
-export type InstructorAvailabilityBlockDto = {
+export type InstructorScheduleRuleDto = {
   id: number;
-  ruleKind: InstructorAvailabilityRuleKind;
+  ruleKind: InstructorScheduleRuleKind;
   weekday: number | null;
   dateIso: string | null;
   timeStart: string | null;
@@ -36,16 +36,16 @@ export type InstructorAvailabilityBlockDto = {
   allDay: boolean;
 };
 
-const RULE_KIND_SET = new Set<string>(['weekly_work', 'weekly_break', 'weekday_lunch', 'date_off', 'date_break']);
+const RULE_KIND_SET = new Set<string>(['work_hours', 'lunch', 'recurring_busy', 'day_off', 'date_busy']);
 
-function toDto(row: InstructorAvailabilityBlock): InstructorAvailabilityBlockDto {
+function toDto(row: InstructorScheduleRule): InstructorScheduleRuleDto {
   const rawKind = String(row.ruleKind ?? '').trim();
   const ts = normalizeTimeHHMM(row.timeStart != null ? String(row.timeStart) : null);
   const te = normalizeTimeHHMM(row.timeEnd != null ? String(row.timeEnd) : null);
-  let ruleKind: InstructorAvailabilityBlockDto['ruleKind'] = row.ruleKind;
-  /** Some MySQL ENUM migrations leave invalid values as ""; recover Mon–Fri lunch rows. */
+  let ruleKind: InstructorScheduleRuleDto['ruleKind'] = row.ruleKind;
+  /** Some MySQL ENUM migrations leave invalid values as ""; recover lunch rows. */
   if (!RULE_KIND_SET.has(rawKind) && ts && te && row.weekday == null && !row.dateIso) {
-    ruleKind = 'weekday_lunch';
+    ruleKind = 'lunch';
   }
   return {
     id: row.id,
@@ -105,40 +105,34 @@ function slotFullyInsideWorkWindow(
 }
 
 /**
- * True if this hour slot cannot be booked (lunch, day off, date break, or outside weekly_work when any exists).
+ * True if this hour slot cannot be booked (lunch, day off, busy windows, or outside `work_hours` when any exist).
  * Mirrors `client/src/modules/instructors/instructorAvailability.ts`.
  */
-export function isSlotBlockedByAvailabilityBlocks(
+export function isSlotBlockedByScheduleRules(
   dateIso: string,
   timeSlot: string,
-  blocks: readonly InstructorAvailabilityBlockDto[],
+  rules: readonly InstructorScheduleRuleDto[],
 ): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
   const slotRange = slotRangeMinutes(timeSlot);
 
-  for (const b of blocks) {
-    if (
-      b.ruleKind === 'weekday_lunch' &&
-      b.timeStart &&
-      b.timeEnd &&
-      weekday >= 1 &&
-      weekday <= 5
-    ) {
+  for (const b of rules) {
+    if (b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
     }
-    if (b.ruleKind === 'weekly_break' && b.weekday === weekday && b.timeStart && b.timeEnd) {
+    if (b.ruleKind === 'recurring_busy' && b.weekday === weekday && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
     }
-    if (b.ruleKind === 'date_break' && b.dateIso === dateIso && b.timeStart && b.timeEnd) {
+    if (b.ruleKind === 'date_busy' && b.dateIso === dateIso && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
     }
-    if (b.ruleKind === 'date_off' && b.dateIso === dateIso) {
+    if (b.ruleKind === 'day_off' && b.dateIso === dateIso) {
       if (b.allDay) return true;
       if (b.timeStart && b.timeEnd && rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
@@ -146,9 +140,9 @@ export function isSlotBlockedByAvailabilityBlocks(
     }
   }
 
-  const hasAnyWeeklyWork = blocks.some((b) => b.ruleKind === 'weekly_work');
-  if (hasAnyWeeklyWork) {
-    const workRows = blocks.filter((b) => b.ruleKind === 'weekly_work' && b.weekday === weekday && b.timeStart && b.timeEnd);
+  const hasAnyWorkHours = rules.some((b) => b.ruleKind === 'work_hours');
+  if (hasAnyWorkHours) {
+    const workRows = rules.filter((b) => b.ruleKind === 'work_hours' && b.weekday === weekday && b.timeStart && b.timeEnd);
     if (workRows.length === 0) {
       return true;
     }
@@ -160,7 +154,7 @@ export function isSlotBlockedByAvailabilityBlocks(
 }
 
 export default class InstructorAvailabilityService {
-  static async listForInstructor(instructorUserId: number): Promise<InstructorAvailabilityBlockDto[]> {
+  static async listForInstructor(instructorUserId: number): Promise<InstructorScheduleRuleDto[]> {
     const inst = await User.findOne({
       where: { id: instructorUserId, accountType: 'instructor' },
       attributes: ['id'],
@@ -168,7 +162,7 @@ export default class InstructorAvailabilityService {
 
     if (!inst) return [];
 
-    const rows = await InstructorAvailabilityBlock.findAll({
+    const rows = await InstructorScheduleRule.findAll({
       where: { instructorUserId },
       order: [
         ['ruleKind', 'ASC'],
@@ -181,40 +175,40 @@ export default class InstructorAvailabilityService {
   }
 
   /**
-   * One row: same lunch window Mon–Fri (matches booking calendar).
-   * Removes prior `weekday_lunch` and Mon–Fri `weekly_break` rows for this instructor to avoid duplicates.
+   * One row: same lunch window every day of the week (matches booking calendar).
+   * Removes prior `lunch` and Mon–Fri `recurring_busy` rows that duplicated the old lunch pattern.
    */
   static async replaceWeekdayLunch(
     instructorUserId: number,
     timeStart: string,
     timeEnd: string,
-  ): Promise<InstructorAvailabilityBlockDto | null> {
+  ): Promise<InstructorScheduleRuleDto | null> {
     const inst = await User.findOne({
       where: { id: instructorUserId, accountType: 'instructor' },
       attributes: ['id'],
     });
     if (!inst) return null;
 
-    const sequelize = InstructorAvailabilityBlock.sequelize!;
+    const sequelize = InstructorScheduleRule.sequelize!;
     let createdId = 0;
 
     await sequelize.transaction(async (transaction) => {
-      await InstructorAvailabilityBlock.destroy({
-        where: { instructorUserId, ruleKind: 'weekday_lunch' },
+      await InstructorScheduleRule.destroy({
+        where: { instructorUserId, ruleKind: 'lunch' },
         transaction,
       });
-      await InstructorAvailabilityBlock.destroy({
+      await InstructorScheduleRule.destroy({
         where: {
           instructorUserId,
-          ruleKind: 'weekly_break',
+          ruleKind: 'recurring_busy',
           weekday: { [Op.in]: [1, 2, 3, 4, 5] },
         },
         transaction,
       });
-      const row = await InstructorAvailabilityBlock.create(
+      const row = await InstructorScheduleRule.create(
         {
           instructorUserId,
-          ruleKind: 'weekday_lunch',
+          ruleKind: 'lunch',
           weekday: null,
           dateIso: null,
           timeStart,
@@ -226,26 +220,26 @@ export default class InstructorAvailabilityService {
       createdId = row.id;
     });
 
-    const row = await InstructorAvailabilityBlock.findByPk(createdId);
+    const row = await InstructorScheduleRule.findByPk(createdId);
     return row ? toDto(row) : null;
   }
 
   static async create(input: {
     instructorUserId: number;
-    ruleKind: InstructorAvailabilityRuleKind;
+    ruleKind: InstructorScheduleRuleKind;
     weekday?: number | null;
     dateIso?: string | null;
     timeStart?: string | null;
     timeEnd?: string | null;
     allDay?: boolean;
-  }): Promise<InstructorAvailabilityBlockDto | null> {
+  }): Promise<InstructorScheduleRuleDto | null> {
     const inst = await User.findOne({
       where: { id: input.instructorUserId, accountType: 'instructor' },
       attributes: ['id'],
     });
     if (!inst) return null;
 
-    if (input.ruleKind === 'weekday_lunch') {
+    if (input.ruleKind === 'lunch') {
       const ts = requireValidTime('timeStart', input.timeStart);
       const te = requireValidTime('timeEnd', input.timeEnd);
       if (parseTimeToMinutes(ts) >= parseTimeToMinutes(te)) {
@@ -261,7 +255,7 @@ export default class InstructorAvailabilityService {
       input.weekday === undefined || input.weekday === null ? null : Number(input.weekday);
     let dateIso = input.dateIso?.trim() || null;
 
-    if (input.ruleKind === 'weekly_work' || input.ruleKind === 'weekly_break') {
+    if (input.ruleKind === 'work_hours' || input.ruleKind === 'recurring_busy') {
       if (weekday == null || weekday < 1 || weekday > 7) {
         throw new Error('weekday must be 1–7 (Mon–Sun) for weekly rules');
       }
@@ -271,7 +265,7 @@ export default class InstructorAvailabilityService {
         throw new Error('timeStart must be before timeEnd');
       }
       dateIso = null;
-    } else if (input.ruleKind === 'date_off') {
+    } else if (input.ruleKind === 'day_off') {
       if (!dateIso) throw new Error('dateIso required for day off');
       if (allDay) {
         timeStart = '00:00';
@@ -285,7 +279,7 @@ export default class InstructorAvailabilityService {
       }
       weekday = null;
     } else {
-      /* date_break */
+      /* date_busy */
       if (!dateIso) throw new Error('dateIso required');
       timeStart = requireValidTime('timeStart', timeStart);
       timeEnd = requireValidTime('timeEnd', timeEnd);
@@ -295,22 +289,22 @@ export default class InstructorAvailabilityService {
       weekday = null;
     }
 
-    const created = await InstructorAvailabilityBlock.create({
+    const created = await InstructorScheduleRule.create({
       instructorUserId: input.instructorUserId,
       ruleKind: input.ruleKind,
       weekday,
       dateIso,
       timeStart,
       timeEnd,
-      allDay: input.ruleKind === 'date_off' ? allDay : false,
+      allDay: input.ruleKind === 'day_off' ? allDay : false,
     });
-    const row = await InstructorAvailabilityBlock.findByPk(created.id);
+    const row = await InstructorScheduleRule.findByPk(created.id);
     return row ? toDto(row) : null;
   }
 
-  static async remove(instructorUserId: number, blockId: number): Promise<boolean> {
-    const n = await InstructorAvailabilityBlock.destroy({
-      where: { id: blockId, instructorUserId },
+  static async remove(instructorUserId: number, ruleId: number): Promise<boolean> {
+    const n = await InstructorScheduleRule.destroy({
+      where: { id: ruleId, instructorUserId },
     });
     return n > 0;
   }
@@ -328,7 +322,7 @@ export default class InstructorAvailabilityService {
     dateIso: string,
     timeSlot: string,
   ): Promise<boolean> {
-    const blocks = await this.listForInstructor(instructorUserId);
-    return isSlotBlockedByAvailabilityBlocks(dateIso, timeSlot, blocks);
+    const rules = await this.listForInstructor(instructorUserId);
+    return isSlotBlockedByScheduleRules(dateIso, timeSlot, rules);
   }
 }

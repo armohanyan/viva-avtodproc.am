@@ -41,7 +41,7 @@ const createSchema = z.object({
 const updateSchema = createSchema.partial();
 
 const availabilityCreateSchema = z.object({
-  ruleKind: z.enum(['weekly_work', 'weekly_break', 'weekday_lunch', 'date_off', 'date_break']),
+  ruleKind: z.enum(['work_hours', 'lunch', 'recurring_busy', 'day_off', 'date_busy']),
   weekday: z.number().int().min(1).max(7).optional().nullable(),
   dateIso: z.string().min(1).optional().nullable(),
   timeStart: z.string().optional().nullable(),

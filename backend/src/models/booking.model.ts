@@ -14,7 +14,7 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare endTime: CreationOptional<string | null>;
   /** Total price in AMD (hourly rate × number of hours). */
   declare totalPriceAmd: CreationOptional<number | null>;
-  declare lessonType: 'practical' | 'theory';
+  declare lessonType: 'practical' | 'theory' | 'theory_personal';
   declare status: string;
   /** Set when payment is captured (practical / personal flows). */
   declare paidAt: CreationOptional<Date | null>;
@@ -35,7 +35,7 @@ Booking.init(
     time: { type: DataTypes.STRING(16), allowNull: false },
     endTime: { type: DataTypes.STRING(16), allowNull: true },
     totalPriceAmd: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
-    lessonType: { type: DataTypes.ENUM('practical', 'theory'), allowNull: false },
+    lessonType: { type: DataTypes.ENUM('practical', 'theory', 'theory_personal'), allowNull: false },
     status: { type: DataTypes.STRING(32), allowNull: false },
     paidAt: { type: DataTypes.DATE, allowNull: true },
     holdExpiresAt: { type: DataTypes.DATE, allowNull: true },

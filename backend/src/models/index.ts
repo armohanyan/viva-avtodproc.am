@@ -12,7 +12,7 @@ import { ExamQuestion } from './exam-question.model';
 import { FinanceTransaction } from './finance-transaction.model';
 import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
-import { InstructorAvailabilityBlock } from './instructor-availability-block.model';
+import { InstructorScheduleRule } from './instructor-schedule-rule.model';
 import { InstructorBranch } from './instructor-branch.model';
 import { InstructorProfile } from './instructor-profile.model';
 import { InstructorStudentRating } from './instructor-student-rating.model';
@@ -46,8 +46,8 @@ Branch.hasMany(InstructorBranch, { foreignKey: 'branchId', sourceKey: 'id' });
 InstructorBranch.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
 InstructorBranch.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
-User.hasMany(InstructorAvailabilityBlock, { foreignKey: 'instructorUserId', sourceKey: 'id' });
-InstructorAvailabilityBlock.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
+User.hasMany(InstructorScheduleRule, { foreignKey: 'instructorUserId', sourceKey: 'id' });
+InstructorScheduleRule.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
 
 Booking.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
 Booking.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
@@ -98,7 +98,7 @@ export {
   FinanceTransaction,
   FleetCar,
   FleetCarInstructor,
-  InstructorAvailabilityBlock,
+  InstructorScheduleRule,
   InstructorBranch,
   InstructorProfile,
   InstructorStudentRating,
@@ -553,12 +553,85 @@ async function assertMysqlCoreIdsAreInteger(): Promise<void> {
   );
 }
 
+/**
+ * Replaces legacy `instructor_availability_blocks` with `instructor_schedule_rules` (clearer `rule_kind` values).
+ * Safe to run repeatedly: copies rows only when the new table is empty and the legacy table still exists.
+ */
+async function migrateLegacyInstructorAvailabilityBlocksTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const legacy = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_availability_blocks'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (legacy.length === 0) {
+    return;
+  }
+  const modern = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_schedule_rules'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (modern.length === 0) {
+    return;
+  }
+  const [{ c: newCount }] = await sequelize.query<{ c: string }>(
+    'SELECT COUNT(*) AS c FROM `instructor_schedule_rules`',
+    { type: QueryTypes.SELECT },
+  );
+  const [{ c: oldCount }] = await sequelize.query<{ c: string }>(
+    'SELECT COUNT(*) AS c FROM `instructor_availability_blocks`',
+    { type: QueryTypes.SELECT },
+  );
+  const nNew = Number(newCount);
+  const nOld = Number(oldCount);
+  if (nNew === 0 && nOld > 0) {
+    await sequelize.query(`
+      INSERT INTO \`instructor_schedule_rules\`
+        (\`id\`, \`instructor_user_id\`, \`rule_kind\`, \`weekday\`, \`date_iso\`, \`time_start\`, \`time_end\`, \`all_day\`, \`created_at\`, \`updated_at\`)
+      SELECT
+        \`id\`,
+        \`instructor_user_id\`,
+        CASE TRIM(CAST(\`rule_kind\` AS CHAR))
+          WHEN 'weekly_work' THEN 'work_hours'
+          WHEN 'weekly_break' THEN 'recurring_busy'
+          WHEN 'weekday_lunch' THEN 'lunch'
+          WHEN 'date_off' THEN 'day_off'
+          WHEN 'date_break' THEN 'date_busy'
+          ELSE 'lunch'
+        END,
+        \`weekday\`,
+        \`date_iso\`,
+        \`time_start\`,
+        \`time_end\`,
+        \`all_day\`,
+        \`created_at\`,
+        \`updated_at\`
+      FROM \`instructor_availability_blocks\`
+    `);
+    const [{ mx }] = await sequelize.query<{ mx: number | null }>(
+      'SELECT MAX(`id`) AS mx FROM `instructor_schedule_rules`',
+      { type: QueryTypes.SELECT },
+    );
+    if (mx != null && Number.isFinite(Number(mx))) {
+      const next = Number(mx) + 1;
+      await sequelize.query(
+        `ALTER TABLE \`instructor_schedule_rules\` AUTO_INCREMENT = ${next}`,
+      );
+    }
+  }
+  await sequelize.query('DROP TABLE IF EXISTS `instructor_availability_blocks`');
+}
+
 export async function syncModels(): Promise<void> {
   await assertMysqlCoreIdsAreInteger();
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
   await ensureRefreshTokensIdColumn();
   await ensureOAuthAccountsIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();

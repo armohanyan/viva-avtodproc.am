@@ -10,22 +10,41 @@ import type { Instructor } from "src/data/instructors";
 type Props = {
   instructor: Instructor;
   showBookButton?: boolean;
+  /** Booking flow: show a select CTA instead of register; highlights when selected. */
+  pickerMode?: boolean;
+  isPicked?: boolean;
+  onPick?: () => void;
   imageHeightClassName?: string;
+  /** Tighter typography and spacing (e.g. horizontal picker strip). */
+  compact?: boolean;
   className?: string;
 };
 
 export default function InstructorCard({
   instructor,
   showBookButton = false,
-  imageHeightClassName = "h-60",
+  pickerMode = false,
+  isPicked = false,
+  onPick,
+  imageHeightClassName,
+  compact = false,
   className,
 }: Props) {
   const { t } = useLang();
   const { panelHref } = useAppNavigation();
+  const imgClass = imageHeightClassName ?? (compact ? "h-28" : "h-60");
 
   return (
-    <Card className={`rounded-2xl border border-border shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full p-0 gap-0 ${className ?? ""}`}>
-      <div className={`${imageHeightClassName} bg-muted overflow-hidden`}>
+    <Card
+      className={`rounded-2xl border border-border shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full min-h-0 p-0 gap-0 ${
+        isPicked
+          ? compact
+            ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
+            : "ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : ""
+      } ${compact ? "rounded-xl" : ""} ${className ?? ""}`}
+    >
+      <div className={`${imgClass} bg-muted overflow-hidden shrink-0`}>
         <img
           src={instructor.imageSrc}
           alt={instructor.name}
@@ -33,30 +52,34 @@ export default function InstructorCard({
           loading="lazy"
         />
       </div>
-      <div className="p-6">
-        <div className="flex items-start justify-between gap-3 mb-3">
+      <div className={compact ? "p-3 flex flex-col flex-1 min-h-0" : "p-6"}>
+        <div className={`flex items-start justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}>
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-lg text-foreground break-words">{instructor.name}</h3>
+            <h3
+              className={`font-bold text-foreground break-words ${compact ? "text-sm leading-snug" : "text-lg"}`}
+            >
+              {instructor.name}
+            </h3>
             {(instructor.teachesPractical || instructor.teachesTheory) && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
+              <div className={`flex flex-wrap gap-1 ${compact ? "mt-1" : "mt-2 gap-1.5"}`}>
                 {instructor.teachesPractical && (
-                  <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0">
+                  <Badge variant="secondary" className="text-[9px] font-medium px-1.5 py-0">
                     {t("instructorTeachingPractical")}
                   </Badge>
                 )}
                 {instructor.teachesTheory && (
-                  <Badge variant="outline" className="text-[10px] font-medium px-2 py-0 border-primary/30 text-primary">
+                  <Badge variant="outline" className="text-[9px] font-medium px-1.5 py-0 border-primary/30 text-primary">
                     {t("instructorTeachingTheory")}
                   </Badge>
                 )}
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1 mt-0.5 shrink-0">
+          <div className={`flex items-center gap-0.5 shrink-0 ${compact ? "mt-0" : "mt-0.5 gap-1"}`}>
             {Array.from({ length: 5 }).map((_, j) => (
               <Star
                 key={j}
-                className={`w-3.5 h-3.5 ${
+                className={`${compact ? "w-2.5 h-2.5" : "w-3.5 h-3.5"} ${
                   j < Math.floor(instructor.rating)
                     ? "text-primary fill-primary"
                     : "text-muted-foreground fill-muted-foreground"
@@ -66,41 +89,57 @@ export default function InstructorCard({
             <CountUpText
               value={instructor.rating}
               decimals={1}
-              className="text-xs text-muted-foreground ml-1"
+              className={`text-muted-foreground ml-0.5 ${compact ? "text-[10px]" : "text-xs"}`}
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm text-muted-foreground mb-5">
-          <div className="min-w-0 flex items-center gap-2">
-            <span className="w-4 h-4 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold">
+        <div
+          className={`grid text-muted-foreground ${compact ? "grid-cols-1 gap-y-1 text-[11px] leading-snug" : "grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm mb-5"}`}
+        >
+          <div className="min-w-0 flex items-center gap-1.5">
+            <span
+              className={`shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold ${compact ? "w-3.5 h-3.5 text-[8px]" : "w-4 h-4 text-[10px]"}`}
+            >
               ֏
             </span>
             <span className="break-words">
               {t("lessonPrice")}: <CountUpText value={instructor.hourlyPrice} /> ֏ / {t("perHour")}
             </span>
           </div>
-          <div className="min-w-0 flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-primary shrink-0" />
+          <div className="min-w-0 flex items-center gap-1.5">
+            <MapPin className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span className="break-words">{instructor.location}</span>
           </div>
-          <div className="min-w-0 flex items-center gap-2">
-            <Car className="w-4 h-4 text-primary shrink-0" />
+          <div className="min-w-0 flex items-center gap-1.5">
+            <Car className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span className="break-words">{instructor.car}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Gauge className="w-4 h-4 text-primary shrink-0" />
+          <div className="flex items-center gap-1.5">
+            <Gauge className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span>{instructor.transmission}</span>
           </div>
-          <div className="flex items-center gap-2 col-span-2">
-            <CalendarDays className="w-4 h-4 text-primary shrink-0" />
+          <div className={`flex items-center gap-1.5 ${compact ? "" : "col-span-2"}`}>
+            <CalendarDays className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span>
               <CountUpText value={instructor.years} /> {t("experience")}
             </span>
           </div>
         </div>
 
-        {showBookButton && (
+        {pickerMode && onPick ? (
+          <div className={compact ? "mt-auto shrink-0 pt-2" : "mt-4"}>
+            <Button
+              type="button"
+              className={`w-full bg-primary hover:bg-primary/90 text-primary-foreground ${compact ? "h-8 text-xs" : ""}`}
+              size="sm"
+              onClick={onPick}
+            >
+              {t("instructorBookingCardCta")}
+            </Button>
+          </div>
+        ) : null}
+        {showBookButton && !pickerMode && (
           <div className="mt-4">
             <a href={panelHref("/register")}>
               <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" size="sm">

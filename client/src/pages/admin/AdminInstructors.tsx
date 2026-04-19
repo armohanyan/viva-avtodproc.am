@@ -28,6 +28,7 @@ import {
   formatInstructorBranches,
   formatInstructorCities,
 } from "src/modules/instructors/instructorLabels";
+import type { ScheduleRuleKind } from "src/modules/instructors/instructorAvailability";
 
 type InstructorForm = Pick<
   Instructor,
@@ -58,9 +59,9 @@ function instructorServesCity(ins: Instructor, cityId: string, allBranches: read
   return ins.availableBranchIds.some((id) => allBranches.find((b) => b.id === id)?.cityId === cityId);
 }
 
-type InstructorAvailabilityBlock = {
+type InstructorScheduleRuleRow = {
   id: string;
-  ruleKind: "weekly_work" | "weekly_break" | "weekday_lunch" | "date_off" | "date_break";
+  ruleKind: ScheduleRuleKind;
   weekday: number | null;
   dateIso: string | null;
   timeStart: string | null;
@@ -84,22 +85,22 @@ function weekdayLabel(weekday: number, t: (k: TranslationKey) => string): string
 }
 
 function describeAvailabilityBlock(
-  b: InstructorAvailabilityBlock,
+  b: InstructorScheduleRuleRow,
   t: (k: TranslationKey) => string,
   lang: Lang,
 ): string {
   const dateLabel = b.dateIso ? formatShortDateFromIso(b.dateIso, lang) : "—";
   switch (b.ruleKind) {
-    case "date_off":
+    case "day_off":
       if (b.allDay) return `${t("instructorAvailabilityListDayOff")}: ${dateLabel}`;
       return `${t("instructorAvailabilityListPartialOff")}: ${dateLabel} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
-    case "date_break":
+    case "date_busy":
       return `${t("instructorAvailabilityListTimeOff")}: ${dateLabel} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
-    case "weekday_lunch":
+    case "lunch":
       return `${t("instructorAvailabilityListWeekdayLunch")}: ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
-    case "weekly_break":
-      return `${t("instructorAvailabilityListWeeklyLunch")}: ${weekdayLabel(b.weekday ?? 1, t)} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
-    case "weekly_work":
+    case "recurring_busy":
+      return `${t("instructorAvailabilityListRecurringBusy")}: ${weekdayLabel(b.weekday ?? 1, t)} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
+    case "work_hours":
       return `${t("instructorAvailabilityListWeeklyWork")}: ${weekdayLabel(b.weekday ?? 1, t)} · ${b.timeStart ?? ""}–${b.timeEnd ?? ""}`;
     default:
       return b.id;
@@ -198,7 +199,7 @@ export default function AdminInstructors() {
   const [teachingFilter, setTeachingFilter] = useState<"all" | "practical_only" | "theory_only" | "both">("all");
   const [newIns, setNewIns] = useState<InstructorForm>(createNewInstructorDraft());
   const [availabilityInstructorId, setAvailabilityInstructorId] = useState<string | null>(null);
-  const [availabilityBlocks, setAvailabilityBlocks] = useState<InstructorAvailabilityBlock[]>([]);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<InstructorScheduleRuleRow[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth() + 1);
@@ -217,7 +218,7 @@ export default function AdminInstructors() {
   const loadAvailabilityBlocks = useCallback(async (instructorId: string) => {
     setAvailabilityLoading(true);
     try {
-      const data = await vivaApiJson<InstructorAvailabilityBlock[]>(
+      const data = await vivaApiJson<InstructorScheduleRuleRow[]>(
         `/instructors/${encodeURIComponent(instructorId)}/availability-blocks`,
       );
       setAvailabilityBlocks(Array.isArray(data) ? data : []);
@@ -295,10 +296,11 @@ export default function AdminInstructors() {
     }
     const bodies =
       dayOffScope === "full_day"
-        ? selectedCalendarDays.map((dateIso) => ({ ruleKind: "date_off" as const, dateIso, allDay: true }))
+        ? selectedCalendarDays.map((dateIso) => ({ ruleKind: "day_off" as const, dateIso, allDay: true }))
         : selectedCalendarDays.map((dateIso) => ({
-            ruleKind: "date_break" as const,
+            ruleKind: "day_off" as const,
             dateIso,
+            allDay: false,
             timeStart: offStart,
             timeEnd: offEnd,
           }));
@@ -331,7 +333,7 @@ export default function AdminInstructors() {
       await vivaApiJson(`/instructors/${encodeURIComponent(availabilityInstructorId)}/availability-blocks`, {
         method: "POST",
         body: {
-          ruleKind: "weekday_lunch",
+          ruleKind: "lunch",
           timeStart: lunchStart,
           timeEnd: lunchEnd,
         },

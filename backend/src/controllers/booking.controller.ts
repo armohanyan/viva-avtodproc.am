@@ -10,15 +10,51 @@ const { ResourceNotFoundError, UnauthorizedError, PermissionError, InputValidati
 
 const bookingStatusSchema = z.enum(['confirmed', 'pending', 'cancelled', 'refunded']);
 
-const createSchema = z.object({
+const createBodySchema = z.object({
   studentId: z.coerce.number().int().positive(),
-  instructorName: z.string().min(1),
+  instructorName: z.string().optional(),
   dateIso: z.string().min(1),
-  time: z.string().min(1),
-  type: z.enum(['practical', 'theory']),
+  time: z.string().optional(),
+  type: z.enum(['practical', 'theory', 'theory_personal']),
   status: bookingStatusSchema,
   branchId: z.coerce.number().int().positive(),
+  slots: z.array(z.string().min(4)).optional(),
+  theoryCohortId: z.coerce.number().int().positive().optional(),
 });
+
+const createSchema = createBodySchema.superRefine((data, ctx) => {
+    const slots = data.slots ?? [];
+    const hasSlots = slots.length > 0;
+    if (data.type === 'theory_personal') {
+      if (hasSlots) {
+        ctx.addIssue({ code: 'custom', path: ['slots'], message: 'Personal theory bookings use a single time, not slots[]' });
+      }
+      if (!data.instructorName?.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['instructorName'], message: 'Required' });
+      }
+      if (!data.time?.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['time'], message: 'Required' });
+      }
+      return;
+    }
+    if (hasSlots) {
+      if (data.type === 'practical' && !data.instructorName?.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['instructorName'], message: 'Required for practical bookings with slots' });
+      }
+      if (data.type === 'theory' && (data.theoryCohortId == null || !Number.isFinite(data.theoryCohortId))) {
+        ctx.addIssue({ code: 'custom', path: ['theoryCohortId'], message: 'Required for theory group bookings with slots' });
+      }
+      return;
+    }
+    if (!data.time?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['time'], message: 'Required' });
+    }
+    if (!data.instructorName?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['instructorName'], message: 'Required' });
+    }
+  });
+
+const updateSchema = createBodySchema.partial();
 
 const studentMultiSlotSchema = z
   .object({
@@ -32,8 +68,6 @@ const studentMultiSlotSchema = z
     message: 'instructorId or instructor_id is required',
     path: ['instructorId'],
   });
-
-const updateSchema = createSchema.partial();
 
 function readBearerToken(req: Request): string | undefined {
   const raw = req.headers.authorization;
@@ -113,6 +147,33 @@ export default class BookingController {
     try {
       const rawBody = req.body as Record<string, unknown>;
       if (Array.isArray(rawBody.slots)) {
+        const adminStudentRaw = rawBody.studentId;
+        const adminStudentId =
+          typeof adminStudentRaw === 'number'
+            ? adminStudentRaw
+            : typeof adminStudentRaw === 'string'
+              ? Number(adminStudentRaw)
+              : NaN;
+        if (Number.isFinite(adminStudentId) && adminStudentId > 0) {
+          const body = parseBody(createSchema, rawBody);
+          const row = await BookingService.createAdmin({
+            studentId: body.studentId,
+            instructorName: body.instructorName?.trim() ?? '',
+            dateIso: body.dateIso,
+            time: body.time?.trim() ?? (body.slots?.[0] ?? ''),
+            type: body.type,
+            status: body.status,
+            branchId: body.branchId,
+            slots: body.slots,
+            theoryCohortId: body.theoryCohortId,
+          });
+          if (!row) {
+            return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
+          }
+          SuccessHandlerUtil.handleAdd(res, next, row);
+          return;
+        }
+
         const body = parseBody(studentMultiSlotSchema, rawBody);
         const instructorUserId = body.instructorId ?? body.instructor_id;
         if (instructorUserId == null || !Number.isFinite(instructorUserId)) {
@@ -151,7 +212,17 @@ export default class BookingController {
       }
 
       const body = parseBody(createSchema, rawBody);
-      const row = await BookingService.createAdmin(body);
+      const row = await BookingService.createAdmin({
+        studentId: body.studentId,
+        instructorName: body.instructorName?.trim() ?? '',
+        dateIso: body.dateIso,
+        time: body.time?.trim() ?? '',
+        type: body.type,
+        status: body.status,
+        branchId: body.branchId,
+        slots: body.slots,
+        theoryCohortId: body.theoryCohortId,
+      });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -163,7 +234,17 @@ export default class BookingController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const body = parseBody(updateSchema, req.body);
+      const body = parseBody(updateSchema, req.body) as Partial<{
+        studentId: number;
+        instructorName: string;
+        dateIso: string;
+        time: string;
+        type: 'practical' | 'theory' | 'theory_personal';
+        status: string;
+        branchId: number;
+        slots: string[];
+        theoryCohortId: number;
+      }>;
       const row = await BookingService.updateAdmin(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));

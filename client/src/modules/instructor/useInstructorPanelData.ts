@@ -11,7 +11,7 @@ export type InstructorPanelBooking = {
 	time: string;
 	endTime: string | null;
 	totalPriceAmd: number | null;
-	type: "practical" | "theory";
+	type: "practical" | "theory" | "theory_personal";
 	status: string;
 	branchId: number;
 };

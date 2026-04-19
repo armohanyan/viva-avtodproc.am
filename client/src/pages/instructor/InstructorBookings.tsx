@@ -19,6 +19,7 @@ const statusColor: Record<string, string> = {
 const typeColor: Record<string, string> = {
 	practical: "bg-blue-100 text-blue-700",
 	theory: "bg-purple-100 text-purple-700",
+	theory_personal: "bg-amber-100 text-amber-800",
 };
 
 function displayTimeHHMM(time: string): string {
@@ -34,7 +35,7 @@ export default function InstructorBookings() {
 	const { bookings, loading, error } = useInstructorPanelBookings(user);
 	const [search, setSearch] = useState("");
 	const [statusFilter, setStatusFilter] = useState("all");
-	const [typeFilter, setTypeFilter] = useState<"all" | "practical" | "theory">("all");
+	const [typeFilter, setTypeFilter] = useState<"all" | "practical" | "theory" | "theory_personal">("all");
 
 	const locale = localeByLang[lang] ?? "en-US";
 	const fmtDate = (dateIso: string) => {
@@ -93,12 +94,13 @@ export default function InstructorBookings() {
 									filter={
 										<TableColumnFilter
 											value={typeFilter}
-											onChange={(v) => setTypeFilter(v as "all" | "practical" | "theory")}
+											onChange={(v) => setTypeFilter(v as "all" | "practical" | "theory" | "theory_personal")}
 											ariaLabel={t("filterByType")}
 											options={[
 												{ value: "all", label: t("filterOptionAll") },
 												{ value: "practical", label: t("lessonTypePractical") },
 												{ value: "theory", label: t("lessonTypeTheory") },
+												{ value: "theory_personal", label: t("lessonTypeTheoryPersonal") },
 											]}
 										/>
 									}
@@ -131,7 +133,13 @@ export default function InstructorBookings() {
 									<td className="px-4 py-3 whitespace-nowrap">{b.timeShort}</td>
 									<td className="px-4 py-3">
 										<Badge className={typeColor[b.type] ?? ""}>
-											{t(b.type === "theory" ? "lessonTypeTheory" : "lessonTypePractical")}
+											{t(
+												b.type === "theory"
+													? "lessonTypeTheory"
+													: b.type === "theory_personal"
+														? "lessonTypeTheoryPersonal"
+														: "lessonTypePractical",
+											)}
 										</Badge>
 									</td>
 									<td className="px-4 py-3">

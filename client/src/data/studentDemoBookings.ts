@@ -44,7 +44,7 @@ export type StudentDemoBooking = {
   /** Present when loaded from the API (used for instructor flows). */
   instructorUserId?: string | number;
   instructor: string;
-  lessonTypeKey: Extract<TranslationKey, "lessonTypePractical" | "lessonTypeTheory">;
+  lessonTypeKey: Extract<TranslationKey, "lessonTypePractical" | "lessonTypeTheory" | "lessonTypeTheoryPersonal">;
   status: StudentDemoBookingStatus;
 };
 

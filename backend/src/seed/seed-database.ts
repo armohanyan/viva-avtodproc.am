@@ -8,7 +8,7 @@ import {
   ExamQuestion,
   FinanceTransaction,
   FleetCar,
-  InstructorAvailabilityBlock,
+  InstructorScheduleRule,
   InstructorBranch,
   InstructorProfile,
   Package,
@@ -267,19 +267,24 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     { instructorUserId: accInstructor, branchId: brAzat.id },
   ]);
 
-  await InstructorAvailabilityBlock.bulkCreate([
+  const defaultLunch = (instructorUserId: number) => ({
+    instructorUserId,
+    ruleKind: 'lunch' as const,
+    weekday: null as null,
+    dateIso: null as null,
+    timeStart: '14:00',
+    timeEnd: '15:00',
+    allDay: false,
+  });
+  await InstructorScheduleRule.bulkCreate([
+    defaultLunch(INS001),
+    defaultLunch(INS002),
+    defaultLunch(INS003),
+    defaultLunch(INS005),
+    defaultLunch(accInstructor),
     {
       instructorUserId: INS001,
-      ruleKind: 'weekday_lunch' as const,
-      weekday: null,
-      dateIso: null,
-      timeStart: '14:00',
-      timeEnd: '15:00',
-      allDay: false,
-    },
-    {
-      instructorUserId: INS001,
-      ruleKind: 'date_off',
+      ruleKind: 'day_off',
       weekday: null,
       dateIso: '2026-05-14',
       timeStart: '00:00',

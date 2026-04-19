@@ -119,7 +119,12 @@ export default function InstructorDashboard() {
 				</div>
 				<div className="space-y-3">
 					{upcoming.map((row) => {
-						const typeKey = row.type === "theory" ? ("lessonTypeTheory" as const) : ("lessonTypePractical" as const);
+						const typeKey =
+							row.type === "theory"
+								? ("lessonTypeTheory" as const)
+								: row.type === "theory_personal"
+									? ("lessonTypeTheoryPersonal" as const)
+									: ("lessonTypePractical" as const);
 						const st = row.status === "confirmed" ? ("confirmed" as const) : row.status === "cancelled" ? ("cancelled" as const) : ("pending" as const);
 						return (
 							<div
