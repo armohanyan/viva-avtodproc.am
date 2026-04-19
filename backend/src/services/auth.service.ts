@@ -10,7 +10,7 @@ import RefreshTokenService from './refresh-token.service';
 
 const { UnauthorizedError, ConflictError } = ErrorsUtil;
 
-export type AuthUserDto = { id: number; email: string; name: string; accountType: AccountType };
+export type AuthUserDto = { id: number; email: string; name: string; accountType: AccountType; phone: string | null };
 
 export type AuthTokensDto = {
   accessToken: string;
@@ -25,6 +25,7 @@ function toDto(user: User): AuthUserDto {
     email: user.email,
     name: user.name,
     accountType: user.accountType,
+    phone: user.phone ?? null,
   };
 }
 
@@ -190,6 +191,42 @@ export default class AuthService {
       return null;
     }
 
+    return toDto(user);
+  }
+
+  static async changePassword(userId: number, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+    await this.assertActive(user);
+    if (!user.passwordHash) {
+      throw new UnauthorizedError(
+        'This account uses social sign-in; password cannot be changed here.',
+        HttpStatusCodesUtil.UNAUTHORIZED,
+      );
+    }
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      throw new UnauthorizedError('Current password is incorrect', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+    await user.update({ passwordHash: await bcrypt.hash(newPassword, 10) });
+  }
+
+  static async updateMe(
+    userId: number,
+    patch: { name?: string; phone?: string | null },
+  ): Promise<AuthUserDto | null> {
+    const user = await User.findByPk(userId);
+    if (!user || !user.isActive) {
+      return null;
+    }
+    await user.update({
+      ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+      ...(patch.phone !== undefined
+        ? { phone: patch.phone === null || patch.phone === '' ? null : String(patch.phone).trim() }
+        : {}),
+    });
     return toDto(user);
   }
 }

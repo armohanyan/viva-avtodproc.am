@@ -43,15 +43,65 @@ function readBearerToken(req: Request): string | undefined {
 export default class BookingController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const raw = req.query.studentUserId;
+      const rawStudent = req.query.studentUserId;
       const studentUserIdRaw =
-        typeof raw === 'string' ? raw : Array.isArray(raw) && typeof raw[0] === 'string' ? raw[0] : undefined;
+        typeof rawStudent === 'string'
+          ? rawStudent
+          : Array.isArray(rawStudent) && typeof rawStudent[0] === 'string'
+            ? rawStudent[0]
+            : undefined;
       const studentUserId = studentUserIdRaw !== undefined ? Number(studentUserIdRaw) : undefined;
+
+      const rawInst = req.query.instructorUserId;
+      const instructorUserIdRaw =
+        typeof rawInst === 'string' ? rawInst : Array.isArray(rawInst) && typeof rawInst[0] === 'string' ? rawInst[0] : undefined;
+      const instructorUserId = instructorUserIdRaw !== undefined ? Number(instructorUserIdRaw) : undefined;
+
+      if (
+        studentUserId !== undefined &&
+        Number.isFinite(studentUserId) &&
+        studentUserId > 0 &&
+        instructorUserId !== undefined &&
+        Number.isFinite(instructorUserId) &&
+        instructorUserId > 0
+      ) {
+        return next(
+          new InputValidationError(
+            'Use only one of studentUserId or instructorUserId',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          ),
+        );
+      }
+
       if (studentUserId !== undefined && Number.isFinite(studentUserId) && studentUserId > 0) {
         const data = await BookingService.listForStudent(studentUserId);
         SuccessHandlerUtil.handleList(res, next, data);
         return;
       }
+
+      if (instructorUserId !== undefined && Number.isFinite(instructorUserId) && instructorUserId > 0) {
+        const token = readBearerToken(req);
+        if (!token) {
+          return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+        }
+        let payload: ReturnType<typeof verifyAccessToken>;
+        try {
+          payload = verifyAccessToken(token);
+        } catch {
+          return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+        }
+        if (payload.accountType !== 'instructor') {
+          return next(new PermissionError('Instructor access required', HttpStatusCodesUtil.FORBIDDEN));
+        }
+        const uid = Number(payload.sub);
+        if (!Number.isFinite(uid) || uid <= 0 || uid !== instructorUserId) {
+          return next(new PermissionError('You can only load your own bookings', HttpStatusCodesUtil.FORBIDDEN));
+        }
+        const data = await BookingService.listForInstructor(instructorUserId);
+        SuccessHandlerUtil.handleList(res, next, data);
+        return;
+      }
+
       const data = await BookingService.listAdmin();
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {

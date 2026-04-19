@@ -79,14 +79,14 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
   }, []);
 
   const signOut = useCallback(() => {
+    clearAccountSession();
+    setUser(null);
     void (async () => {
       try {
         await apiFetch(apiV1Path("/auth/logout"), { method: "POST" });
       } catch {
-        /* still clear client session */
+        /* session already cleared */
       }
-      clearAccountSession();
-      setUser(null);
     })();
   }, []);
 

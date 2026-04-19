@@ -9,7 +9,15 @@ export function useInstructors() {
 	const refresh = useCallback(async () => {
 		try {
 			const data = await vivaApiJson<Instructor[]>("/instructors");
-			setInstructors(Array.isArray(data) ? data : []);
+			setInstructors(
+				Array.isArray(data)
+					? data.map((ins) => ({
+							...ins,
+							id: String(ins.id),
+							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
+						}))
+					: [],
+			);
 		} catch {
 			setInstructors([]);
 		} finally {

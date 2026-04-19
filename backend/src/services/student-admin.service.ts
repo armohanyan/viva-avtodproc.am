@@ -23,16 +23,7 @@ export type AdminStudentRow = {
 };
 
 export default class StudentAdminService {
-  static async list(): Promise<AdminStudentRow[]> {
-    const rows = await StudentProfile.findAll({
-      include: [
-        { model: User, as: 'studentAccount', required: true },
-        { model: Package, as: 'package', required: true },
-        { model: User, as: 'assignedInstructor', required: false },
-      ],
-      order: [['joinedAt', 'DESC']],
-    });
-
+  private static mapProfileRows(rows: StudentProfile[]): AdminStudentRow[] {
     return rows
       .map((sp) => {
         const row = sp as ProfileJoined;
@@ -56,6 +47,71 @@ export default class StudentAdminService {
         };
       })
       .filter((row): row is AdminStudentRow => row != null);
+  }
+
+  static async list(): Promise<AdminStudentRow[]> {
+    const rows = await StudentProfile.findAll({
+      include: [
+        { model: User, as: 'studentAccount', required: true },
+        { model: Package, as: 'package', required: true },
+        { model: User, as: 'assignedInstructor', required: false },
+      ],
+      order: [['joinedAt', 'DESC']],
+    });
+    return this.mapProfileRows(rows);
+  }
+
+  /** Students assigned to this instructor (`student_profiles.instructor_user_id`). */
+  static async listForInstructor(instructorUserId: number): Promise<AdminStudentRow[]> {
+    const rows = await StudentProfile.findAll({
+      where: { instructorUserId },
+      include: [
+        { model: User, as: 'studentAccount', required: true },
+        { model: Package, as: 'package', required: true },
+        { model: User, as: 'assignedInstructor', required: false },
+      ],
+      order: [['joinedAt', 'DESC']],
+    });
+    return this.mapProfileRows(rows);
+  }
+
+  static async patchByAssignedInstructor(
+    instructorUserId: number,
+    studentUserId: number,
+    patch: { skillRating?: number; licenseAchieved?: boolean },
+  ): Promise<AdminStudentRow | null> {
+    const profile = await StudentProfile.findOne({
+      where: { userId: studentUserId, instructorUserId },
+    });
+    if (!profile) return null;
+
+    const updates: Partial<{
+      skillRating: number;
+      licenseAchieved: boolean;
+      enrollmentStatus: string;
+    }> = {};
+
+    if (patch.skillRating !== undefined) {
+      const r = Math.round(patch.skillRating);
+      updates.skillRating = Math.max(0, Math.min(10, r));
+    }
+    if (patch.licenseAchieved !== undefined) {
+      updates.licenseAchieved = patch.licenseAchieved;
+      if (patch.licenseAchieved) {
+        updates.enrollmentStatus = 'completed';
+      } else if (profile.enrollmentStatus === 'completed') {
+        updates.enrollmentStatus = 'active';
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      const list = await this.listForInstructor(instructorUserId);
+      return list.find((r) => r.id === studentUserId) ?? null;
+    }
+
+    await profile.update(updates);
+    const list = await this.listForInstructor(instructorUserId);
+    return list.find((r) => r.id === studentUserId) ?? null;
   }
 
   static async create(input: {

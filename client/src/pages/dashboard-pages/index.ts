@@ -7,6 +7,5 @@ export { default as DashboardBookingsPage } from "./DashboardBookingsOutlet";
 export { DashboardBookingsListTab } from "./DashboardBookings";
 export { DashboardBookingsPackageTab } from "./DashboardBookingsPackage";
 export { DashboardBookingsPracticalTab } from "./DashboardBookingsPractical";
-export { default as DashboardPurchasesPage } from "./DashboardPurchases";
 export { default as DashboardPaymentsPage } from "./DashboardPayments";
 export { default as DashboardProfilePage } from "./DashboardProfile";

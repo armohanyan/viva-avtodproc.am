@@ -21,7 +21,6 @@ import { vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
-
 type PackageRow = { id: string; name: string; lessons: number };
 
 function parseLessons(lessons: string): { completed: number; total: number } | null {
@@ -441,11 +440,11 @@ export default function AdminUsers() {
         contentClassName="max-w-md max-h-[min(90vh,720px)]"
         footer={
           editUser ? (
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setEditUser(null)}>
+            <div className="flex gap-2 sm:gap-3 flex-1 min-w-0 w-full">
+              <Button type="button" variant="outline" className="flex-1 min-w-0" onClick={() => setEditUser(null)}>
                 {t("cancel")}
               </Button>
-              <Button type="submit" form={editUserFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button type="submit" form={editUserFormId} className="flex-1 min-w-0 bg-primary hover:bg-primary/90 text-primary-foreground">
                 {t("save")}
               </Button>
             </div>

@@ -48,7 +48,6 @@ export default function DashboardLayout({ children }: Props) {
 		"/dashboard/bookings": Calendar,
 		"/dashboard/bookings/package": ShoppingBag,
 		"/dashboard/bookings/practical": CalendarClock,
-		"/dashboard/purchases": ShoppingBag,
 		"/dashboard/payments": CreditCard,
 		"/dashboard/profile": User,
 	} as const;
@@ -110,8 +109,9 @@ export default function DashboardLayout({ children }: Props) {
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
+		// Leave protected routes before clearing session so `ProtectedRoute` does not send guests to `/login`.
+		setLocation(absWouterHref("/"));
 		signOut();
-		setTimeout(() => setLocation(absWouterHref("/")), 800);
 	};
 
 	return (

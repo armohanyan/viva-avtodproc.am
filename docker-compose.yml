@@ -1,4 +1,7 @@
 # Local dev: bind-mounted sources + Vite / Next / tsx watch (no image rebuild on code edits).
+# Use `docker compose` as your normal login user (not sudo). With Docker Desktop, sudo often breaks
+# credential helpers and leaves root-owned files under ~/.docker/buildx (e.g. "permission denied"
+# on buildx/current). Fix once: sudo chown -R "$(whoami)" ~/.docker/buildx
 #
 #   docker compose up
 #

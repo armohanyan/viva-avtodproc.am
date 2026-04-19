@@ -15,53 +15,14 @@ import type { TranslationKey } from "src/lib/i18n";
 
 export type PackageTierId = "basic" | "standard" | "premium";
 
-export type CatalogPackage = {
-  id: PackageTierId;
-  nameKey: TranslationKey;
-  priceDisplay: string;
-  practicalLessons: number;
-  theorySessions: number;
-};
-
-/** Mirrors public pricing; theory + exam/thematic access are included with every tier. */
-export const STUDENT_PACKAGE_CATALOG: readonly CatalogPackage[] = [
-  {
-    id: "basic",
-    nameKey: "basic",
-    priceDisplay: "35,000 ֏",
-    practicalLessons: 10,
-    theorySessions: 8,
-  },
-  {
-    id: "standard",
-    nameKey: "standard",
-    priceDisplay: "55,000 ֏",
-    practicalLessons: 18,
-    theorySessions: 12,
-  },
-  {
-    id: "premium",
-    nameKey: "premium",
-    priceDisplay: "85,000 ֏",
-    practicalLessons: 28,
-    theorySessions: 16,
-  },
-] as const;
-
 export const EXTRA_PRACTICAL_BLOCK = {
   lessons: 3,
   priceDisplay: "12,000 ֏",
-  nameKey: "demoExtraPracticalBlockName" as TranslationKey,
-};
-
-const TIER_TO_PACKAGE_ID: Record<PackageTierId, string> = {
-  basic: "PKG-001",
-  standard: "PKG-002",
-  premium: "PKG-003",
+  nameKey: "extraPracticalBlockName" as TranslationKey,
 };
 
 export type OwnedPackage = {
-  purchaseId: string;
+  purchaseId: number;
   tier: PackageTierId;
   purchasedAt: string;
   practicalTotal: number;
@@ -70,7 +31,7 @@ export type OwnedPackage = {
 };
 
 export type OwnedExtraPractical = {
-  id: string;
+  id: number;
   purchasedAt: string;
   practicalTotal: number;
   practicalUsed: number;
@@ -81,17 +42,6 @@ type EntitlementsApi = {
   packages: OwnedPackage[];
   extras: OwnedExtraPractical[];
 };
-
-export function paymentDescForTier(tier: PackageTierId): TranslationKey {
-  switch (tier) {
-    case "basic":
-      return "paymentDescBasicPackage";
-    case "standard":
-      return "paymentDescStandardPackage";
-    case "premium":
-      return "paymentDescPremiumPackage";
-  }
-}
 
 type StudentEntitlementsContextValue = {
   ownedPackages: readonly OwnedPackage[];
@@ -106,7 +56,7 @@ type StudentEntitlementsContextValue = {
   entitlementsLoading: boolean;
   entitlementsError: string | null;
   refreshEntitlements: () => Promise<void>;
-  purchasePackage: (tier: PackageTierId) => Promise<void>;
+  purchasePackage: (packageId: number) => Promise<void>;
   purchaseExtraPracticalBlock: () => Promise<void>;
 };
 
@@ -136,10 +86,11 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
           ? data.packages.map((p) => ({
               ...p,
               tier: normalizeTier(String(p.tier)),
+              purchaseId: Number(p.purchaseId),
             }))
           : [],
       );
-      setExtraPracticalBlocks(Array.isArray(data.extras) ? [...data.extras] : []);
+      setExtraPracticalBlocks(Array.isArray(data.extras) ? data.extras.map((e) => ({ ...e, id: Number(e.id) })) : []);
     } catch (e) {
       setOwnedPackages([]);
       setExtraPracticalBlocks([]);
@@ -179,9 +130,8 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
   }, [ownedPackages, extraPracticalBlocks, bookings]);
 
   const purchasePackage = useCallback(
-    async (tier: PackageTierId) => {
+    async (packageId: number) => {
       if (!user?.id || user.accountType !== "student") return;
-      const packageId = TIER_TO_PACKAGE_ID[tier];
       await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements/package`, {
         method: "POST",
         body: { packageId },
@@ -230,9 +180,7 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
     ],
   );
 
-  return (
-    <StudentEntitlementsContext.Provider value={value}>{children}</StudentEntitlementsContext.Provider>
-  );
+  return <StudentEntitlementsContext.Provider value={value}>{children}</StudentEntitlementsContext.Provider>;
 }
 
 export function useStudentEntitlements(): StudentEntitlementsContextValue {
@@ -243,11 +191,6 @@ export function useStudentEntitlements(): StudentEntitlementsContextValue {
   return ctx;
 }
 
-export function getCatalogPackage(tier: PackageTierId): CatalogPackage | undefined {
-  return STUDENT_PACKAGE_CATALOG.find((p) => p.id === tier);
-}
-
 function normalizeTier(raw: string): PackageTierId {
   return raw === "basic" || raw === "standard" || raw === "premium" ? raw : "standard";
 }
-

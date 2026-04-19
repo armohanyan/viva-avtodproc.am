@@ -1,7 +1,6 @@
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import { useLang } from "src/lib/i18n";
-import type { TranslationKey } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
@@ -11,128 +10,41 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Landmark, Wallet, Plus } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { Landmark, Plus } from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useToast } from "src/lib/toast";
 import AdminStudentSearchSelect from "src/components/admin/AdminStudentSearchSelect";
 import { useAdminStudentsMini } from "src/modules/admin/useAdminStudents";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import {
+  type FinanceTx,
+  type ManualFormShape,
+  type TxChannel,
+  type TxMethod,
+  type TxStatus,
+  channelTKey,
+  formatAmd,
+  incomeBreakdownCompletedInRange,
+  methodTKey,
+  monthRange,
+  netOf,
+  parseAmdInput,
+  statusClass,
+  statusTKey,
+  toDatetimeLocalValue,
+} from "./adminFinanceShared";
+import { FINANCE_INCOME_PREFILL } from "./adminFinancePrefill";
 
-type TxStatus = "completed" | "pending" | "failed" | "refunded";
-type TxChannel = "online" | "pos" | "office" | "bank";
-type TxMethod = "card" | "idram" | "cash" | "transfer";
-type TxSource = "system" | "manual";
+type ManualForm = ManualFormShape;
 
-type FinanceTx = {
-  id: number;
-  createdAt: string;
-  customer: string;
-  email: string;
-  /** Free-text line item (manual entry or imported description). */
-  description: string;
-  branchId: string;
-  channel: TxChannel;
-  method: TxMethod;
-  grossAmd: number;
-  feeAmd: number;
-  status: TxStatus;
-  providerRef: string;
-  source: TxSource;
-  /** Set when the payment applies to a specific scheduled lesson. */
-  bookingId: string | null;
-};
-
-function monthRange(reference = new Date()): { start: Date; end: Date } {
-  const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
-  const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999);
-  return { start, end };
-}
-
-function formatAmd(n: number): string {
-  return `${n.toLocaleString("en-US")} ֏`;
-}
-
-function toDatetimeLocalValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function parseAmdInput(raw: string): number {
-  const n = Number.parseFloat(String(raw).replace(/[\s,]/g, ""));
-  if (!Number.isFinite(n) || n < 0) return NaN;
-  return Math.round(n);
-}
-
-const statusClass: Record<TxStatus, string> = {
-  completed: "bg-emerald-100 text-emerald-800",
-  pending: "bg-amber-100 text-amber-800",
-  failed: "bg-red-100 text-red-700",
-  refunded: "bg-slate-200 text-slate-700",
-};
-
-function statusTKey(s: TxStatus): TranslationKey {
-  switch (s) {
-    case "completed":
-      return "financeStatusCompleted";
-    case "pending":
-      return "financeStatusPending";
-    case "failed":
-      return "financeStatusFailed";
-    case "refunded":
-      return "financeStatusRefunded";
-  }
-}
-
-function channelTKey(c: TxChannel): TranslationKey {
-  switch (c) {
-    case "online":
-      return "financeChannelOnline";
-    case "pos":
-      return "financeChannelPos";
-    case "office":
-      return "financeChannelOffice";
-    case "bank":
-      return "financeChannelBank";
-  }
-}
-
-function methodTKey(m: TxMethod): TranslationKey {
-  switch (m) {
-    case "card":
-      return "financeMethodCard";
-    case "idram":
-      return "financeMethodIdram";
-    case "cash":
-      return "financeMethodCash";
-    case "transfer":
-      return "financeMethodTransfer";
-  }
-}
-
-function netOf(tx: FinanceTx): number {
-  return tx.grossAmd - tx.feeAmd;
-}
-
-type ManualForm = {
-  /** When set, customer/email were filled from the student directory */
-  studentDirectoryId: string;
-  customer: string;
-  email: string;
-  description: string;
-  branchId: string;
-  channel: TxChannel;
-  method: TxMethod;
-  grossStr: string;
-  feeStr: string;
-  status: TxStatus;
-  ref: string;
-  datetimeLocal: string;
-  bookingIdStr: string;
-};
-
-export default function AdminFinance() {
+export default function AdminFinanceIncome() {
   const manualTxFormId = useId();
+  /** Captured once on first client render so StrictMode does not double-apply prefills. */
+  const prefillSearchRef = useRef<string | null>(null);
+  if (prefillSearchRef.current === null && typeof window !== "undefined") {
+    prefillSearchRef.current = window.location.search || "";
+  }
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -180,37 +92,78 @@ export default function AdminFinance() {
     void refreshTransactions();
   }, [refreshTransactions]);
 
-  const resetManualForm = useCallback(
-    (defaultBranchId: string) => {
-      setManualForm({
-        studentDirectoryId: "",
-        customer: "",
-        email: "",
-        description: "",
-        branchId: defaultBranchId,
-        channel: "office",
-        method: "cash",
-        grossStr: "",
-        feeStr: "0",
-        status: "completed",
-        ref: "",
-        datetimeLocal: toDatetimeLocalValue(new Date()),
-        bookingIdStr: "",
-      });
-    },
-    [],
-  );
+  const resetManualForm = useCallback((defaultBranchId: string) => {
+    setManualForm({
+      studentDirectoryId: "",
+      customer: "",
+      email: "",
+      description: "",
+      branchId: defaultBranchId,
+      channel: "office",
+      method: "cash",
+      grossStr: "",
+      feeStr: "0",
+      status: "completed",
+      ref: "",
+      datetimeLocal: toDatetimeLocalValue(new Date()),
+      bookingIdStr: "",
+    });
+  }, []);
 
   const openManualDialog = () => {
     resetManualForm(branches[0]?.id ?? "");
     setManualOpen(true);
   };
 
+  useEffect(() => {
+    const raw = prefillSearchRef.current;
+    if (!raw || raw.length <= 1) return;
+    const params = new URLSearchParams(raw);
+    const studentId = params.get(FINANCE_INCOME_PREFILL.student)?.trim() ?? "";
+    const bookingId = params.get(FINANCE_INCOME_PREFILL.booking)?.trim() ?? "";
+    const branchParam = params.get(FINANCE_INCOME_PREFILL.branch)?.trim() ?? "";
+    const amountStr = params.get(FINANCE_INCOME_PREFILL.amount)?.trim() ?? "";
+    const desc = params.get(FINANCE_INCOME_PREFILL.desc)?.trim() ?? "";
+    const hasPrefill = !!(studentId || bookingId || branchParam || amountStr || desc);
+    if (!hasPrefill) {
+      prefillSearchRef.current = "";
+      return;
+    }
+    if (branches.length === 0) return;
+    if (studentId && studentDirectoryLoading) return;
+
+    prefillSearchRef.current = "";
+    const student = studentId ? studentDirectory.find((x) => x.id === studentId) : undefined;
+    const branchOk = branchParam && branches.some((b) => b.id === branchParam) ? branchParam : "";
+    const branchId = branchOk || branches[0]?.id || "";
+
+    setManualForm({
+      studentDirectoryId: student ? studentId : "",
+      customer: student?.name ?? "",
+      email: student?.email ?? "",
+      description: desc,
+      branchId,
+      channel: "office",
+      method: "cash",
+      grossStr: /^\d+$/.test(amountStr) ? amountStr : "",
+      feeStr: "0",
+      status: "completed",
+      ref: "",
+      datetimeLocal: toDatetimeLocalValue(new Date()),
+      bookingIdStr: bookingId,
+    });
+    setManualOpen(true);
+    try {
+      window.history.replaceState({}, "", "/admin/finance/income");
+    } catch {
+      /* ignore */
+    }
+  }, [studentDirectoryLoading, studentDirectory, branches]);
+
   const submitManual = async (e: React.FormEvent) => {
     e.preventDefault();
     const gross = parseAmdInput(manualForm.grossStr);
-    const fee =
-      manualForm.feeStr.trim() === "" ? 0 : parseAmdInput(manualForm.feeStr);
+    const fee = manualForm.feeStr.trim() === "" ? 0 : parseAmdInput(manualForm.feeStr);
     if (!manualForm.customer.trim() || !manualForm.description.trim() || !manualForm.branchId) {
       showToast(t("financeManualErrorRequired"), "error");
       return;
@@ -296,23 +249,17 @@ export default function AdminFinance() {
     });
   }, [search, branchFilter, statusFilter, branches, t, transactions]);
 
-  const grossRevenueMonth = useMemo(() => {
-    const { start: MONTH_START, end: MONTH_END } = monthRange();
-    const inMonth = (tx: FinanceTx) => {
-      const d = new Date(tx.createdAt);
-      return d >= MONTH_START && d <= MONTH_END;
-    };
-    return transactions
-      .filter((tx) => tx.status === "completed" && inMonth(tx))
-      .reduce((s, tx) => s + tx.grossAmd, 0);
+  const breakdownRows = useMemo(() => {
+    const { start, end } = monthRange();
+    return incomeBreakdownCompletedInRange(transactions, start, end);
   }, [transactions]);
 
   return (
     <AdminLayout>
       <PanelPageHeader
         icon={Landmark}
-        title={t("adminFinance")}
-        subtitle={t("adminFinancePageSubtitle")}
+        title={t("adminFinanceIncomeTitle")}
+        subtitle={t("adminFinanceIncomeSubtitle")}
         actions={
           <Button
             type="button"
@@ -325,20 +272,28 @@ export default function AdminFinance() {
         }
       />
 
-      <div className="grid grid-cols-1 max-w-md gap-4 mb-8">
-        <Card className="p-5 border-border">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground mb-1 leading-snug">{t("adminFinanceKpiGrossMonth")}</p>
-              <p className="text-lg font-bold text-foreground tabular-nums break-words">
-                {transactionsLoading ? "…" : formatAmd(grossRevenueMonth)}
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-              <Wallet className="w-5 h-5 text-primary" />
-            </div>
+      <div className="mb-8">
+        <h3 className="text-sm font-semibold text-foreground mb-3">{t("adminFinanceBreakdownIncomeTitle")}</h3>
+        {transactionsLoading ? (
+          <p className="text-sm text-muted-foreground">…</p>
+        ) : breakdownRows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("adminFinanceBreakdownEmpty")}</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {breakdownRows.map((row) => (
+              <Card key={row.key} className="p-4 border-border">
+                <p className="text-xs text-muted-foreground mb-1">
+                  {t(channelTKey(row.channel))} · {t(methodTKey(row.method))}
+                </p>
+                <p className="text-lg font-bold text-foreground tabular-nums">{formatAmd(row.gross)}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t("financeColNet")}: {formatAmd(row.net)} · {row.count}{" "}
+                  {row.count === 1 ? t("adminFinanceBreakdownTxSingular") : t("adminFinanceBreakdownTxPlural")}
+                </p>
+              </Card>
+            ))}
           </div>
-        </Card>
+        )}
       </div>
 
       <Card className="border-border overflow-hidden min-w-0">
@@ -347,7 +302,7 @@ export default function AdminFinance() {
         </div>
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
-            filename="admin-finance-transactions.csv"
+            filename="admin-finance-income.csv"
             headers={[
               t("tableColId"),
               t("financeColSource"),
@@ -469,7 +424,10 @@ export default function AdminFinance() {
                     <td className="px-4 py-3.5 text-muted-foreground text-xs font-mono whitespace-nowrap" title={tx.bookingId ?? undefined}>
                       {tx.bookingId ?? "—"}
                     </td>
-                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, tx.branchId)}>
+                    <td
+                      className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate"
+                      title={branchNameById(branches, tx.branchId)}
+                    >
                       {branchNameById(branches, tx.branchId)}
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{t(channelTKey(tx.channel))}</td>
@@ -510,167 +468,167 @@ export default function AdminFinance() {
         }
       >
         <form id={manualTxFormId} onSubmit={submitManual} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualSelectStudentPlaceholder")}</label>
-                <AdminStudentSearchSelect
-                  students={studentDirectory}
-                  value={manualForm.studentDirectoryId}
-                  onChange={(id) => {
-                    if (!id) {
-                      setManualForm((f) => ({ ...f, studentDirectoryId: "" }));
-                      return;
-                    }
-                    const s = studentDirectory.find((x) => x.id === id);
-                    setManualForm((f) => ({
-                      ...f,
-                      studentDirectoryId: id,
-                      customer: s?.name ?? "",
-                      email: s?.email ?? "",
-                    }));
-                  }}
-                  allowClear
-                  disabled={studentDirectoryLoading}
-                  searchPlaceholder={t("adminStudentPickerSearchPlaceholder")}
-                  selectPlaceholder="—"
-                  noResultsLabel={t("tableNoMatches")}
-                  emptyListLabel={t("couldNotLoadData")}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColCustomer")}</label>
-                <Input
-                  value={manualForm.customer}
-                  onChange={(e) => setManualForm((f) => ({ ...f, customer: e.target.value, studentDirectoryId: "" }))}
-                  className="h-10"
-                  placeholder={t("placeholderFullName")}
-                  autoComplete="name"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("accountsColEmail")}</label>
-                <Input
-                  type="email"
-                  value={manualForm.email}
-                  onChange={(e) => setManualForm((f) => ({ ...f, email: e.target.value, studentDirectoryId: "" }))}
-                  className="h-10"
-                  placeholder={t("placeholderEmailExample")}
-                  autoComplete="email"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
-                <select
-                  value={manualForm.branchId}
-                  onChange={(e) => setManualForm((f) => ({ ...f, branchId: e.target.value }))}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  required
-                >
-                  <option value="">{t("financeSelectBranchPlaceholder")}</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProduct")}</label>
-                <Input
-                  value={manualForm.description}
-                  onChange={(e) => setManualForm((f) => ({ ...f, description: e.target.value }))}
-                  className="h-10"
-                  placeholder={t("financeManualTxDescriptionPlaceholder")}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColBooking")}</label>
-                <Input
-                  value={manualForm.bookingIdStr}
-                  onChange={(e) => setManualForm((f) => ({ ...f, bookingIdStr: e.target.value }))}
-                  className="h-10 font-mono text-sm"
-                  placeholder={t("financeManualBookingIdPlaceholder")}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
-                <select
-                  value={manualForm.channel}
-                  onChange={(e) => setManualForm((f) => ({ ...f, channel: e.target.value as TxChannel }))}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="office">{t("financeChannelOffice")}</option>
-                  <option value="pos">{t("financeChannelPos")}</option>
-                  <option value="online">{t("financeChannelOnline")}</option>
-                  <option value="bank">{t("financeChannelBank")}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
-                <select
-                  value={manualForm.method}
-                  onChange={(e) => setManualForm((f) => ({ ...f, method: e.target.value as TxMethod }))}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="cash">{t("financeMethodCash")}</option>
-                  <option value="card">{t("financeMethodCard")}</option>
-                  <option value="transfer">{t("financeMethodTransfer")}</option>
-                  <option value="idram">{t("financeMethodIdram")}</option>
-                </select>
-              </div>
-              <p className="sm:col-span-2 text-xs text-muted-foreground -mt-1">{t("financeManualChannelHint")}</p>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxGrossLabel")}</label>
-                <Input
-                  inputMode="decimal"
-                  value={manualForm.grossStr}
-                  onChange={(e) => setManualForm((f) => ({ ...f, grossStr: e.target.value }))}
-                  className="h-10 tabular-nums"
-                  placeholder="55000"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxFeeLabel")}</label>
-                <Input
-                  inputMode="decimal"
-                  value={manualForm.feeStr}
-                  onChange={(e) => setManualForm((f) => ({ ...f, feeStr: e.target.value }))}
-                  className="h-10 tabular-nums"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-                <select
-                  value={manualForm.status}
-                  onChange={(e) => setManualForm((f) => ({ ...f, status: e.target.value as TxStatus }))}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="completed">{t("financeStatusCompleted")}</option>
-                  <option value="pending">{t("financeStatusPending")}</option>
-                  <option value="failed">{t("financeStatusFailed")}</option>
-                  <option value="refunded">{t("financeStatusRefunded")}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")}</label>
-                <Input
-                  type="datetime-local"
-                  value={manualForm.datetimeLocal}
-                  onChange={(e) => setManualForm((f) => ({ ...f, datetimeLocal: e.target.value }))}
-                  className="h-10"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProviderRef")}</label>
-                <Input
-                  value={manualForm.ref}
-                  onChange={(e) => setManualForm((f) => ({ ...f, ref: e.target.value }))}
-                  className="h-10 font-mono text-sm"
-                  placeholder={t("financeManualTxRefPlaceholder")}
-                />
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualSelectStudentPlaceholder")}</label>
+              <AdminStudentSearchSelect
+                students={studentDirectory}
+                value={manualForm.studentDirectoryId}
+                onChange={(id) => {
+                  if (!id) {
+                    setManualForm((f) => ({ ...f, studentDirectoryId: "" }));
+                    return;
+                  }
+                  const s = studentDirectory.find((x) => x.id === id);
+                  setManualForm((f) => ({
+                    ...f,
+                    studentDirectoryId: id,
+                    customer: s?.name ?? "",
+                    email: s?.email ?? "",
+                  }));
+                }}
+                allowClear
+                disabled={studentDirectoryLoading}
+                searchPlaceholder={t("adminStudentPickerSearchPlaceholder")}
+                selectPlaceholder="—"
+                noResultsLabel={t("tableNoMatches")}
+                emptyListLabel={t("couldNotLoadData")}
+              />
             </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColCustomer")}</label>
+              <Input
+                value={manualForm.customer}
+                onChange={(e) => setManualForm((f) => ({ ...f, customer: e.target.value, studentDirectoryId: "" }))}
+                className="h-10"
+                placeholder={t("placeholderFullName")}
+                autoComplete="name"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("accountsColEmail")}</label>
+              <Input
+                type="email"
+                value={manualForm.email}
+                onChange={(e) => setManualForm((f) => ({ ...f, email: e.target.value, studentDirectoryId: "" }))}
+                className="h-10"
+                placeholder={t("placeholderEmailExample")}
+                autoComplete="email"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
+              <select
+                value={manualForm.branchId}
+                onChange={(e) => setManualForm((f) => ({ ...f, branchId: e.target.value }))}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                required
+              >
+                <option value="">{t("financeSelectBranchPlaceholder")}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProduct")}</label>
+              <Input
+                value={manualForm.description}
+                onChange={(e) => setManualForm((f) => ({ ...f, description: e.target.value }))}
+                className="h-10"
+                placeholder={t("financeManualTxDescriptionPlaceholder")}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColBooking")}</label>
+              <Input
+                value={manualForm.bookingIdStr}
+                onChange={(e) => setManualForm((f) => ({ ...f, bookingIdStr: e.target.value }))}
+                className="h-10 font-mono text-sm"
+                placeholder={t("financeManualBookingIdPlaceholder")}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
+              <select
+                value={manualForm.channel}
+                onChange={(e) => setManualForm((f) => ({ ...f, channel: e.target.value as TxChannel }))}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="office">{t("financeChannelOffice")}</option>
+                <option value="pos">{t("financeChannelPos")}</option>
+                <option value="online">{t("financeChannelOnline")}</option>
+                <option value="bank">{t("financeChannelBank")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
+              <select
+                value={manualForm.method}
+                onChange={(e) => setManualForm((f) => ({ ...f, method: e.target.value as TxMethod }))}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="cash">{t("financeMethodCash")}</option>
+                <option value="card">{t("financeMethodCard")}</option>
+                <option value="transfer">{t("financeMethodTransfer")}</option>
+                <option value="idram">{t("financeMethodIdram")}</option>
+              </select>
+            </div>
+            <p className="sm:col-span-2 text-xs text-muted-foreground -mt-1">{t("financeManualChannelHint")}</p>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxGrossLabel")}</label>
+              <Input
+                inputMode="decimal"
+                value={manualForm.grossStr}
+                onChange={(e) => setManualForm((f) => ({ ...f, grossStr: e.target.value }))}
+                className="h-10 tabular-nums"
+                placeholder="55000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxFeeLabel")}</label>
+              <Input
+                inputMode="decimal"
+                value={manualForm.feeStr}
+                onChange={(e) => setManualForm((f) => ({ ...f, feeStr: e.target.value }))}
+                className="h-10 tabular-nums"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
+              <select
+                value={manualForm.status}
+                onChange={(e) => setManualForm((f) => ({ ...f, status: e.target.value as TxStatus }))}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="completed">{t("financeStatusCompleted")}</option>
+                <option value="pending">{t("financeStatusPending")}</option>
+                <option value="failed">{t("financeStatusFailed")}</option>
+                <option value="refunded">{t("financeStatusRefunded")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")}</label>
+              <Input
+                type="datetime-local"
+                value={manualForm.datetimeLocal}
+                onChange={(e) => setManualForm((f) => ({ ...f, datetimeLocal: e.target.value }))}
+                className="h-10"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProviderRef")}</label>
+              <Input
+                value={manualForm.ref}
+                onChange={(e) => setManualForm((f) => ({ ...f, ref: e.target.value }))}
+                className="h-10 font-mono text-sm"
+                placeholder={t("financeManualTxRefPlaceholder")}
+              />
+            </div>
+          </div>
         </form>
       </AppModal>
     </AdminLayout>

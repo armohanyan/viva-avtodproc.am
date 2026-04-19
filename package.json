@@ -1,0 +1,7 @@
+{
+  "name": "viva-avtodproc-am",
+  "private": true,
+  "scripts": {
+    "dev:stack": "bash scripts/dev-with-docker-mysql.sh"
+  }
+}

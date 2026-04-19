@@ -25,6 +25,7 @@ const PAYMENT_HOLD_MS = 10 * 60 * 1000;
 
 type BookingWithUsers = Booking & { instructor: User; student: User };
 type BookingWithInstructor = Booking & { instructor: User };
+type BookingWithStudent = Booking & { student: User };
 
 export type BookingAdminDto = {
   id: number;
@@ -52,6 +53,20 @@ export type StudentBookingDto = {
   instructor: string;
   lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory';
   status: BookingStatus;
+};
+
+/** Bookings for the instructor panel (student name included). */
+export type InstructorBookingDto = {
+  id: number;
+  studentId: number;
+  studentName: string;
+  dateIso: string;
+  time: string;
+  endTime: string | null;
+  totalPriceAmd: number | null;
+  type: 'practical' | 'theory';
+  status: BookingStatus;
+  branchId: number;
 };
 
 export type StudentMultiSlotBookingDto = {
@@ -304,6 +319,33 @@ export default class BookingService {
         instructor: inst.name,
         lessonTypeKey: b.lessonType === 'theory' ? 'lessonTypeTheory' : 'lessonTypePractical',
         status: normalizeStudentBookingStatus(b.status),
+      };
+    });
+  }
+
+  static async listForInstructor(instructorUserId: number): Promise<InstructorBookingDto[]> {
+    const rows = await Booking.findAll({
+      where: { instructorUserId },
+      include: [{ model: User, as: 'student', required: true, attributes: ['id', 'name'] }],
+      order: [
+        ['dateIso', 'DESC'],
+        ['time', 'DESC'],
+      ],
+    });
+    return rows.map((b) => {
+      const row = b as BookingWithStudent;
+      const stu = row.student;
+      return {
+        id: b.id,
+        studentId: stu.id,
+        studentName: stu.name,
+        dateIso: dateIsoString(b.dateIso),
+        time: b.time,
+        endTime: b.endTime ?? null,
+        totalPriceAmd: b.totalPriceAmd ?? null,
+        type: b.lessonType,
+        status: normalizeBookingStatus(b.status),
+        branchId: b.branchId,
       };
     });
   }

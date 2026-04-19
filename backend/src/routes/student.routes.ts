@@ -10,6 +10,7 @@ router.post('/:id/instructor-ratings', StudentController.instructorRatingsSubmit
 router.get('/:id/entitlements', StudentController.entitlements);
 router.post('/:id/entitlements/package', StudentController.entitlementsAssignPackage);
 router.post('/:id/entitlements/extra-practical', StudentController.entitlementsAddExtra);
+router.patch('/:id/instructor-fields', StudentController.patchInstructorFields);
 router.patch('/:id', StudentController.update);
 router.delete('/:id', StudentController.remove);
 

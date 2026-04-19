@@ -11,7 +11,6 @@ export const DASHBOARD_NAV_LINKS: readonly DashboardNavigationLink[] = [
       { href: "/dashboard/bookings/practical", translationKey: "bookingsSubnavPractical" },
     ],
   },
-  { href: "/dashboard/purchases", translationKey: "purchases" },
   { href: "/dashboard/payments", translationKey: "payments" },
   { href: "/dashboard/profile", translationKey: "profile" },
 ];

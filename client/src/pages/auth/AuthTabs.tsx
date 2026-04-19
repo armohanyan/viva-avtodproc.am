@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import type React from "react";
 import { Link, useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
-import { Eye, EyeOff, Star } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Star } from "lucide-react";
 
 import { resolvePostAuthPanelPath, useAccount } from "src/modules/accounts";
 import { useLang } from "src/lib/i18n";
@@ -14,24 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { absWouterHref } from "src/lib/wouterFullPath";
-
-const STUDENT_TESTIMONIALS = [
-  {
-    name: "Ani K.",
-    text: "Passed my exam on the first try! The instructors are incredibly patient and professional.",
-    rating: 5,
-  },
-  {
-    name: "Tigran M.",
-    text: "Great experience from start to finish. The booking system made it so easy to schedule lessons.",
-    rating: 5,
-  },
-  {
-    name: "Mariam S.",
-    text: "I was terrified of driving but Viva helped me become confident behind the wheel.",
-    rating: 5,
-  },
-] as const;
+import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 
 function GoogleIcon() {
   return (
@@ -79,18 +62,37 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   const { t } = useLang();
   const { showToast } = useToast();
   const { user, hydrated, signIn } = useAccount();
+  const { data: mkt } = useMarketingPublic();
 
   // Keep URL stable: tab switching should update only the form, not the left panel.
   const [activeTab, setActiveTab] = useState<AuthTabKey>(initialTab);
 
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
+  const testimonials = useMemo(() => {
+    if (!mkt?.testimonials?.length) return [];
+    return mkt.testimonials.map((x) => ({
+      name: x.authorName.trim() || t("roleStudent"),
+      text: x.quote.trim(),
+      rating: Math.min(5, Math.max(1, Math.round(Number(x.rating) || 5))),
+    }));
+  }, [mkt, t]);
+
+  const visibleTestimonials = useMemo(() => testimonials.filter((x) => x.text.length > 0), [testimonials]);
+
   useEffect(() => {
+    if (visibleTestimonials.length === 0) return;
+    setActiveTestimonial((i) => i % visibleTestimonials.length);
+  }, [visibleTestimonials.length]);
+
+  useEffect(() => {
+    if (visibleTestimonials.length === 0) return;
+
     const timer = window.setTimeout(() => {
-      setActiveTestimonial((prev) => (prev + 1) % STUDENT_TESTIMONIALS.length);
+      setActiveTestimonial((prev) => (prev + 1) % visibleTestimonials.length);
     }, 5200);
     return () => window.clearTimeout(timer);
-  }, [activeTestimonial]);
+  }, [activeTestimonial, visibleTestimonials.length]);
 
   // --- Login state/handlers ---
   const [pathname, setLocation] = useLocation();
@@ -244,48 +246,78 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
         <div className="relative">
           <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={activeTestimonial}
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: "easeOut" }}
-              className="space-y-6"
-            >
-              <div className="flex gap-1">
-                {Array.from({ length: STUDENT_TESTIMONIALS[activeTestimonial].rating }).map((_, j) => (
-                  <Star key={j} className="w-4 h-4 text-primary fill-primary" />
-                ))}
-              </div>
-
-              <blockquote className="text-2xl font-semibold text-hero-foreground leading-relaxed">
-                "{STUDENT_TESTIMONIALS[activeTestimonial].text}"
-              </blockquote>
-
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold">
-                  {STUDENT_TESTIMONIALS[activeTestimonial].name[0]}
+            {visibleTestimonials.length > 0 ? (
+              <motion.div
+                key={activeTestimonial}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.28, ease: "easeOut" }}
+                className="space-y-6"
+              >
+                <div className="flex gap-1">
+                  {Array.from({ length: visibleTestimonials[activeTestimonial]!.rating }).map((_, j) => (
+                    <Star key={j} className="w-4 h-4 text-primary fill-primary" />
+                  ))}
                 </div>
-                <div>
-                  <p className="text-hero-foreground font-medium text-sm">{STUDENT_TESTIMONIALS[activeTestimonial].name}</p>
-                  <p className="text-hero-foreground/70 text-xs">Licensed • Student</p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                {STUDENT_TESTIMONIALS.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setActiveTestimonial(i)}
-                    className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                      i === activeTestimonial ? "bg-primary" : "bg-hero-foreground/35"
-                    }`}
-                    aria-label={`Show testimonial ${i + 1}`}
-                  />
-                ))}
-              </div>
-            </motion.div>
+                <blockquote className="text-2xl font-semibold text-hero-foreground leading-relaxed">
+                  "{visibleTestimonials[activeTestimonial]!.text}"
+                </blockquote>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold">
+                    {(visibleTestimonials[activeTestimonial]!.name.trim()[0] ?? "?").toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-hero-foreground font-medium text-sm">{visibleTestimonials[activeTestimonial]!.name}</p>
+                    <p className="text-hero-foreground/70 text-xs">
+                      {t("studentRatingLicensed")} • {t("roleStudent")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {visibleTestimonials.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActiveTestimonial(i)}
+                      className={`h-2.5 w-2.5 rounded-full transition-colors ${
+                        i === activeTestimonial ? "bg-primary" : "bg-hero-foreground/35"
+                      }`}
+                      aria-label={`Show testimonial ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="auth-hero-fallback"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.28, ease: "easeOut" }}
+                className="space-y-8"
+              >
+                <p className="text-sm font-semibold uppercase tracking-wider text-primary">{t("startJourneyTodayLabel")}</p>
+                <p className="text-2xl font-semibold text-hero-foreground leading-relaxed">{t("loginHeroQuote")}</p>
+                <ul className="space-y-3 text-hero-foreground/90 text-sm">
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-5 h-5 shrink-0 text-primary" aria-hidden />
+                    <span>{t("signupBulletBookSessions")}</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-5 h-5 shrink-0 text-primary" aria-hidden />
+                    <span>{t("signupBulletTrackProgress")}</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-5 h-5 shrink-0 text-primary" aria-hidden />
+                    <span>{t("signupBulletMaterials")}</span>
+                  </li>
+                </ul>
+              </motion.div>
+            )}
           </AnimatePresence>
         </div>
 

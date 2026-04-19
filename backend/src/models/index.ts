@@ -195,6 +195,40 @@ async function ensureFinanceTransactionsBookingIdColumn(): Promise<void> {
   );
 }
 
+/** Adds `car_expenses.channel` / `car_expenses.method` for outgoing payment classification. */
+async function ensureCarExpensesPaymentColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'car_expenses'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'car_expenses'
+       AND COLUMN_NAME IN ('channel', 'method')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('channel')) {
+    await sequelize.query(
+      `ALTER TABLE \`car_expenses\`
+       ADD COLUMN \`channel\` ENUM('online','pos','office','bank') NOT NULL DEFAULT 'office'`,
+    );
+  }
+  if (!have.has('method')) {
+    await sequelize.query(
+      `ALTER TABLE \`car_expenses\`
+       ADD COLUMN \`method\` ENUM('card','idram','cash','transfer') NOT NULL DEFAULT 'cash'`,
+    );
+  }
+}
+
 /** Adds `bookings.paid_at` / `bookings.hold_expires_at` when tables predate Sequelize fields. */
 async function ensureBookingsPaymentColumns(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -528,6 +562,7 @@ export async function syncModels(): Promise<void> {
   await ensurePackagesImageUrlColumn();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
+  await ensureCarExpensesPaymentColumns();
   await ensureBookingsPaymentColumns();
   await ensureBookingsMultiSlotColumns();
   await ensureBookingSlotsTable();

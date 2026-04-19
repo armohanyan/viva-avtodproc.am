@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { absWouterHref } from "src/lib/wouterFullPath";
 import { cn } from "src/lib/utils";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -239,8 +240,8 @@ export default function AdminLayout({ children }: Props) {
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
+		setLocation(absWouterHref("/"));
 		signOut();
-		setTimeout(() => setLocation("/"), 800);
 	};
 
 	const headerTitle = useMemo(() => {
@@ -251,6 +252,9 @@ export default function AdminLayout({ children }: Props) {
 		if (location === "/admin/learn/groups") return t("adminSidebarGroups");
 		if (location === "/admin/learn/packages") return t("packages");
 		if (location === "/admin/students/analytics") return t("adminStudentsAnalytics");
+		if (location === "/admin/finance/income") return t("adminFinanceIncomeTitle");
+		if (location === "/admin/finance/outcomes") return t("adminFinanceOutcomesTitle");
+		if (location === "/admin/finance") return t("adminFinanceOverviewTitle");
 		return adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard");
 	}, [location, t, adminNavLabels]);
 

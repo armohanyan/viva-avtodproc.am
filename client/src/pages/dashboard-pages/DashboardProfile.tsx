@@ -5,81 +5,138 @@ import { useToast } from "src/lib/toast";
 import { Card } from "src/components/ui/card";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
-import { Badge } from "src/components/ui/badge";
 import { Shield, UserCircle } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Reveal } from "src/lib/motion";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { loadAccountSession, saveAccountSession } from "src/modules/accounts/account.session";
+
+type AuthMeUser = {
+  id: number;
+  email: string;
+  name: string;
+  accountType: string;
+  phone: string | null;
+};
+
+function splitDisplayName(name: string): { firstName: string; lastName: string } {
+  const t = name.trim();
+  const i = t.indexOf(" ");
+  if (i === -1) return { firstName: t, lastName: "" };
+  return { firstName: t.slice(0, i), lastName: t.slice(i + 1).trim() };
+}
 
 export default function DashboardProfile() {
   const { t } = useLang();
   const { showToast } = useToast();
 
-  const [form, setForm] = useState({ firstName: "Armen", lastName: "Petrosyan", email: "armen@example.com", phone: "+374 99 123 456", dob: "1998-05-15" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPass, setSavingPass] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
-  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
-  const setP = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setPass(f => ({ ...f, [k]: e.target.value }));
+  const loadProfile = useCallback(async () => {
+    setProfileLoading(true);
+    setProfileError(null);
+    try {
+      const me = await vivaApiJson<AuthMeUser>("/auth/me");
+      const { firstName, lastName } = splitDisplayName(me.name);
+      setForm({
+        firstName,
+        lastName,
+        email: me.email,
+        phone: me.phone ?? "",
+      });
+    } catch (e) {
+      setProfileError(getApiErrorMessage(e));
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const setP = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setPass((f) => ({ ...f, [k]: e.target.value }));
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.firstName || !form.email) { showToast(t("fillRequired"), "error"); return; }
+    if (!form.firstName || !form.email) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
     setSavingProfile(true);
-    setTimeout(() => { setSavingProfile(false); showToast(t("profileSaved"), "success"); }, 700);
+    try {
+      const fullName = `${form.firstName} ${form.lastName}`.trim();
+      const updated = await vivaApiJson<AuthMeUser>("/auth/me", {
+        method: "PATCH",
+        body: {
+          name: fullName,
+          phone: form.phone.trim() === "" ? null : form.phone.trim(),
+        },
+      });
+      const prev = loadAccountSession();
+      if (prev) {
+        saveAccountSession({ ...prev, name: updated.name });
+      }
+      showToast(t("profileSaved"), "success");
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
-  const handlePassword = (e: React.FormEvent) => {
+  const handlePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pass.current || !pass.next || !pass.confirm) { showToast(t("fillRequired"), "error"); return; }
-    if (pass.next.length < 8) { showToast(t("passwordTooShortError"), "error"); return; }
-    if (pass.next !== pass.confirm) { showToast(t("passwordsDoNotMatchError"), "error"); return; }
+    if (!pass.current || !pass.next || !pass.confirm) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    if (pass.next.length < 8) {
+      showToast(t("passwordTooShortError"), "error");
+      return;
+    }
+    if (pass.next !== pass.confirm) {
+      showToast(t("passwordsDoNotMatchError"), "error");
+      return;
+    }
     setSavingPass(true);
-    setTimeout(() => {
-      setSavingPass(false);
+    try {
+      await vivaApiJson<void>("/auth/change-password", {
+        method: "POST",
+        body: { currentPassword: pass.current, newPassword: pass.next },
+      });
       setPass({ current: "", next: "", confirm: "" });
       showToast(t("passwordUpdated"), "success");
-    }, 700);
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    } finally {
+      setSavingPass(false);
+    }
   };
 
   return (
     <DashboardLayout>
-      <PanelPageHeader icon={UserCircle} title={t("profile")} subtitle={t("dashboardProfilePageSubtitle")} />
+      <PanelPageHeader icon={UserCircle} title={t("profile")} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile summary card */}
+      {profileError ? (
+        <p className="text-sm text-destructive mb-4 max-w-3xl" role="alert">
+          {profileError}
+        </p>
+      ) : null}
+
+      <div className="space-y-6 max-w-3xl">
         <Reveal delay={0.06}>
-          <Card className="p-6 border-border text-center">
-            <div className="mb-4 flex justify-center">
-              <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-3xl">
-                {form.firstName[0]}
-              </div>
-            </div>
-            <h3 className="font-bold text-foreground text-lg">{form.firstName} {form.lastName}</h3>
-            <p className="text-muted-foreground text-sm mt-0.5">{form.email}</p>
-            <Badge className="mt-3 bg-primary/10 text-primary">{t("standardPackageLabel")}</Badge>
-            <div className="mt-6 space-y-2.5 text-left">
-              {[
-                { label: t("memberSinceLabel"), value: t("memberSinceDemoValue") },
-                {
-                  label: t("lessonsCompletedLabel"),
-                  value: `4 / 18 ${t("lessons")} (${t("studentServicesPackageTitle")}) · 1 / 3 (${t("studentServicesExtraTitle")})`,
-                },
-              ].map((r, i) => (
-                <div key={i} className="flex justify-between text-sm border-b border-border pb-2">
-                  <span className="text-muted-foreground">{r.label}</span>
-                  <span className="font-medium text-foreground">{r.value}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </Reveal>
-
-        {/* Forms */}
-        <div className="lg:col-span-2 space-y-6">
-          <Reveal delay={0.10}>
-            <Card className="p-6 border-border">
-              <h3 className="font-semibold text-foreground mb-5">{t("personalInformationTitle")}</h3>
+          <Card className="p-6 border-border">
+            <h3 className="font-semibold text-foreground mb-5">{t("personalInformationTitle")}</h3>
+            {profileLoading ? (
+              <p className="text-sm text-muted-foreground py-4">{t("loading")}</p>
+            ) : (
               <form onSubmit={handleSaveProfile}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -90,56 +147,52 @@ export default function DashboardProfile() {
                     <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("lastName")}</label>
                     <Input value={form.lastName} onChange={set("lastName")} className="h-10" />
                   </div>
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("emailAddress")}</label>
-                    <Input type="email" value={form.email} onChange={set("email")} className="h-10" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("phoneNumber")}</label>
-                    <Input type="tel" value={form.phone} onChange={set("phone")} className="h-10" />
+                    <Input type="email" value={form.email} readOnly disabled className="h-10 opacity-80" />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("dateOfBirthLabel")}</label>
-                    <Input type="date" value={form.dob} onChange={set("dob")} className="h-10" />
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("phoneNumber")}</label>
+                    <Input type="tel" value={form.phone} onChange={set("phone")} className="h-10" />
                   </div>
                 </div>
                 <Button
                   type="submit"
-                  disabled={savingProfile}
+                  disabled={savingProfile || profileLoading}
                   className="mt-5 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-70"
                 >
                   {savingProfile ? t("saving") : t("saveChanges")}
                 </Button>
               </form>
-            </Card>
-          </Reveal>
+            )}
+          </Card>
+        </Reveal>
 
-          <Reveal delay={0.14}>
-            <Card className="p-6 border-border">
-              <div className="flex items-center gap-2 mb-5">
-                <Shield className="w-4 h-4 text-muted-foreground" />
-                <h3 className="font-semibold text-foreground">{t("changePasswordTitle")}</h3>
+        <Reveal delay={0.14}>
+          <Card className="p-6 border-border">
+            <div className="flex items-center gap-2 mb-5">
+              <Shield className="w-4 h-4 text-muted-foreground" />
+              <h3 className="font-semibold text-foreground">{t("changePasswordTitle")}</h3>
+            </div>
+            <form onSubmit={handlePassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("currentPassword")}</label>
+                <Input type="password" value={pass.current} onChange={setP("current")} placeholder="••••••••" className="h-10" />
               </div>
-              <form onSubmit={handlePassword} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("currentPassword")}</label>
-                  <Input type="password" value={pass.current} onChange={setP("current")} placeholder="••••••••" className="h-10" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("newPassword")}</label>
-                  <Input type="password" value={pass.next} onChange={setP("next")} placeholder={t("passwordPlaceholderMinChars")} className="h-10" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("confirmNewPassword")}</label>
-                  <Input type="password" value={pass.confirm} onChange={setP("confirm")} placeholder={t("passwordPlaceholderRepeat")} className="h-10" />
-                </div>
-                <Button type="submit" disabled={savingPass} variant="outline" className="border-border disabled:opacity-70">
-                  {savingPass ? t("updating") : t("updatePassword")}
-                </Button>
-              </form>
-            </Card>
-          </Reveal>
-        </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("newPassword")}</label>
+                <Input type="password" value={pass.next} onChange={setP("next")} placeholder={t("passwordPlaceholderMinChars")} className="h-10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("confirmNewPassword")}</label>
+                <Input type="password" value={pass.confirm} onChange={setP("confirm")} placeholder={t("passwordPlaceholderRepeat")} className="h-10" />
+              </div>
+              <Button type="submit" disabled={savingPass} variant="outline" className="border-border disabled:opacity-70">
+                {savingPass ? t("updating") : t("updatePassword")}
+              </Button>
+            </form>
+          </Card>
+        </Reveal>
       </div>
     </DashboardLayout>
   );

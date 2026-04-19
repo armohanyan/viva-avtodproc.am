@@ -7,7 +7,6 @@ import {
   DashboardExamQuizPage,
   DashboardThematicTestsPage,
   DashboardBookingsPage,
-  DashboardPurchasesPage,
   DashboardPaymentsPage,
   DashboardProfilePage,
 } from "src/pages/dashboard-pages";
@@ -23,7 +22,6 @@ export const dashboardRoutes: readonly AppRoute[] = [
   { path: "/dashboard/exam-tests/quiz/:mode", component: DashboardExamQuizPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/exam-tests", component: DashboardExamTestsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/bookings", component: DashboardBookingsPage, allowedAccountTypes: STUDENT, nest: true },
-  { path: "/dashboard/purchases", component: DashboardPurchasesPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/payments", component: DashboardPaymentsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/profile", component: DashboardProfilePage, allowedAccountTypes: STUDENT },
 ];

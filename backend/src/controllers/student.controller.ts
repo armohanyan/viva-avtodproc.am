@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseParams } from '../helpers';
+import { parseBody, parseParams, verifyAccessToken } from '../helpers';
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
@@ -8,7 +8,12 @@ import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
-const { ResourceNotFoundError } = ErrorsUtil;
+const { ResourceNotFoundError, UnauthorizedError, PermissionError } = ErrorsUtil;
+
+function readBearerToken(req: Request): string | undefined {
+  const raw = req.headers.authorization;
+  return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+}
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -44,9 +49,46 @@ const studentIdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
+const instructorFieldsPatchSchema = z
+  .object({
+    skillRating: z.number().int().min(0).max(10).optional(),
+    licenseAchieved: z.boolean().optional(),
+  })
+  .refine((o) => o.skillRating !== undefined || o.licenseAchieved !== undefined, {
+    message: 'At least one of skillRating or licenseAchieved is required',
+  });
+
 export default class StudentController {
-  static async list(_req: Request, res: Response, next: NextFunction) {
+  static async list(req: Request, res: Response, next: NextFunction) {
     try {
+      const rawInst = req.query.instructorUserId;
+      const instructorUserIdRaw =
+        typeof rawInst === 'string' ? rawInst : Array.isArray(rawInst) && typeof rawInst[0] === 'string' ? rawInst[0] : undefined;
+      const instructorUserId = instructorUserIdRaw !== undefined ? Number(instructorUserIdRaw) : undefined;
+
+      if (instructorUserId !== undefined && Number.isFinite(instructorUserId) && instructorUserId > 0) {
+        const token = readBearerToken(req);
+        if (!token) {
+          return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+        }
+        let payload: ReturnType<typeof verifyAccessToken>;
+        try {
+          payload = verifyAccessToken(token);
+        } catch {
+          return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+        }
+        if (payload.accountType !== 'instructor') {
+          return next(new PermissionError('Instructor access required', HttpStatusCodesUtil.FORBIDDEN));
+        }
+        const uid = Number(payload.sub);
+        if (!Number.isFinite(uid) || uid <= 0 || uid !== instructorUserId) {
+          return next(new PermissionError('You can only load your own students', HttpStatusCodesUtil.FORBIDDEN));
+        }
+        const data = await StudentAdminService.listForInstructor(instructorUserId);
+        SuccessHandlerUtil.handleList(res, next, data);
+        return;
+      }
+
       const data = await StudentAdminService.list();
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
@@ -62,6 +104,41 @@ export default class StudentController {
         return next(new ResourceNotFoundError('Invalid package', HttpStatusCodesUtil.NOT_FOUND));
       }
       SuccessHandlerUtil.handleAdd(res, next, row);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async patchInstructorFields(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      const body = parseBody(instructorFieldsPatchSchema, req.body);
+
+      const token = readBearerToken(req);
+      if (!token) {
+        return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      let payload: ReturnType<typeof verifyAccessToken>;
+      try {
+        payload = verifyAccessToken(token);
+      } catch {
+        return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      if (payload.accountType !== 'instructor') {
+        return next(new PermissionError('Instructor access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const instructorUserId = Number(payload.sub);
+      if (!Number.isFinite(instructorUserId) || instructorUserId <= 0) {
+        return next(new UnauthorizedError('Invalid token subject', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+
+      const row = await StudentAdminService.patchByAssignedInstructor(instructorUserId, id, body);
+      if (!row) {
+        return next(
+          new ResourceNotFoundError('Student not found or not assigned to you', HttpStatusCodesUtil.NOT_FOUND),
+        );
+      }
+      SuccessHandlerUtil.handleUpdate(res, next, row);
     } catch (e) {
       next(e);
     }

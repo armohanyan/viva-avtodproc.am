@@ -29,7 +29,16 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/cars", translationKey: "adminSidebarCars" },
   { href: "/admin/branches", translationKey: "adminSidebarBranches" },
-  { href: "/admin/finance", translationKey: "adminFinance" },
+  {
+    href: "/admin/finance",
+    translationKey: "adminFinance",
+    collapsible: true,
+    children: [
+      { href: "/admin/finance", translationKey: "adminFinanceOverviewNav" },
+      { href: "/admin/finance/income", translationKey: "adminFinanceIncomeNav" },
+      { href: "/admin/finance/outcomes", translationKey: "adminFinanceOutcomesNav" },
+    ],
+  },
   { href: "/admin/blogs", translationKey: "blogsAdmin" },
   {
     href: "/admin/marketing-content",

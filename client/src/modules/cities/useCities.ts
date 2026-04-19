@@ -7,7 +7,8 @@ function newId() {
 }
 
 export function cityNameById(cities: readonly City[], id: string): string {
-	return cities.find((c) => c.id === id)?.name ?? id;
+	const want = String(id);
+	return cities.find((c) => String(c.id) === want)?.name ?? id;
 }
 
 export function useCities() {
@@ -17,7 +18,14 @@ export function useCities() {
 	const refresh = useCallback(async () => {
 		try {
 			const data = await vivaApiJson<City[]>("/cities");
-			setCities(Array.isArray(data) ? data : []);
+			setCities(
+				Array.isArray(data)
+					? data.map((c) => ({
+							...c,
+							id: String(c.id),
+						}))
+					: [],
+			);
 		} catch {
 			setCities([]);
 		} finally {

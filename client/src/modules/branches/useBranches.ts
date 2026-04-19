@@ -13,7 +13,15 @@ export function useBranches() {
 	const refresh = useCallback(async () => {
 		try {
 			const data = await vivaApiJson<Branch[]>("/branches");
-			setBranches(Array.isArray(data) ? data : []);
+			setBranches(
+				Array.isArray(data)
+					? data.map((b) => ({
+							...b,
+							id: String(b.id),
+							cityId: String(b.cityId),
+						}))
+					: [],
+			);
 		} catch {
 			setBranches([]);
 		} finally {
@@ -100,5 +108,6 @@ export function useBranches() {
 }
 
 export function branchNameById(branches: readonly Branch[], id: string): string {
-	return branches.find((b) => b.id === id)?.name ?? id;
+	const want = String(id);
+	return branches.find((b) => String(b.id) === want)?.name ?? id;
 }

@@ -173,7 +173,10 @@ export default function AdminInstructors() {
         Array.isArray(data)
           ? data.map((i) => ({
               ...i,
+              id: String(i.id),
               studentRatingCount: typeof i.studentRatingCount === "number" ? i.studentRatingCount : 0,
+              /** API uses numeric ids; branch options and validation use strings (see useBranches). */
+              availableBranchIds: (i.availableBranchIds ?? []).map(String),
             }))
           : [],
       );
@@ -405,8 +408,8 @@ export default function AdminInstructors() {
     if (!ins.name || !ins.email) return t("fillRequired");
     if (!ins.teachesPractical && !ins.teachesTheory) return t("instructorTeachingRequired");
     if (ins.teachesPractical && branches.length > 0 && isSuperAdmin) {
-      const allowed = new Set(branches.map((b) => b.id));
-      const picked = ins.availableBranchIds ?? [];
+      const allowed = new Set(branches.map((b) => String(b.id)));
+      const picked = (ins.availableBranchIds ?? []).map(String);
       if (picked.length === 0 || picked.some((id) => !allowed.has(id))) {
         return t("instructorBranchesRequired");
       }

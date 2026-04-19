@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { absWouterHref } from "src/lib/wouterFullPath";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
@@ -51,8 +52,8 @@ export default function InstructorPanelLayout({ children }: Props) {
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
+		setLocation(absWouterHref("/"));
 		signOut();
-		setTimeout(() => setLocation("/"), 800);
 	};
 
 	const headerTitle = nav.find((n) => n.href === location)?.label || t("instructorDashboardTitle");

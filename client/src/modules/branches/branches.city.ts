@@ -1,7 +1,8 @@
 import type { Branch } from "./branch.types";
 
 export function branchesInCity(branches: readonly Branch[], cityId: string): Branch[] {
-  return branches.filter((b) => b.cityId === cityId);
+  const want = String(cityId);
+  return branches.filter((b) => String(b.cityId) === want);
 }
 
 export function branchIdsInCity(branches: readonly Branch[], cityId: string): string[] {

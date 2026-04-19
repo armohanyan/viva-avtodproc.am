@@ -7,19 +7,19 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { CarFront } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useFleetCars } from "src/modules/cars";
-import { INSTRUCTOR_PANEL_EMAIL } from "src/modules/instructor/instructor.consts";
+import { useAccount } from "src/modules/accounts";
 
 export default function InstructorCars() {
   const { t } = useLang();
+  const { user } = useAccount();
   const { cars } = useFleetCars();
   const [search, setSearch] = useState("");
 
   const myCars = useMemo(() => {
-    const email = INSTRUCTOR_PANEL_EMAIL.toLowerCase();
-    return cars.filter((c) =>
-      (c.assignedInstructorEmails ?? []).some((e) => e.toLowerCase() === email)
-    );
-  }, [cars]);
+    const email = user?.email?.trim().toLowerCase();
+    if (!email) return [];
+    return cars.filter((c) => (c.assignedInstructorEmails ?? []).some((e) => e.toLowerCase() === email));
+  }, [cars, user?.email]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

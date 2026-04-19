@@ -85,6 +85,8 @@ export default function AdminCars() {
     date: new Date().toISOString().slice(0, 10),
     purpose: "",
     note: "",
+    channel: "office" as "online" | "pos" | "office" | "bank",
+    method: "cash" as "card" | "idram" | "cash" | "transfer",
   });
   const [editExpense, setEditExpense] = useState<CarExpense | null>(null);
 
@@ -186,6 +188,8 @@ export default function AdminCars() {
       date: new Date().toISOString().slice(0, 10),
       purpose: "",
       note: "",
+      channel: "office",
+      method: "cash",
     });
   };
 
@@ -197,18 +201,23 @@ export default function AdminCars() {
       showToast(t("fillRequired"), "error");
       return;
     }
+    const amountAmd = Math.round(amount);
     addExpense({
       carId: expenseCar.id,
-      amount,
+      amount: amountAmd,
       date: newExpense.date.slice(0, 10),
       purpose: newExpense.purpose.trim(),
       note: newExpense.note.trim() || undefined,
+      channel: newExpense.channel,
+      method: newExpense.method,
     });
     setNewExpense({
       amount: "",
       date: new Date().toISOString().slice(0, 10),
       purpose: "",
       note: "",
+      channel: "office",
+      method: "cash",
     });
     showToast(t("fleetExpenseCreatedToast"), "success");
   };
@@ -222,10 +231,12 @@ export default function AdminCars() {
       return;
     }
     updateExpense(editExpense.id, {
-      amount,
+      amount: Math.round(amount),
       date: editExpense.date.slice(0, 10),
       purpose: editExpense.purpose.trim(),
       note: editExpense.note?.trim() || undefined,
+      channel: editExpense.channel ?? "office",
+      method: editExpense.method ?? "cash",
     });
     setEditExpense(null);
     showToast(t("fleetExpenseSavedToast"), "success");
@@ -674,12 +685,32 @@ export default function AdminCars() {
                         t("fleetExpenseColDate"),
                         t("fleetExpenseColAmount"),
                         t("fleetExpenseColPurpose"),
+                        t("financeColChannel"),
+                        t("financeColMethod"),
                         t("fleetExpenseColNote"),
                       ]}
                       rows={listExpenses.map((ex) => [
                         ex.date,
                         formatMoney(ex.amount),
                         ex.purpose,
+                        t(
+                          ex.channel === "online"
+                            ? "financeChannelOnline"
+                            : ex.channel === "pos"
+                              ? "financeChannelPos"
+                              : ex.channel === "bank"
+                                ? "financeChannelBank"
+                                : "financeChannelOffice",
+                        ),
+                        t(
+                          ex.method === "card"
+                            ? "financeMethodCard"
+                            : ex.method === "idram"
+                              ? "financeMethodIdram"
+                              : ex.method === "transfer"
+                                ? "financeMethodTransfer"
+                                : "financeMethodCash",
+                        ),
                         ex.note ?? "—",
                       ])}
                     />
@@ -699,25 +730,31 @@ export default function AdminCars() {
                 <div className="rounded-xl border border-border overflow-hidden min-h-0">
                   <div className="max-h-[min(38vh,420px)] sm:max-h-[min(48vh,520px)] lg:max-h-[min(52vh,560px)] overflow-y-auto overscroll-y-contain">
                     <AdminTableScroll>
-                    <table className="w-full min-w-[640px] text-sm">
+                    <table className="w-full min-w-[880px] text-sm">
                       <thead className="bg-muted/40 sticky top-0 z-[1] shadow-[0_1px_0_0_hsl(var(--border))]">
                         <tr>
-                          {[t("fleetExpenseColDate"), t("fleetExpenseColAmount"), t("fleetExpenseColPurpose"), t("fleetExpenseColNote"), t("actions")].map(
-                            (h) => (
-                              <th
-                                key={h}
-                                className="text-left text-xs font-semibold text-muted-foreground px-3 sm:px-4 py-3 uppercase tracking-wider whitespace-nowrap"
-                              >
-                                {h}
-                              </th>
-                            )
-                          )}
+                          {[
+                            t("fleetExpenseColDate"),
+                            t("fleetExpenseColAmount"),
+                            t("fleetExpenseColPurpose"),
+                            t("financeColChannel"),
+                            t("financeColMethod"),
+                            t("fleetExpenseColNote"),
+                            t("actions"),
+                          ].map((h) => (
+                            <th
+                              key={h}
+                              className="text-left text-xs font-semibold text-muted-foreground px-3 sm:px-4 py-3 uppercase tracking-wider whitespace-nowrap"
+                            >
+                              {h}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
                         {listExpenses.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="px-3 sm:px-4 py-10 text-center text-muted-foreground text-sm">
+                            <td colSpan={7} className="px-3 sm:px-4 py-10 text-center text-muted-foreground text-sm">
                               {t("fleetExpenseEmpty")}
                             </td>
                           </tr>
@@ -750,6 +787,28 @@ export default function AdminCars() {
                                 <td className="px-3 sm:px-4 py-2.5 whitespace-nowrap text-muted-foreground align-top">{ex.date}</td>
                                 <td className="px-3 sm:px-4 py-2.5 font-medium tabular-nums align-top whitespace-nowrap">{formatMoney(ex.amount)}</td>
                                 <td className="px-3 sm:px-4 py-2.5 align-top min-w-[140px] max-w-[280px]">{ex.purpose}</td>
+                                <td className="px-3 sm:px-4 py-2.5 text-muted-foreground align-top whitespace-nowrap text-xs">
+                                  {t(
+                                    ex.channel === "online"
+                                      ? "financeChannelOnline"
+                                      : ex.channel === "pos"
+                                        ? "financeChannelPos"
+                                        : ex.channel === "bank"
+                                          ? "financeChannelBank"
+                                          : "financeChannelOffice",
+                                  )}
+                                </td>
+                                <td className="px-3 sm:px-4 py-2.5 text-muted-foreground align-top whitespace-nowrap text-xs">
+                                  {t(
+                                    ex.method === "card"
+                                      ? "financeMethodCard"
+                                      : ex.method === "idram"
+                                        ? "financeMethodIdram"
+                                        : ex.method === "transfer"
+                                          ? "financeMethodTransfer"
+                                          : "financeMethodCash",
+                                  )}
+                                </td>
                                 <td className="px-3 sm:px-4 py-2.5 text-muted-foreground align-top min-w-[120px] max-w-[220px] break-words" title={ex.note}>
                                   {ex.note ?? "—"}
                                 </td>
@@ -813,6 +872,42 @@ export default function AdminCars() {
                         onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
                         className="h-11 min-w-0 w-full"
                       />
+                    </div>
+                    <div className="sm:col-span-1 lg:col-span-1">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
+                      <select
+                        value={newExpense.channel}
+                        onChange={(e) =>
+                          setNewExpense({
+                            ...newExpense,
+                            channel: e.target.value as (typeof newExpense)["channel"],
+                          })
+                        }
+                        className="w-full h-11 rounded-lg border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="office">{t("financeChannelOffice")}</option>
+                        <option value="pos">{t("financeChannelPos")}</option>
+                        <option value="online">{t("financeChannelOnline")}</option>
+                        <option value="bank">{t("financeChannelBank")}</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-1 lg:col-span-1">
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
+                      <select
+                        value={newExpense.method}
+                        onChange={(e) =>
+                          setNewExpense({
+                            ...newExpense,
+                            method: e.target.value as (typeof newExpense)["method"],
+                          })
+                        }
+                        className="w-full h-11 rounded-lg border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="cash">{t("financeMethodCash")}</option>
+                        <option value="card">{t("financeMethodCard")}</option>
+                        <option value="transfer">{t("financeMethodTransfer")}</option>
+                        <option value="idram">{t("financeMethodIdram")}</option>
+                      </select>
                     </div>
                     <div className="sm:col-span-2 lg:col-span-2">
                       <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColPurpose")} *</label>
@@ -890,6 +985,42 @@ export default function AdminCars() {
                   onChange={(e) => setEditExpense({ ...editExpense, date: e.target.value })}
                   className="h-10"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
+                <select
+                  value={editExpense.channel ?? "office"}
+                  onChange={(e) =>
+                    setEditExpense({
+                      ...editExpense,
+                      channel: e.target.value as NonNullable<CarExpense["channel"]>,
+                    })
+                  }
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                  <option value="office">{t("financeChannelOffice")}</option>
+                  <option value="pos">{t("financeChannelPos")}</option>
+                  <option value="online">{t("financeChannelOnline")}</option>
+                  <option value="bank">{t("financeChannelBank")}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
+                <select
+                  value={editExpense.method ?? "cash"}
+                  onChange={(e) =>
+                    setEditExpense({
+                      ...editExpense,
+                      method: e.target.value as NonNullable<CarExpense["method"]>,
+                    })
+                  }
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                >
+                  <option value="cash">{t("financeMethodCash")}</option>
+                  <option value="card">{t("financeMethodCard")}</option>
+                  <option value="transfer">{t("financeMethodTransfer")}</option>
+                  <option value="idram">{t("financeMethodIdram")}</option>
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColPurpose")} *</label>

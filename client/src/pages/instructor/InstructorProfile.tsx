@@ -13,6 +13,8 @@ import { useInstructors } from "src/modules/instructors/useInstructors";
 import { formatInstructorBranches, formatInstructorCities } from "src/modules/instructors/instructorLabels";
 import { useBranches } from "src/modules/branches";
 import { useCities } from "src/modules/cities";
+import { vivaApiJson } from "src/lib/vivaApi";
+import { getApiErrorMessage } from "src/lib/api";
 
 export default function InstructorProfile() {
   const { t } = useLang();
@@ -37,7 +39,7 @@ export default function InstructorProfile() {
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingPass, setSavingPass] = useState(false);
 
-  const handlePassword = (e: React.FormEvent) => {
+  const handlePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pass.current || !pass.next || !pass.confirm) {
       showToast(t("fillRequired"), "error");
@@ -52,11 +54,18 @@ export default function InstructorProfile() {
       return;
     }
     setSavingPass(true);
-    setTimeout(() => {
-      setSavingPass(false);
+    try {
+      await vivaApiJson("/auth/change-password", {
+        method: "POST",
+        body: { currentPassword: pass.current, newPassword: pass.next },
+      });
       setPass({ current: "", next: "", confirm: "" });
       showToast(t("passwordUpdated"), "success");
-    }, 600);
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    } finally {
+      setSavingPass(false);
+    }
   };
 
   const citiesLine = me ? formatInstructorCities(me, branches, cities) : "—";
