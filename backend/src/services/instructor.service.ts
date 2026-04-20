@@ -14,7 +14,6 @@ export type InstructorDto = {
   studentRatingCount: number;
   hourlyPrice: number;
   status: 'active' | 'inactive';
-  schedule: string;
   location: string;
   car: string;
   transmission: string;
@@ -45,7 +44,6 @@ function toDto(
     studentRatingCount,
     hourlyPrice: profile.hourlyPrice,
     status: profile.status,
-    schedule: profile.schedule,
     location: profile.location,
     car: profile.carLabel,
     transmission: profile.transmission,
@@ -98,7 +96,6 @@ export default class InstructorService {
       years: input.years,
       rating: seedRating,
       hourlyPrice: input.hourlyPrice,
-      schedule: input.schedule,
       location: input.location,
       carLabel: input.car,
       transmission: input.transmission,
@@ -142,7 +139,6 @@ export default class InstructorService {
     await profile.update({
       ...(patch.years !== undefined ? { years: patch.years } : {}),
       ...(patch.hourlyPrice !== undefined ? { hourlyPrice: patch.hourlyPrice } : {}),
-      ...(patch.schedule !== undefined ? { schedule: patch.schedule } : {}),
       ...(patch.location !== undefined ? { location: patch.location } : {}),
       ...(patch.car !== undefined ? { carLabel: patch.car } : {}),
       ...(patch.transmission !== undefined ? { transmission: patch.transmission } : {}),

@@ -11,7 +11,6 @@ export class InstructorProfile extends Model<
   declare years: number;
   declare rating: number;
   declare hourlyPrice: number;
-  declare schedule: string;
   declare location: string;
   declare carLabel: string;
   declare transmission: string;
@@ -27,7 +26,6 @@ InstructorProfile.init(
     years: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     rating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 5 },
     hourlyPrice: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
-    schedule: { type: DataTypes.STRING(128), allowNull: false },
     location: { type: DataTypes.STRING(128), allowNull: false },
     carLabel: { type: DataTypes.STRING(255), allowNull: false },
     transmission: { type: DataTypes.STRING(64), allowNull: false },

@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseParams, parseQuery, verifyAccessToken } from '../helpers';
+import { parseBody, parseParams, parseQuery } from '../helpers';
+import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import BookingService from '../services/booking.service';
 import InstructorAvailabilityService from '../services/instructor-availability.service';
 import InstructorService from '../services/instructor.service';
@@ -10,17 +11,6 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { ResourceNotFoundError, InputValidationError, PermissionError } = ErrorsUtil;
 
-function readBearerStaff(req: Request): { accountType: string } | null {
-  const raw = req.headers.authorization;
-  const token = raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
-  if (!token) return null;
-  try {
-    return verifyAccessToken(token);
-  } catch {
-    return null;
-  }
-}
-
 const createSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
@@ -28,7 +18,6 @@ const createSchema = z.object({
   years: z.number().int().nonnegative(),
   hourlyPrice: z.number().int().nonnegative(),
   status: z.enum(['active', 'inactive']),
-  schedule: z.string(),
   location: z.string(),
   car: z.string(),
   transmission: z.string(),
@@ -86,7 +75,7 @@ export default class InstructorController {
     try {
       const body = parseBody(createSchema, req.body);
       if (body.availableBranchIds.length > 0) {
-        const staff = readBearerStaff(req);
+        const staff = (req as StaffRequest).staff;
         if (!staff || staff.accountType !== 'super_admin') {
           return next(
             new PermissionError(
@@ -108,7 +97,7 @@ export default class InstructorController {
     try {
       const body = parseBody(updateSchema, req.body);
       if ('availableBranchIds' in body) {
-        const staff = readBearerStaff(req);
+        const staff = (req as StaffRequest).staff;
         if (!staff || staff.accountType !== 'super_admin') {
           return next(
             new PermissionError(

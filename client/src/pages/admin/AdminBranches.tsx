@@ -11,7 +11,7 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, MapPin, Building2 } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { Branch } from "src/modules/branches";
 import { useBranches } from "src/modules/branches";
 import type { City } from "src/modules/cities";
@@ -68,6 +68,12 @@ export default function AdminBranches() {
     });
   }, [branches, cities, branchSearch]);
 
+  /** DB city ids are numeric strings; default seed ids like `city-yerevan` are not in the API list. */
+  useEffect(() => {
+    if (!addBranchOpen || cities.length === 0) return;
+    setNewBranch((b) => (cities.some((c) => c.id === b.cityId) ? b : { ...b, cityId: cities[0]!.id }));
+  }, [addBranchOpen, cities]);
+
   const handleDeleteBranch = async () => {
     if (!deleteBranchId) return;
     if (branches.length <= 1) {
@@ -107,15 +113,19 @@ export default function AdminBranches() {
 
   const handleEditBranch = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!editBranch) return;
+
     if (!editBranch.name.trim() || !editBranch.mapUrl.trim()) {
       showToast(t("fillRequired"), "error");
       return;
     }
+
     if (!cities.some((c) => c.id === editBranch.cityId)) {
       showToast(t("branchCityInvalidToast"), "error");
       return;
     }
+
     try {
       await updateBranch(editBranch.id, {
         name: editBranch.name.trim(),
@@ -125,6 +135,7 @@ export default function AdminBranches() {
         email: editBranch.email?.trim() || undefined,
         workHours: editBranch.workHours?.trim() || undefined,
       });
+
       setEditBranch(null);
       showToast(t("branchUpdatedToast"), "success");
     } catch {
@@ -134,6 +145,7 @@ export default function AdminBranches() {
 
   const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!newBranch.name.trim() || !newBranch.mapUrl.trim()) {
       showToast(t("fillRequired"), "error");
       return;
@@ -348,7 +360,17 @@ export default function AdminBranches() {
           <Button
             type="button"
             size="sm"
-            onClick={() => setAddBranchOpen(true)}
+            onClick={() => {
+              setNewBranch({
+                name: "",
+                cityId: cities[0]?.id ?? DEFAULT_PRIMARY_CITY_ID,
+                mapUrl: "",
+                phone: "",
+                email: "",
+                workHours: "",
+              });
+              setAddBranchOpen(true);
+            }}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1.5 shrink-0 sm:w-auto"
           >
             <Plus className="w-3.5 h-3.5" />

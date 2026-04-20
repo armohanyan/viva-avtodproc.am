@@ -7,7 +7,6 @@ export type Instructor = {
   rating: number;
   hourlyPrice: number;
   status: "active" | "inactive";
-  schedule: string;
   location: string;
   car: string;
   transmission: string;
@@ -32,7 +31,6 @@ export const instructors: Instructor[] = [
     rating: 4.9,
     hourlyPrice: 7000,
     status: "active",
-    schedule: "Mon-Sat",
     location: "Yerevan",
     car: "Toyota Corolla",
     transmission: "Manual",
@@ -50,7 +48,6 @@ export const instructors: Instructor[] = [
     rating: 4.8,
     hourlyPrice: 6500,
     status: "active",
-    schedule: "Mon-Fri",
     location: "Yerevan",
     car: "Kia Rio",
     transmission: "Automatic",
@@ -68,7 +65,6 @@ export const instructors: Instructor[] = [
     rating: 5.0,
     hourlyPrice: 8000,
     status: "active",
-    schedule: "Tue-Sun",
     location: "Yerevan",
     car: "Kia Cerato",
     transmission: "Automatic",
@@ -86,7 +82,6 @@ export const instructors: Instructor[] = [
     rating: 4.7,
     hourlyPrice: 6000,
     status: "active",
-    schedule: "Mon-Fri",
     location: "Yerevan",
     car: "Nissan Versa",
     transmission: "Automatic",
@@ -104,7 +99,6 @@ export const instructors: Instructor[] = [
     rating: 4.9,
     hourlyPrice: 7200,
     status: "inactive",
-    schedule: "Mon-Sat",
     location: "Yerevan",
     car: "Hyundai Elantra",
     transmission: "Manual",

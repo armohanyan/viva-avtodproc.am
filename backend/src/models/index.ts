@@ -652,12 +652,37 @@ async function migrateLegacyInstructorAvailabilityBlocksTable(): Promise<void> {
   await sequelize.query('DROP TABLE IF EXISTS `instructor_availability_blocks`');
 }
 
+/** Drops legacy `instructor_profiles.schedule` (free-text); availability uses `instructor_schedule_rules`. */
+async function ensureInstructorProfilesDropScheduleColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_profiles'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_profiles' AND COLUMN_NAME = 'schedule'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `instructor_profiles` DROP COLUMN `schedule`');
+}
+
 export async function syncModels(): Promise<void> {
   await assertMysqlCoreIdsAreInteger();
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
   await ensureRefreshTokensIdColumn();
   await ensureOAuthAccountsIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await ensureInstructorProfilesDropScheduleColumn();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensureUsersIsActiveColumn();

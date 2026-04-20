@@ -17,6 +17,7 @@ import {
   normalizeAvailabilityBlocksFromApi,
 } from "src/modules/instructors/instructorAvailability";
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
+import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 
 const timeSlots = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -169,6 +170,7 @@ export default function LessonBookingCalendar({
   const [countdownTick, setCountdownTick] = useState(0);
   const [busySlotsRefreshKey, setBusySlotsRefreshKey] = useState(0);
   const [payBusy, setPayBusy] = useState(false);
+  const [posDialogOpen, setPosDialogOpen] = useState(false);
   const [slotSearch, setSlotSearch] = useState("");
   const [periodFilter, setPeriodFilter] = useState<"all" | "morning" | "afternoon">("all");
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
@@ -297,8 +299,9 @@ export default function LessonBookingCalendar({
   );
 
   const slotStyle = (status: SlotStatus, isSelected: boolean) => {
-    if (isSelected) return "bg-primary text-primary-foreground border-primary";
+    /** Booked “mine” must win over selection — `selected` is kept after confirm for the summary panel. */
     if (status === "mine") return "bg-primary/10 text-primary border-primary/20 cursor-default";
+    if (isSelected) return "bg-primary text-primary-foreground border-primary";
     if (status === "unavailable") return "bg-accent text-muted-foreground border-border cursor-not-allowed";
     return "bg-card text-muted-foreground border-border hover:border-primary/40 hover:bg-primary/10 cursor-pointer";
   };
@@ -412,6 +415,7 @@ export default function LessonBookingCalendar({
     setPayNowAtBooking(false);
     setServerPaidConfirmed(false);
     setBookingFlowDone(false);
+    setPosDialogOpen(false);
     setBusySlotsRefreshKey((k) => k + 1);
   };
 
@@ -424,8 +428,8 @@ export default function LessonBookingCalendar({
   const studentPaymentStepActive =
     mode === "student" && confirmed && studentPaySession && !serverPaidConfirmed && !bookingFlowDone;
 
-  const onCompletePayment = async () => {
-    if (!studentPaySession) return;
+  const onCompletePayment = async (): Promise<boolean> => {
+    if (!studentPaySession) return false;
     setPayBusy(true);
     try {
       await vivaApiJson(`/bookings/${encodeURIComponent(String(studentPaySession.id))}/complete-payment`, {
@@ -434,8 +438,10 @@ export default function LessonBookingCalendar({
       setServerPaidConfirmed(true);
       setBusySlotsRefreshKey((k) => k + 1);
       showToast(t("bookingPaymentCompletedToast"), "success");
+      return true;
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+      return false;
     } finally {
       setPayBusy(false);
     }
@@ -496,6 +502,15 @@ export default function LessonBookingCalendar({
   };
 
   return (
+    <>
+    <SimulatedAcbaPosDialog
+      open={posDialogOpen}
+      onOpenChange={setPosDialogOpen}
+      amountAmd={studentPaySession?.totalPriceAmd ?? null}
+      locale={locale}
+      busy={payBusy}
+      onApprove={onCompletePayment}
+    />
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 xl:items-stretch">
       <div className="xl:col-span-3 space-y-6 min-w-0">
         {showInstructorPicker ? (
@@ -708,9 +723,9 @@ export default function LessonBookingCalendar({
                           <Button
                             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                             disabled={payBusy || remainingMs <= 0}
-                            onClick={() => void onCompletePayment()}
+                            onClick={() => setPosDialogOpen(true)}
                           >
-                            {payBusy ? t("loading") : t("bookingCompletePaymentCta")}
+                            {t("bookingCompletePaymentCta")}
                           </Button>
                           {canExtend ? (
                             <Button
@@ -856,5 +871,6 @@ export default function LessonBookingCalendar({
         </Reveal>
       </div>
     </div>
+    </>
   );
 }

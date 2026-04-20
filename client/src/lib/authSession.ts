@@ -7,11 +7,24 @@ function isAccountType(v: string): v is AccountType {
 }
 
 /** Same-origin as `api.ts` when `VITE_API_BASE_URL` is unset (Vite proxy). */
-function authRefreshUrl(): string {
+function authV1Url(suffix: string): string {
 	const meta = import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } };
 	const base = meta.env?.VITE_API_BASE_URL?.trim().replace(/\/+$/, "") ?? "";
-	const path = `${API_V1_PREFIX}/auth/refresh`;
+	const path = `${API_V1_PREFIX}${suffix.startsWith("/") ? suffix : `/${suffix}`}`;
 	return base ? `${base}${path}` : path;
+}
+
+function authRefreshUrl(): string {
+	return authV1Url("/auth/refresh");
+}
+
+/**
+ * Clears the httpOnly refresh cookie on the server (best-effort). Use after local session is cleared
+ * so the browser does not keep a valid refresh token without a matching client session.
+ */
+export function clearRefreshCookieBestEffort(): void {
+	if (typeof window === "undefined") return;
+	void fetch(authV1Url("/auth/logout"), { method: "POST", credentials: "include" });
 }
 
 let inFlight: Promise<boolean> | null = null;

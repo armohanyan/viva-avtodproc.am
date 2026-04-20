@@ -19,7 +19,6 @@ import type { Instructor } from "src/data/instructors";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
-import type { City } from "src/modules/cities";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
 import { useAccount } from "src/modules/accounts";
@@ -36,7 +35,6 @@ type InstructorForm = Pick<
   | "email"
   | "phone"
   | "years"
-  | "schedule"
   | "teachesPractical"
   | "teachesTheory"
   | "status"
@@ -48,16 +46,11 @@ const createNewInstructorDraft = (): InstructorForm => ({
   email: "",
   phone: "",
   years: 1,
-  schedule: "Mon-Fri",
   teachesPractical: true,
   teachesTheory: false,
   status: "active",
   availableBranchIds: [],
 });
-
-function instructorServesCity(ins: Instructor, cityId: string, allBranches: readonly Branch[]): boolean {
-  return ins.availableBranchIds.some((id) => allBranches.find((b) => b.id === id)?.cityId === cityId);
-}
 
 type InstructorScheduleRuleRow = {
   id: string;
@@ -191,7 +184,6 @@ export default function AdminInstructors() {
   }, [loadInstructors]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [scheduleFilter, setScheduleFilter] = useState("all");
   const [cityFilter, setCityFilter] = useState<"all" | string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
@@ -357,54 +349,78 @@ export default function AdminInstructors() {
       showToast(getApiErrorMessage(e), "error");
     }
   };
-  const scheduleOptions = Array.from(new Set(instructors.map((i) => i.schedule)));
-
-  const teachingFilterMatch = (ins: Instructor) => {
+  const teachingFilterMatch = useCallback((ins: Instructor) => {
     if (teachingFilter === "all") return true;
     if (teachingFilter === "practical_only") return ins.teachesPractical && !ins.teachesTheory;
     if (teachingFilter === "theory_only") return ins.teachesTheory && !ins.teachesPractical;
     return ins.teachesPractical && ins.teachesTheory;
-  };
+  }, [teachingFilter]);
 
-  const filteredInstructors = instructors.filter((ins) => {
+  /** Precompute searchable text once per data change (not on every search keystroke). */
+  const instructorSearchPrep = useMemo(() => {
+    return instructors.map((ins) => {
+      const teachingLabels = [
+        ins.teachesPractical ? t("instructorTeachingPractical") : "",
+        ins.teachesTheory ? t("instructorTeachingTheory") : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const branchHay = ins.availableBranchIds.map((id) => branchNameById(branches, id)).join(" ");
+      const citiesHay = formatInstructorCities(ins, branches, cities);
+      const hay = [
+        ins.name,
+        ins.email,
+        ins.phone,
+        ins.status,
+        teachingLabels,
+        citiesHay,
+        branchHay,
+        ins.imageSrc,
+        String(ins.years),
+        String(ins.rating),
+      ]
+        .join(" ")
+        .toLowerCase();
+      const cityIds = new Set<string>();
+      for (const bid of ins.availableBranchIds) {
+        const b = branches.find((x) => String(x.id) === String(bid));
+        if (b) cityIds.add(String(b.cityId));
+      }
+      return { ins, hay, cityIds };
+    });
+  }, [instructors, branches, cities, t]);
+
+  const filteredInstructors = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const teachingLabels = [
-      ins.teachesPractical ? t("instructorTeachingPractical") : "",
-      ins.teachesTheory ? t("instructorTeachingTheory") : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    const branchHay = ins.availableBranchIds.map((id) => branchNameById(branches, id)).join(" ");
-    const citiesHay = formatInstructorCities(ins, branches, cities);
-    const hay = [
+    const wantCity = String(cityFilter);
+    return instructorSearchPrep
+      .filter(({ ins, hay, cityIds }) => {
+        const matchesSearch = !q || hay.includes(q);
+        const matchesStatus = statusFilter === "all" || ins.status === statusFilter;
+        const matchesCity = cityFilter === "all" || cityIds.has(wantCity);
+        return matchesSearch && matchesStatus && matchesCity && teachingFilterMatch(ins);
+      })
+      .map((row) => row.ins);
+  }, [instructorSearchPrep, search, statusFilter, cityFilter, teachingFilterMatch]);
+
+  const instructorStatusLabel = useCallback((s: string) => (s === "active" ? t("active") : t("inactive")), [t]);
+
+  const getInstructorCsvRows = useCallback((): string[][] => {
+    return filteredInstructors.map((ins) => [
+      ins.imageSrc,
       ins.name,
       ins.email,
+      [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
+        .filter(Boolean)
+        .join(" + ") || "-",
+      formatInstructorCities(ins, branches, cities),
+      formatInstructorBranches(ins, branches, cities),
       ins.phone,
-      ins.schedule,
-      ins.status,
-      teachingLabels,
-      citiesHay,
-      branchHay,
-      ins.imageSrc,
-      String(ins.years),
-      String(ins.rating),
-    ]
-      .join(" ")
-      .toLowerCase();
-    const matchesSearch = !q || hay.includes(q);
-    const matchesStatus = statusFilter === "all" || ins.status === statusFilter;
-    const matchesSchedule = scheduleFilter === "all" || ins.schedule === scheduleFilter;
-    const matchesCity = cityFilter === "all" || instructorServesCity(ins, cityFilter, branches);
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesSchedule &&
-      matchesCity &&
-      teachingFilterMatch(ins)
-    );
-  });
-
-  const instructorStatusLabel = (s: string) => (s === "active" ? t("active") : t("inactive"));
+      ins.rating.toFixed(1),
+      `${ins.years} ${t("adminInstructorYearsShort")}`,
+      instructorStatusLabel(ins.status),
+    ]);
+  }, [filteredInstructors, t, branches, cities, instructorStatusLabel]);
 
   const validateInstructor = (ins: InstructorForm) => {
     if (!ins.name || !ins.email) return t("fillRequired");
@@ -449,7 +465,6 @@ export default function AdminInstructors() {
         years: editIns.years,
         hourlyPrice: editIns.hourlyPrice,
         status: editIns.status,
-        schedule: editIns.schedule,
         location: deriveInstructorLocationFromBranches(editIns.availableBranchIds, branches, cities, "Yerevan"),
         car: editIns.car,
         transmission: editIns.transmission,
@@ -481,7 +496,7 @@ export default function AdminInstructors() {
     }
 
     const branchIdsForCreate = isSuperAdmin ? newIns.availableBranchIds : [];
-    const nextPayload: Omit<Instructor, "id"> = {
+    const nextPayload: Omit<Instructor, "id" | "rating" | "studentRatingCount"> = {
       ...newIns,
       availableBranchIds: branchIdsForCreate,
       hourlyPrice: 7000,
@@ -531,30 +546,16 @@ export default function AdminInstructors() {
               t("instructorCitiesLabel"),
               t("instructorBranchesLabel"),
               t("phone"),
-              t("cohortColSchedule"),
               t("adminInstructorColRating"),
               t("adminInstructorColExperience"),
               t("status"),
             ]}
-            rows={filteredInstructors.map((ins) => [
-              ins.imageSrc,
-              ins.name,
-              ins.email,
-              [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
-                .filter(Boolean)
-                .join(" + ") || "-",
-              formatInstructorCities(ins, branches, cities),
-              formatInstructorBranches(ins, branches, cities),
-              ins.phone,
-              ins.schedule,
-              ins.rating.toFixed(1),
-              `${ins.years} ${t("adminInstructorYearsShort")}`,
-              instructorStatusLabel(ins.status),
-            ])}
+            getRowsForExport={getInstructorCsvRows}
+            exportRowCount={filteredInstructors.length}
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[68rem]">
+          <table className="w-full text-sm min-w-[62rem]">
             <thead className="bg-muted/40">
               <tr>
                 <TableColumnHeaderWithFilter title={t("adminInstructorColPhoto")} />
@@ -591,20 +592,6 @@ export default function AdminInstructors() {
                 />
                 <TableColumnHeaderWithFilter title={t("instructorBranchesLabel")} />
                 <TableColumnHeaderWithFilter title={t("phone")} />
-                <TableColumnHeaderWithFilter
-                  title={t("cohortColSchedule")}
-                  filter={
-                    <TableColumnFilter
-                      value={scheduleFilter}
-                      onChange={setScheduleFilter}
-                      ariaLabel={t("filter")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...scheduleOptions.map((s) => ({ value: s, label: s })),
-                      ]}
-                    />
-                  }
-                />
                 <TableColumnHeaderWithFilter title={t("adminInstructorColRating")} />
                 <TableColumnHeaderWithFilter title={t("adminInstructorColExperience")} />
                 <TableColumnHeaderWithFilter
@@ -693,7 +680,6 @@ export default function AdminInstructors() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.phone}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{ins.schedule}</td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{ins.rating.toFixed(1)}</td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
                       {ins.years} {t("adminInstructorYearsShort")}
@@ -796,15 +782,9 @@ export default function AdminInstructors() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
                 <Input value={editIns.phone} onChange={(e) => updateEdit(editIns.id, { phone: e.target.value })} className="h-10" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
-                  <Input type="number" value={editIns.years} onChange={(e) => updateEdit(editIns.id, { years: +e.target.value || 1 })} className="h-10" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
-                  <Input value={editIns.schedule} onChange={(e) => updateEdit(editIns.id, { schedule: e.target.value })} className="h-10" />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
+                <Input type="number" value={editIns.years} onChange={(e) => updateEdit(editIns.id, { years: +e.target.value || 1 })} className="h-10" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -939,15 +919,9 @@ export default function AdminInstructors() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
               <Input value={newIns.phone} onChange={(e) => setNewIns({ ...newIns, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
-                <Input type="number" value={newIns.years} onChange={(e) => setNewIns({ ...newIns, years: +e.target.value || 1 })} className="h-10" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColSchedule")}</label>
-                <Input value={newIns.schedule} onChange={(e) => setNewIns({ ...newIns, schedule: e.target.value })} className="h-10" />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
+              <Input type="number" value={newIns.years} onChange={(e) => setNewIns({ ...newIns, years: +e.target.value || 1 })} className="h-10" />
             </div>
             <div>
               <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>

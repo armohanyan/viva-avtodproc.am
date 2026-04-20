@@ -227,7 +227,8 @@ export default class BookingController {
           dateIso: body.date,
           slots: body.slots,
           branchId: body.branchId,
-          payNow: body.payNow === true,
+          /** Omitted = no preference (horizon rules apply); only explicit `false` means “defer if allowed”. */
+          payNow: typeof body.payNow === 'boolean' ? body.payNow : undefined,
         });
         SuccessHandlerUtil.handleAdd(res, next, row);
         return;

@@ -951,6 +951,12 @@ const en = {
   bookingPaymentCountdownHint: "Pay within 10 minutes to keep this slot (server timer).",
   bookingPaymentRemainingLabel: "Time left to pay",
   bookingCompletePaymentCta: "Complete payment",
+  bookingPosSimTitle: "AcBa Bank POS (simulated)",
+  bookingPosSimBody:
+    "We record the lesson fee as if you paid at the branch on an AcBa card terminal. No real bank charge runs in this demo — approve below to confirm your booking.",
+  bookingPosSimAmountLabel: "Amount due",
+  bookingPosSimApprove: "Approve on terminal (simulate)",
+  bookingPosSimCancel: "Cancel",
   bookingAddFiveMinutesCta: "Add 5 more minutes",
   bookingCancellationRulesShort: "Cancel ≥24h before: refund if paid. Under 24h: no refund.",
   bookingReservePayLaterHint:
@@ -2093,6 +2099,12 @@ const ru: typeof en = {
   bookingPaymentCountdownHint: "Оплатите в течение 10 минут, чтобы удержать слот (таймер на сервере).",
   bookingPaymentRemainingLabel: "Осталось на оплату",
   bookingCompletePaymentCta: "Оплатить",
+  bookingPosSimTitle: "POS AcBa Bank (симуляция)",
+  bookingPosSimBody:
+    "Сумма урока фиксируется как оплата в отделении через терминал AcBa. В демо реального списания нет — нажмите подтверждение, чтобы завершить бронирование.",
+  bookingPosSimAmountLabel: "К оплате",
+  bookingPosSimApprove: "Подтвердить на терминале (симуляция)",
+  bookingPosSimCancel: "Отмена",
   bookingAddFiveMinutesCta: "Добавить 5 минут",
   bookingCancellationRulesShort: "Отмена ≥24 ч до урока — возврат при оплате; <24 ч — без возврата.",
   bookingReservePayLaterHint:
@@ -3236,6 +3248,12 @@ const am: typeof en = {
   bookingPaymentCountdownHint: "Վճարեք 10 րոպեում՝ ժամադիրը պահելու համար (սերվերային հաշվարկ)։",
   bookingPaymentRemainingLabel: "Մնացել է վճարման համար",
   bookingCompletePaymentCta: "Ավարտել վճարումը",
+  bookingPosSimTitle: "AcBa բանկի POS (սիմուլյացիա)",
+  bookingPosSimBody:
+    "Դասի վճարումը գրանցվում է ինչպես AcBa քարտային տերմինալով մասնաճյուղում։ Այս ցուցադրությունում իրական գանձում չկա — հաստատեք՝ ամրագրումն ավարտելու համար։",
+  bookingPosSimAmountLabel: "Վճարման գումար",
+  bookingPosSimApprove: "Հաստատել տերմինալում (սիմուլյացիա)",
+  bookingPosSimCancel: "Չեղարկել",
   bookingAddFiveMinutesCta: "Ավելացնել ևս 5 րոպե",
   bookingCancellationRulesShort: "Չեղարկում ≥24 ժ առաջ՝ վերադարձ (եթե վճարված է)։ <24 ժ՝ առանց վերադարձի։",
   bookingReservePayLaterHint:

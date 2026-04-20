@@ -2,10 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { vivaApiJson } from "src/lib/vivaApi";
 import type { City } from "./city.types";
 
-function newId() {
-	return `city-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 export function cityNameById(cities: readonly City[], id: string): string {
 	const want = String(id);
 	return cities.find((c) => String(c.id) === want)?.name ?? id;
@@ -39,10 +35,12 @@ export function useCities() {
 
 	const addCity = useCallback(
 		async (c: Omit<City, "id">): Promise<string> => {
-			const id = newId();
-			await vivaApiJson("/cities", { method: "POST", body: { id, name: c.name } });
+			const created = await vivaApiJson<{ id: string | number; name: string }>("/cities", {
+				method: "POST",
+				body: { name: c.name },
+			});
 			await refresh();
-			return id;
+			return String(created.id);
 		},
 		[refresh],
 	);

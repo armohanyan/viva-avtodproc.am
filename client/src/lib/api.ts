@@ -1,5 +1,6 @@
 import { API_V1_PREFIX } from "src/constants/api";
 import { tryRefreshAccessToken } from "src/lib/authSession";
+import { revokeClientSessionAfterAuthorizationFailure } from "src/lib/authUnauthorizedRecovery";
 import { loadAccountSession } from "src/modules/accounts/account.session";
 
 function trimTrailingSlashes(s: string): string {
@@ -127,19 +128,22 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 					: JSON.stringify(body),
 	});
 
-	if (res.status === 401 && !_authRetry && shouldAttemptAuthRefreshRetry(path) && typeof window !== "undefined") {
-		const refreshed = await tryRefreshAccessToken();
-		if (refreshed) {
-			// `init` still carries the expired Bearer from the first attempt; merge the new token.
-			const retryHeaders = new Headers(headers);
-			const token = loadAccountSession()?.accessToken;
-			if (token) {
-				retryHeaders.set("Authorization", `Bearer ${token}`);
-			} else {
-				retryHeaders.delete("Authorization");
+	if (res.status === 401 && typeof window !== "undefined" && shouldAttemptAuthRefreshRetry(path)) {
+		if (!_authRetry) {
+			const refreshed = await tryRefreshAccessToken();
+			if (refreshed) {
+				// `init` still carries the expired Bearer from the first attempt; merge the new token.
+				const retryHeaders = new Headers(headers);
+				const token = loadAccountSession()?.accessToken;
+				if (token) {
+					retryHeaders.set("Authorization", `Bearer ${token}`);
+				} else {
+					retryHeaders.delete("Authorization");
+				}
+				return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
 			}
-			return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
 		}
+		revokeClientSessionAfterAuthorizationFailure();
 	}
 
 	return res;

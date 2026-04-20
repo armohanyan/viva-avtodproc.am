@@ -245,6 +245,12 @@ function expandLegacyBookingHours(row: Booking): { time: string; studentUserId: 
   return out;
 }
 
+/** Raw DB `bookings.status` values that still block the calendar slot row in `booking_slots`. */
+function rawBookingStatusReservesSlot(status: unknown): boolean {
+  const s = typeof status === 'string' ? status : '';
+  return (SLOT_RESERVING_STATUSES as readonly string[]).includes(s as (typeof SLOT_RESERVING_STATUSES)[number]);
+}
+
 async function replaceBookingSlotRows(
   bookingId: number,
   instructorUserId: number,
@@ -483,6 +489,7 @@ export default class BookingService {
         dateIso,
         slot,
       );
+
       if (unavailable) {
         throw new InputValidationError(
           'Instructor is not available at this time (day off, break, or outside work hours).',
@@ -494,12 +501,14 @@ export default class BookingService {
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
     const today = todayIsoUtc();
     const paymentRequiredNow = isLessonOnOrBeforePayHorizon(dateIso, today);
+
     if (paymentRequiredNow && input.payNow === false) {
       throw new InputValidationError(
         'Payment is required for this lesson date; you cannot defer payment.',
         HttpStatusCodesUtil.BAD_REQUEST,
       );
     }
+
     const startPaymentHold = paymentRequiredNow || input.payNow === true;
     const holdExpiresAt = startPaymentHold ? new Date(Date.now() + PAYMENT_HOLD_MS) : null;
 
@@ -511,6 +520,7 @@ export default class BookingService {
             dateIso,
             slot,
           );
+
           if (unavailable) {
             throw new InputValidationError(
               'Instructor is not available at this time (day off, break, or outside work hours).',
@@ -567,6 +577,7 @@ export default class BookingService {
         paymentRequiredNow,
       };
     } catch (e) {
+      console.log(e, 'eee')
       if (isDuplicateSlotClaimError(e)) {
         throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
       }
@@ -872,6 +883,9 @@ export default class BookingService {
         if (patch.dateIso !== undefined || patch.time !== undefined || patch.instructorName !== undefined) {
           await replaceBookingSlotRows(row.id, instructorUserId, nextDateIso, sorted, transaction);
         }
+        if (!rawBookingStatusReservesSlot(row.status)) {
+          await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
+        }
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -1024,14 +1038,14 @@ export default class BookingService {
         await FinanceService.create({
           customer: stu.name.trim() || 'Student',
           email: stu.email ?? '',
-          description: `Practical lesson booking #${row.id} (payment)`,
+          description: `Practical lesson #${row.id} — AcBa Bank POS (simulated)`,
           branchId: row.branchId,
-          channel: 'online',
+          channel: 'pos',
           method: 'card',
           grossAmd: gross,
           feeAmd: 0,
           status: 'completed',
-          providerRef: `booking:${row.id}`,
+          providerRef: `booking-pos:${row.id}`,
           source: 'system',
           bookingId: row.id,
         });
@@ -1084,6 +1098,8 @@ export default class BookingService {
         },
         { transaction },
       );
+
+      await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
 
       let refundIssued = false;
       if (nextStatus === 'refunded' && wasPaid && gross > 0) {

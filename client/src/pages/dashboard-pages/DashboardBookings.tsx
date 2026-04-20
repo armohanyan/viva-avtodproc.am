@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "src/components/ui/dialog";
+import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 
 function localeFromLang(lang: "en" | "ru" | "am") {
   if (lang === "am") return "hy-AM";
@@ -84,6 +85,7 @@ export function DashboardBookingsListTab() {
   const { upcoming, past } = useMemo(() => partitionStudentBookings(bookings), [bookings]);
   const [busyId, setBusyId] = useState<string | number | null>(null);
   const [cancelTarget, setCancelTarget] = useState<StudentDemoBooking | null>(null);
+  const [payPosTarget, setPayPosTarget] = useState<StudentDemoBooking | null>(null);
 
   const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -103,14 +105,16 @@ export function DashboardBookingsListTab() {
     }
   };
 
-  const onCompletePayment = async (b: StudentDemoBooking) => {
+  const completePaymentFor = async (b: StudentDemoBooking): Promise<boolean> => {
     setBusyId(b.id);
     try {
       await vivaApiJson(`/bookings/${encodeURIComponent(String(b.id))}/complete-payment`, { method: "POST" });
       showToast(t("bookingPaymentCompletedToast"), "success");
       await refresh();
+      return true;
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+      return false;
     } finally {
       setBusyId(null);
     }
@@ -152,6 +156,19 @@ export function DashboardBookingsListTab() {
 
   return (
     <>
+      <SimulatedAcbaPosDialog
+        open={payPosTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setPayPosTarget(null);
+        }}
+        amountAmd={payPosTarget?.totalPriceAmd ?? null}
+        locale={locale}
+        busy={payPosTarget != null && busyId === payPosTarget.id}
+        onApprove={async () => {
+          if (!payPosTarget) return false;
+          return completePaymentFor(payPosTarget);
+        }}
+      />
       <Dialog
         open={cancelTarget !== null}
         onOpenChange={(open) => {
@@ -282,9 +299,9 @@ export function DashboardBookingsListTab() {
                                   variant="default"
                                   className="h-8 text-xs"
                                   disabled={busyId === b.id}
-                                  onClick={() => void onCompletePayment(b)}
+                                  onClick={() => setPayPosTarget(b)}
                                 >
-                                  {busyId === b.id ? t("loading") : t("bookingCompletePaymentCta")}
+                                  {t("bookingCompletePaymentCta")}
                                 </Button>
                               ) : null}
                               {b.status === "pending" && holdActive(b) &&
