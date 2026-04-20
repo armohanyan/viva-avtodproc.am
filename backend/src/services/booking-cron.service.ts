@@ -1,26 +1,16 @@
 import { Op } from 'sequelize';
 import { Booking } from '../models';
-import { addOneCalendarMonth, todayIsoUtc } from '../utils/calendar-month.util';
 import LoggerUtil from '../utils/logger.util';
 
-const PAYMENT_HOLD_MS = 10 * 60 * 1000;
-
 /**
- * Background jobs for `pending` bookings with a payment window (`hold_expires_at`).
+ * Deletes unpaid practical bookings whose server-side payment hold has expired.
+ * Slot rows cascade on `booking_slots.booking_id` FK.
  *
- * 1) `pending` + unpaid + lesson in pay horizon + no hold yet → start 10-minute hold (still `pending`).
- * 2) `pending` + unpaid + active hold expired → `cancelled` (slot freed).
- *
- * Also migrates legacy statuses from older rows into the same flow once per row.
+ * Does **not** auto-start holds for “pay later” rows (`hold_expires_at` null).
  */
 export default class BookingCronService {
-  static async runDueJobs(): Promise<{ promoted: number; expiredHolds: number }> {
-    const today = todayIsoUtc();
-    const payHorizonEnd = addOneCalendarMonth(today);
-
-    const holdUntil = new Date(Date.now() + PAYMENT_HOLD_MS);
-
-    const [legacyToPending] = await Booking.update(
+  static async runDueJobs(): Promise<{ legacyNormalized: number; deletedExpiredHolds: number }> {
+    const [legacyNormalized] = await Booking.update(
       { status: 'pending' },
       {
         where: {
@@ -30,36 +20,21 @@ export default class BookingCronService {
       },
     );
 
-    const [promoted] = await Booking.update(
-      { holdExpiresAt: holdUntil },
-      {
-        where: {
-          status: 'pending',
-          lessonType: 'practical',
-          paidAt: { [Op.is]: null },
-          dateIso: { [Op.lte]: payHorizonEnd },
-          holdExpiresAt: { [Op.is]: null },
-        },
+    const deletedExpiredHolds = await Booking.destroy({
+      where: {
+        status: 'pending',
+        lessonType: 'practical',
+        paidAt: { [Op.is]: null },
+        holdExpiresAt: { [Op.and]: [{ [Op.ne]: null }, { [Op.lt]: new Date() }] },
       },
-    );
+    });
 
-    const [expiredHolds] = await Booking.update(
-      { status: 'cancelled', holdExpiresAt: null },
-      {
-        where: {
-          status: 'pending',
-          paidAt: { [Op.is]: null },
-          holdExpiresAt: { [Op.lt]: new Date() },
-        },
-      },
-    );
-
-    if (legacyToPending > 0 || promoted > 0 || expiredHolds > 0) {
+    if (legacyNormalized > 0 || deletedExpiredHolds > 0) {
       LoggerUtil.info(
-        `Booking cron: normalized ${legacyToPending} legacy status row(s); started ${promoted} payment hold(s); cancelled ${expiredHolds} expired unpaid hold(s)`,
+        `Booking cron: normalized ${legacyNormalized} legacy status row(s); deleted ${deletedExpiredHolds} expired unpaid booking(s)`,
       );
     }
 
-    return { promoted, expiredHolds };
+    return { legacyNormalized, deletedExpiredHolds };
   }
 }

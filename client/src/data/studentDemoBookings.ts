@@ -46,6 +46,13 @@ export type StudentDemoBooking = {
   instructor: string;
   lessonTypeKey: Extract<TranslationKey, "lessonTypePractical" | "lessonTypeTheory" | "lessonTypeTheoryPersonal">;
   status: StudentDemoBookingStatus;
+  /** From API: server-side payment hold deadline (ISO). */
+  holdExpiresAt?: string | null;
+  holdExtensionCount?: number;
+  /** From API when practical; max “+5 min” extensions allowed. */
+  maxHoldExtensions?: number;
+  /** From API: cancel ≥24h before lesson → refund policy applies. */
+  cancelRefundEligible?: boolean;
 };
 
 function isUpcomingBooking(b: StudentDemoBooking, todayIso: string): boolean {

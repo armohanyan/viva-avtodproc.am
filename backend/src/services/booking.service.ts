@@ -1,11 +1,12 @@
-import { Op, UniqueConstraintError, literal, type Transaction } from 'sequelize';
+import { Op, Transaction, UniqueConstraintError, literal } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import { Booking, BookingSlot, InstructorBranch, InstructorProfile, TheoryCohort, User } from '../models';
 import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
+import FinanceService from './finance.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
-import { addOneCalendarMonth, todayIsoUtc } from '../utils/calendar-month.util';
+import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
 
 const { InputValidationError, ConflictError } = ErrorsUtil;
 
@@ -38,6 +39,14 @@ function isDuplicateSlotClaimError(e: unknown): boolean {
 }
 
 const PAYMENT_HOLD_MS = 10 * 60 * 1000;
+const PAYMENT_EXTENSION_MS = 5 * 60 * 1000;
+/** Show “Add 5 minutes” when remaining time is at most this many ms. */
+const PAYMENT_EXTEND_THRESHOLD_MS = 60 * 1000;
+/** Max server-side extensions per booking (abuse limit). */
+export const MAX_PAYMENT_HOLD_EXTENSIONS = 2;
+/** Lesson start time for policy checks (Armenia, UTC+4). */
+const BOOKING_SLOT_TZ_OFFSET = '+04:00';
+const CANCELLATION_REFUND_MIN_HOURS = 24;
 
 type BookingWithUsers = Booking & { instructor: User; student: User };
 type BookingWithInstructor = Booking & { instructor: User };
@@ -69,6 +78,12 @@ export type StudentBookingDto = {
   instructor: string;
   lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory' | 'lessonTypeTheoryPersonal';
   status: BookingStatus;
+  /** ISO datetime when unpaid payment hold ends; null = no active countdown. */
+  holdExpiresAt?: string | null;
+  holdExtensionCount?: number;
+  /** If user cancels now, policy grants refund (≥24h before lesson). */
+  cancelRefundEligible?: boolean;
+  maxHoldExtensions?: number;
 };
 
 /** Bookings for the instructor panel (student name included). */
@@ -96,6 +111,11 @@ export type StudentMultiSlotBookingDto = {
   hourlyRateAmd: number;
   status: BookingStatus;
   branchId: number;
+  holdExpiresAt: string | null;
+  holdExtensionCount: number;
+  maxHoldExtensions: number;
+  /** True when lesson is within the “pay now / hold” calendar horizon. */
+  paymentRequiredNow: boolean;
 };
 
 function dateIsoString(v: unknown): string {
@@ -164,6 +184,21 @@ function minutesToHHMM(total: number): string {
   const h = Math.floor(total / 60);
   const m = total % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function lessonStartDateUtcMs(dateIso: string, timeHHMM: string): number {
+  const t = normalizeTimeHHMM(timeHHMM) ?? timeHHMM.trim();
+  return Date.parse(`${dateIso.slice(0, 10)}T${t}:00${BOOKING_SLOT_TZ_OFFSET}`);
+}
+
+/** Hours until lesson start; negative if already started. */
+export function hoursUntilLessonStart(dateIso: string, timeHHMM: string): number {
+  const ms = lessonStartDateUtcMs(dateIso, timeHHMM) - Date.now();
+  return ms / 3600_000;
+}
+
+export function isRefundWindowForCancellation(dateIso: string, timeHHMM: string): boolean {
+  return hoursUntilLessonStart(dateIso, timeHHMM) >= CANCELLATION_REFUND_MIN_HOURS;
 }
 
 /** Sort unique HH:MM slot starts; throws if invalid. */
@@ -325,6 +360,14 @@ export default class BookingService {
     return rows.map((b) => {
       const row = b as BookingWithInstructor;
       const inst = row.instructor;
+      const st = normalizeStudentBookingStatus(b.status);
+      const today = todayIsoUtc();
+      const dIso = dateIsoString(b.dateIso);
+      const eligible =
+        b.lessonType === 'practical' &&
+        (st === 'pending' || st === 'confirmed') &&
+        dIso >= today &&
+        isRefundWindowForCancellation(dIso, b.time);
       return {
         id: b.id,
         dateIso: dateIsoString(b.dateIso),
@@ -339,7 +382,15 @@ export default class BookingService {
             : b.lessonType === 'theory_personal'
               ? 'lessonTypeTheoryPersonal'
               : 'lessonTypePractical',
-        status: normalizeStudentBookingStatus(b.status),
+        status: st,
+        ...(b.lessonType === 'practical'
+          ? {
+              holdExpiresAt: b.holdExpiresAt ? new Date(b.holdExpiresAt).toISOString() : null,
+              holdExtensionCount: Number(b.holdExtensionCount ?? 0),
+              maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+              cancelRefundEligible: eligible,
+            }
+          : {}),
       };
     });
   }
@@ -381,6 +432,11 @@ export default class BookingService {
     dateIso: string;
     slots: readonly string[];
     branchId: number;
+    /**
+     * When the lesson is **more than one calendar month away**, the student may reserve without
+     * starting a payment hold. When `true`, the usual 10-minute payment window starts immediately.
+     */
+    payNow?: boolean;
   }): Promise<StudentMultiSlotBookingDto> {
     const dateIso = input.dateIso.slice(0, 10);
     const sorted = normalizeAndSortSlots(input.slots);
@@ -437,10 +493,15 @@ export default class BookingService {
 
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
     const today = todayIsoUtc();
-    const payHorizonEnd = addOneCalendarMonth(today);
-    const inPayHorizon = dateIso <= payHorizonEnd;
-    const holdExpiresAt =
-      inPayHorizon ? new Date(Date.now() + PAYMENT_HOLD_MS) : null;
+    const paymentRequiredNow = isLessonOnOrBeforePayHorizon(dateIso, today);
+    if (paymentRequiredNow && input.payNow === false) {
+      throw new InputValidationError(
+        'Payment is required for this lesson date; you cannot defer payment.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    const startPaymentHold = paymentRequiredNow || input.payNow === true;
+    const holdExpiresAt = startPaymentHold ? new Date(Date.now() + PAYMENT_HOLD_MS) : null;
 
     try {
       const row = await sequelize.transaction(async (transaction) => {
@@ -471,6 +532,7 @@ export default class BookingService {
             status: 'pending',
             paidAt: null,
             holdExpiresAt,
+            holdExtensionCount: 0,
           },
           { transaction },
         );
@@ -499,6 +561,10 @@ export default class BookingService {
         hourlyRateAmd: hourly,
         status: 'pending',
         branchId: input.branchId,
+        holdExpiresAt: holdExpiresAt ? holdExpiresAt.toISOString() : null,
+        holdExtensionCount: 0,
+        maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+        paymentRequiredNow,
       };
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -815,6 +881,239 @@ export default class BookingService {
     }
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
+  }
+
+  /** Student: extend active payment hold by 5 minutes (only when ≤1 min left, max {@link MAX_PAYMENT_HOLD_EXTENSIONS} times). */
+  static async extendPracticalPaymentHold(bookingId: number, studentUserId: number): Promise<{
+    holdExpiresAt: string;
+    holdExtensionCount: number;
+    maxHoldExtensions: number;
+  }> {
+    return sequelize.transaction(async (transaction) => {
+      const row = await Booking.findOne({
+        where: { id: bookingId, studentUserId, lessonType: 'practical' },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      const st = normalizeBookingStatus(row.status);
+      if (st !== 'pending' || row.paidAt != null) {
+        throw new InputValidationError('This booking cannot be extended.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (row.holdExpiresAt == null) {
+        throw new InputValidationError('No active payment countdown for this booking.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      const until = new Date(row.holdExpiresAt).getTime();
+      const remaining = until - Date.now();
+      if (remaining <= 0) {
+        throw new InputValidationError('The payment window has already ended.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (remaining > PAYMENT_EXTEND_THRESHOLD_MS) {
+        throw new InputValidationError(
+          'Extensions are only available when one minute or less remains.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      const used = Number(row.holdExtensionCount ?? 0);
+      if (used >= MAX_PAYMENT_HOLD_EXTENSIONS) {
+        throw new ConflictError('Maximum payment extensions already used for this booking.', HttpStatusCodesUtil.CONFLICT);
+      }
+      const nextUntil = new Date(until + PAYMENT_EXTENSION_MS);
+      await row.update(
+        { holdExpiresAt: nextUntil, holdExtensionCount: used + 1 },
+        { transaction },
+      );
+      return {
+        holdExpiresAt: nextUntil.toISOString(),
+        holdExtensionCount: used + 1,
+        maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+      };
+    });
+  }
+
+  /**
+   * Student: start the 10-minute payment window for a “pay later” practical booking
+   * (lesson date beyond the one-calendar-month pay horizon).
+   */
+  static async startPracticalPaymentWindow(bookingId: number, studentUserId: number): Promise<{
+    holdExpiresAt: string;
+    holdExtensionCount: number;
+    maxHoldExtensions: number;
+  }> {
+    return sequelize.transaction(async (transaction) => {
+      const row = await Booking.findOne({
+        where: { id: bookingId, studentUserId, lessonType: 'practical' },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      const st = normalizeBookingStatus(row.status);
+      if (st !== 'pending' || row.paidAt != null) {
+        throw new InputValidationError('This booking is not awaiting payment.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      const today = todayIsoUtc();
+      const dateIso = dateIsoString(row.dateIso);
+      if (isLessonOnOrBeforePayHorizon(dateIso, today)) {
+        throw new InputValidationError(
+          'This lesson date uses the standard payment flow at booking time.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      if (row.holdExpiresAt != null && new Date(row.holdExpiresAt).getTime() > Date.now()) {
+        return {
+          holdExpiresAt: new Date(row.holdExpiresAt).toISOString(),
+          holdExtensionCount: Number(row.holdExtensionCount ?? 0),
+          maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+        };
+      }
+      const holdUntil = new Date(Date.now() + PAYMENT_HOLD_MS);
+      await row.update({ holdExpiresAt: holdUntil, holdExtensionCount: 0 }, { transaction });
+      return {
+        holdExpiresAt: holdUntil.toISOString(),
+        holdExtensionCount: 0,
+        maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+      };
+    });
+  }
+
+  /** Student: mark payment completed (dev / placeholder until a real PSP webhook exists). */
+  static async completePracticalStudentPayment(bookingId: number, studentUserId: number): Promise<StudentBookingDto> {
+    let updatedId = bookingId;
+    await sequelize.transaction(async (transaction) => {
+      const row = await Booking.findOne({
+        where: { id: bookingId, studentUserId, lessonType: 'practical' },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      const st = normalizeBookingStatus(row.status);
+      if (st !== 'pending' || row.paidAt != null) {
+        throw new InputValidationError('This booking is not awaiting payment.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (row.holdExpiresAt == null || new Date(row.holdExpiresAt).getTime() <= Date.now()) {
+        throw new InputValidationError(
+          'Payment window is not active or has expired. Start payment again if your booking is still reserved.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      const paidAt = new Date();
+      await row.update(
+        { status: 'confirmed', paidAt, holdExpiresAt: null, holdExtensionCount: 0 },
+        { transaction },
+      );
+      updatedId = row.id;
+    });
+
+    const list = await BookingService.listForStudent(studentUserId);
+    const dto = list.find((b) => b.id === updatedId);
+    if (!dto) {
+      throw new InputValidationError('Booking not found after update.', HttpStatusCodesUtil.NOT_FOUND);
+    }
+
+    const row = await Booking.findByPk(updatedId, { include: [{ model: User, as: 'student', attributes: ['name', 'email'] }] });
+    const stu = row ? ((row as unknown as { student?: User }).student ?? null) : null;
+    const gross = row?.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
+    if (row && gross > 0 && stu) {
+      try {
+        await FinanceService.create({
+          customer: stu.name.trim() || 'Student',
+          email: stu.email ?? '',
+          description: `Practical lesson booking #${row.id} (payment)`,
+          branchId: row.branchId,
+          channel: 'online',
+          method: 'card',
+          grossAmd: gross,
+          feeAmd: 0,
+          status: 'completed',
+          providerRef: `booking:${row.id}`,
+          source: 'system',
+          bookingId: row.id,
+        });
+      } catch {
+        // Finance row is best-effort for local/dev; booking remains confirmed.
+      }
+    }
+
+    return dto;
+  }
+
+  /**
+   * Student: cancel a practical booking. ≥24h before lesson → `refunded` (+ refund ledger line if paid);
+   * &lt;24h → `cancelled` (no refund).
+   */
+  static async cancelPracticalStudentBooking(bookingId: number, studentUserId: number): Promise<{
+    status: BookingStatus;
+    refundIssued: boolean;
+  }> {
+    let outcome: { status: BookingStatus; refundIssued: boolean } = { status: 'cancelled', refundIssued: false };
+    await sequelize.transaction(async (transaction) => {
+      const row = await Booking.findOne({
+        where: { id: bookingId, studentUserId, lessonType: 'practical' },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      const st = normalizeBookingStatus(row.status);
+      if (st === 'cancelled' || st === 'refunded') {
+        throw new InputValidationError('This booking is already closed.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (st !== 'pending' && st !== 'confirmed') {
+        throw new InputValidationError('This booking cannot be cancelled here.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+
+      const dateIso = dateIsoString(row.dateIso);
+      const refundWindow = isRefundWindowForCancellation(dateIso, row.time);
+      const nextStatus: BookingStatus = refundWindow ? 'refunded' : 'cancelled';
+      const wasPaid = row.paidAt != null && st === 'confirmed';
+      const gross =
+        row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
+
+      await row.update(
+        {
+          status: nextStatus,
+          holdExpiresAt: null,
+          holdExtensionCount: 0,
+        },
+        { transaction },
+      );
+
+      let refundIssued = false;
+      if (nextStatus === 'refunded' && wasPaid && gross > 0) {
+        const stu = await User.findByPk(studentUserId, { attributes: ['name', 'email'], transaction });
+        if (stu) {
+          try {
+            await FinanceService.create({
+              customer: stu.name.trim() || 'Student',
+              email: stu.email ?? '',
+              description: `Practical lesson booking #${row.id} (cancellation refund)`,
+              branchId: row.branchId,
+              channel: 'online',
+              method: 'card',
+              grossAmd: gross,
+              feeAmd: 0,
+              status: 'refunded',
+              providerRef: `booking-refund:${row.id}`,
+              source: 'system',
+              bookingId: row.id,
+            });
+            refundIssued = true;
+          } catch {
+            refundIssued = false;
+          }
+        }
+      }
+
+      outcome = { status: nextStatus, refundIssued };
+    });
+    return outcome;
   }
 
   static async remove(id: number): Promise<boolean> {

@@ -23,6 +23,8 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
    * `null` means no active payment window (e.g. reserved pending, not yet in the pay-horizon flow).
    */
   declare holdExpiresAt: CreationOptional<Date | null>;
+  /** How many times the student used “Add 5 more minutes” for this booking (server-enforced max). */
+  declare holdExtensionCount: CreationOptional<number>;
 }
 
 Booking.init(
@@ -39,6 +41,7 @@ Booking.init(
     status: { type: DataTypes.STRING(32), allowNull: false },
     paidAt: { type: DataTypes.DATE, allowNull: true },
     holdExpiresAt: { type: DataTypes.DATE, allowNull: true },
+    holdExtensionCount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

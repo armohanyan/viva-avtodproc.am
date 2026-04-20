@@ -13,7 +13,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:seed": "tsx src/scripts/run-seed.ts",
-    "jobs:bookings": "tsx src/scripts/run-booking-jobs.ts"
+    "jobs:bookings": "tsx src/scripts/run-booking-jobs.ts",
+    "selftest:booking": "tsx src/scripts/booking-rules-selftest.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -16,6 +16,7 @@ import {
   isSlotInPastDate,
   normalizeAvailabilityBlocksFromApi,
 } from "src/modules/instructors/instructorAvailability";
+import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
 
 const timeSlots = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -100,6 +101,27 @@ function isConsecutiveHourlySlots(sorted: string[]): boolean {
   return true;
 }
 
+type StudentPracticalBookingCreateResponse = {
+  id: number;
+  totalPriceAmd: number;
+  slots: string[];
+  startTime: string;
+  status: string;
+  holdExpiresAt: string | null;
+  holdExtensionCount: number;
+  maxHoldExtensions: number;
+  paymentRequiredNow: boolean;
+};
+
+function formatCountdownMmSs(isoDeadline: string): string {
+  const ms = new Date(isoDeadline).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return "0:00";
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
 export type LessonBookingCalendarProps = {
   mode: "student" | "admin";
   instructors: readonly Instructor[];
@@ -139,6 +161,14 @@ export default function LessonBookingCalendar({
   const [confirmed, setConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createdSummary, setCreatedSummary] = useState<{ totalPriceAmd: number; slots: string[] } | null>(null);
+  /** After student POST /bookings — drives payment countdown / pay-later messaging. */
+  const [studentPaySession, setStudentPaySession] = useState<StudentPracticalBookingCreateResponse | null>(null);
+  const [payNowAtBooking, setPayNowAtBooking] = useState(false);
+  const [serverPaidConfirmed, setServerPaidConfirmed] = useState(false);
+  const [bookingFlowDone, setBookingFlowDone] = useState(false);
+  const [countdownTick, setCountdownTick] = useState(0);
+  const [busySlotsRefreshKey, setBusySlotsRefreshKey] = useState(0);
+  const [payBusy, setPayBusy] = useState(false);
   const [slotSearch, setSlotSearch] = useState("");
   const [periodFilter, setPeriodFilter] = useState<"all" | "morning" | "afternoon">("all");
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
@@ -187,13 +217,50 @@ export default function LessonBookingCalendar({
     return () => {
       cancelled = true;
     };
-  }, [selectedInstructorId, weekOffset]);
+  }, [selectedInstructorId, weekOffset, busySlotsRefreshKey]);
 
   useEffect(() => {
     setSelected(null);
     setConfirmed(false);
     setCreatedSummary(null);
+    setStudentPaySession(null);
+    setPayNowAtBooking(false);
+    setServerPaidConfirmed(false);
+    setBookingFlowDone(false);
   }, [selectedInstructorId]);
+
+  useEffect(() => {
+    if (!studentPaySession?.holdExpiresAt || serverPaidConfirmed) return;
+    const iv = window.setInterval(() => setCountdownTick((x) => x + 1), 1000);
+    return () => window.clearInterval(iv);
+  }, [studentPaySession?.holdExpiresAt, serverPaidConfirmed]);
+
+  useEffect(() => {
+    if (mode !== "student" || !studentUserId || !studentPaySession?.holdExpiresAt || serverPaidConfirmed) return;
+    const bookingId = studentPaySession.id;
+    const iv = window.setInterval(() => {
+      void (async () => {
+        try {
+          const list = await vivaApiJson<{ id: number }[]>(
+            `/bookings?${new URLSearchParams({ studentUserId }).toString()}`,
+          );
+          const found = Array.isArray(list) && list.some((b) => Number(b.id) === bookingId);
+          if (!found) {
+            showToast(t("bookingPaymentExpiredToast"), "error");
+            setStudentPaySession(null);
+            setConfirmed(false);
+            setCreatedSummary(null);
+            setServerPaidConfirmed(false);
+            setBookingFlowDone(false);
+            setBusySlotsRefreshKey((k) => k + 1);
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    }, 12_000);
+    return () => window.clearInterval(iv);
+  }, [mode, studentUserId, studentPaySession?.holdExpiresAt, studentPaySession?.id, serverPaidConfirmed, showToast, t]);
 
   const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
@@ -261,6 +328,9 @@ export default function LessonBookingCalendar({
     const slot = padSlot(time);
     setConfirmed(false);
     setCreatedSummary(null);
+    setStudentPaySession(null);
+    setServerPaidConfirmed(false);
+    setBookingFlowDone(false);
     setSelected((prev) => {
       if (!prev || prev.date !== dateStr) {
         return { date: dateStr, times: [slot] };
@@ -294,22 +364,26 @@ export default function LessonBookingCalendar({
       }
       setSubmitting(true);
       try {
-        const res = await vivaApiJson<{
-          totalPriceAmd: number;
-          slots: string[];
-          startTime: string;
-          status: string;
-        }>("/bookings", {
+        const inHorizon = isLessonOnOrBeforePayHorizon(selected.date, todayIsoUtc());
+        const body: Record<string, unknown> = {
+          instructorId: Number(selectedInstructorId),
+          date: selected.date,
+          slots: sorted,
+          branchId: Number(branchId),
+        };
+        if (!inHorizon) {
+          body.payNow = payNowAtBooking;
+        }
+        const res = await vivaApiJson<StudentPracticalBookingCreateResponse>("/bookings", {
           method: "POST",
-          body: {
-            instructorId: Number(selectedInstructorId),
-            date: selected.date,
-            slots: sorted,
-            branchId: Number(branchId),
-          },
+          body,
         });
         setCreatedSummary({ totalPriceAmd: res.totalPriceAmd, slots: res.slots ?? sorted });
+        setStudentPaySession(res);
+        setServerPaidConfirmed(false);
+        setBookingFlowDone(false);
         setConfirmed(true);
+        setBusySlotsRefreshKey((k) => k + 1);
         showToast(t("bookingCreatedToast"), "success");
       } catch (e) {
         showToast(getApiErrorMessage(e), "error");
@@ -334,9 +408,92 @@ export default function LessonBookingCalendar({
     setSelected(null);
     setConfirmed(false);
     setCreatedSummary(null);
+    setStudentPaySession(null);
+    setPayNowAtBooking(false);
+    setServerPaidConfirmed(false);
+    setBookingFlowDone(false);
+    setBusySlotsRefreshKey((k) => k + 1);
   };
 
   const adminReady = mode === "admin" && !!studentName.trim();
+
+  const selectedInPayHorizon = selected
+    ? isLessonOnOrBeforePayHorizon(selected.date, todayIsoUtc())
+    : true;
+
+  const studentPaymentStepActive =
+    mode === "student" && confirmed && studentPaySession && !serverPaidConfirmed && !bookingFlowDone;
+
+  const onCompletePayment = async () => {
+    if (!studentPaySession) return;
+    setPayBusy(true);
+    try {
+      await vivaApiJson(`/bookings/${encodeURIComponent(String(studentPaySession.id))}/complete-payment`, {
+        method: "POST",
+      });
+      setServerPaidConfirmed(true);
+      setBusySlotsRefreshKey((k) => k + 1);
+      showToast(t("bookingPaymentCompletedToast"), "success");
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const onExtendHold = async () => {
+    if (!studentPaySession) return;
+    setPayBusy(true);
+    try {
+      const r = await vivaApiJson<{
+        holdExpiresAt: string;
+        holdExtensionCount: number;
+        maxHoldExtensions: number;
+      }>(`/bookings/${encodeURIComponent(String(studentPaySession.id))}/extend-payment-hold`, { method: "POST" });
+      setStudentPaySession((prev) =>
+        prev
+          ? {
+              ...prev,
+              holdExpiresAt: r.holdExpiresAt,
+              holdExtensionCount: r.holdExtensionCount,
+              maxHoldExtensions: r.maxHoldExtensions,
+            }
+          : null,
+      );
+      showToast(t("bookingPaymentExtendedToast"), "success");
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const onStartPaymentWindow = async () => {
+    if (!studentPaySession) return;
+    setPayBusy(true);
+    try {
+      const r = await vivaApiJson<{
+        holdExpiresAt: string;
+        holdExtensionCount: number;
+        maxHoldExtensions: number;
+      }>(`/bookings/${encodeURIComponent(String(studentPaySession.id))}/start-payment-window`, { method: "POST" });
+      setStudentPaySession((prev) =>
+        prev
+          ? {
+              ...prev,
+              holdExpiresAt: r.holdExpiresAt,
+              holdExtensionCount: r.holdExtensionCount,
+              maxHoldExtensions: r.maxHoldExtensions,
+            }
+          : null,
+      );
+      showToast(t("bookingPaymentWindowStartedToast"), "success");
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setPayBusy(false);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 xl:items-stretch">
@@ -527,25 +684,102 @@ export default function LessonBookingCalendar({
             {!selected ? (
               <p className="text-sm text-muted-foreground">{t("bookingSelectSlotHint")}</p>
             ) : confirmed ? (
-              <div className="text-center py-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+              studentPaymentStepActive ? (
+                <div className="space-y-4 text-left py-1">
+                  {(() => {
+                    void countdownTick;
+                    const sess = studentPaySession!;
+                    const hold = sess.holdExpiresAt;
+                    const remainingMs = hold ? new Date(hold).getTime() - Date.now() : 0;
+                    if (hold && sess.status === "pending") {
+                      const canExtend =
+                        remainingMs > 0 &&
+                        remainingMs <= 60_000 &&
+                        sess.holdExtensionCount < sess.maxHoldExtensions;
+                      return (
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground leading-relaxed">{t("bookingPaymentCountdownHint")}</p>
+                          <div className="rounded-lg border border-border bg-muted/30 px-3 py-3 text-center">
+                            <p className="text-2xl font-semibold tabular-nums text-foreground tracking-tight">
+                              {formatCountdownMmSs(hold)}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground mt-1">{t("bookingPaymentRemainingLabel")}</p>
+                          </div>
+                          <Button
+                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                            disabled={payBusy || remainingMs <= 0}
+                            onClick={() => void onCompletePayment()}
+                          >
+                            {payBusy ? t("loading") : t("bookingCompletePaymentCta")}
+                          </Button>
+                          {canExtend ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs"
+                              disabled={payBusy}
+                              onClick={() => void onExtendHold()}
+                            >
+                              {t("bookingAddFiveMinutesCta")}
+                            </Button>
+                          ) : null}
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">{t("bookingCancellationRulesShort")}</p>
+                        </div>
+                      );
+                    }
+                    if (!hold && !sess.paymentRequiredNow) {
+                      return (
+                        <div className="space-y-3">
+                          <p className="text-xs text-muted-foreground leading-relaxed">{t("bookingReservePayLaterHint")}</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs"
+                            disabled={payBusy}
+                            onClick={() => void onStartPaymentWindow()}
+                          >
+                            {payBusy ? t("loading") : t("bookingStartPaymentWindowCta")}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => setBookingFlowDone(true)}>
+                            {t("bookingReservedDoneCta")}
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">{t("bookingCancellationRulesShort")}</p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <p className="text-xs text-muted-foreground">
+                        {t("bookingPaymentNoActiveHoldHint")}
+                      </p>
+                    );
+                  })()}
                 </div>
-                <p className="font-semibold text-foreground text-sm">{t("bookingConfirmed")}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {selected.date} · {sortTimesUnique(selected.times).join(", ")}
-                </p>
-                {createdSummary ? (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t("bookingTotalLabel")}: {createdSummary.totalPriceAmd.toLocaleString(locale)} ֏
+              ) : (
+                <div className="text-center py-4">
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="font-semibold text-foreground text-sm">
+                    {serverPaidConfirmed ? t("bookingConfirmedPaidTitle") : t("bookingConfirmed")}
                   </p>
-                ) : null}
-                <Button variant="outline" size="sm" className="mt-4 w-full text-xs" onClick={resetBooking}>
-                  {t("bookAnother")}
-                </Button>
-              </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {selected.date} · {sortTimesUnique(selected.times).join(", ")}
+                  </p>
+                  {createdSummary ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t("bookingTotalLabel")}: {createdSummary.totalPriceAmd.toLocaleString(locale)} ֏
+                    </p>
+                  ) : null}
+                  {!serverPaidConfirmed && mode === "student" ? (
+                    <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">{t("bookingPendingPayLaterReminder")}</p>
+                  ) : null}
+                  <Button variant="outline" size="sm" className="mt-4 w-full text-xs" onClick={resetBooking}>
+                    {t("bookAnother")}
+                  </Button>
+                </div>
+              )
             ) : (
               <div className="space-y-3">
                 {mode === "admin" && studentName.trim() && (
@@ -592,6 +826,17 @@ export default function LessonBookingCalendar({
                     </>
                   ) : null}
                 </div>
+                {mode === "student" && selected && !selectedInPayHorizon ? (
+                  <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={payNowAtBooking}
+                      onChange={(e) => setPayNowAtBooking(e.target.checked)}
+                      className="mt-0.5 rounded border-border"
+                    />
+                    <span>{t("bookingPayNowCheckbox")}</span>
+                  </label>
+                ) : null}
                 <Button
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
                   disabled={(mode === "admin" && !adminReady) || submitting}

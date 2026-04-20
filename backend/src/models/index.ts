@@ -257,6 +257,33 @@ async function ensureBookingsPaymentColumns(): Promise<void> {
   }
 }
 
+/** Adds `bookings.hold_extension_count` when tables predate Sequelize fields. */
+async function ensureBookingsHoldExtensionCountColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+       AND COLUMN_NAME IN ('hold_extension_count')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('hold_extension_count')) {
+    await sequelize.query(
+      'ALTER TABLE `bookings` ADD COLUMN `hold_extension_count` INT UNSIGNED NOT NULL DEFAULT 0',
+    );
+  }
+}
+
 /** Adds multi-hour booking columns when tables predate Sequelize fields. */
 async function ensureBookingsMultiSlotColumns(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -637,6 +664,7 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceTransactionsBookingIdColumn();
   await ensureCarExpensesPaymentColumns();
   await ensureBookingsPaymentColumns();
+  await ensureBookingsHoldExtensionCountColumn();
   await ensureBookingsMultiSlotColumns();
   await ensureBookingSlotsTable();
   await ensureMarketingSettingsIdColumn();

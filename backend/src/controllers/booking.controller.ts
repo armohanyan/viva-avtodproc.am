@@ -63,6 +63,8 @@ const studentMultiSlotSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     slots: z.array(z.string().min(4)).min(1),
     branchId: z.coerce.number().int().positive(),
+    /** When the lesson is more than one calendar month away: start the 10-minute payment hold immediately. */
+    payNow: z.boolean().optional(),
   })
   .refine((v) => v.instructorId != null || v.instructor_id != null, {
     message: 'instructorId or instructor_id is required',
@@ -72,6 +74,40 @@ const studentMultiSlotSchema = z
 function readBearerToken(req: Request): string | undefined {
   const raw = req.headers.authorization;
   return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+}
+
+function requireStudentUserId(req: Request, next: NextFunction): number | undefined {
+  const token = readBearerToken(req);
+  if (!token) {
+    next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+    return undefined;
+  }
+  let payload: ReturnType<typeof verifyAccessToken>;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+    return undefined;
+  }
+  if (payload.accountType !== 'student') {
+    next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+    return undefined;
+  }
+  const studentUserId = Number(payload.sub);
+  if (!Number.isFinite(studentUserId) || studentUserId <= 0) {
+    next(new UnauthorizedError('Invalid token subject', HttpStatusCodesUtil.UNAUTHORIZED));
+    return undefined;
+  }
+  return studentUserId;
+}
+
+function parseBookingRouteId(req: Request, next: NextFunction): number | undefined {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    next(new InputValidationError('Invalid booking id', HttpStatusCodesUtil.BAD_REQUEST));
+    return undefined;
+  }
+  return id;
 }
 
 export default class BookingController {
@@ -182,23 +218,8 @@ export default class BookingController {
           );
         }
 
-        const token = readBearerToken(req);
-        if (!token) {
-          return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
-        }
-        let payload: ReturnType<typeof verifyAccessToken>;
-        try {
-          payload = verifyAccessToken(token);
-        } catch {
-          return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
-        }
-        if (payload.accountType !== 'student') {
-          return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
-        }
-        const studentUserId = Number(payload.sub);
-        if (!Number.isFinite(studentUserId) || studentUserId <= 0) {
-          return next(new UnauthorizedError('Invalid token subject', HttpStatusCodesUtil.UNAUTHORIZED));
-        }
+        const studentUserId = requireStudentUserId(req, next);
+        if (studentUserId === undefined) return;
 
         const row = await BookingService.createFromStudentSlotSelection({
           studentUserId,
@@ -206,6 +227,7 @@ export default class BookingController {
           dateIso: body.date,
           slots: body.slots,
           branchId: body.branchId,
+          payNow: body.payNow === true,
         });
         SuccessHandlerUtil.handleAdd(res, next, row);
         return;
@@ -262,6 +284,58 @@ export default class BookingController {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
       }
       res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async extendPaymentHold(req: Request, res: Response, next: NextFunction) {
+    try {
+      const studentUserId = requireStudentUserId(req, next);
+      if (studentUserId === undefined) return;
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.extendPracticalPaymentHold(id, studentUserId);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async startPaymentWindow(req: Request, res: Response, next: NextFunction) {
+    try {
+      const studentUserId = requireStudentUserId(req, next);
+      if (studentUserId === undefined) return;
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.startPracticalPaymentWindow(id, studentUserId);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async completeStudentPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const studentUserId = requireStudentUserId(req, next);
+      if (studentUserId === undefined) return;
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.completePracticalStudentPayment(id, studentUserId);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async cancelStudentBooking(req: Request, res: Response, next: NextFunction) {
+    try {
+      const studentUserId = requireStudentUserId(req, next);
+      if (studentUserId === undefined) return;
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.cancelPracticalStudentBooking(id, studentUserId);
+      SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);
     }
