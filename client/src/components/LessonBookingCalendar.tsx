@@ -18,6 +18,7 @@ import {
 } from "src/modules/instructors/instructorAvailability";
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
 
 const timeSlots = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -536,7 +537,7 @@ export default function LessonBookingCalendar({
                   {instructors.map((ins) => (
                     <div
                       key={ins.id}
-                      className="snap-start shrink-0 w-[min(13.75rem,calc(100vw-4rem))] sm:w-52 flex flex-col self-stretch min-h-0"
+                      className="snap-start shrink-0 w-[min(17.5rem,calc(100vw-4rem))] sm:w-72 flex flex-col self-stretch min-h-0"
                     >
                       <InstructorCard
                         instructor={ins}
@@ -738,7 +739,6 @@ export default function LessonBookingCalendar({
                               {t("bookingAddFiveMinutesCta")}
                             </Button>
                           ) : null}
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">{t("bookingCancellationRulesShort")}</p>
                         </div>
                       );
                     }
@@ -758,7 +758,6 @@ export default function LessonBookingCalendar({
                           <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => setBookingFlowDone(true)}>
                             {t("bookingReservedDoneCta")}
                           </Button>
-                          <p className="text-[11px] text-muted-foreground leading-relaxed">{t("bookingCancellationRulesShort")}</p>
                         </div>
                       );
                     }
@@ -869,6 +868,11 @@ export default function LessonBookingCalendar({
             )}
           </Card>
         </Reveal>
+        {mode === "student" ? (
+          <Reveal delay={0.22} className="mt-4">
+            <BookingCancellationPolicyCallout />
+          </Reveal>
+        ) : null}
       </div>
     </div>
     </>

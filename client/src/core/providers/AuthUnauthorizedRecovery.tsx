@@ -13,7 +13,13 @@ export function AuthUnauthorizedRecovery(): ReactElement | null {
 		return registerAuthSessionRevokedHandler(() => {
 			const { pathname, search } = window.location;
 			const here = `${pathname}${search}`;
-			if (pathname.startsWith("/login") || pathname.startsWith("/register") || pathname.startsWith("/forgot-password")) {
+			if (
+				pathname.startsWith("/login") ||
+				pathname.startsWith("/register") ||
+				pathname.startsWith("/forgot-password") ||
+				pathname.startsWith("/reset-password") ||
+				pathname.startsWith("/setup-password")
+			) {
 				return;
 			}
 			navigate(absWouterHref(`/login?redirect=${encodeURIComponent(here)}`));

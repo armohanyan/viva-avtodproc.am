@@ -8,6 +8,7 @@ import { API_VERSION_PREFIX } from './constants';
 import config from './config';
 import ErrorHandlerMiddleware from './middleware/error-handler.middleware';
 import routes from './routes';
+import adminRoutes from './routes/admin.routes';
 
 class App {
   public app: express.Application;
@@ -53,6 +54,8 @@ class App {
 
   private initializeApi(): void {
     this.app.use(API_VERSION_PREFIX, routes);
+    /** Alias without version segment (e.g. `POST /api/admin/invite-student`). */
+    this.app.use('/api/admin', adminRoutes);
   }
 
   private setErrorHandler(): void {

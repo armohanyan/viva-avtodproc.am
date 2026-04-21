@@ -31,3 +31,27 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   }
   return { sub, email, accountType: accountType as AccessTokenPayload['accountType'] };
 }
+
+export type AdminMfaTokenPayload = { typ: 'admin_mfa'; challengeId: number; sub: string };
+
+export function signAdminMfaToken(payload: AdminMfaTokenPayload): string {
+  return jwt.sign(
+    { typ: payload.typ, challengeId: payload.challengeId },
+    config.AUTH.JWT_ACCESS_SECRET,
+    { subject: payload.sub, expiresIn: 15 * 60 },
+  );
+}
+
+export function verifyAdminMfaToken(token: string): AdminMfaTokenPayload {
+  const decoded = jwt.verify(token, config.AUTH.JWT_ACCESS_SECRET) as jwt.JwtPayload;
+  if (decoded.typ !== 'admin_mfa') {
+    throw new Error('Invalid MFA token type');
+  }
+  const sub = decoded.sub;
+  const rawCid = decoded.challengeId;
+  const challengeId = typeof rawCid === 'number' ? rawCid : Number(rawCid);
+  if (typeof sub !== 'string' || !Number.isFinite(challengeId) || challengeId <= 0) {
+    throw new Error('Invalid MFA token payload');
+  }
+  return { typ: 'admin_mfa', challengeId, sub };
+}

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { ArrowLeft, Mail } from "lucide-react";
@@ -13,15 +14,25 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const handleReset = (e: React.FormEvent) => {
+  const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes("@")) { showToast(t("invalidEmail"), "error"); return; }
+    if (!email || !email.includes("@")) {
+      showToast(t("invalidEmail"), "error");
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await vivaApiJson("/auth/forgot-password", {
+        method: "POST",
+        body: { email: email.trim() },
+      });
       setSent(true);
       showToast(t("resetSent"), "success");
-    }, 800);
+    } catch (err) {
+      showToast(getApiErrorMessage(err) || t("resetSent"), "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -71,7 +82,7 @@ export default function ForgotPassword() {
                   />
                 </div>
                 <Button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-11 disabled:opacity-70">
-                  {loading ? "Sending..." : t("sendResetLink")}
+                  {loading ? t("sendingResetLink") : t("sendResetLink")}
                 </Button>
               </form>
             </>

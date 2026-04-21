@@ -1,4 +1,7 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import { Op } from 'sequelize';
+import config from '../config';
 import { sequelize } from '../database/sequelize';
 import { signAccessToken } from '../helpers';
 import { OAuthAccount, User } from '../models';
@@ -6,6 +9,8 @@ import type { AccountType } from '../models/user.model';
 import type { OAuthProvider } from '../models/oauth-account.model';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+import LoggerUtil from '../utils/logger.util';
+import MailService, { isTransactionalMailConfigured } from './mail.service';
 import RefreshTokenService from './refresh-token.service';
 
 const { UnauthorizedError, ConflictError } = ErrorsUtil;
@@ -18,6 +23,20 @@ export type AuthTokensDto = {
   /** Opaque refresh token — set as httpOnly cookie only; never include in JSON responses. */
   refreshPlain: string;
 };
+
+export type LoginOutcome =
+  | { kind: 'session'; tokens: AuthTokensDto }
+  | { kind: 'mfa_required'; mfaToken: string };
+
+function sha256Hex(s: string): string {
+  return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+function randomUrlToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 function toDto(user: User): AuthUserDto {
   return {
@@ -47,7 +66,12 @@ export default class AuthService {
     return { accessToken, user: toDto(user), refreshPlain: plain };
   }
 
-  static async login(email: string, password: string): Promise<AuthTokensDto> {
+  /** Used after email MFA or invitation password setup — same as a successful login. */
+  static async issueFullSessionAfterVerification(user: User): Promise<AuthTokensDto> {
+    return this.issueTokens(user);
+  }
+
+  static async login(email: string, password: string): Promise<LoginOutcome> {
     const normalized = email.trim().toLowerCase();
     const user = await User.findOne({ where: { email: normalized } });
 
@@ -68,7 +92,14 @@ export default class AuthService {
       throw new UnauthorizedError('Invalid email or password', HttpStatusCodesUtil.UNAUTHORIZED);
     }
 
-    return this.issueTokens(user);
+    if (user.accountType === 'admin' || user.accountType === 'super_admin') {
+      const { default: AdminMfaService } = await import('./admin-mfa.service');
+      const { mfaToken } = await AdminMfaService.startForUser(user);
+      return { kind: 'mfa_required', mfaToken };
+    }
+
+    const tokens = await this.issueTokens(user);
+    return { kind: 'session', tokens };
   }
 
   static async register(input: {
@@ -228,5 +259,90 @@ export default class AuthService {
         : {}),
     });
     return toDto(user);
+  }
+
+  /**
+   * Issues a reset link by email when the account exists and has a password.
+   * Always completes without throwing (no email enumeration); logs mail misconfiguration / send failures.
+   */
+  static async requestPasswordReset(email: string): Promise<void> {
+    if (!isTransactionalMailConfigured()) {
+      LoggerUtil.warn('Password reset skipped: Brevo mail is not configured');
+      return;
+    }
+    const normalized = email.trim().toLowerCase();
+    const user = await User.findOne({ where: { email: normalized } });
+    if (!user || !user.isActive || !user.passwordHash) {
+      return;
+    }
+
+    const plainToken = randomUrlToken();
+    const tokenHash = sha256Hex(plainToken);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+    await user.update({ passwordResetTokenHash: tokenHash, passwordResetExpiresAt: expiresAt });
+
+    const base = config.PANEL_DEFAULT_ORIGIN.replace(/\/+$/, '');
+    const resetUrl = `${base}/reset-password?token=${encodeURIComponent(plainToken)}`;
+
+    try {
+      await MailService.sendPasswordReset(user.email, user.name, resetUrl);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      LoggerUtil.error(`Password reset email failed for user ${user.id}: ${msg}`);
+      await user.update({ passwordResetTokenHash: null, passwordResetExpiresAt: null });
+    }
+  }
+
+  static async validatePasswordResetToken(
+    plainToken: string,
+  ): Promise<{ valid: true; email: string } | { valid: false }> {
+    if (!plainToken || plainToken.length < 16) {
+      return { valid: false };
+    }
+    const tokenHash = sha256Hex(plainToken);
+    const user = await User.findOne({
+      where: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { [Op.gt]: new Date() },
+      },
+      attributes: ['email'],
+    });
+    if (!user) {
+      return { valid: false };
+    }
+    const [local, domain = ''] = user.email.split('@');
+    const masked = `${local.slice(0, 2)}***@${domain}`;
+    return { valid: true, email: masked };
+  }
+
+  static async completePasswordReset(
+    plainToken: string,
+    newPassword: string,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    if (newPassword.length < 8) {
+      return { ok: false, message: 'Password must be at least 8 characters' };
+    }
+    if (!plainToken || plainToken.length < 16) {
+      return { ok: false, message: 'Invalid or expired reset link' };
+    }
+    const tokenHash = sha256Hex(plainToken);
+    const user = await User.findOne({
+      where: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { [Op.gt]: new Date() },
+      },
+    });
+    if (!user || !user.isActive) {
+      return { ok: false, message: 'Invalid or expired reset link' };
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await user.update({
+      passwordHash,
+      passwordResetTokenHash: null,
+      passwordResetExpiresAt: null,
+    });
+    await RefreshTokenService.revokeAllForUser(user.id);
+    return { ok: true };
   }
 }

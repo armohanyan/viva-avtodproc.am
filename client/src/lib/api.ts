@@ -1,51 +1,10 @@
 import { API_V1_PREFIX } from "src/constants/api";
+import { getApiBaseUrl } from "src/lib/apiBaseUrl";
 import { tryRefreshAccessToken } from "src/lib/authSession";
 import { revokeClientSessionAfterAuthorizationFailure } from "src/lib/authUnauthorizedRecovery";
 import { loadAccountSession } from "src/modules/accounts/account.session";
 
-function trimTrailingSlashes(s: string): string {
-	return s.replace(/\/+$/, "");
-}
-
-/**
- * Base URL for the REST API (no trailing slash).
- * - Leave `VITE_API_BASE_URL` unset in dev to use same-origin requests; Vite proxies `/api` to Express.
- * - Set `VITE_API_BASE_URL` when the UI and API run on different origins (e.g. production).
- * - Next.js marketing: set `NEXT_PUBLIC_API_BASE_URL` (browser → API, e.g. http://localhost:3001) and
- *   `INTERNAL_API_BASE_URL` for server components in Docker (e.g. http://backend:3001).
- */
-function viteApiBaseUrl(): string | undefined {
-	const meta = import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } };
-	return meta.env?.VITE_API_BASE_URL?.trim();
-}
-
-export function getApiBaseUrl(): string {
-	const isServer = typeof window === "undefined";
-
-	/** Docker / SSR: reach the API from the Next server using the compose service name. */
-	if (isServer) {
-		const internal =
-			typeof process !== "undefined" && process.env.INTERNAL_API_BASE_URL
-				? process.env.INTERNAL_API_BASE_URL.trim()
-				: "";
-		if (internal) {
-			return trimTrailingSlashes(internal);
-		}
-	}
-
-	const fromNext =
-		typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_BASE_URL
-			? process.env.NEXT_PUBLIC_API_BASE_URL.trim()
-			: "";
-	if (fromNext) {
-		return trimTrailingSlashes(fromNext);
-	}
-	const fromVite = viteApiBaseUrl();
-	if (fromVite) {
-		return trimTrailingSlashes(fromVite);
-	}
-	return "";
-}
+export { getApiBaseUrl } from "src/lib/apiBaseUrl";
 
 /**
  * Absolute path under the API host, e.g. `/api/v1/health`.
@@ -104,7 +63,13 @@ function shouldAttemptAuthRefreshRetry(path: string): boolean {
 		!p.endsWith("/auth/login") &&
 		!p.endsWith("/auth/register") &&
 		!p.endsWith("/auth/refresh") &&
-		!p.endsWith("/auth/logout")
+		!p.endsWith("/auth/logout") &&
+		!p.endsWith("/auth/verify-admin-mfa") &&
+		!p.endsWith("/auth/setup-password") &&
+		!p.endsWith("/auth/forgot-password") &&
+		!p.endsWith("/auth/reset-password") &&
+		!p.includes("/auth/student-invitation") &&
+		!p.includes("/auth/password-reset")
 	);
 }
 
@@ -131,15 +96,19 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 	if (res.status === 401 && typeof window !== "undefined" && shouldAttemptAuthRefreshRetry(path)) {
 		if (!_authRetry) {
 			const refreshed = await tryRefreshAccessToken();
-			if (refreshed) {
-				// `init` still carries the expired Bearer from the first attempt; merge the new token.
+			if (refreshed === "rate_limited") {
+				return res;
+			}
+			if (refreshed === "ok") {
 				const retryHeaders = new Headers(headers);
 				const token = loadAccountSession()?.accessToken;
+
 				if (token) {
 					retryHeaders.set("Authorization", `Bearer ${token}`);
 				} else {
 					retryHeaders.delete("Authorization");
 				}
+
 				return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
 			}
 		}

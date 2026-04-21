@@ -15,8 +15,9 @@
 #
 # Ports (defaults):
 #   Marketing (Next apps/web):  http://localhost:5173
-#   Panel / accounts (Vite):    http://localhost:3000
+#   Panel / accounts (Vite):    http://localhost:3000  (host → container :5173; set PANEL_DEFAULT_ORIGIN accordingly)
 #   API (Express):              http://localhost:3001/api/v1/health
+#   Local API without Docker:   default `PANEL_DEFAULT_ORIGIN` is http://localhost:5173 (Vite dev server).
 
 services:
   db:

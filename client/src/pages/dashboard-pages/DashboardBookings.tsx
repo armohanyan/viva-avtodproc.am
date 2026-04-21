@@ -11,16 +11,13 @@ import { useMemo, useState } from "react";
 import { cn } from "src/lib/utils";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { Link } from "wouter";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "src/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
+
+type StudentPracticalCancelResponse =
+  | { outcome: "pending_admin"; cancellationRequestedAt: string }
+  | { outcome: "immediate"; status: string; refundIssued: boolean };
 
 function localeFromLang(lang: "en" | "ru" | "am") {
   if (lang === "am") return "hy-AM";
@@ -39,6 +36,12 @@ function formatTimeRange(time: string, endTime: string | null | undefined) {
 }
 
 function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => string) {
+  if (
+    booking.cancellationRequestedAt &&
+    (booking.status === "confirmed" || booking.status === "pending")
+  ) {
+    return t("bookingStatusCancellationPendingLabel");
+  }
   switch (booking.status) {
     case "confirmed":
       return t("confirmed");
@@ -51,8 +54,14 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
   }
 }
 
-function statusExplainKey(status: StudentDemoBookingStatus): TranslationKey {
-  switch (status) {
+function statusExplainKey(booking: StudentDemoBooking): TranslationKey {
+  if (
+    booking.cancellationRequestedAt &&
+    (booking.status === "confirmed" || booking.status === "pending")
+  ) {
+    return "bookingStatusExplainCancellationPending";
+  }
+  switch (booking.status) {
     case "confirmed":
       return "bookingStatusExplainConfirmed";
     case "pending":
@@ -64,7 +73,14 @@ function statusExplainKey(status: StudentDemoBookingStatus): TranslationKey {
   }
 }
 
-function statusBadgeClass(status: StudentDemoBookingStatus) {
+function statusBadgeClass(booking: StudentDemoBooking) {
+  if (
+    booking.cancellationRequestedAt &&
+    (booking.status === "confirmed" || booking.status === "pending")
+  ) {
+    return "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100";
+  }
+  const status = booking.status;
   if (status === "confirmed") return "bg-primary/10 text-primary";
   if (status === "pending") return "bg-accent text-muted-foreground";
   if (status === "cancelled") return "bg-destructive/10 text-destructive";
@@ -94,8 +110,15 @@ export function DashboardBookingsListTab() {
     const b = cancelTarget;
     setBusyId(b.id);
     try {
-      await vivaApiJson(`/bookings/${encodeURIComponent(String(b.id))}/cancel-student`, { method: "POST" });
-      showToast(t("bookingsCancelSuccessToast"), "success");
+      const data = await vivaApiJson<StudentPracticalCancelResponse>(
+        `/bookings/${encodeURIComponent(String(b.id))}/cancel-student`,
+        { method: "POST" },
+      );
+      if (data.outcome === "pending_admin") {
+        showToast(t("bookingsCancelRequestSuccessToast"), "success");
+      } else {
+        showToast(t("bookingsCancelImmediateSuccessToast"), "success");
+      }
       setCancelTarget(null);
       await refresh();
     } catch (e) {
@@ -175,37 +198,97 @@ export function DashboardBookingsListTab() {
           if (!open) setCancelTarget(null);
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>{t("bookingsCancelDialogTitle")}</DialogTitle>
-            <DialogDescription className="text-left space-y-3 pt-1">
-              <span className="block">{t("bookingsCancelConfirmBody")}</span>
-              {cancelTarget ? (
-                <span className="block text-foreground text-sm font-medium">
-                  {fullDateLabel(cancelTarget.dateIso, locale)} · {formatTimeRange(cancelTarget.time, cancelTarget.endTime)}{" "}
-                  · {cancelTarget.instructor}
-                </span>
-              ) : null}
+        <DialogContent
+          showCloseButton
+          className={cn(
+            "gap-0 overflow-hidden p-0 sm:max-w-md",
+            "w-[min(100%,calc(100vw-1.5rem))] max-h-[min(90dvh,40rem)]",
+            "border-border bg-card text-card-foreground shadow-xl",
+            "rounded-xl",
+          )}
+        >
+          <div
+            className={cn(
+              "border-b border-border bg-gradient-to-b from-primary/[0.06] to-transparent",
+              "px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6",
+            )}
+          >
+            <DialogHeader className="space-y-0 text-left sm:text-left">
+              <DialogTitle className="text-balance pr-10 text-base font-semibold tracking-tight text-foreground sm:text-lg">
+                {t("bookingsCancelDialogTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            <DialogDescription asChild>
+              <div className="mt-4 space-y-4 text-left text-sm leading-relaxed">
+                {cancelTarget?.cancelRefundEligible ? (
+                  <p className="text-muted-foreground">{t("bookingsCancelAdminPathConfirm")}</p>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="inline-flex w-fit max-w-full items-center rounded-md border border-destructive/25 bg-destructive/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-destructive">
+                      {t("bookingsCancelLateWarningTitle")}
+                    </p>
+                    <p className="text-muted-foreground">{t("bookingsCancelLateWarningBody")}</p>
+                  </div>
+                )}
+                {cancelTarget ? (
+                  <div className="rounded-lg border border-border bg-background/80 p-3 shadow-inner sm:p-4 dark:bg-background/40">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {t("bookingsTableColDate")} · {t("bookingsTableColTime")}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground tabular-nums">
+                      {fullDateLabel(cancelTarget.dateIso, locale)}
+                      <span className="text-muted-foreground"> · </span>
+                      {formatTimeRange(cancelTarget.time, cancelTarget.endTime)}
+                    </p>
+                    <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {t("bookingsTableColInstructor")}
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-foreground">{cancelTarget.instructor}</p>
+                    {typeof cancelTarget.hoursUntilLesson === "number" && cancelTarget.hoursUntilLesson >= 0 ? (
+                      <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground tabular-nums">
+                        {t("bookingsCancelHoursUntilLesson")}: {cancelTarget.hoursUntilLesson.toFixed(1)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => setCancelTarget(null)}>
+          </div>
+          <div className="flex flex-col gap-2 px-4 py-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full border-border bg-background/80 sm:h-9 sm:w-auto sm:min-w-[9rem]"
+              onClick={() => setCancelTarget(null)}
+            >
               {t("bookingsCancelDialogDismiss")}
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant={cancelTarget?.cancelRefundEligible ? "default" : "destructive"}
+              className={cn(
+                "h-10 w-full shadow-sm sm:h-9 sm:w-auto sm:min-w-[9rem]",
+                !cancelTarget?.cancelRefundEligible &&
+                  "dark:bg-destructive dark:text-white dark:hover:bg-destructive/90 dark:focus-visible:ring-destructive/30",
+              )}
               disabled={cancelTarget != null && busyId === cancelTarget.id}
               onClick={() => void confirmCancelBooking()}
             >
-              {cancelTarget != null && busyId === cancelTarget.id ? t("loading") : t("bookingsCancelDialogConfirm")}
+              {cancelTarget != null && busyId === cancelTarget.id
+                ? t("loading")
+                : cancelTarget?.cancelRefundEligible
+                  ? t("bookingsCancelDialogConfirmRequest")
+                  : t("bookingsCancelDialogConfirmLate")}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
       <Reveal delay={0.05}>
         <h2 className="text-base font-semibold text-foreground mb-3">{t("bookingsMyBookingsTitle")}</h2>
+        <div className="mb-4">
+          <BookingCancellationPolicyCallout />
+        </div>
         <Card className="border-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left border-collapse min-w-[720px]">
@@ -268,10 +351,10 @@ export function DashboardBookingsListTab() {
                         </td>
                         <td className="py-3 px-4 align-top">
                           <div className="flex flex-col gap-1 max-w-[14rem]">
-                            <Badge className={cn("text-xs font-normal w-fit", statusBadgeClass(b.status))}>
+                            <Badge className={cn("text-xs font-normal w-fit", statusBadgeClass(b))}>
                               {statusLabel(b, t)}
                             </Badge>
-                            <p className="text-[11px] text-muted-foreground leading-snug">{t(statusExplainKey(b.status))}</p>
+                            <p className="text-[11px] text-muted-foreground leading-snug">{t(statusExplainKey(b))}</p>
                             {b.status === "pending" && b.lessonTypeKey === "lessonTypePractical" && holdActive(b) ? (
                               <p className="text-[11px] text-amber-700 dark:text-amber-500 tabular-nums">
                                 {t("bookingPaymentRemainingLabel")}:{" "}
@@ -331,22 +414,21 @@ export function DashboardBookingsListTab() {
                                   {busyId === b.id ? t("loading") : t("bookingStartPaymentWindowCtaShort")}
                                 </Button>
                               ) : null}
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-xs text-destructive hover:text-destructive"
-                                disabled={busyId === b.id}
-                                onClick={() => setCancelTarget(b)}
-                              >
-                                {t("bookingsCancelCta")}
-                              </Button>
-                              <Link
-                                href="/dashboard/bookings/practical"
-                                className="text-[11px] text-primary hover:underline text-right"
-                                title={t("bookingsActionsOpenPracticalCalendar")}
-                              >
-                                {t("bookingsActionsOpenPracticalCalendar")}
-                              </Link>
+                              {b.cancellationRequestedAt ? (
+                                <span className="text-[11px] text-amber-800 dark:text-amber-400 text-right max-w-[11rem] leading-snug">
+                                  {t("bookingsAwaitingOfficeCancellation")}
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 text-xs text-destructive hover:text-destructive"
+                                  disabled={busyId === b.id}
+                                  onClick={() => setCancelTarget(b)}
+                                >
+                                  {t("bookingsCancelCta")}
+                                </Button>
+                              )}
                             </div>
                           ) : (
                             "—"
@@ -375,10 +457,10 @@ export function DashboardBookingsListTab() {
                         </td>
                         <td className="py-3 px-4 align-top">
                           <div className="flex flex-col gap-1 max-w-[14rem]">
-                            <Badge className={cn("text-xs font-normal w-fit", statusBadgeClass(b.status))}>
+                            <Badge className={cn("text-xs font-normal w-fit", statusBadgeClass(b))}>
                               {statusLabel(b, t)}
                             </Badge>
-                            <p className="text-[11px] text-muted-foreground leading-snug">{t(statusExplainKey(b.status))}</p>
+                            <p className="text-[11px] text-muted-foreground leading-snug">{t(statusExplainKey(b))}</p>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right text-muted-foreground tabular-nums whitespace-nowrap">

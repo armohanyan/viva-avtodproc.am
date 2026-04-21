@@ -32,17 +32,17 @@ export default function InstructorCard({
 }: Props) {
   const { t } = useLang();
   const { panelHref } = useAppNavigation();
-  const imgClass = imageHeightClassName ?? (compact ? "h-28" : "h-60");
+  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "h-60");
+  const frameBorder =
+    pickerMode && isPicked
+      ? "border-2 border-primary"
+      : pickerMode
+        ? "border-2 border-border"
+        : "border border-border";
 
   return (
     <Card
-      className={`rounded-2xl border border-border shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full min-h-0 p-0 gap-0 ${
-        isPicked
-          ? compact
-            ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
-            : "ring-2 ring-primary ring-offset-2 ring-offset-background"
-          : ""
-      } ${compact ? "rounded-xl" : ""} ${className ?? ""}`}
+      className={`rounded-2xl ${frameBorder} shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full min-h-0 p-0 gap-0 ${compact ? "rounded-xl" : ""} ${className ?? ""}`}
     >
       <div className={`${imgClass} bg-muted overflow-hidden shrink-0`}>
         <img

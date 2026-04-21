@@ -38,7 +38,7 @@ const rawEnvSchema = z.object({
   REFRESH_TOKEN_ACTIVE_TIME: z.string().optional(),
   /** Browser-reachable base URL of this API (no trailing slash). Used for OAuth redirect_uri. */
   API_PUBLIC_URL: z.string().optional(),
-  /** Where to send users after OAuth when `ro` is absent from state (dev default: Vite :5173 / compose :3000). */
+  /** Browser origin of the accounts panel (Vite/SPA). Used in email links and OAuth return when state omits `ro`. */
   PANEL_DEFAULT_ORIGIN: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -50,6 +50,10 @@ const rawEnvSchema = z.object({
   OAUTH_APPLE_KEY_ID: z.string().optional(),
   /** ES256 private key (.p8) PEM; use literal \\n in .env for newlines. */
   OAUTH_APPLE_PRIVATE_KEY: z.string().optional(),
+  /** Brevo (Sendinblue) transactional email API key. */
+  BREVO_API_KEY: z.string().optional(),
+  /** From address for Brevo (must be a verified sender in Brevo). */
+  SENDER_EMAIL: z.string().optional(),
 });
 
 function parseCorsOrigins(primary?: string, fallback?: string): CorsOptions['origin'] {
@@ -78,7 +82,8 @@ const isProduction = raw.NODE_ENV === 'production';
 const exposeErrorDetails = !isProduction || raw.EXPOSE_ERROR_DETAILS === '1';
 
 const apiPublicUrl = (raw.API_PUBLIC_URL?.trim() || `http://127.0.0.1:${raw.PORT}`).replace(/\/+$/, '');
-const panelDefaultOrigin = (raw.PANEL_DEFAULT_ORIGIN?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+/** Default matches Vite dev (`client`); Docker/production should set `PANEL_DEFAULT_ORIGIN` explicitly. */
+const panelDefaultOrigin = (raw.PANEL_DEFAULT_ORIGIN?.trim() || 'http://localhost:5173').replace(/\/+$/, '');
 
 const config = {
   NODE_ENV: raw.NODE_ENV,
@@ -134,6 +139,10 @@ const config = {
         privateKey: raw.OAUTH_APPLE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim(),
       },
     },
+  },
+  MAIL: {
+    BREVO_API_KEY: raw.BREVO_API_KEY?.trim() || '',
+    SENDER_EMAIL: raw.SENDER_EMAIL?.trim() || '',
   },
 };
 

@@ -341,4 +341,26 @@ export default class BookingController {
       next(e);
     }
   }
+
+  static async approveStudentCancellation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.staffApprovePracticalCancellation(id);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async rejectStudentCancellation(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.staffRejectPracticalCancellation(id);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
 }

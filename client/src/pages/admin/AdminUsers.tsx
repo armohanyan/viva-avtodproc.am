@@ -14,10 +14,10 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen } from "lucide-react";
+import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen, Mail } from "lucide-react";
 import { Link } from "wouter";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -72,6 +72,27 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<User[]>([]);
   const [packages, setPackages] = useState<PackageRow[]>([]);
 
+  const inviteStudent = useCallback(
+    async (studentId: string) => {
+      if (invitingId) {
+        return;
+      }
+      setInvitingId(studentId);
+      try {
+        await vivaApiJson<{ sent: boolean }>("/admin/invite-student", {
+          method: "POST",
+          body: { studentUserId: Number(studentId) },
+        });
+        showToast(t("inviteStudentSent"), "success");
+      } catch (e) {
+        showToast(getApiErrorMessage(e) || t("inviteStudentFailed"), "error");
+      } finally {
+        setInvitingId(null);
+      }
+    },
+    [invitingId, showToast, t],
+  );
+
   const refresh = useCallback(async () => {
     try {
       const [stu, pkg] = await Promise.all([
@@ -92,6 +113,7 @@ export default function AdminUsers() {
   const [instructorFilter, setInstructorFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({
@@ -346,6 +368,13 @@ export default function AdminUsers() {
                     { kind: "separator", id: "sep-learn" },
                     {
                       kind: "item",
+                      id: "invite",
+                      label: invitingId === u.id ? t("loading") : t("inviteStudent"),
+                      icon: Mail,
+                      onClick: () => void inviteStudent(u.id),
+                    },
+                    {
+                      kind: "item",
                       id: "edit",
                       label: t("edit"),
                       icon: Edit2,
@@ -404,6 +433,13 @@ export default function AdminUsers() {
                             icon: BookOpen,
                           },
                           { kind: "separator", id: "sep-learn" },
+                          {
+                            kind: "item",
+                            id: "invite",
+                            label: invitingId === u.id ? t("loading") : t("inviteStudent"),
+                            icon: Mail,
+                            onClick: () => void inviteStudent(u.id),
+                          },
                           {
                             kind: "item",
                             id: "edit",

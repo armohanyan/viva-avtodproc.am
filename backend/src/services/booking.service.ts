@@ -4,6 +4,7 @@ import { Booking, BookingSlot, InstructorBranch, InstructorProfile, TheoryCohort
 import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import FinanceService from './finance.service';
+import BookingConfirmationNotifier from './booking-confirmation-notifier.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
@@ -63,6 +64,8 @@ export type BookingAdminDto = {
   type: 'practical' | 'theory' | 'theory_personal';
   status: string;
   branchId: number;
+  /** Set when the student requested cancellation (≥24h rule) and staff must act. */
+  cancellationRequestedAt: string | null;
 };
 
 /** Canonical booking row statuses (DB + API). */
@@ -81,10 +84,19 @@ export type StudentBookingDto = {
   /** ISO datetime when unpaid payment hold ends; null = no active countdown. */
   holdExpiresAt?: string | null;
   holdExtensionCount?: number;
-  /** If user cancels now, policy grants refund (≥24h before lesson). */
+  /** True when the student may submit a refund cancellation request (≥24h before lesson, not already pending). */
   cancelRefundEligible?: boolean;
+  /** Hours until lesson start (Armenia +04); negative if the lesson already started. */
+  hoursUntilLesson?: number;
+  /** ISO time when a refund cancellation was submitted; staff must approve. */
+  cancellationRequestedAt?: string | null;
   maxHoldExtensions?: number;
 };
+
+/** Result of POST /bookings/:id/cancel-student for practical lessons. */
+export type StudentPracticalCancelOutcome =
+  | { outcome: 'immediate'; status: BookingStatus; refundIssued: boolean }
+  | { outcome: 'pending_admin'; cancellationRequestedAt: string };
 
 /** Bookings for the instructor panel (student name included). */
 export type InstructorBookingDto = {
@@ -270,6 +282,59 @@ async function replaceBookingSlotRows(
   );
 }
 
+/** Ends a practical booking, frees slots, optionally records a refund line when the student had paid. */
+async function finalizePracticalCancellationInTx(opts: {
+  row: Booking;
+  studentUserId: number;
+  transaction: Transaction;
+  refundIfPaid: boolean;
+}): Promise<{ status: BookingStatus; refundIssued: boolean }> {
+  const { row, studentUserId, transaction, refundIfPaid } = opts;
+  const st = normalizeBookingStatus(row.status);
+  const wasPaid = row.paidAt != null && st === 'confirmed';
+  const gross = row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
+  const nextStatus: BookingStatus = refundIfPaid && wasPaid && gross > 0 ? 'refunded' : 'cancelled';
+
+  await row.update(
+    {
+      status: nextStatus,
+      holdExpiresAt: null,
+      holdExtensionCount: 0,
+      cancellationRequestedAt: null,
+    },
+    { transaction },
+  );
+  await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
+
+  let refundIssued = false;
+  if (nextStatus === 'refunded' && wasPaid && gross > 0) {
+    const stu = await User.findByPk(studentUserId, { attributes: ['name', 'email'], transaction });
+    if (stu) {
+      try {
+        await FinanceService.create({
+          customer: stu.name.trim() || 'Student',
+          email: stu.email ?? '',
+          description: `Practical lesson booking #${row.id} (cancellation refund)`,
+          branchId: row.branchId,
+          channel: 'online',
+          method: 'card',
+          grossAmd: gross,
+          feeAmd: 0,
+          status: 'refunded',
+          providerRef: `booking-refund:${row.id}`,
+          source: 'system',
+          bookingId: row.id,
+        });
+        refundIssued = true;
+      } catch {
+        refundIssued = false;
+      }
+    }
+  }
+
+  return { status: nextStatus, refundIssued };
+}
+
 export default class BookingService {
   static async listAdmin(): Promise<BookingAdminDto[]> {
     const rows = await Booking.findAll({
@@ -297,6 +362,7 @@ export default class BookingService {
         type: b.lessonType,
         status: normalizeBookingStatus(b.status),
         branchId: b.branchId,
+        cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
       };
     });
   }
@@ -369,10 +435,13 @@ export default class BookingService {
       const st = normalizeStudentBookingStatus(b.status);
       const today = todayIsoUtc();
       const dIso = dateIsoString(b.dateIso);
+      const pendingCancel = b.cancellationRequestedAt != null;
+      const hoursLeft = hoursUntilLessonStart(dIso, b.time);
       const eligible =
         b.lessonType === 'practical' &&
         (st === 'pending' || st === 'confirmed') &&
         dIso >= today &&
+        !pendingCancel &&
         isRefundWindowForCancellation(dIso, b.time);
       return {
         id: b.id,
@@ -395,6 +464,10 @@ export default class BookingService {
               holdExtensionCount: Number(b.holdExtensionCount ?? 0),
               maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
               cancelRefundEligible: eligible,
+              hoursUntilLesson: Math.round(hoursLeft * 10) / 10,
+              cancellationRequestedAt: b.cancellationRequestedAt
+                ? new Date(b.cancellationRequestedAt).toISOString()
+                : null,
             }
           : {}),
       };
@@ -674,6 +747,8 @@ export default class BookingService {
       throw e;
     }
 
+    void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
+
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
   }
@@ -815,6 +890,8 @@ export default class BookingService {
       throw e;
     }
 
+    void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
+
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
   }
@@ -893,6 +970,8 @@ export default class BookingService {
       }
       throw e;
     }
+
+    void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -1054,18 +1133,18 @@ export default class BookingService {
       }
     }
 
+    void BookingConfirmationNotifier.trySendForBookingId(updatedId).catch(() => {});
+
     return dto;
   }
 
   /**
-   * Student: cancel a practical booking. ≥24h before lesson → `refunded` (+ refund ledger line if paid);
-   * &lt;24h → `cancelled` (no refund).
+   * Student: cancel a practical booking.
+   * ≥24h before lesson → sets {@link Booking.cancellationRequestedAt}; staff completes refund/cancel.
+   * &lt;24h → immediate `cancelled`, no refund.
    */
-  static async cancelPracticalStudentBooking(bookingId: number, studentUserId: number): Promise<{
-    status: BookingStatus;
-    refundIssued: boolean;
-  }> {
-    let outcome: { status: BookingStatus; refundIssued: boolean } = { status: 'cancelled', refundIssued: false };
+  static async cancelPracticalStudentBooking(bookingId: number, studentUserId: number): Promise<StudentPracticalCancelOutcome> {
+    let outcome: StudentPracticalCancelOutcome | undefined;
     await sequelize.transaction(async (transaction) => {
       const row = await Booking.findOne({
         where: { id: bookingId, studentUserId, lessonType: 'practical' },
@@ -1084,52 +1163,86 @@ export default class BookingService {
       }
 
       const dateIso = dateIsoString(row.dateIso);
-      const refundWindow = isRefundWindowForCancellation(dateIso, row.time);
-      const nextStatus: BookingStatus = refundWindow ? 'refunded' : 'cancelled';
-      const wasPaid = row.paidAt != null && st === 'confirmed';
-      const gross =
-        row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
 
-      await row.update(
-        {
-          status: nextStatus,
-          holdExpiresAt: null,
-          holdExtensionCount: 0,
-        },
-        { transaction },
-      );
-
-      await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
-
-      let refundIssued = false;
-      if (nextStatus === 'refunded' && wasPaid && gross > 0) {
-        const stu = await User.findByPk(studentUserId, { attributes: ['name', 'email'], transaction });
-        if (stu) {
-          try {
-            await FinanceService.create({
-              customer: stu.name.trim() || 'Student',
-              email: stu.email ?? '',
-              description: `Practical lesson booking #${row.id} (cancellation refund)`,
-              branchId: row.branchId,
-              channel: 'online',
-              method: 'card',
-              grossAmd: gross,
-              feeAmd: 0,
-              status: 'refunded',
-              providerRef: `booking-refund:${row.id}`,
-              source: 'system',
-              bookingId: row.id,
-            });
-            refundIssued = true;
-          } catch {
-            refundIssued = false;
-          }
-        }
+      if (row.cancellationRequestedAt != null) {
+        outcome = {
+          outcome: 'pending_admin',
+          cancellationRequestedAt: new Date(row.cancellationRequestedAt).toISOString(),
+        };
+        return;
       }
 
-      outcome = { status: nextStatus, refundIssued };
+      if (isRefundWindowForCancellation(dateIso, row.time)) {
+        const requestedAt = new Date();
+        await row.update({ cancellationRequestedAt: requestedAt }, { transaction });
+        outcome = { outcome: 'pending_admin', cancellationRequestedAt: requestedAt.toISOString() };
+        return;
+      }
+
+      const fin = await finalizePracticalCancellationInTx({
+        row,
+        studentUserId,
+        transaction,
+        refundIfPaid: false,
+      });
+      outcome = { outcome: 'immediate', status: fin.status, refundIssued: fin.refundIssued };
     });
+    if (!outcome) {
+      throw new InputValidationError('Cancellation could not be completed.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
     return outcome;
+  }
+
+  /** Staff: complete a student-initiated cancellation (free slots, refund ledger if the lesson was paid). */
+  static async staffApprovePracticalCancellation(bookingId: number): Promise<{ status: BookingStatus; refundIssued: boolean }> {
+    return sequelize.transaction(async (transaction) => {
+      const row = await Booking.findOne({
+        where: { id: bookingId, lessonType: 'practical' },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      if (row.cancellationRequestedAt == null) {
+        throw new InputValidationError(
+          'No pending student cancellation request for this booking.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      const st = normalizeBookingStatus(row.status);
+      if (st !== 'pending' && st !== 'confirmed') {
+        throw new InputValidationError('This booking cannot be resolved here.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      return finalizePracticalCancellationInTx({
+        row,
+        studentUserId: row.studentUserId,
+        transaction,
+        refundIfPaid: true,
+      });
+    });
+  }
+
+  /** Staff: decline a student cancellation request; booking stays active. */
+  static async staffRejectPracticalCancellation(bookingId: number): Promise<{ ok: true }> {
+    await sequelize.transaction(async (transaction) => {
+      const row = await Booking.findOne({
+        where: { id: bookingId, lessonType: 'practical' },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      if (row.cancellationRequestedAt == null) {
+        throw new InputValidationError(
+          'No pending student cancellation request for this booking.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      await row.update({ cancellationRequestedAt: null }, { transaction });
+    });
+    return { ok: true as const };
   }
 
   static async remove(id: number): Promise<boolean> {

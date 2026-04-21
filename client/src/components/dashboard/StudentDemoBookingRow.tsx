@@ -23,6 +23,12 @@ function fullDateLabel(dateIso: string, locale: string) {
 }
 
 function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => string) {
+  if (
+    booking.cancellationRequestedAt &&
+    (booking.status === "confirmed" || booking.status === "pending")
+  ) {
+    return t("bookingStatusCancellationPendingLabel");
+  }
   switch (booking.status) {
     case "confirmed":
       return t("confirmed");
@@ -35,7 +41,14 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
   }
 }
 
-function statusBadgeClass(status: StudentDemoBooking["status"]) {
+function statusBadgeClass(booking: StudentDemoBooking) {
+  if (
+    booking.cancellationRequestedAt &&
+    (booking.status === "confirmed" || booking.status === "pending")
+  ) {
+    return "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100";
+  }
+  const status = booking.status;
   if (status === "confirmed") return "bg-primary/10 text-primary";
   if (status === "pending") return "bg-accent text-muted-foreground";
   if (status === "cancelled") return "bg-destructive/10 text-destructive";
@@ -86,7 +99,7 @@ export default function StudentDemoBookingRow({ booking, variant = "bookings" }:
             </div>
           </div>
         </div>
-        <Badge className={`text-xs shrink-0 ${statusBadgeClass(booking.status)}`}>{statusLabel(booking, t)}</Badge>
+        <Badge className={`text-xs shrink-0 ${statusBadgeClass(booking)}`}>{statusLabel(booking, t)}</Badge>
       </div>
     </Card>
   );

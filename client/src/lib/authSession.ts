@@ -1,15 +1,16 @@
 import { API_V1_PREFIX } from "src/constants/api";
-import { loadAccountSession, saveAccountSession } from "src/modules/accounts/account.session";
+import { getApiBaseUrl } from "src/lib/apiBaseUrl";
+import { memoryAccessTokenLooksValid } from "src/lib/accessTokenMemory";
+import { saveAccountSession } from "src/modules/accounts/account.session";
 import type { AccountSessionUser, AccountType } from "src/modules/accounts/account.types";
 
 function isAccountType(v: string): v is AccountType {
 	return v === "super_admin" || v === "admin" || v === "instructor" || v === "student";
 }
 
-/** Same-origin as `api.ts` when `VITE_API_BASE_URL` is unset (Vite proxy). */
+/** Must match `apiFetch` host so httpOnly refresh cookies are sent with `/auth/refresh` and `/auth/logout`. */
 function authV1Url(suffix: string): string {
-	const meta = import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } };
-	const base = meta.env?.VITE_API_BASE_URL?.trim().replace(/\/+$/, "") ?? "";
+	const base = getApiBaseUrl();
 	const path = `${API_V1_PREFIX}${suffix.startsWith("/") ? suffix : `/${suffix}`}`;
 	return base ? `${base}${path}` : path;
 }
@@ -27,47 +28,60 @@ export function clearRefreshCookieBestEffort(): void {
 	void fetch(authV1Url("/auth/logout"), { method: "POST", credentials: "include" });
 }
 
-let inFlight: Promise<boolean> | null = null;
+export type RefreshAttempt = "ok" | "failed" | "rate_limited";
+
+let refreshChain: Promise<RefreshAttempt> | null = null;
 
 /**
- * Uses httpOnly refresh cookie; on success persists access token + user in local session.
+ * Uses httpOnly refresh cookie; on success stores a new access token in memory and user snapshot in
+ * localStorage (never persists the access token to localStorage).
+ *
+ * Coalesces concurrent callers onto one refresh request. If the in-memory access token is already
+ * valid, skips the network call so parallel 401 retries do not rotate the refresh cookie repeatedly.
  */
-export async function tryRefreshAccessToken(): Promise<boolean> {
-	if (inFlight) {
-		return inFlight;
+export async function tryRefreshAccessToken(): Promise<RefreshAttempt> {
+	if (typeof window === "undefined") return "failed";
+	if (memoryAccessTokenLooksValid(45)) {
+		return "ok";
 	}
-	inFlight = (async () => {
+	if (refreshChain) {
+		return refreshChain;
+	}
+	refreshChain = (async (): Promise<RefreshAttempt> => {
 		try {
 			const res = await fetch(authRefreshUrl(), { method: "POST", credentials: "include" });
 			const text = await res.text();
 
+			if (res.status === 429) {
+				return "rate_limited";
+			}
 			if (!res.ok) {
-				return false;
+				return "failed";
 			}
 
 			const data = JSON.parse(text) as {
 				accessToken?: string;
-				user?: { id: string; email: string; name: string; accountType: string };
+				user?: { id: string | number; email: string; name: string; accountType: string };
 			};
 
 			if (!data.accessToken || !data.user || !isAccountType(data.user.accountType)) {
-				return false;
+				return "failed";
 			}
 
 			const next: AccountSessionUser = {
-				id: data.user.id,
+				id: String(data.user.id),
 				email: data.user.email,
 				name: data.user.name,
 				accountType: data.user.accountType,
 				accessToken: data.accessToken,
 			};
 			saveAccountSession(next);
-			return true;
+			return "ok";
 		} catch {
-			return false;
+			return "failed";
 		} finally {
-			inFlight = null;
+			refreshChain = null;
 		}
 	})();
-	return inFlight;
+	return refreshChain;
 }

@@ -34,22 +34,19 @@ export default class RefreshTokenService {
     return { plain, expiresAt };
   }
 
-  static async findValidByPlain(plain: string): Promise<RefreshToken | null> {
+  /** Rotates refresh token: revokes the current row and returns a new plain token persisted for the same user. */
+  static async rotate(plain: string): Promise<{ plain: string; userId: number } | null> {
     const tokenHash = hashRefreshToken(plain);
     const row = await RefreshToken.findOne({ where: { tokenHash } });
-    if (!row || row.revokedAt) {
+    if (!row) {
+      return null;
+    }
+    // Refresh token reuse: presenting a rotated (revoked) token invalidates all sessions for that user.
+    if (row.revokedAt) {
+      await this.revokeAllForUser(row.userId);
       return null;
     }
     if (row.expiresAt.getTime() <= Date.now()) {
-      return null;
-    }
-    return row;
-  }
-
-  /** Rotates refresh token: revokes the current row and returns a new plain token persisted for the same user. */
-  static async rotate(plain: string): Promise<{ plain: string; userId: number } | null> {
-    const row = await this.findValidByPlain(plain);
-    if (!row) {
       return null;
     }
     const plainNext = newPlainRefresh();

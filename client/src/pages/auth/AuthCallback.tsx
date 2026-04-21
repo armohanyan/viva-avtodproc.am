@@ -53,11 +53,11 @@ export default function AuthCallback() {
       let cancelled = false;
       let timer: number | undefined;
       void (async () => {
-        const ok = await tryRefreshAccessToken();
+        const refreshOutcome = await tryRefreshAccessToken();
         if (cancelled) {
           return;
         }
-        if (!ok) {
+        if (refreshOutcome !== "ok") {
           setStatus("error");
           setMessage(t("socialAuthMissingPayload"));
           showToast(t("socialAuthFailed"), "error");

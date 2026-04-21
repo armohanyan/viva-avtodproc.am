@@ -51,8 +51,11 @@ export type StudentDemoBooking = {
   holdExtensionCount?: number;
   /** From API when practical; max “+5 min” extensions allowed. */
   maxHoldExtensions?: number;
-  /** From API: cancel ≥24h before lesson → refund policy applies. */
+  /** From API: may submit office cancellation (≥24h, not already pending). */
   cancelRefundEligible?: boolean;
+  /** From API (practical): hours until lesson (+04 policy); negative if started. */
+  hoursUntilLesson?: number;
+  cancellationRequestedAt?: string | null;
 };
 
 function isUpcomingBooking(b: StudentDemoBooking, todayIso: string): boolean {

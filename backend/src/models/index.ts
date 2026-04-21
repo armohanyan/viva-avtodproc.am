@@ -27,6 +27,8 @@ import { TheoryCohortEnrollment } from './theory-cohort-enrollment.model';
 import { User } from './user.model';
 import { RefreshToken } from './refresh-token.model';
 import { OAuthAccount } from './oauth-account.model';
+import { StudentInvitation } from './student-invitation.model';
+import { AdminMfaChallenge } from './admin-mfa-challenge.model';
 
 City.hasMany(Branch, { foreignKey: 'cityId', sourceKey: 'id' });
 Branch.belongsTo(City, { foreignKey: 'cityId', targetKey: 'id' });
@@ -79,6 +81,12 @@ RefreshToken.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 User.hasMany(OAuthAccount, { foreignKey: 'userId', sourceKey: 'id' });
 OAuthAccount.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 
+User.hasMany(StudentInvitation, { foreignKey: 'userId', sourceKey: 'id' });
+StudentInvitation.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
+
+User.hasMany(AdminMfaChallenge, { foreignKey: 'userId', sourceKey: 'id' });
+AdminMfaChallenge.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
+
 InstructorStudentRating.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'ratingStudent' });
 InstructorStudentRating.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'ratedInstructor' });
 User.hasMany(InstructorStudentRating, { foreignKey: 'studentUserId', sourceKey: 'id', as: 'instructorRatingsGiven' });
@@ -105,9 +113,11 @@ export {
   MarketingSetting,
   MarketingStat,
   MarketingTestimonial,
+  AdminMfaChallenge,
   OAuthAccount,
   Package,
   RefreshToken,
+  StudentInvitation,
   StudentExtraPractical,
   StudentProfile,
   TheoryCohort,
@@ -137,6 +147,36 @@ async function ensurePackagesImageUrlColumn(): Promise<void> {
     return;
   }
   await sequelize.query('ALTER TABLE `packages` ADD COLUMN `image_url` TEXT NULL');
+}
+
+/** Adds password reset columns on `users` when the table predates the Sequelize model fields. */
+async function ensureUsersPasswordResetColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+       AND COLUMN_NAME IN ('password_reset_token_hash', 'password_reset_expires_at')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('password_reset_token_hash')) {
+    await sequelize.query(
+      'ALTER TABLE `users` ADD COLUMN `password_reset_token_hash` VARCHAR(128) NULL',
+    );
+  }
+  if (!have.has('password_reset_expires_at')) {
+    await sequelize.query('ALTER TABLE `users` ADD COLUMN `password_reset_expires_at` DATETIME NULL');
+  }
 }
 
 /** Adds `users.is_active` when the table predates the Sequelize model field (sync without alter skips new columns). */
@@ -420,6 +460,127 @@ async function ensureMarketingSettingsIdColumn(): Promise<void> {
   }
 }
 
+async function ensureStudentInvitationsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_invitations'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) {
+    return;
+  }
+  const users = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (users.length === 0) {
+    return;
+  }
+  await sequelize.query(`
+    CREATE TABLE \`student_invitations\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`user_id\` INT UNSIGNED NOT NULL,
+      \`token_hash\` VARCHAR(128) NOT NULL,
+      \`expires_at\` DATETIME NOT NULL,
+      \`consumed_at\` DATETIME NULL,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      UNIQUE KEY \`student_invitations_token_hash\` (\`token_hash\`),
+      KEY \`student_invitations_user_id\` (\`user_id\`),
+      CONSTRAINT \`student_invitations_user_fk\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureAdminMfaChallengesTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'admin_mfa_challenges'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) {
+    return;
+  }
+  const users = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (users.length === 0) {
+    return;
+  }
+  await sequelize.query(`
+    CREATE TABLE \`admin_mfa_challenges\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`user_id\` INT UNSIGNED NOT NULL,
+      \`code_hash\` VARCHAR(128) NOT NULL,
+      \`expires_at\` DATETIME NOT NULL,
+      \`consumed_at\` DATETIME NULL,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      KEY \`admin_mfa_challenges_user_id\` (\`user_id\`),
+      CONSTRAINT \`admin_mfa_challenges_user_fk\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureBookingsConfirmationEmailSentAtColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'confirmation_email_sent_at'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `confirmation_email_sent_at` DATETIME NULL');
+}
+
+async function ensureBookingsCancellationRequestedAtColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'cancellation_requested_at'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `cancellation_requested_at` DATETIME NULL');
+}
+
 async function ensureAuthTables(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -685,6 +846,7 @@ export async function syncModels(): Promise<void> {
   await ensureInstructorProfilesDropScheduleColumn();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
+  await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
   await ensureCarExpensesPaymentColumns();
@@ -694,4 +856,8 @@ export async function syncModels(): Promise<void> {
   await ensureBookingSlotsTable();
   await ensureMarketingSettingsIdColumn();
   await ensureAuthTables();
+  await ensureStudentInvitationsTable();
+  await ensureAdminMfaChallengesTable();
+  await ensureBookingsConfirmationEmailSentAtColumn();
+  await ensureBookingsCancellationRequestedAtColumn();
 }

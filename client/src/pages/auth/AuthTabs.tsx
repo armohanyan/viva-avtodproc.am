@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2, Eye, EyeOff, Star } from "lucide-react";
 
 import { resolvePostAuthPanelPath, useAccount } from "src/modules/accounts";
+import { storePendingAdminMfaToken } from "src/pages/auth/VerifyAdmin2fa";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -131,10 +132,20 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     setLoginLoading(true);
 
     try {
-      const data = await vivaApiJson<{
-        accessToken: string;
-        user: { id: string | number; email: string; name: string; accountType: AccountType };
-      }>("/auth/login", { method: "POST", body: { email: trimmedEmail, password: loginPassword } });
+      const data = await vivaApiJson<
+        | { requiresMfa: true; mfaToken: string }
+        | {
+            accessToken: string;
+            user: { id: string | number; email: string; name: string; accountType: AccountType };
+          }
+      >("/auth/login", { method: "POST", body: { email: trimmedEmail, password: loginPassword } });
+
+      if ("requiresMfa" in data && data.requiresMfa) {
+        storePendingAdminMfaToken(data.mfaToken);
+        setLocation(absWouterHref("/auth/verify-2fa"));
+        return;
+      }
+
       const accountType = data.user.accountType;
 
       signIn({

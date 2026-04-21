@@ -8,9 +8,15 @@ import {
   type PropsWithChildren,
   type ReactNode,
 } from "react";
+import { setAccessTokenInMemory } from "src/lib/accessTokenMemory";
 import { clearRefreshCookieBestEffort, tryRefreshAccessToken } from "src/lib/authSession";
 import type { AccountSessionUser, AccountType } from "./account.types";
-import { clearAccountSession, loadAccountSession, saveAccountSession } from "./account.session";
+import {
+	ACCOUNT_SESSION_STORAGE_KEY,
+	clearAccountSession,
+	loadAccountSession,
+	saveAccountSession,
+} from "./account.session";
 import { inferAccountTypeFromEmail } from "./inferAccountType";
 import { defaultHomePathForAccountType } from "./accountRouting";
 
@@ -41,8 +47,8 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
     void (async () => {
       let u = loadAccountSession();
       if (!u || !u.accessToken) {
-        const ok = await tryRefreshAccessToken();
-        if (!cancelled && ok) {
+        const refreshOutcome = await tryRefreshAccessToken();
+        if (!cancelled && refreshOutcome === "ok") {
           u = loadAccountSession();
         }
       }
@@ -52,7 +58,12 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
       }
     })();
 
-    const onStorage = () => setUser(loadAccountSession());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === ACCOUNT_SESSION_STORAGE_KEY && e.newValue === null) {
+        setAccessTokenInMemory(null);
+      }
+      setUser(loadAccountSession());
+    };
     window.addEventListener("storage", onStorage);
     window.addEventListener("viva-account-session-updated", onStorage);
     return () => {

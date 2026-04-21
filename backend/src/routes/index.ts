@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import accountsRoutes from './accounts.routes';
+import adminRoutes from './admin.routes';
 import authRoutes from './auth.routes';
 import blogRoutes from './blog.routes';
 import bookedCallRoutes from './booked-call.routes';
@@ -28,6 +29,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/admin', adminRoutes);
 router.use('/accounts', accountsRoutes);
 router.use('/cities', cityRoutes);
 router.use('/branches', branchRoutes);

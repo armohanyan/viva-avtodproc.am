@@ -25,6 +25,10 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare holdExpiresAt: CreationOptional<Date | null>;
   /** How many times the student used “Add 5 more minutes” for this booking (server-enforced max). */
   declare holdExtensionCount: CreationOptional<number>;
+  /** When a booking confirmation email was sent (at most once per booking). */
+  declare confirmationEmailSentAt: CreationOptional<Date | null>;
+  /** Student asked to cancel ≥24h before lesson; staff must confirm and process refund. */
+  declare cancellationRequestedAt: CreationOptional<Date | null>;
 }
 
 Booking.init(
@@ -42,6 +46,8 @@ Booking.init(
     paidAt: { type: DataTypes.DATE, allowNull: true },
     holdExpiresAt: { type: DataTypes.DATE, allowNull: true },
     holdExtensionCount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+    confirmationEmailSentAt: { type: DataTypes.DATE, allowNull: true },
+    cancellationRequestedAt: { type: DataTypes.DATE, allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

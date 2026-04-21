@@ -5,7 +5,7 @@ import { useLang } from "src/lib/i18n";
 interface Props {
   open: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   title: string;
   description: string;
   confirmLabel?: string;
@@ -32,8 +32,10 @@ export default function ConfirmDialog({ open, onClose, onConfirm, title, descrip
             variant={danger ? "destructive" : "default"}
             className="flex-1"
             onClick={() => {
-              onConfirm();
-              onClose();
+              void (async () => {
+                await Promise.resolve(onConfirm());
+                onClose();
+              })();
             }}
           >
             {confirmLabel}

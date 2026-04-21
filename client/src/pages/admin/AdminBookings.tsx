@@ -15,7 +15,7 @@ import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
-import { Plus, Edit2, Trash2, CalendarRange } from "lucide-react";
+import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import LessonBookingCalendar, { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -48,6 +48,7 @@ type Booking = {
   type: "practical" | "theory" | "theory_personal";
   status: string;
   branchId: string;
+  cancellationRequestedAt?: string | null;
 };
 
 /** Canonical booking statuses; coerce legacy API/DB values for labels and filters. */
@@ -160,6 +161,10 @@ export default function AdminBookings() {
   const [branchFilter, setBranchFilter] = useState("all");
   const [lessonTypeFilter, setLessonTypeFilter] = useState<"all" | "practical" | "theory" | "theory_personal">("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [staffCancellationDialog, setStaffCancellationDialog] = useState<
+    { kind: "approve" | "reject"; booking: Booking } | null
+  >(null);
+  const [cancellationStaffBusyId, setCancellationStaffBusyId] = useState<string | null>(null);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState<Booking | null>(null);
@@ -284,7 +289,12 @@ export default function AdminBookings() {
       const timeLabel = formatBookingSlotRangeLabel(b.time, b.endTime);
       const hay = [b.id, stu, b.instructorName, dateLabel, timeLabel, b.time, b.type, b.status, branchLabel].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
-      const matchStatus = statusFilter === "all" || toCanonicalBookingStatus(b.status) === statusFilter;
+      const matchStatus =
+        statusFilter === "all"
+          ? true
+          : statusFilter === "pending_student_cancel"
+            ? Boolean(b.cancellationRequestedAt)
+            : toCanonicalBookingStatus(b.status) === statusFilter;
       const matchBranch = branchFilter === "all" || b.branchId === branchFilter;
       const matchLessonType = lessonTypeFilter === "all" || b.type === lessonTypeFilter;
       return matchSearch && matchStatus && matchBranch && matchLessonType;
@@ -346,6 +356,27 @@ export default function AdminBookings() {
       showToast(t("bookingCancelledMsg"), "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+    }
+  };
+
+  const handleStaffCancellationConfirm = async () => {
+    const d = staffCancellationDialog;
+    if (!d) return;
+    const id = String(d.booking.id);
+    setCancellationStaffBusyId(id);
+    try {
+      if (d.kind === "approve") {
+        await vivaApiJson(`/bookings/${encodeURIComponent(id)}/approve-student-cancellation`, { method: "POST" });
+        showToast(t("adminBookingApproveCancellationToast"), "success");
+      } else {
+        await vivaApiJson(`/bookings/${encodeURIComponent(id)}/reject-student-cancellation`, { method: "POST" });
+        showToast(t("adminBookingRejectCancellationToast"), "success");
+      }
+      await refresh();
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setCancellationStaffBusyId(null);
     }
   };
 
@@ -738,6 +769,7 @@ export default function AdminBookings() {
                       ariaLabel={t("filterByStatus")}
                       options={[
                         { value: "all", label: t("filterOptionAll") },
+                        { value: "pending_student_cancel", label: t("statusFilterCancellationPending") },
                         { value: "confirmed", label: t("confirmed") },
                         { value: "pending", label: t("pending") },
                         { value: "cancelled", label: t("cancelled") },
@@ -764,6 +796,25 @@ export default function AdminBookings() {
                         setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) });
                       },
                     },
+                    ...(b.cancellationRequestedAt && b.type === "practical"
+                      ? [
+                          {
+                            kind: "item" as const,
+                            id: "approve-cancel",
+                            label: t("adminBookingApproveCancellation"),
+                            icon: CheckCircle2,
+                            onClick: () => setStaffCancellationDialog({ kind: "approve", booking: b }),
+                          },
+                          {
+                            kind: "item" as const,
+                            id: "reject-cancel",
+                            label: t("adminBookingRejectCancellation"),
+                            icon: Ban,
+                            destructive: true,
+                            onClick: () => setStaffCancellationDialog({ kind: "reject", booking: b }),
+                          },
+                        ]
+                      : []),
                     {
                       kind: "item",
                       id: "delete",
@@ -792,36 +843,87 @@ export default function AdminBookings() {
                       <Badge className={`text-xs ${typeColor[b.type] ?? typeColor.practical}`}>{t(bookingLessonTypeTKey(b.type))}</Badge>
                     </td>
                     <td className="px-4 py-3.5">
-                      <Badge
-                        className={`text-xs ${statusColor[toCanonicalBookingStatus(b.status)] ?? statusColor.pending}`}
-                      >
-                        {t(toCanonicalBookingStatus(b.status) as TranslationKey)}
-                      </Badge>
+                      <div className="flex flex-col gap-1.5 items-start">
+                        <Badge
+                          className={`text-xs ${statusColor[toCanonicalBookingStatus(b.status)] ?? statusColor.pending}`}
+                        >
+                          {t(toCanonicalBookingStatus(b.status) as TranslationKey)}
+                        </Badge>
+                        {b.cancellationRequestedAt && b.type === "practical" ? (
+                          <Badge className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
+                            {t("adminBookingCancellationBadge")}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5">
-                      <AdminTableRowActions
-                        toolbarOnly
-                        actions={[
-                          {
-                            kind: "item",
-                            id: "edit",
-                            label: t("edit"),
-                            icon: Edit2,
-                            onClick: () => {
-                              setBookingModalTab("booking");
-                              setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) });
+                      <div className="flex flex-col items-end gap-2">
+                        {b.cancellationRequestedAt && b.type === "practical" ? (
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8 text-xs"
+                              disabled={cancellationStaffBusyId === String(b.id)}
+                              onClick={() => setStaffCancellationDialog({ kind: "approve", booking: b })}
+                            >
+                              {t("adminBookingApproveCancellation")}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-8 text-xs"
+                              disabled={cancellationStaffBusyId === String(b.id)}
+                              onClick={() => setStaffCancellationDialog({ kind: "reject", booking: b })}
+                            >
+                              {t("adminBookingRejectCancellation")}
+                            </Button>
+                          </div>
+                        ) : null}
+                        <AdminTableRowActions
+                          toolbarOnly
+                          actions={[
+                            {
+                              kind: "item",
+                              id: "edit",
+                              label: t("edit"),
+                              icon: Edit2,
+                              onClick: () => {
+                                setBookingModalTab("booking");
+                                setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) });
+                              },
                             },
-                          },
-                          {
-                            kind: "item",
-                            id: "delete",
-                            label: t("delete"),
-                            icon: Trash2,
-                            destructive: true,
-                            onClick: () => setDeleteId(b.id),
-                          },
-                        ]}
-                      />
+                            ...(b.cancellationRequestedAt && b.type === "practical"
+                              ? ([
+                                  {
+                                    kind: "item" as const,
+                                    id: "approve-cancel",
+                                    label: t("adminBookingApproveCancellation"),
+                                    icon: CheckCircle2,
+                                    onClick: () => setStaffCancellationDialog({ kind: "approve", booking: b }),
+                                  },
+                                  {
+                                    kind: "item" as const,
+                                    id: "reject-cancel",
+                                    label: t("adminBookingRejectCancellation"),
+                                    icon: Ban,
+                                    destructive: true,
+                                    onClick: () => setStaffCancellationDialog({ kind: "reject", booking: b }),
+                                  },
+                                ] as const)
+                              : []),
+                            {
+                              kind: "item",
+                              id: "delete",
+                              label: t("delete"),
+                              icon: Trash2,
+                              destructive: true,
+                              onClick: () => setDeleteId(b.id),
+                            },
+                          ]}
+                        />
+                      </div>
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
@@ -1231,6 +1333,28 @@ export default function AdminBookings() {
         description={t("bookingCancelDesc")}
         confirmLabel={t("delete")}
         danger
+      />
+
+      <ConfirmDialog
+        open={staffCancellationDialog !== null}
+        onClose={() => setStaffCancellationDialog(null)}
+        onConfirm={handleStaffCancellationConfirm}
+        title={
+          staffCancellationDialog?.kind === "approve"
+            ? t("adminBookingApproveCancellationTitle")
+            : t("adminBookingRejectCancellationTitle")
+        }
+        description={
+          staffCancellationDialog?.kind === "approve"
+            ? t("adminBookingApproveCancellationDesc")
+            : t("adminBookingRejectCancellationDesc")
+        }
+        confirmLabel={
+          staffCancellationDialog?.kind === "approve"
+            ? t("adminBookingApproveCancellation")
+            : t("adminBookingRejectCancellation")
+        }
+        danger={staffCancellationDialog?.kind === "reject"}
       />
     </AdminLayout>
   );
