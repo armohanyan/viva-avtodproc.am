@@ -15,6 +15,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, Package } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { Textarea } from "src/components/ui/textarea";
@@ -72,7 +73,14 @@ export default function AdminPackages() {
   const refresh = useCallback(async () => {
     try {
       const data = await vivaApiJson<Pkg[]>("/packages");
-      setPackages(Array.isArray(data) ? data : []);
+      setPackages(
+        Array.isArray(data)
+          ? data.map((p) => ({
+              ...p,
+              imageUrl: sameOriginStaffUploadUrl(p.imageUrl ?? null),
+            }))
+          : [],
+      );
     } catch {
       showToast(t("fillRequired"), "error");
     }

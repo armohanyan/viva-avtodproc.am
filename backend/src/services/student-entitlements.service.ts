@@ -43,6 +43,9 @@ export default class StudentEntitlementsService {
     if (!profile) {
       return { packages: [], extras: await this.listExtras(userId) };
     }
+    if (profile.packageId == null) {
+      return { packages: [], extras: await this.listExtras(userId) };
+    }
     const pkg = await Package.findByPk(profile.packageId);
     if (!pkg) {
       return { packages: [], extras: await this.listExtras(userId) };

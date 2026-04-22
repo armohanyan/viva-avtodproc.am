@@ -1,3 +1,4 @@
+import { sequelize } from '../database/sequelize';
 import { Package, StudentProfile } from '../models';
 
 export type PackageDto = {
@@ -69,8 +70,11 @@ export default class PackageService {
   }
 
   static async remove(id: number): Promise<boolean> {
-    const n = await Package.destroy({ where: { id } });
-    return n > 0;
+    return sequelize.transaction(async (transaction) => {
+      await StudentProfile.update({ packageId: null }, { where: { packageId: id }, transaction });
+      const n = await Package.destroy({ where: { id }, transaction });
+      return n > 0;
+    });
   }
 }
 

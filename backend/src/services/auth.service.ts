@@ -57,12 +57,14 @@ export default class AuthService {
 
   private static async issueTokens(user: User): Promise<AuthTokensDto> {
     await this.assertActive(user);
+
     const accessToken = signAccessToken({
       sub: String(user.id),
       email: user.email,
       accountType: user.accountType,
     });
     const { plain } = await RefreshTokenService.createForUser(user.id);
+
     return { accessToken, user: toDto(user), refreshPlain: plain };
   }
 
@@ -230,17 +232,21 @@ export default class AuthService {
     if (!user) {
       throw new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED);
     }
+
     await this.assertActive(user);
+
     if (!user.passwordHash) {
       throw new UnauthorizedError(
         'This account uses social sign-in; password cannot be changed here.',
         HttpStatusCodesUtil.UNAUTHORIZED,
       );
     }
+
     const ok = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!ok) {
       throw new UnauthorizedError('Current password is incorrect', HttpStatusCodesUtil.UNAUTHORIZED);
     }
+
     await user.update({ passwordHash: await bcrypt.hash(newPassword, 10) });
   }
 
@@ -249,15 +255,18 @@ export default class AuthService {
     patch: { name?: string; phone?: string | null },
   ): Promise<AuthUserDto | null> {
     const user = await User.findByPk(userId);
+
     if (!user || !user.isActive) {
       return null;
     }
+
     await user.update({
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.phone !== undefined
         ? { phone: patch.phone === null || patch.phone === '' ? null : String(patch.phone).trim() }
         : {}),
     });
+
     return toDto(user);
   }
 
@@ -267,11 +276,14 @@ export default class AuthService {
    */
   static async requestPasswordReset(email: string): Promise<void> {
     if (!isTransactionalMailConfigured()) {
-      LoggerUtil.warn('Password reset skipped: Brevo mail is not configured');
+      LoggerUtil.warn('Password reset skipped: set BREVO_API_KEY and SENDER_EMAIL');
       return;
     }
+
     const normalized = email.trim().toLowerCase();
+
     const user = await User.findOne({ where: { email: normalized } });
+
     if (!user || !user.isActive || !user.passwordHash) {
       return;
     }
@@ -279,6 +291,7 @@ export default class AuthService {
     const plainToken = randomUrlToken();
     const tokenHash = sha256Hex(plainToken);
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
     await user.update({ passwordResetTokenHash: tokenHash, passwordResetExpiresAt: expiresAt });
 
     const base = config.PANEL_DEFAULT_ORIGIN.replace(/\/+$/, '');
@@ -288,7 +301,9 @@ export default class AuthService {
       await MailService.sendPasswordReset(user.email, user.name, resetUrl);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+
       LoggerUtil.error(`Password reset email failed for user ${user.id}: ${msg}`);
+
       await user.update({ passwordResetTokenHash: null, passwordResetExpiresAt: null });
     }
   }
@@ -322,9 +337,11 @@ export default class AuthService {
     if (newPassword.length < 8) {
       return { ok: false, message: 'Password must be at least 8 characters' };
     }
+
     if (!plainToken || plainToken.length < 16) {
       return { ok: false, message: 'Invalid or expired reset link' };
     }
+
     const tokenHash = sha256Hex(plainToken);
     const user = await User.findOne({
       where: {
@@ -332,6 +349,7 @@ export default class AuthService {
         passwordResetExpiresAt: { [Op.gt]: new Date() },
       },
     });
+
     if (!user || !user.isActive) {
       return { ok: false, message: 'Invalid or expired reset link' };
     }
@@ -342,7 +360,9 @@ export default class AuthService {
       passwordResetTokenHash: null,
       passwordResetExpiresAt: null,
     });
+
     await RefreshTokenService.revokeAllForUser(user.id);
+
     return { ok: true };
   }
 }

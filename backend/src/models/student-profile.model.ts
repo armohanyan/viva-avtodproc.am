@@ -9,7 +9,7 @@ export class StudentProfile extends Model<
 > {
   declare userId: number;
   declare branchId: number;
-  declare packageId: number;
+  declare packageId: CreationOptional<number | null>;
   declare instructorUserId: CreationOptional<number | null>;
   declare lessonsCompleted: number;
   declare lessonsTotal: number;
@@ -23,7 +23,7 @@ StudentProfile.init(
   {
     userId: { ...fkUnsignedInt(), primaryKey: true },
     branchId: fkUnsignedInt(),
-    packageId: fkUnsignedInt(),
+    packageId: fkUnsignedIntNullable(),
     instructorUserId: fkUnsignedIntNullable(),
     lessonsCompleted: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
     lessonsTotal: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },

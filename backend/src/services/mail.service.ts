@@ -3,35 +3,13 @@ import { LoggerUtil } from '../utils';
 
 const BREVO_API = 'https://api.brevo.com/v3/smtp/email';
 
-/** Panel brand tokens (aligned with `client/src/styles.css` :root). */
-const BRAND = {
-  pageBg: '#f9f8f5',
-  cardBg: '#ffffff',
-  text: '#0d0b0b',
-  muted: '#565555',
-  primary: '#f48633',
-  onPrimary: '#0d0b0b',
-  border: '#e2ded5',
-  soft: '#efece6',
-  link: '#c26a22',
-  shadow: 'rgba(13, 11, 11, 0.08)',
-} as const;
-
-export type BookingConfirmationData = {
-  bookingId: number;
-  dateIso: string;
-  priceAmd: number | null;
-  /** Absolute URL to the student booking dashboard. */
-  dashboardUrl: string;
-};
-
-function isMailConfigured(): boolean {
+function isBrevoConfigured(): boolean {
   return Boolean(config.MAIL.BREVO_API_KEY && config.MAIL.SENDER_EMAIL);
 }
 
-/** Whether transactional emails can be sent (Brevo + sender). */
+/** Whether transactional emails can be sent (Brevo API + verified sender). */
 export function isTransactionalMailConfigured(): boolean {
-  return isMailConfigured();
+  return isBrevoConfigured();
 }
 
 async function postBrevoEmail(body: {
@@ -40,7 +18,7 @@ async function postBrevoEmail(body: {
   htmlContent: string;
   textContent?: string;
 }): Promise<void> {
-  if (!isMailConfigured()) {
+  if (!isBrevoConfigured()) {
     LoggerUtil.warn('Brevo mail skipped: BREVO_API_KEY or SENDER_EMAIL not set');
     return;
   }
@@ -64,6 +42,19 @@ async function postBrevoEmail(body: {
   }
 }
 
+async function sendTransactionalEmail(body: {
+  to: { email: string; name?: string }[];
+  subject: string;
+  htmlContent: string;
+  textContent?: string;
+}): Promise<void> {
+  if (!isBrevoConfigured()) {
+    LoggerUtil.warn('Transactional mail skipped: set BREVO_API_KEY and SENDER_EMAIL (https://app.brevo.com/)');
+    return;
+  }
+  await postBrevoEmail(body);
+}
+
 function formatBookingDateHy(dateIso: string): string {
   const d = new Date(dateIso);
   if (Number.isNaN(d.getTime())) return dateIso;
@@ -77,6 +68,20 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+/** Panel brand tokens (aligned with `client/src/styles.css` :root). */
+const BRAND = {
+  pageBg: '#f9f8f5',
+  cardBg: '#ffffff',
+  text: '#0d0b0b',
+  muted: '#565555',
+  primary: '#f48633',
+  onPrimary: '#0d0b0b',
+  border: '#e2ded5',
+  soft: '#efece6',
+  link: '#c26a22',
+  shadow: 'rgba(13, 11, 11, 0.08)',
+} as const;
 
 function emailShell(innerHtml: string): string {
   const { pageBg, cardBg, text, muted, border, shadow, soft } = BRAND;
@@ -100,6 +105,14 @@ function ctaButton(href: string, label: string): string {
   return `<a href="${escapeHtml(href)}" style="display:inline-block;background:${primary};color:${onPrimary};text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:700;">${escapeHtml(label)}</a>`;
 }
 
+export type BookingConfirmationData = {
+  bookingId: number;
+  dateIso: string;
+  priceAmd: number | null;
+  /** Absolute URL to the student booking dashboard. */
+  dashboardUrl: string;
+};
+
 export default class MailService {
   static async sendStudentInvitation(toEmail: string, studentName: string, setupPasswordUrl: string): Promise<void> {
     const safeName = studentName.trim() || 'Ուսանող';
@@ -111,11 +124,29 @@ export default class MailService {
         <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
     `;
-    await postBrevoEmail({
+    await sendTransactionalEmail({
       to: [{ email: toEmail, name: safeName }],
       subject: 'Ուրախ ենք Ձեզ տեսնել Viva-ում — ակտիվացրեք Ձեր հաշիվը',
       htmlContent: emailShell(inner),
       textContent: `Բարև, ${safeName},\n\nՈւրախ ենք, որ մեզ հետ եք։ Սահմանեք Ձեր գաղտնաբառը՝ ${setupPasswordUrl}\n\nՀղումը շուտով կդառնա անվավեր։\n`,
+    });
+  }
+
+  static async sendInstructorInvitation(toEmail: string, instructorName: string, setupPasswordUrl: string): Promise<void> {
+    const safeName = instructorName.trim() || 'Դասավանդող';
+    const inner = `
+        <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
+        <p style="margin:0 0 16px;">Ձեզ հրավիրում ենք <strong style="color:${BRAND.text};">Viva</strong> դասավանդողի հարթակ — մնում է սահմանել Ձեր գաղտնաբառը, և կարող եք մուտք գործել։</p>
+        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
+        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
+    `;
+    await sendTransactionalEmail({
+      to: [{ email: toEmail, name: safeName }],
+      subject: 'Viva — հրավեր դասավանդողի հաշիվ ակտիվացնելու համար',
+      htmlContent: emailShell(inner),
+      textContent: `Բարև, ${safeName},\n\nՍահմանեք Ձեր գաղտնաբառը՝ ${setupPasswordUrl}\n\nՀղումը շուտով կդառնա անվավեր։\n`,
     });
   }
 
@@ -127,7 +158,7 @@ export default class MailService {
         <p style="margin:0 0 20px;padding:16px 20px;border-radius:12px;border:2px solid ${BRAND.primary};background:${BRAND.soft};font-size:28px;font-weight:700;letter-spacing:6px;color:${BRAND.text};font-family:ui-monospace,monospace;text-align:center;">${escapeHtml(code)}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Կոդը վավեր է 10 րոպե։ Եթե դուք չեք փորձել մուտք գործել, պարզապես անտեսեք այս նամակը — Ձեր հաշիվը անվտանգ է։</p>
     `;
-    await postBrevoEmail({
+    await sendTransactionalEmail({
       to: [{ email: toEmail, name: safeName }],
       subject: 'Ձեր Viva ադմին մուտքի կոդը',
       htmlContent: emailShell(inner),
@@ -135,7 +166,6 @@ export default class MailService {
     });
   }
 
-  /** Sends booking confirmation; safe to call without awaiting in fire-and-forget flows (caller should catch). */
   static async sendPasswordReset(toEmail: string, userName: string, resetUrl: string): Promise<void> {
     const safeName = userName.trim() || 'Հարգելի օգտվող';
     const inner = `
@@ -146,7 +176,7 @@ export default class MailService {
         <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(resetUrl)}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Եթե դուք չեք հայցել վերականգնում, պարզապես անտեսեք այս նամակը — Ձեր հաշիվը անվտանգ է մնում։</p>
     `;
-    await postBrevoEmail({
+    await sendTransactionalEmail({
       to: [{ email: toEmail, name: safeName }],
       subject: 'Viva — Ձեր գաղտնաբառի վերականգնում',
       htmlContent: emailShell(inner),
@@ -171,7 +201,7 @@ export default class MailService {
         <p style="margin:0 0 12px;">${ctaButton(bookingData.dashboardUrl, 'Բացել Ձեր գրանցումների էջը')}</p>
         <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(bookingData.dashboardUrl)}</p>
     `;
-    await postBrevoEmail({
+    await sendTransactionalEmail({
       to: [{ email: userEmail }],
       subject: `Ձեր դասը հաստատված է (#${bookingData.bookingId})`,
       htmlContent: emailShell(inner),

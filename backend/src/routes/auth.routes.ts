@@ -7,6 +7,7 @@ const router = Router();
 
 router.post('/login', authCredentialLimiter, AuthController.login);
 router.post('/verify-admin-mfa', authCredentialLimiter, AuthController.verifyAdminMfa);
+router.post('/resend-admin-mfa', authCredentialLimiter, AuthController.resendAdminMfa);
 router.get('/student-invitation', AuthController.studentInvitationMeta);
 router.post('/setup-password', AuthController.setupPassword);
 router.post('/forgot-password', authCredentialLimiter, AuthController.forgotPassword);

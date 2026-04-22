@@ -12,7 +12,6 @@ const createSchema = z.object({
   name: z.string().min(1),
   startDateIso: z.string().min(1),
   endDateIso: z.string().min(1),
-  schedule: z.string().min(1),
   seats: z.number().int().positive(),
   instructorName: z.string().min(1),
   meetLink: z.string().optional(),

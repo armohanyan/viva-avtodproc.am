@@ -9,6 +9,7 @@ import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import type { Blog } from "src/lib/blogs";
 import { fetchBlogBySlugApi } from "src/lib/blogsApi";
 import { sanitizeBlogHtml, sanitizeCoverImageUrl } from "src/lib/blogHtml";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { ArrowLeft, Calendar } from "lucide-react";
 
 function formatDate(iso: string, locale: string): string {
@@ -75,7 +76,7 @@ function BlogPostBody({ slug }: { slug: string }) {
     );
   }
 
-  const cover = sanitizeCoverImageUrl(post.coverImage);
+  const cover = sameOriginStaffUploadUrl(sanitizeCoverImageUrl(post.coverImage));
   const html = sanitizeBlogHtml(post.bodyHtml);
 
   return (

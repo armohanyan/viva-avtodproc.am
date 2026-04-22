@@ -39,6 +39,10 @@ const verifyAdminMfaSchema = z.object({
   code: z.string().regex(/^\d{6}$/),
 });
 
+const resendAdminMfaSchema = z.object({
+  mfaToken: z.string().min(20),
+});
+
 const setupPasswordSchema = z.object({
   token: z.string().min(16),
   password: z.string().min(8),
@@ -90,6 +94,23 @@ export default class AuthController {
       }
       attachRefreshCookie(res, session.refreshPlain);
       SuccessHandlerUtil.handleGet(res, next, { accessToken: session.accessToken, user: session.user });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async resendAdminMfa(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(resendAdminMfaSchema, req.body);
+      const nextStep = await AdminMfaService.resendForPendingMfa(body.mfaToken);
+
+     if (!nextStep) {
+        return next(
+          new UnauthorizedError('Invalid or expired sign-in session', HttpStatusCodesUtil.UNAUTHORIZED),
+        );
+      }
+
+      SuccessHandlerUtil.handleGet(res, next, { mfaToken: nextStep.mfaToken });
     } catch (e) {
       next(e);
     }

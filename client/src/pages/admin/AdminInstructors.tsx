@@ -13,7 +13,7 @@ import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
-import { Plus, Edit2, Trash2, Calendar, School, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Edit2, Trash2, Calendar, School, ChevronLeft, ChevronRight, Mail } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { Instructor } from "src/data/instructors";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -159,6 +159,7 @@ export default function AdminInstructors() {
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const loadInstructors = useCallback(async () => {
     try {
@@ -182,6 +183,28 @@ export default function AdminInstructors() {
   useEffect(() => {
     void loadInstructors();
   }, [loadInstructors]);
+
+  const inviteInstructor = useCallback(
+    async (instructorId: string) => {
+      if (invitingId) {
+        return;
+      }
+      setInvitingId(instructorId);
+      try {
+        await vivaApiJson<{ sent: boolean }>("/admin/invite-instructor", {
+          method: "POST",
+          body: { instructorUserId: Number(instructorId) },
+        });
+        showToast(t("inviteInstructorSent"), "success");
+      } catch (e) {
+        showToast(getApiErrorMessage(e) || t("inviteInstructorFailed"), "error");
+      } finally {
+        setInvitingId(null);
+      }
+    },
+    [invitingId, showToast, t],
+  );
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [cityFilter, setCityFilter] = useState<"all" | string>("all");
@@ -628,6 +651,13 @@ export default function AdminInstructors() {
                     },
                     {
                       kind: "item",
+                      id: "invite",
+                      label: invitingId === ins.id ? t("loading") : t("inviteInstructor"),
+                      icon: Mail,
+                      onClick: () => void inviteInstructor(ins.id),
+                    },
+                    {
+                      kind: "item",
                       id: "schedule",
                       label: t("ariaScheduleButton"),
                       ariaLabel: t("ariaScheduleButton"),
@@ -699,6 +729,13 @@ export default function AdminInstructors() {
                             label: t("edit"),
                             icon: Edit2,
                             onClick: () => setEditId(ins.id),
+                          },
+                          {
+                            kind: "item",
+                            id: "invite",
+                            label: invitingId === ins.id ? t("loading") : t("inviteInstructor"),
+                            icon: Mail,
+                            onClick: () => void inviteInstructor(ins.id),
                           },
                           {
                             kind: "item",

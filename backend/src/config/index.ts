@@ -50,9 +50,9 @@ const rawEnvSchema = z.object({
   OAUTH_APPLE_KEY_ID: z.string().optional(),
   /** ES256 private key (.p8) PEM; use literal \\n in .env for newlines. */
   OAUTH_APPLE_PRIVATE_KEY: z.string().optional(),
-  /** Brevo (Sendinblue) transactional email API key. */
+  /** Brevo transactional email API key (https://app.brevo.com/). */
   BREVO_API_KEY: z.string().optional(),
-  /** From address for Brevo (must be a verified sender in Brevo). */
+  /** From address — must be a verified sender in Brevo. */
   SENDER_EMAIL: z.string().optional(),
 });
 

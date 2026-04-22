@@ -16,7 +16,7 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import LessonBookingCalendar, { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
@@ -114,6 +114,30 @@ function studentContact(students: StudentRow[], studentId: string): { name: stri
   return { name: s?.name ?? "", email: (s?.email ?? "").trim() };
 }
 
+/** Hour starts from first `time` up to exclusive `endTime` (same as API multi-slot bookings). */
+function hourlyStartsFromBookingRange(startTime: string, endTimeExclusive?: string | null): string[] {
+  const parse = (t: string): number => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(t).trim());
+    if (!m) return NaN;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const toLabel = (mins: number) => `${pad2(Math.floor(mins / 60) % 24)}:${pad2(mins % 60)}`;
+  const sm = parse(startTime);
+  const em =
+    endTimeExclusive != null && String(endTimeExclusive).trim() !== ""
+      ? parse(String(endTimeExclusive))
+      : sm + 60;
+  if (!Number.isFinite(sm) || !Number.isFinite(em) || em <= sm) {
+    return Number.isFinite(sm) ? [toLabel(sm)] : [];
+  }
+  const out: string[] = [];
+  for (let m = sm; m < em; m += 60) {
+    out.push(toLabel(m));
+  }
+  return out;
+}
+
 export default function AdminBookings() {
   const editBookingFormId = useId();
   const addBookingFormId = useId();
@@ -176,7 +200,10 @@ export default function AdminBookings() {
   /** When set, booking has a system-generated payment — show notice instead of form. */
   const [editSystemPayment, setEditSystemPayment] = useState<FinanceTx | null>(null);
   const [slotPick, setSlotPick] = useState<LessonBookingPayload | null>(null);
+  const [editSlotPick, setEditSlotPick] = useState<LessonBookingPayload | null>(null);
   const [theoryCohortId, setTheoryCohortId] = useState("");
+  const [editTheoryCohortId, setEditTheoryCohortId] = useState("");
+  const lastEditSlotInitKey = useRef("");
   const [theoryCohorts, setTheoryCohorts] = useState<
     { id: string; name: string; branchId: string; instructorName: string; status: string }[]
   >([]);
@@ -214,6 +241,18 @@ export default function AdminBookings() {
     return base;
   }, [draft?.type, theoryCohortId, theoryCohorts, instructors]);
 
+  const theoryEditCalendarInstructors = useMemo(() => {
+    const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
+    if (editBooking?.type !== "theory" || !editTheoryCohortId) return base;
+    const c = theoryCohorts.find((x) => x.id === editTheoryCohortId);
+    if (!c) return base;
+    const full = instructors.find((i) => i.name === c.instructorName);
+    if (full && !base.some((b) => b.id === full.id)) {
+      return [...base, full];
+    }
+    return base;
+  }, [editBooking?.type, editTheoryCohortId, theoryCohorts, instructors]);
+
   const calendarInstructorId = useMemo(() => {
     if (!draft) return "";
     if (draft.type === "practical") {
@@ -229,8 +268,23 @@ export default function AdminBookings() {
     return "";
   }, [draft, instructors, theoryCohortId, theoryCohorts]);
 
+  const editCalendarInstructorId = useMemo(() => {
+    if (!editBooking) return "";
+    if (editBooking.type === "practical") {
+      const m = instructors.find((i) => i.name === editBooking.instructorName);
+      return m?.id ?? "";
+    }
+    if (editBooking.type === "theory" && editTheoryCohortId) {
+      const c = theoryCohorts.find((x) => x.id === editTheoryCohortId);
+      if (!c) return "";
+      const m = instructors.find((i) => i.name === c.instructorName);
+      return m?.id ?? "";
+    }
+    return "";
+  }, [editBooking, instructors, editTheoryCohortId, theoryCohorts]);
+
   useEffect(() => {
-    if (!addOpen) return;
+    if (!addOpen && !editBooking) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -256,7 +310,45 @@ export default function AdminBookings() {
     return () => {
       cancelled = true;
     };
-  }, [addOpen]);
+  }, [addOpen, editBooking]);
+
+  useEffect(() => {
+    if (!editBooking) {
+      setEditSlotPick(null);
+      lastEditSlotInitKey.current = "";
+      return;
+    }
+    if (editBooking.type !== "practical" && editBooking.type !== "theory") {
+      setEditSlotPick(null);
+      lastEditSlotInitKey.current = "";
+      return;
+    }
+    const key = `${editBooking.id}-${editBooking.type}`;
+    if (lastEditSlotInitKey.current === key) return;
+    lastEditSlotInitKey.current = key;
+    const inst = instructors.find((i) => i.name === editBooking.instructorName);
+    const times = hourlyStartsFromBookingRange(editBooking.time, editBooking.endTime);
+    const slotTimes = times.length > 0 ? times : [editBooking.time];
+    setEditSlotPick({
+      instructorUserId: inst?.id != null ? String(inst.id) : "",
+      instructor: editBooking.instructorName,
+      dateIso: editBooking.dateIso,
+      time: slotTimes[0] ?? editBooking.time,
+      times: slotTimes,
+    });
+  }, [editBooking, instructors]);
+
+  useEffect(() => {
+    if (!editBooking || editBooking.type !== "theory") {
+      setEditTheoryCohortId("");
+      return;
+    }
+    const matches = activeTheoryCohorts.filter(
+      (c) => c.branchId === editBooking.branchId && c.instructorName === editBooking.instructorName,
+    );
+    const next = matches[0]?.id ?? "";
+    setEditTheoryCohortId((prev) => (prev && matches.some((m) => m.id === prev) ? prev : next));
+  }, [editBooking, activeTheoryCohorts]);
 
   const openAdd = () => {
     const newDraft: Booking = {
@@ -467,18 +559,45 @@ export default function AdminBookings() {
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editBooking) return;
+    if (editBooking.type === "practical" || editBooking.type === "theory") {
+      if (!editSlotPick || editSlotPick.times.length === 0) {
+        showToast(t("adminBookingSlotsNotSelected"), "error");
+        return;
+      }
+      if (editBooking.type === "theory" && !editTheoryCohortId.trim()) {
+        showToast(t("adminBookingTheoryCohortRequired"), "error");
+        return;
+      }
+    } else if (!editBooking.instructorName || !editBooking.dateIso || !editBooking.time) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
     try {
+      const body =
+        editBooking.type === "practical" || editBooking.type === "theory"
+          ? {
+              studentId: editBooking.studentId,
+              branchId: Number(editBooking.branchId),
+              status: editBooking.status,
+              type: editBooking.type,
+              dateIso: editSlotPick!.dateIso,
+              slots: editSlotPick!.times,
+              ...(editBooking.type === "practical"
+                ? { instructorName: editSlotPick!.instructor || editBooking.instructorName }
+                : { theoryCohortId: Number(editTheoryCohortId) }),
+            }
+          : {
+              studentId: editBooking.studentId,
+              instructorName: editBooking.instructorName,
+              dateIso: editBooking.dateIso,
+              time: editBooking.time,
+              type: editBooking.type,
+              status: editBooking.status,
+              branchId: Number(editBooking.branchId),
+            };
       await vivaApiJson(`/bookings/${encodeURIComponent(editBooking.id)}`, {
         method: "PATCH",
-        body: {
-          studentId: editBooking.studentId,
-          instructorName: editBooking.instructorName,
-          dateIso: editBooking.dateIso,
-          time: editBooking.time,
-          type: editBooking.type,
-          status: editBooking.status,
-          branchId: editBooking.branchId,
-        },
+        body,
       });
       const bookingIdNum = Number(editBooking.id);
       if (!editSystemPayment) {
@@ -503,6 +622,7 @@ export default function AdminBookings() {
         }
       }
       setEditBooking(null);
+      lastEditSlotInitKey.current = "";
       setBookingModalTab("booking");
       await refresh();
       showToast(t("bookingUpdatedToast"), "success");
@@ -941,15 +1061,30 @@ export default function AdminBookings() {
         onOpenChange={(o) => {
           if (!o) {
             setEditBooking(null);
+            setEditSlotPick(null);
+            lastEditSlotInitKey.current = "";
             setBookingModalTab("booking");
           }
         }}
         title={t("bookingDialogEditTitle")}
-        contentClassName="max-w-2xl w-[min(100%,42rem)] max-h-[min(92vh,880px)]"
+        contentClassName={
+          editBooking && (editBooking.type === "practical" || editBooking.type === "theory")
+            ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] max-h-[min(94vh,980px)]"
+            : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[min(92vh,900px)]"
+        }
         footer={
           editBooking ? (
             <div className="flex gap-2 sm:gap-3 flex-1 min-w-0 w-full">
-              <Button type="button" variant="outline" className="flex-1 min-w-0" onClick={() => setEditBooking(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 min-w-0"
+                onClick={() => {
+                  setEditBooking(null);
+                  setEditSlotPick(null);
+                  lastEditSlotInitKey.current = "";
+                }}
+              >
                 {t("cancel")}
               </Button>
               <Button type="submit" form={editBookingFormId} className="flex-1 min-w-0 bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -986,11 +1121,37 @@ export default function AdminBookings() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
+                  <select
+                    value={editBooking.type}
+                    onChange={(e) => {
+                      const type = e.target.value as Booking["type"];
+                      const next: Booking = { ...editBooking, type };
+                      lastEditSlotInitKey.current = "";
+                      if (type !== "theory") setEditTheoryCohortId("");
+                      if (type === "practical") {
+                        next.instructorName = defaultPracticalInstructorName || next.instructorName;
+                      }
+                      if (type === "theory_personal") {
+                        next.instructorName = theoryPersonalInstructorNames[0] ?? next.instructorName;
+                      }
+                      setEditBooking(next);
+                      setEditPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                    }}
+                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="practical">{t("lessonTypePractical")}</option>
+                    <option value="theory">{t("lessonTypeTheory")}</option>
+                    <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
                   <select
                     value={editBooking.branchId}
                     onChange={(e) => setEditBooking({ ...editBooking, branchId: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    disabled={editBooking.type === "theory" && !!editTheoryCohortId}
+                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
                   >
                     {branches.map((br) => (
                       <option key={br.id} value={br.id}>
@@ -999,47 +1160,153 @@ export default function AdminBookings() {
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                  <select
-                    value={editBooking.instructorName}
-                    onChange={(e) => setEditBooking({ ...editBooking, instructorName: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {instructorNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
-                  <select
-                    value={editBooking.type}
-                    onChange={(e) =>
-                      setEditBooking({
-                        ...editBooking,
-                        type: e.target.value as Booking["type"],
-                      })
-                    }
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="practical">{t("lessonTypePractical")}</option>
-                    <option value="theory">{t("lessonTypeTheory")}</option>
-                    <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {editBooking.type === "theory" ? (
                   <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
-                    <Input type="date" value={editBooking.dateIso} onChange={(e) => setEditBooking({ ...editBooking, dateIso: e.target.value })} className="h-10" />
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminBookingTheoryCohortLabel")}</label>
+                    <select
+                      value={editTheoryCohortId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setEditTheoryCohortId(id);
+                        setEditSlotPick(null);
+                        lastEditSlotInitKey.current = "";
+                        const c = activeTheoryCohorts.find((x) => x.id === id);
+                        if (c) {
+                          setEditBooking((eb) =>
+                            eb
+                              ? {
+                                  ...eb,
+                                  branchId: c.branchId,
+                                  instructorName: c.instructorName,
+                                }
+                              : eb,
+                          );
+                        }
+                      }}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
+                      {activeTheoryCohorts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">{t("adminBookingTheoryCohortHint")}</p>
                   </div>
+                ) : null}
+                {editBooking.type === "practical" ? (
                   <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColTime")}</label>
-                    <Input type="time" value={editBooking.time} onChange={(e) => setEditBooking({ ...editBooking, time: e.target.value })} className="h-10" step={60} />
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
+                    <select
+                      value={editBooking.instructorName}
+                      onChange={(e) => {
+                        setEditBooking({ ...editBooking, instructorName: e.target.value });
+                        lastEditSlotInitKey.current = "";
+                      }}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {practicalInstructorsForCalendar.map((ins) => (
+                        <option key={ins.id} value={ins.name}>
+                          {ins.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                </div>
+                ) : null}
+                {editBooking.type === "theory_personal" ? (
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
+                    <select
+                      value={editBooking.instructorName}
+                      onChange={(e) => setEditBooking({ ...editBooking, instructorName: e.target.value })}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      {theoryPersonalInstructorNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {editBooking.type === "practical" || editBooking.type === "theory" ? (
+                  <div className="space-y-2 pt-2 border-t border-border">
+                    <p className="text-sm text-muted-foreground">{t("adminBookingSlotCalendarHint")}</p>
+                    {editBooking.type === "theory" && !editTheoryCohortId ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingTheoryPickCohortFirst")}</p>
+                    ) : !editCalendarInstructorId ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
+                    ) : (
+                      <LessonBookingCalendar
+                        key={`edit-${editBooking.id}-${editBooking.type === "practical" ? editBooking.instructorName : editTheoryCohortId}-${editBooking.branchId}`}
+                        mode="admin"
+                        instructors={
+                          editBooking.type === "practical" ? practicalInstructorsForCalendar : theoryEditCalendarInstructors
+                        }
+                        selectedInstructorId={editCalendarInstructorId}
+                        onInstructorChange={(insId) => {
+                          const ins = instructors.find((i) => i.id === insId);
+                          if (ins) {
+                            setEditBooking((eb) => (eb ? { ...eb, instructorName: ins.name } : eb));
+                            lastEditSlotInitKey.current = "";
+                          }
+                        }}
+                        branchId={editBooking.branchId}
+                        studentName={studentLabel(editBooking.studentId)}
+                        showInstructorPicker={editBooking.type === "practical"}
+                        ignoreBusyBookingId={editBooking.id}
+                        initialAdminSelection={
+                          editSlotPick && editSlotPick.times.length > 0
+                            ? { dateIso: editSlotPick.dateIso, times: editSlotPick.times }
+                            : null
+                        }
+                        onAdminSelectionCleared={() => setEditSlotPick(null)}
+                        onBookingConfirmed={(payload) => {
+                          setEditSlotPick(payload);
+                          setEditBooking((eb) => {
+                            if (!eb) return eb;
+                            const next: Booking = {
+                              ...eb,
+                              dateIso: payload.dateIso,
+                              time: payload.time,
+                              instructorName: payload.instructor || eb.instructorName,
+                            };
+                            setEditPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                            return next;
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
+                      <Input
+                        type="date"
+                        value={editBooking.dateIso}
+                        onChange={(e) => {
+                          const dateIso = e.target.value;
+                          const next = { ...editBooking, dateIso };
+                          setEditBooking(next);
+                          setEditPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                        }}
+                        className="h-10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColTime")}</label>
+                      <Input
+                        type="time"
+                        value={editBooking.time}
+                        onChange={(e) => setEditBooking({ ...editBooking, time: e.target.value })}
+                        className="h-10"
+                        step={60}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                   <select
@@ -1084,8 +1351,8 @@ export default function AdminBookings() {
         title={t("bookingDialogAddTitle")}
         contentClassName={
           draft && (draft.type === "practical" || draft.type === "theory")
-            ? "max-w-5xl w-[min(100%,56rem)] max-h-[min(92vh,920px)] overflow-y-auto"
-            : "max-w-2xl w-[min(100%,42rem)] max-h-[min(92vh,880px)]"
+            ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] max-h-[min(94vh,980px)]"
+            : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[min(92vh,900px)]"
         }
         footer={
           draft ? (

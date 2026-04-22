@@ -11,7 +11,6 @@ export type TheoryCohortDto = {
   name: string;
   startDateIso: string;
   endDateIso: string;
-  schedule: string;
   seats: number;
   enrolled: number;
   instructorName: string;
@@ -44,7 +43,6 @@ function toDto(c: TheoryCohort, enrolled: number): TheoryCohortDto {
     name: c.name,
     startDateIso: dateIso(c.startDateIso),
     endDateIso: dateIso(c.endDateIso),
-    schedule: c.schedule,
     seats: c.seats,
     enrolled,
     instructorName: c.instructorName,
@@ -68,7 +66,6 @@ export default class TheoryCohortService {
     name: string;
     startDateIso: string;
     endDateIso: string;
-    schedule: string;
     seats: number;
     instructorName: string;
     meetLink?: string;
@@ -79,7 +76,6 @@ export default class TheoryCohortService {
       name: input.name.trim(),
       startDateIso: input.startDateIso,
       endDateIso: input.endDateIso,
-      schedule: input.schedule.trim(),
       seats: input.seats,
       instructorName: input.instructorName.trim(),
       meetLink: input.meetLink?.trim() ?? '',
@@ -95,7 +91,6 @@ export default class TheoryCohortService {
       name: string;
       startDateIso: string;
       endDateIso: string;
-      schedule: string;
       seats: number;
       instructorName: string;
       meetLink: string;
@@ -113,7 +108,6 @@ export default class TheoryCohortService {
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.startDateIso !== undefined ? { startDateIso: patch.startDateIso } : {}),
       ...(patch.endDateIso !== undefined ? { endDateIso: patch.endDateIso } : {}),
-      ...(patch.schedule !== undefined ? { schedule: patch.schedule.trim() } : {}),
       ...(patch.seats !== undefined ? { seats: patch.seats } : {}),
       ...(patch.instructorName !== undefined ? { instructorName: patch.instructorName.trim() } : {}),
       ...(patch.meetLink !== undefined ? { meetLink: patch.meetLink.trim() } : {}),

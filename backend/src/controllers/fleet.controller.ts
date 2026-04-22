@@ -27,8 +27,6 @@ const expenseSchema = z.object({
   date: z.string().min(1),
   purpose: z.string().min(1),
   note: z.string().optional(),
-  channel: z.enum(['online', 'pos', 'office', 'bank']).default('office'),
-  method: z.enum(['card', 'idram', 'cash', 'transfer']).default('cash'),
 });
 
 const expenseUpdateSchema = expenseSchema.partial();
@@ -96,8 +94,6 @@ export default class FleetController {
         date: body.date,
         purpose: body.purpose,
         note: body.note,
-        channel: body.channel ?? 'office',
-        method: body.method ?? 'cash',
       });
       SuccessHandlerUtil.handleAdd(res, next, row);
     } catch (e) {

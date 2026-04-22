@@ -1,5 +1,9 @@
 import { InstructorBranch, InstructorProfile, InstructorScheduleRule, User } from '../models';
 import InstructorStudentRatingService from './instructor-student-rating.service';
+import ErrorsUtil from '../utils/errors.util';
+import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+
+const { ConflictError } = ErrorsUtil;
 
 type ProfileWithUser = InstructorProfile & { user: User };
 
@@ -82,10 +86,23 @@ export default class InstructorService {
   static async create(
     input: Omit<InstructorDto, 'id' | 'studentRatingCount' | 'rating'>,
   ): Promise<InstructorDto> {
+    const emailNorm = input.email.trim().toLowerCase();
+    const existingUser = await User.findOne({ where: { email: emailNorm } });
+    if (existingUser) {
+      const existingProfile = await InstructorProfile.findOne({ where: { userId: existingUser.id } });
+      if (existingProfile) {
+        throw new ConflictError(
+          'An instructor with this email already exists.',
+          HttpStatusCodesUtil.CONFLICT,
+        );
+      }
+      throw new ConflictError('This email is already registered.', HttpStatusCodesUtil.CONFLICT);
+    }
+
     /** Public rating is always 5 until students rate; never accept a manual seed. */
     const seedRating = 5;
     const user = await User.create({
-      email: input.email.trim().toLowerCase(),
+      email: emailNorm,
       name: input.name,
       phone: input.phone || null,
       accountType: 'instructor',
@@ -130,6 +147,14 @@ export default class InstructorService {
     const user = await User.findByPk(id);
     const profile = await InstructorProfile.findOne({ where: { userId: id } });
     if (!user || !profile) return null;
+
+    if (patch.email !== undefined) {
+      const emailNorm = patch.email.trim().toLowerCase();
+      const other = await User.findOne({ where: { email: emailNorm } });
+      if (other && other.id !== id) {
+        throw new ConflictError('This email is already in use.', HttpStatusCodesUtil.CONFLICT);
+      }
+    }
 
     await user.update({
       ...(patch.email !== undefined ? { email: patch.email.trim().toLowerCase() } : {}),

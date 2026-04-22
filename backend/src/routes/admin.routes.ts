@@ -5,5 +5,6 @@ import { requireStaff } from '../middleware/staff-auth.middleware';
 const router = Router();
 
 router.post('/invite-student', requireStaff, AdminInviteController.inviteStudent);
+router.post('/invite-instructor', requireStaff, AdminInviteController.inviteInstructor);
 
 export default router;

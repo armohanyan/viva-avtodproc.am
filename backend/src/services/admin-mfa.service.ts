@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import config from '../config';
-import { signAdminMfaToken, verifyAdminMfaToken } from '../helpers';
+import { signAdminMfaToken, verifyAdminMfaToken, type AdminMfaTokenPayload } from '../helpers';
 import { AdminMfaChallenge, User } from '../models';
 import MailService from './mail.service';
 import AuthService, { type AuthTokensDto } from './auth.service';
@@ -41,6 +41,7 @@ export default class AdminMfaService {
       expiresAt,
     });
 
+    console.log(user.email, user.name, code)
     await MailService.sendAdminEmailOtp(user.email, user.name, code);
 
     const mfaToken = signAdminMfaToken({
@@ -49,6 +50,38 @@ export default class AdminMfaService {
       sub: String(user.id),
     });
     return { mfaToken };
+  }
+
+  /**
+   * Issues a new challenge and email when the current MFA JWT still maps to a pending, unexpired challenge.
+   * The previous code is invalidated; the client must replace `mfaToken` with the returned one.
+   */
+  static async resendForPendingMfa(mfaToken: string): Promise<{ mfaToken: string } | null> {
+    let payload: AdminMfaTokenPayload;
+    try {
+      payload = verifyAdminMfaToken(mfaToken);
+    } catch {
+      return null;
+    }
+
+    const challenge = await AdminMfaChallenge.findOne({
+      where: { id: payload.challengeId, userId: Number(payload.sub) },
+    });
+
+    if (!challenge || challenge.consumedAt) {
+      return null;
+    }
+
+    if (new Date(challenge.expiresAt).getTime() <= Date.now()) {
+      return null;
+    }
+
+    const user = await User.findByPk(challenge.userId);
+    if (!user || (user.accountType !== 'admin' && user.accountType !== 'super_admin')) {
+      return null;
+    }
+
+    return this.startForUser(user);
   }
 
   static async verifyAndIssueSession(mfaToken: string, code: string): Promise<AuthTokensDto | null> {
@@ -60,6 +93,7 @@ export default class AdminMfaService {
     }
 
     const trimmed = code.trim();
+
     if (!/^\d{6}$/.test(trimmed)) {
       return null;
     }
@@ -67,15 +101,18 @@ export default class AdminMfaService {
     const challenge = await AdminMfaChallenge.findOne({
       where: { id: payload.challengeId, userId: Number(payload.sub) },
     });
+
     if (!challenge || challenge.consumedAt) {
       return null;
     }
+
     if (new Date(challenge.expiresAt).getTime() <= Date.now()) {
       return null;
     }
 
     const expected = challenge.codeHash;
     const actual = hashOtp(trimmed);
+
     if (expected.length !== actual.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(actual))) {
       return null;
     }

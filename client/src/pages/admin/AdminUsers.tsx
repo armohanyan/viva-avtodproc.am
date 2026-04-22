@@ -71,6 +71,7 @@ export default function AdminUsers() {
   const instructorRows = useMemo(() => instructors.map((i) => ({ id: i.id, name: i.name })), [instructors]);
   const [users, setUsers] = useState<User[]>([]);
   const [packages, setPackages] = useState<PackageRow[]>([]);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const inviteStudent = useCallback(
     async (studentId: string) => {
@@ -113,7 +114,6 @@ export default function AdminUsers() {
   const [instructorFilter, setInstructorFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [invitingId, setInvitingId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [newUser, setNewUser] = useState<Partial<User>>({

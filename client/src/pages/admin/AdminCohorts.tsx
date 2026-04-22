@@ -28,7 +28,6 @@ type Cohort = {
   name: string;
   startDateIso: string;
   endDateIso: string;
-  schedule: string;
   seats: number;
   enrolled: number;
   instructorName: string;
@@ -87,7 +86,6 @@ export default function AdminCohorts() {
     name: "",
     startDateIso: "",
     endDateIso: "",
-    schedule: "",
     seats: 15,
     instructorName: instructorNames[0] ?? "",
     meetLink: "",
@@ -116,7 +114,6 @@ export default function AdminCohorts() {
           name: editCohort.name.trim(),
           startDateIso: editCohort.startDateIso,
           endDateIso: editCohort.endDateIso || editCohort.startDateIso,
-          schedule: editCohort.schedule.trim() || "—",
           seats: Math.max(1, editCohort.seats || 1),
           instructorName: editCohort.instructorName.trim() || instructorNames[0] || "—",
           meetLink: editCohort.meetLink?.trim() ?? "",
@@ -145,7 +142,6 @@ export default function AdminCohorts() {
           name: newCohort.name.trim(),
           startDateIso: newCohort.startDateIso,
           endDateIso: newCohort.endDateIso || newCohort.startDateIso,
-          schedule: newCohort.schedule.trim() || "—",
           seats: Math.max(1, newCohort.seats || 1),
           instructorName: newCohort.instructorName || instructorNames[0] || "—",
           meetLink: newCohort.meetLink?.trim() ?? "",
@@ -158,7 +154,6 @@ export default function AdminCohorts() {
         name: "",
         startDateIso: "",
         endDateIso: "",
-        schedule: "",
         seats: 15,
         instructorName: instructorNames[0] ?? "",
         meetLink: "",
@@ -202,7 +197,7 @@ export default function AdminCohorts() {
     return cohorts.filter((c) => {
       const branchLabel = branchNameById(branches, c.branchId);
       const period = `${formatShortDateFromIso(c.startDateIso, lang)} ${formatShortDateFromIso(c.endDateIso, lang)}`;
-      const hay = [c.id, c.name, c.instructorName, c.schedule, c.startDateIso, c.endDateIso, period, c.status, c.meetLink, branchLabel].join(" ").toLowerCase();
+      const hay = [c.id, c.name, c.instructorName, c.startDateIso, c.endDateIso, period, c.status, c.meetLink, branchLabel].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchStatus = statusFilter === "all" || c.status === statusFilter;
       const matchBranch = branchFilter === "all" || c.branchId === branchFilter;
@@ -253,7 +248,6 @@ export default function AdminCohorts() {
               t("adminColBranch"),
               t("name"),
               t("cohortColInstructor"),
-              t("cohortColSchedule"),
               t("cohortColPeriod"),
               t("cohortColEnrollment"),
               t("status"),
@@ -263,7 +257,6 @@ export default function AdminCohorts() {
               branchNameById(branches, c.branchId),
               c.name,
               c.instructorName,
-              c.schedule,
               periodLabel(c),
               `${c.enrolled} / ${c.seats}`,
               cohortStatusLabel(c.status),
@@ -271,7 +264,7 @@ export default function AdminCohorts() {
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[56rem]">
+          <table className="w-full text-sm min-w-[48rem]">
             <thead className="bg-muted/40">
               <tr>
                 <TableColumnHeaderWithFilter title={t("tableColId")} />
@@ -291,7 +284,6 @@ export default function AdminCohorts() {
                 />
                 <TableColumnHeaderWithFilter title={t("name")} />
                 <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
-                <TableColumnHeaderWithFilter title={t("cohortColSchedule")} />
                 <TableColumnHeaderWithFilter title={t("cohortColPeriod")} />
                 <TableColumnHeaderWithFilter title={t("cohortColEnrollment")} />
                 <TableColumnHeaderWithFilter
@@ -360,7 +352,6 @@ export default function AdminCohorts() {
                       </td>
                       <td className="px-4 py-3.5 font-medium text-foreground min-w-[200px]">{c.name}</td>
                       <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.instructorName}</td>
-                      <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{c.schedule}</td>
                       <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{periodLabel(c)}</td>
                       <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
                         {c.enrolled} / {c.seats}
@@ -431,10 +422,6 @@ export default function AdminCohorts() {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSchedule")}</label>
-                <Input value={editCohort.schedule} onChange={(e) => setEditCohort({ ...editCohort, schedule: e.target.value })} className="h-10" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -582,10 +569,6 @@ export default function AdminCohorts() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelEndShort")}</label>
                 <Input type="date" value={newCohort.endDateIso} onChange={(e) => setNewCohort({ ...newCohort, endDateIso: e.target.value })} className="h-10" />
               </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSchedule")}</label>
-              <Input value={newCohort.schedule} onChange={(e) => setNewCohort({ ...newCohort, schedule: e.target.value })} className="h-10" />
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("seats")}</label>

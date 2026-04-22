@@ -140,6 +140,12 @@ export type LessonBookingCalendarProps = {
   showInstructorPicker?: boolean;
   /** Student dashboard: marketing-style instructor cards; admin keeps compact chips by default. */
   instructorPickerVariant?: "chips" | "cards";
+  /** Admin: pre-fill grid + summary (e.g. edit booking). */
+  initialAdminSelection?: { dateIso: string; times: string[] } | null;
+  /** Admin: after reset / “Book another”, clear parent-held slot state. */
+  onAdminSelectionCleared?: () => void;
+  /** Omit this booking’s hours from busy-slot results so the slot stays clickable while editing. */
+  ignoreBusyBookingId?: string;
 };
 
 export default function LessonBookingCalendar({
@@ -153,6 +159,9 @@ export default function LessonBookingCalendar({
   onBookingConfirmed,
   showInstructorPicker = true,
   instructorPickerVariant = "chips",
+  initialAdminSelection = null,
+  onAdminSelectionCleared,
+  ignoreBusyBookingId = "",
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -192,13 +201,17 @@ export default function LessonBookingCalendar({
     const run = async () => {
       setBlocksLoading(true);
       try {
-        const busyQ = new URLSearchParams({ from, to }).toString();
+        const busyQ = new URLSearchParams({ from, to });
+        if (ignoreBusyBookingId.trim() !== "") {
+          busyQ.set("excludeBookingId", ignoreBusyBookingId.trim());
+        }
+        const busyQs = busyQ.toString();
         const [blocks, busy] = await Promise.all([
           vivaApiJson<AvailabilityBlock[]>(
             `/instructors/${encodeURIComponent(selectedInstructorId)}/availability-blocks`,
           ),
           vivaApiJson<InstructorBusySlot[]>(
-            `/instructors/${encodeURIComponent(selectedInstructorId)}/busy-slots?${busyQ}`,
+            `/instructors/${encodeURIComponent(selectedInstructorId)}/busy-slots?${busyQs}`,
           ),
         ]);
         if (!cancelled) {
@@ -220,7 +233,22 @@ export default function LessonBookingCalendar({
     return () => {
       cancelled = true;
     };
-  }, [selectedInstructorId, weekOffset, busySlotsRefreshKey]);
+  }, [selectedInstructorId, weekOffset, busySlotsRefreshKey, ignoreBusyBookingId]);
+
+  useEffect(() => {
+    if (mode !== "admin" || !initialAdminSelection || initialAdminSelection.times.length === 0) {
+      return;
+    }
+    const sorted = sortTimesUnique(initialAdminSelection.times);
+    if (!isConsecutiveHourlySlots(sorted)) return;
+    setSelected({ date: initialAdminSelection.dateIso.slice(0, 10), times: sorted });
+    setConfirmed(true);
+    setCreatedSummary(null);
+    setStudentPaySession(null);
+    setPayNowAtBooking(false);
+    setServerPaidConfirmed(false);
+    setBookingFlowDone(false);
+  }, [mode, initialAdminSelection?.dateIso, initialAdminSelection?.times?.join("|") ?? ""]);
 
   useEffect(() => {
     setSelected(null);
@@ -418,6 +446,9 @@ export default function LessonBookingCalendar({
     setBookingFlowDone(false);
     setPosDialogOpen(false);
     setBusySlotsRefreshKey((k) => k + 1);
+    if (mode === "admin") {
+      onAdminSelectionCleared?.();
+    }
   };
 
   const adminReady = mode === "admin" && !!studentName.trim();
@@ -512,8 +543,9 @@ export default function LessonBookingCalendar({
       busy={payBusy}
       onApprove={onCompletePayment}
     />
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 xl:items-stretch">
-      <div className="xl:col-span-3 space-y-6 min-w-0">
+    <div className="@container min-w-0">
+    <div className="grid grid-cols-1 @min-[1000px]:grid-cols-4 gap-6 @min-[1000px]:items-stretch">
+      <div className="@min-[1000px]:col-span-3 space-y-6 min-w-0">
         {showInstructorPicker ? (
           <Reveal delay={0.06}>
             <Card
@@ -693,9 +725,9 @@ export default function LessonBookingCalendar({
         </Reveal>
       </div>
 
-      <div className="min-h-0 xl:h-full xl:min-h-0 flex flex-col">
-        <Reveal delay={0.18} className="xl:h-full xl:min-h-0 flex flex-col">
-          <Card className="p-5 border-border xl:sticky xl:top-4 xl:z-10 xl:self-start w-full">
+      <div className="min-h-0 min-w-0 @min-[1000px]:h-full @min-[1000px]:min-h-0 flex flex-col">
+        <Reveal delay={0.18} className="@min-[1000px]:h-full @min-[1000px]:min-h-0 flex flex-col min-w-0">
+          <Card className="p-5 border-border @min-[1000px]:sticky @min-[1000px]:top-4 @min-[1000px]:z-10 @min-[1000px]:self-start w-full min-w-0">
             <h3 className="font-semibold text-foreground mb-4">{t("bookingSummaryTitle")}</h3>
             {!selected ? (
               <p className="text-sm text-muted-foreground">{t("bookingSelectSlotHint")}</p>
@@ -874,6 +906,7 @@ export default function LessonBookingCalendar({
           </Reveal>
         ) : null}
       </div>
+    </div>
     </div>
     </>
   );

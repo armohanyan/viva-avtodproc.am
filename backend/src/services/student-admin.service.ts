@@ -30,14 +30,14 @@ export default class StudentAdminService {
         const stu = row.studentAccount;
         const pkg = row.package;
         const inst = row.assignedInstructor;
-        if (!stu || !pkg) return null;
+        if (!stu) return null;
         return {
           id: stu.id,
           name: stu.name,
           email: stu.email,
           phone: stu.phone ?? '',
           instructor: inst?.name ?? '',
-          package: pkg.name,
+          package: pkg?.name ?? '',
           lessons: `${sp.lessonsCompleted}/${sp.lessonsTotal}`,
           status: sp.enrollmentStatus,
           joinedIso: typeof sp.joinedAt === 'string' ? sp.joinedAt : String(sp.joinedAt),
@@ -53,7 +53,7 @@ export default class StudentAdminService {
     const rows = await StudentProfile.findAll({
       include: [
         { model: User, as: 'studentAccount', required: true },
-        { model: Package, as: 'package', required: true },
+        { model: Package, as: 'package', required: false },
         { model: User, as: 'assignedInstructor', required: false },
       ],
       order: [['joinedAt', 'DESC']],
@@ -67,7 +67,7 @@ export default class StudentAdminService {
       where: { instructorUserId },
       include: [
         { model: User, as: 'studentAccount', required: true },
-        { model: Package, as: 'package', required: true },
+        { model: Package, as: 'package', required: false },
         { model: User, as: 'assignedInstructor', required: false },
       ],
       order: [['joinedAt', 'DESC']],
@@ -164,7 +164,7 @@ export default class StudentAdminService {
       email: string;
       phone: string | null;
       branchId: number;
-      packageId: number;
+      packageId: number | null;
       instructorUserId: number | null;
       lessonsCompleted: number;
       lessonsTotal: number;
@@ -184,9 +184,19 @@ export default class StudentAdminService {
         ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
       });
     }
+    let nextPackageId: number | null | undefined;
+    if (patch.packageId !== undefined) {
+      if (patch.packageId === null) {
+        nextPackageId = null;
+      } else {
+        const pkg = await Package.findByPk(patch.packageId);
+        if (!pkg) return null;
+        nextPackageId = patch.packageId;
+      }
+    }
     await profile.update({
       ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
-      ...(patch.packageId !== undefined ? { packageId: patch.packageId } : {}),
+      ...(nextPackageId !== undefined ? { packageId: nextPackageId } : {}),
       ...(patch.instructorUserId !== undefined ? { instructorUserId: patch.instructorUserId } : {}),
       ...(patch.lessonsCompleted !== undefined ? { lessonsCompleted: patch.lessonsCompleted } : {}),
       ...(patch.lessonsTotal !== undefined ? { lessonsTotal: patch.lessonsTotal } : {}),

@@ -42,6 +42,8 @@ export default function VerifyAdmin2fa() {
   const [, setLocation] = useLocation();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendCooldownSec, setResendCooldownSec] = useState(0);
   const [missingToken, setMissingToken] = useState(false);
 
   useEffect(() => {
@@ -50,6 +52,16 @@ export default function VerifyAdmin2fa() {
       setMissingToken(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (resendCooldownSec <= 0) {
+      return;
+    }
+    const t = window.setInterval(() => {
+      setResendCooldownSec((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [resendCooldownSec]);
 
   const onSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -89,6 +101,28 @@ export default function VerifyAdmin2fa() {
     },
     [code, showToast, signIn, setLocation, t],
   );
+
+  const onResend = useCallback(async () => {
+    const mfaToken = readPendingAdminMfaToken();
+    if (!mfaToken || missingToken || resendCooldownSec > 0) {
+      return;
+    }
+    setResendLoading(true);
+    try {
+      const data = await vivaApiJson<{ mfaToken: string }>("/auth/resend-admin-mfa", {
+        method: "POST",
+        body: { mfaToken },
+      });
+      storePendingAdminMfaToken(data.mfaToken);
+      setCode("");
+      showToast(t("adminMfaCodeSent"), "success");
+      setResendCooldownSec(60);
+    } catch (err) {
+      showToast(getApiErrorMessage(err) || t("adminMfaInvalidCode"), "error");
+    } finally {
+      setResendLoading(false);
+    }
+  }, [missingToken, resendCooldownSec, showToast, t]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
@@ -136,6 +170,21 @@ export default function VerifyAdmin2fa() {
             >
               {loading ? t("loading") : t("adminMfaVerify")}
             </Button>
+            <div className="pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-muted-foreground hover:text-foreground"
+                disabled={missingToken || resendLoading || resendCooldownSec > 0}
+                onClick={() => void onResend()}
+              >
+                {resendLoading
+                  ? t("loading")
+                  : resendCooldownSec > 0
+                    ? t("adminMfaResendWait").replace("%s", String(resendCooldownSec))
+                    : t("adminMfaResendCode")}
+              </Button>
+            </div>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">

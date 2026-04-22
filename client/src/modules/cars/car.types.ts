@@ -23,7 +23,4 @@ export type CarExpense = {
   /** What the money was spent for, e.g. insurance, repair */
   purpose: string;
   note?: string;
-  /** Where the payment was made (same vocabulary as finance intake). */
-  channel?: "online" | "pos" | "office" | "bank";
-  method?: "card" | "idram" | "cash" | "transfer";
 };

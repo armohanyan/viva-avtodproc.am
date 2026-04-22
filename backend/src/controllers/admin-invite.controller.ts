@@ -8,16 +8,35 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { InputValidationError } = ErrorsUtil;
 
-const inviteSchema = z.object({
+const inviteStudentSchema = z.object({
   studentUserId: z.coerce.number().int().positive(),
+});
+
+const inviteInstructorSchema = z.object({
+  instructorUserId: z.coerce.number().int().positive(),
 });
 
 export default class AdminInviteController {
   static async inviteStudent(req: Request, res: Response, next: NextFunction) {
     try {
-      const { studentUserId } = parseBody(inviteSchema, req.body);
+      const { studentUserId } = parseBody(inviteStudentSchema, req.body);
 
       const result = await StudentInvitationService.createAndEmailInvite(studentUserId);
+      if (!result.ok) {
+        return next(new InputValidationError(result.message, HttpStatusCodesUtil.BAD_REQUEST));
+      }
+
+      SuccessHandlerUtil.handleAdd(res, next, { sent: true });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async inviteInstructor(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { instructorUserId } = parseBody(inviteInstructorSchema, req.body);
+
+      const result = await StudentInvitationService.createAndEmailInstructorInvite(instructorUserId);
       if (!result.ok) {
         return next(new InputValidationError(result.message, HttpStatusCodesUtil.BAD_REQUEST));
       }

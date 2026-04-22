@@ -19,8 +19,6 @@ export type CarExpenseDto = {
   date: string;
   purpose: string;
   note?: string;
-  channel: 'online' | 'pos' | 'office' | 'bank';
-  method: 'card' | 'idram' | 'cash' | 'transfer';
 };
 
 async function carToDto(car: FleetCar): Promise<FleetCarDto> {
@@ -62,8 +60,6 @@ export default class FleetService {
       date: typeof e.date === 'string' ? e.date : String(e.date).slice(0, 10),
       purpose: e.purpose,
       note: e.note ?? undefined,
-      channel: (e.channel ?? 'office') as CarExpenseDto['channel'],
-      method: (e.method ?? 'cash') as CarExpenseDto['method'],
     }));
   }
 
@@ -113,8 +109,6 @@ export default class FleetService {
       date: input.date,
       purpose: input.purpose,
       note: input.note ?? null,
-      channel: input.channel ?? 'office',
-      method: input.method ?? 'cash',
     });
     return {
       id: row.id,
@@ -123,8 +117,6 @@ export default class FleetService {
       date: typeof row.date === 'string' ? row.date : String(row.date).slice(0, 10),
       purpose: row.purpose,
       note: row.note ?? undefined,
-      channel: (row.channel ?? 'office') as CarExpenseDto['channel'],
-      method: (row.method ?? 'cash') as CarExpenseDto['method'],
     };
   }
 
@@ -136,8 +128,6 @@ export default class FleetService {
       date: string;
       purpose: string;
       note: string | null;
-      channel: CarExpenseDto['channel'];
-      method: CarExpenseDto['method'];
     }>,
   ): Promise<CarExpenseDto | null> {
     const row = await CarExpense.findByPk(id);

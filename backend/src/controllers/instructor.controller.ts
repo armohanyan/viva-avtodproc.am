@@ -41,6 +41,8 @@ const availabilityCreateSchema = z.object({
 const busySlotsQuerySchema = z.object({
   from: z.string().min(10),
   to: z.string().min(10),
+  /** When editing a booking, omit that booking’s slot rows so the calendar stays usable. */
+  excludeBookingId: z.coerce.number().int().positive().optional(),
 });
 
 /** `users.id` for an instructor — path segments are strings; reject slugs like "acc-instructor" with a clear message. */
@@ -145,11 +147,16 @@ export default class InstructorController {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
 
-      const q = parseQuery(busySlotsQuerySchema, { from: req.query.from, to: req.query.to });
+      const q = parseQuery(busySlotsQuerySchema, {
+        from: req.query.from,
+        to: req.query.to,
+        excludeBookingId: req.query.excludeBookingId,
+      });
       const data = await BookingService.listBusySlotsForInstructor(
         instructorUserId,
         q.from.slice(0, 10),
         q.to.slice(0, 10),
+        q.excludeBookingId,
       );
 
       SuccessHandlerUtil.handleList(res, next, data);

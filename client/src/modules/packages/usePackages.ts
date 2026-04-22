@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { vivaApiJson } from "src/lib/vivaApi";
 
 export type MarketingPackageRow = {
@@ -27,7 +28,7 @@ export function usePackages() {
           .filter((p) => (p.status ?? "active") === "active")
           .map((p) => ({
             ...p,
-            imageUrl: p.imageUrl ?? null,
+            imageUrl: sameOriginStaffUploadUrl(p.imageUrl ?? null),
             features: Array.isArray(p.features) ? p.features : [],
           })),
       );

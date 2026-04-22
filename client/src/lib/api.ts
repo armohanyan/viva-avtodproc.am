@@ -65,6 +65,7 @@ function shouldAttemptAuthRefreshRetry(path: string): boolean {
 		!p.endsWith("/auth/refresh") &&
 		!p.endsWith("/auth/logout") &&
 		!p.endsWith("/auth/verify-admin-mfa") &&
+		!p.endsWith("/auth/resend-admin-mfa") &&
 		!p.endsWith("/auth/setup-password") &&
 		!p.endsWith("/auth/forgot-password") &&
 		!p.endsWith("/auth/reset-password") &&

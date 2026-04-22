@@ -15,15 +15,33 @@ function randomUrlToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
+type PanelInviteRole = 'student' | 'instructor';
+
 export default class StudentInvitationService {
   static async createAndEmailInvite(studentUserId: number): Promise<{ ok: true } | { ok: false; message: string }> {
-    const user = await User.findByPk(studentUserId);
-    if (!user || user.accountType !== 'student') {
-      return { ok: false, message: 'Student not found' };
+    return this.createAndEmailPanelInvite(studentUserId, 'student');
+  }
+
+  static async createAndEmailInstructorInvite(
+    instructorUserId: number,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    return this.createAndEmailPanelInvite(instructorUserId, 'instructor');
+  }
+
+  private static async createAndEmailPanelInvite(
+    userId: number,
+    role: PanelInviteRole,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    const user = await User.findByPk(userId);
+    if (!user || user.accountType !== role) {
+      return { ok: false, message: role === 'student' ? 'Student not found' : 'Instructor not found' };
     }
 
     if (user.passwordHash) {
-      return { ok: false, message: 'This student already has a password set' };
+      return {
+        ok: false,
+        message: role === 'student' ? 'This student already has a password set' : 'This instructor already has a password set',
+      };
     }
 
     const oauthCount = await OAuthAccount.count({ where: { userId: user.id } });
@@ -55,7 +73,11 @@ export default class StudentInvitationService {
     const setupUrl = `${base}/setup-password?token=${encodeURIComponent(plainToken)}`;
 
     try {
-      await MailService.sendStudentInvitation(user.email, user.name, setupUrl);
+      if (role === 'student') {
+        await MailService.sendStudentInvitation(user.email, user.name, setupUrl);
+      } else {
+        await MailService.sendInstructorInvitation(user.email, user.name, setupUrl);
+      }
     } catch (e) {
       await StudentInvitation.destroy({ where: { tokenHash } });
       const msg = e instanceof Error ? e.message : 'Failed to send email';
@@ -102,7 +124,7 @@ export default class StudentInvitationService {
     }
 
     const user = await User.findByPk(inv.userId);
-    if (!user || user.accountType !== 'student') {
+    if (!user || (user.accountType !== 'student' && user.accountType !== 'instructor')) {
       return { ok: false, message: 'Invalid invitation' };
     }
 

@@ -8,9 +8,11 @@ export type OAuthStatePayload = { t: 'oauth'; v: 1; p: OAuthProvider; next: stri
 
 function sanitizeNextPath(next: string | undefined): string {
   const raw = (next || '/dashboard').trim();
+
   if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('://')) {
     return '/dashboard';
   }
+
   return raw.slice(0, 512);
 }
 
@@ -19,12 +21,15 @@ function isOriginAllowed(origin: string): boolean {
   if (o === true) {
     return /^https?:\/\//i.test(origin);
   }
+
   if (typeof o === 'string') {
     return o === origin;
   }
+
   if (Array.isArray(o)) {
     return o.includes(origin);
   }
+
   if (typeof o === 'function') {
     return /^https?:\/\//i.test(origin);
   }
@@ -35,15 +40,19 @@ function isOriginAllowed(origin: string): boolean {
 export function sanitizeReturnOrigin(raw: string | undefined): string | undefined {
   const s = raw?.trim();
   if (!s) return undefined;
+
   try {
     const u = new URL(s);
+
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
       return undefined;
     }
+
     const origin = u.origin;
     if (!isOriginAllowed(origin)) {
       return undefined;
     }
+
     return origin;
   } catch {
     return undefined;
@@ -65,6 +74,7 @@ export function signOAuthState(
     ...(ro ? { ro } : {}),
     ...(nonce ? { nonce } : {}),
   };
+
   return jwt.sign(payload, config.AUTH.JWT_ACCESS_SECRET, { expiresIn: '10m' });
 }
 
@@ -76,11 +86,14 @@ export function peekNonceFromState(state: string): string | undefined {
 
 export function verifyOAuthState(token: string): OAuthStatePayload {
   const decoded = jwt.verify(token, config.AUTH.JWT_ACCESS_SECRET) as jwt.JwtPayload;
+
   if (decoded.t !== 'oauth' || decoded.v !== 1 || typeof decoded.p !== 'string' || typeof decoded.next !== 'string') {
     throw new Error('Invalid OAuth state');
   }
+
   const next = sanitizeNextPath(decoded.next);
   const ro = typeof decoded.ro === 'string' ? sanitizeReturnOrigin(decoded.ro) : undefined;
   const nonce = typeof decoded.nonce === 'string' && decoded.nonce ? decoded.nonce : undefined;
+
   return { t: 'oauth', v: 1, p: decoded.p as OAuthProvider, next, ...(ro ? { ro } : {}), ...(nonce ? { nonce } : {}) };
 }

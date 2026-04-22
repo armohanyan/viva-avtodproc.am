@@ -44,6 +44,74 @@ export function monthRange(reference = new Date()): { start: Date; end: Date } {
   return { start, end };
 }
 
+/** Last N calendar months through the current month (inclusive). */
+export type FinanceOverviewPeriod = "1m" | "3m" | "6m" | "12m";
+
+export function financePeriodMonthCount(p: FinanceOverviewPeriod): number {
+  switch (p) {
+    case "1m":
+      return 1;
+    case "3m":
+      return 3;
+    case "6m":
+      return 6;
+    case "12m":
+      return 12;
+  }
+}
+
+export function rollingCalendarMonthsRange(monthCount: number, reference = new Date()): { start: Date; end: Date } {
+  const { end } = monthRange(reference);
+  const start = new Date(reference.getFullYear(), reference.getMonth() - (monthCount - 1), 1);
+  return { start, end };
+}
+
+/** First day of each month from `rangeStart` through `rangeEnd` (same month granularity as `rangeEnd`). */
+export function monthStartsInRange(rangeStart: Date, rangeEnd: Date): Date[] {
+  const out: Date[] = [];
+  let y = rangeStart.getFullYear();
+  let m = rangeStart.getMonth();
+  const yEnd = rangeEnd.getFullYear();
+  const mEnd = rangeEnd.getMonth();
+  while (y < yEnd || (y === yEnd && m <= mEnd)) {
+    out.push(new Date(y, m, 1));
+    m += 1;
+    if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+export function grossCompletedInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  let sum = 0;
+  for (const tx of transactions) {
+    if (tx.status !== "completed") continue;
+    const d = new Date(tx.createdAt);
+    if (d < rangeStart || d > rangeEnd) continue;
+    sum += tx.grossAmd;
+  }
+  return sum;
+}
+
+export function expensesTotalInRange(
+  rows: readonly { date: string; amount: number }[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  let sum = 0;
+  for (const row of rows) {
+    if (!expenseDateInRange(row.date, rangeStart, rangeEnd)) continue;
+    sum += Math.abs(row.amount);
+  }
+  return sum;
+}
+
 export function formatAmd(n: number): string {
   return `${n.toLocaleString("en-US")} ֏`;
 }
@@ -137,27 +205,22 @@ export function expenseDateInRange(dateIso: string, monthStart: Date, monthEnd: 
 
 export type ExpenseBreakdownRow = {
   key: string;
-  channel: TxChannel;
-  method: TxMethod;
   total: number;
   count: number;
 };
 
 export function outcomesBreakdownInRange(
-  rows: readonly { date: string; amount: number; channel?: TxChannel; method?: TxMethod }[],
+  rows: readonly { date: string; amount: number }[],
   monthStart: Date,
   monthEnd: Date,
 ): ExpenseBreakdownRow[] {
-  const map = new Map<string, { channel: TxChannel; method: TxMethod; total: number; count: number }>();
+  let total = 0;
+  let count = 0;
   for (const row of rows) {
     if (!expenseDateInRange(row.date, monthStart, monthEnd)) continue;
-    const channel = row.channel ?? "office";
-    const method = row.method ?? "cash";
-    const key = `${channel}|${method}`;
-    const prev = map.get(key) ?? { channel, method, total: 0, count: 0 };
-    prev.total += row.amount;
-    prev.count += 1;
-    map.set(key, prev);
+    total += Math.abs(row.amount);
+    count += 1;
   }
-  return [...map.values()].sort((a, b) => b.total - a.total).map((v) => ({ ...v, key: `${v.channel}|${v.method}` }));
+  if (count === 0) return [];
+  return [{ key: "fleet", total, count }];
 }

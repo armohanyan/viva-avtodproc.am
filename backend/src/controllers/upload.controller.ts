@@ -1,5 +1,4 @@
 import type { NextFunction, Request, Response } from 'express';
-import config from '../config';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
@@ -13,8 +12,8 @@ export default class UploadController {
       if (!file?.filename) {
         return next(new InputValidationError('No file uploaded', HttpStatusCodesUtil.BAD_REQUEST));
       }
-      const base = config.API_PUBLIC_URL.replace(/\/+$/, '');
-      const url = `${base}/upload/${file.filename}`;
+      /** Path-only so any marketing origin (Next :3000, Vite :5173) can proxy `/upload`. */
+      const url = `/upload/${file.filename}`;
       res.status(HttpStatusCodesUtil.CREATED).json({ url });
     } catch (e) {
       next(e);

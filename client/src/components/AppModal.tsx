@@ -50,7 +50,7 @@ export function AppModal({
       <DialogContent
         showCloseButton={showCloseButton}
         className={cn(
-          "flex max-h-[min(92vh,900px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg",
+          "flex max-h-[min(92vh,900px)] flex-col gap-0 overflow-hidden p-0",
           contentClassName
         )}
       >
@@ -71,7 +71,7 @@ export function AppModal({
         </div>
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4",
+            "min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-6 py-4",
             bodyClassName
           )}
         >

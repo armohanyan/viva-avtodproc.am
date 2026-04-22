@@ -30,7 +30,9 @@ const createSchema = z.object({
   joinedIso: z.string().optional(),
 });
 
-const updateSchema = createSchema.partial();
+const updateSchema = createSchema.partial().extend({
+  packageId: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
+});
 
 const entitlementsPackageSchema = z.object({
   packageId: z.coerce.number().int().positive(),

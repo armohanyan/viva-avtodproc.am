@@ -23,9 +23,11 @@ export function buildGoogleAuthorizeUrl(nextPath: string | undefined, returnOrig
   if (!clientId) {
     throw new InputValidationError('Google sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const state = signOAuthState('google', nextPath, returnOrigin);
   const redirectUri = oauthRedirectUri('google');
   const u = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+
   u.searchParams.set('client_id', clientId);
   u.searchParams.set('redirect_uri', redirectUri);
   u.searchParams.set('response_type', 'code');
@@ -33,29 +35,36 @@ export function buildGoogleAuthorizeUrl(nextPath: string | undefined, returnOrig
   u.searchParams.set('state', state);
   u.searchParams.set('access_type', 'offline');
   u.searchParams.set('prompt', 'select_account');
+
   return u.toString();
 }
 
 export function buildFacebookAuthorizeUrl(nextPath: string | undefined, returnOrigin?: string): string {
   const { appId } = config.AUTH.OAUTH.facebook;
+
   if (!appId) {
     throw new InputValidationError('Facebook sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const state = signOAuthState('facebook', nextPath, returnOrigin);
   const redirectUri = oauthRedirectUri('facebook');
   const u = new URL('https://www.facebook.com/v19.0/dialog/oauth');
+
   u.searchParams.set('client_id', appId);
   u.searchParams.set('redirect_uri', redirectUri);
   u.searchParams.set('state', state);
   u.searchParams.set('scope', 'email,public_profile');
+
   return u.toString();
 }
 
 export function buildAppleAuthorizeUrl(nextPath: string | undefined, returnOrigin?: string): string {
   const { clientId } = config.AUTH.OAUTH.apple;
+
   if (!clientId) {
     throw new InputValidationError('Apple sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const state = signOAuthState('apple', nextPath, returnOrigin);
   const redirectUri = oauthRedirectUri('apple');
   const u = new URL('https://appleid.apple.com/auth/authorize');
@@ -65,10 +74,13 @@ export function buildAppleAuthorizeUrl(nextPath: string | undefined, returnOrigi
   u.searchParams.set('response_mode', 'query');
   u.searchParams.set('scope', 'name email');
   u.searchParams.set('state', state);
+
   const nonce = peekNonceFromState(state);
+
   if (nonce) {
     u.searchParams.set('nonce', nonce);
   }
+
   return u.toString();
 }
 
@@ -79,21 +91,27 @@ export async function exchangeGoogleCode(code: string, state: string): Promise<{
   name: string;
 }> {
   verifyOAuthState(state);
-  const { clientId, clientSecret } = config.AUTH.OAUTH.google;
+
+  const { clientId, clientSecret} = config.AUTH.OAUTH.google;
   if (!clientId || !clientSecret) {
     throw new InputValidationError('Google sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const redirectUri = oauthRedirectUri('google');
   const client = new OAuth2Client(clientId, clientSecret, redirectUri);
   const { tokens } = await client.getToken({ code, redirect_uri: redirectUri });
+
   if (!tokens.id_token) {
     throw new InputValidationError('Google did not return an id_token', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: clientId });
   const p = ticket.getPayload();
+
   if (!p?.sub || !p.email) {
     throw new InputValidationError('Google profile is missing email', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   return {
     provider: 'google',
     providerUserId: p.sub,
@@ -113,6 +131,7 @@ export async function exchangeFacebookCode(code: string, state: string): Promise
   if (!appId || !appSecret) {
     throw new InputValidationError('Facebook sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const redirectUri = oauthRedirectUri('facebook');
   const tokenUrl = new URL('https://graph.facebook.com/v19.0/oauth/access_token');
   tokenUrl.searchParams.set('client_id', appId);
@@ -121,25 +140,30 @@ export async function exchangeFacebookCode(code: string, state: string): Promise
   tokenUrl.searchParams.set('code', code);
   const tr = await fetch(tokenUrl.toString());
   const tokenJson = (await tr.json()) as { access_token?: string; error?: { message?: string } };
+
   if (!tr.ok || !tokenJson.access_token) {
     const msg = tokenJson.error?.message || 'Facebook token exchange failed';
     throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const meUrl = new URL('https://graph.facebook.com/v19.0/me');
   meUrl.searchParams.set('fields', 'id,name,email');
   meUrl.searchParams.set('access_token', tokenJson.access_token);
   const mr = await fetch(meUrl.toString());
   const me = (await mr.json()) as { id?: string; name?: string; email?: string; error?: { message?: string } };
+
   if (!mr.ok || !me.id) {
     const msg = me.error?.message || 'Facebook profile fetch failed';
     throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   if (!me.email) {
     throw new InputValidationError(
       'Facebook did not return an email (grant email permission)',
       HttpStatusCodesUtil.BAD_REQUEST,
     );
   }
+
   return {
     provider: 'facebook',
     providerUserId: me.id,
@@ -150,9 +174,11 @@ export async function exchangeFacebookCode(code: string, state: string): Promise
 
 function appleClientSecretJwt(): string {
   const { clientId, teamId, keyId, privateKey } = config.AUTH.OAUTH.apple;
+
   if (!clientId || !teamId || !keyId || !privateKey) {
     throw new InputValidationError('Apple sign-in is not fully configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   return jwt.sign({}, privateKey, {
     algorithm: 'ES256',
     keyid: keyId,
@@ -176,12 +202,15 @@ export async function exchangeAppleCode(
 }> {
   const st = verifyOAuthState(state);
   const { clientId } = config.AUTH.OAUTH.apple;
+
   if (!clientId) {
     throw new InputValidationError('Apple sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
   }
+
   const redirectUri = oauthRedirectUri('apple');
   const clientSecret = appleClientSecretJwt();
   const body = new URLSearchParams();
+
   body.set('client_id', clientId);
   body.set('client_secret', clientSecret);
   body.set('code', code);
@@ -193,7 +222,9 @@ export async function exchangeAppleCode(
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
   });
+
   const tokenJson = (await tr.json()) as { id_token?: string; error?: string; error_description?: string };
+
   if (!tr.ok || !tokenJson.id_token) {
     const msg = tokenJson.error_description || tokenJson.error || 'Apple token exchange failed';
     throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
@@ -205,6 +236,7 @@ export async function exchangeAppleCode(
     audience: clientId,
     ...(st.nonce ? { nonce: st.nonce } : {}),
   });
+
   const sub = typeof payload.sub === 'string' ? payload.sub : '';
   if (!sub) {
     throw new InputValidationError('Apple token missing subject', HttpStatusCodesUtil.BAD_REQUEST);
@@ -218,9 +250,11 @@ export async function exchangeAppleCode(
         email?: string;
         name?: { firstName?: string; lastName?: string };
       };
+
       if (userObj.email) {
         email = userObj.email.trim().toLowerCase();
       }
+
       const fn = userObj.name?.firstName?.trim() || '';
       const ln = userObj.name?.lastName?.trim() || '';
       nameFromToken = [fn, ln].filter(Boolean).join(' ').trim();

@@ -235,8 +235,8 @@ async function ensureFinanceTransactionsBookingIdColumn(): Promise<void> {
   );
 }
 
-/** Adds `car_expenses.channel` / `car_expenses.method` for outgoing payment classification. */
-async function ensureCarExpensesPaymentColumns(): Promise<void> {
+/** Drops legacy `car_expenses.channel` / `car_expenses.method` (fleet expenses no longer classify payments). */
+async function ensureCarExpensesDropPaymentColumns(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
   }
@@ -255,17 +255,11 @@ async function ensureCarExpensesPaymentColumns(): Promise<void> {
     { type: QueryTypes.SELECT },
   );
   const have = new Set(cols.map((c) => c.COLUMN_NAME));
-  if (!have.has('channel')) {
-    await sequelize.query(
-      `ALTER TABLE \`car_expenses\`
-       ADD COLUMN \`channel\` ENUM('online','pos','office','bank') NOT NULL DEFAULT 'office'`,
-    );
+  if (have.has('channel')) {
+    await sequelize.query('ALTER TABLE `car_expenses` DROP COLUMN `channel`');
   }
-  if (!have.has('method')) {
-    await sequelize.query(
-      `ALTER TABLE \`car_expenses\`
-       ADD COLUMN \`method\` ENUM('card','idram','cash','transfer') NOT NULL DEFAULT 'cash'`,
-    );
+  if (have.has('method')) {
+    await sequelize.query('ALTER TABLE `car_expenses` DROP COLUMN `method`');
   }
 }
 
@@ -837,6 +831,106 @@ async function ensureInstructorProfilesDropScheduleColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `instructor_profiles` DROP COLUMN `schedule`');
 }
 
+/** Drops legacy `theory_cohorts.schedule` (free-text); period is `start_date_iso` / `end_date_iso`. */
+async function ensureTheoryCohortsDropScheduleColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts' AND COLUMN_NAME = 'schedule'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `theory_cohorts` DROP COLUMN `schedule`');
+}
+
+/**
+ * Allows removing catalog `packages` rows while keeping student profiles: nulls `package_id` and
+ * replaces restrictive FKs (e.g. `ON DELETE RESTRICT`) with `ON DELETE SET NULL`.
+ */
+async function ensureStudentProfilesPackageIdOnDeleteSetNull(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_profiles'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ IS_NULLABLE: 'YES' | 'NO' }>(
+    `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_profiles' AND COLUMN_NAME = 'package_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0) {
+    return;
+  }
+  const nullable = colRows[0]!.IS_NULLABLE === 'YES';
+  const fkRows = await sequelize.query<{ CONSTRAINT_NAME: string; DELETE_RULE: string }>(
+    `SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+     INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+       ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+       AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+       AND rc.TABLE_NAME = kcu.TABLE_NAME
+     WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+       AND rc.TABLE_NAME = 'student_profiles'
+       AND kcu.COLUMN_NAME = 'package_id'
+       AND kcu.REFERENCED_TABLE_NAME = 'packages'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (nullable && fkRows.length === 1 && fkRows[0]!.DELETE_RULE === 'SET NULL') {
+    return;
+  }
+  for (const row of fkRows) {
+    const name = row.CONSTRAINT_NAME.replace(/`/g, '');
+    await sequelize.query(`ALTER TABLE \`student_profiles\` DROP FOREIGN KEY \`${name}\``);
+  }
+  if (!nullable) {
+    await sequelize.query(
+      'ALTER TABLE `student_profiles` MODIFY COLUMN `package_id` INT UNSIGNED NULL',
+    );
+  }
+  const remaining = await sequelize.query<{ CONSTRAINT_NAME: string; DELETE_RULE: string }>(
+    `SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+     INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+       ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+       AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+       AND rc.TABLE_NAME = kcu.TABLE_NAME
+     WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+       AND rc.TABLE_NAME = 'student_profiles'
+       AND kcu.COLUMN_NAME = 'package_id'
+       AND kcu.REFERENCED_TABLE_NAME = 'packages'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (remaining.some((r) => r.DELETE_RULE === 'SET NULL')) {
+    return;
+  }
+  for (const row of remaining) {
+    const name = row.CONSTRAINT_NAME.replace(/`/g, '');
+    await sequelize.query(`ALTER TABLE \`student_profiles\` DROP FOREIGN KEY \`${name}\``);
+  }
+  await sequelize.query(
+    'ALTER TABLE `student_profiles` ADD CONSTRAINT `student_profiles_package_id_fk` ' +
+      'FOREIGN KEY (`package_id`) REFERENCES `packages` (`id`) ON UPDATE CASCADE ON DELETE SET NULL',
+  );
+}
+
 export async function syncModels(): Promise<void> {
   await assertMysqlCoreIdsAreInteger();
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
@@ -844,12 +938,13 @@ export async function syncModels(): Promise<void> {
   await ensureOAuthAccountsIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureInstructorProfilesDropScheduleColumn();
+  await ensureTheoryCohortsDropScheduleColumn();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
-  await ensureCarExpensesPaymentColumns();
+  await ensureCarExpensesDropPaymentColumns();
   await ensureBookingsPaymentColumns();
   await ensureBookingsHoldExtensionCountColumn();
   await ensureBookingsMultiSlotColumns();
@@ -860,4 +955,5 @@ export async function syncModels(): Promise<void> {
   await ensureAdminMfaChallengesTable();
   await ensureBookingsConfirmationEmailSentAtColumn();
   await ensureBookingsCancellationRequestedAtColumn();
+  await ensureStudentProfilesPackageIdOnDeleteSetNull();
 }

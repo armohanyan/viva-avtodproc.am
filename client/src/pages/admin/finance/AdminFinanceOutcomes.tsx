@@ -11,29 +11,17 @@ import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Landmark, Plus, Edit2, Trash2 } from "lucide-react";
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useToast } from "src/lib/toast";
 import type { CarExpense } from "src/modules/cars";
 import { useFleetCars } from "src/modules/cars";
+import { formatAmd, monthRange, outcomesBreakdownInRange } from "./adminFinanceShared";
 import {
-  type TxChannel,
-  type TxMethod,
-  channelTKey,
-  formatAmd,
-  methodTKey,
-  monthRange,
-  outcomesBreakdownInRange,
-} from "./adminFinanceShared";
-
-function normChannel(c: CarExpense["channel"]): TxChannel {
-  if (c === "online" || c === "pos" || c === "bank") return c;
-  return "office";
-}
-
-function normMethod(m: CarExpense["method"]): TxMethod {
-  if (m === "card" || m === "idram" || m === "transfer") return m;
-  return "cash";
-}
+  FLEET_EXPENSE_PURPOSE_DROPDOWN_AM,
+  FLEET_EXPENSE_PURPOSE_OTHER_AM,
+  purposeFormFromStored,
+  purposeFromPurposeForm,
+} from "./fleetExpensePurposeAm";
 
 export default function AdminFinanceOutcomes() {
   const addFormId = useId();
@@ -48,11 +36,12 @@ export default function AdminFinanceOutcomes() {
     carId: "",
     amount: "",
     date: new Date().toISOString().slice(0, 10),
-    purpose: "",
+    purposeChoice: "",
+    purposeCustom: "",
     note: "",
-    channel: "office" as TxChannel,
-    method: "cash" as TxMethod,
   });
+  const [editPurposeChoice, setEditPurposeChoice] = useState("");
+  const [editPurposeCustom, setEditPurposeCustom] = useState("");
 
   const plateByCarId = useMemo(() => {
     const m = new Map<string, string>();
@@ -68,19 +57,28 @@ export default function AdminFinanceOutcomes() {
     const q = search.trim().toLowerCase();
     return sorted.filter((e) => {
       const plate = plateByCarId.get(String(e.carId)) ?? String(e.carId);
-      const ch = normChannel(e.channel);
-      const me = normMethod(e.method);
-      const hay = [plate, e.purpose, e.note ?? "", e.date, t(channelTKey(ch)), t(methodTKey(me))].join(" ").toLowerCase();
+      const hay = [plate, e.purpose, e.note ?? "", e.date].join(" ").toLowerCase();
       const matchQ = !q || hay.includes(q);
       const matchCar = carFilter === "all" || String(e.carId) === carFilter;
       return matchQ && matchCar;
     });
-  }, [sorted, search, carFilter, plateByCarId, t]);
+  }, [sorted, search, carFilter, plateByCarId]);
 
   const breakdownRows = useMemo(() => {
     const { start, end } = monthRange();
     return outcomesBreakdownInRange(expenses, start, end);
   }, [expenses]);
+
+  useEffect(() => {
+    if (!editRow) {
+      setEditPurposeChoice("");
+      setEditPurposeCustom("");
+      return;
+    }
+    const { choice, custom } = purposeFormFromStored(editRow.purpose);
+    setEditPurposeChoice(choice);
+    setEditPurposeCustom(custom);
+  }, [editRow?.id, editRow?.purpose]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,27 +87,33 @@ export default function AdminFinanceOutcomes() {
       return;
     }
     const amount = Number.parseFloat(newRow.amount.replace(",", "."));
-    if (!newRow.purpose.trim() || Number.isNaN(amount) || amount <= 0) {
+    if (!newRow.purposeChoice || Number.isNaN(amount) || amount <= 0) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    if (newRow.purposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM && !newRow.purposeCustom.trim()) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    const purpose = purposeFromPurposeForm(newRow.purposeChoice, newRow.purposeCustom);
+    if (!purpose) {
       showToast(t("fillRequired"), "error");
       return;
     }
     await addExpense({
       carId: newRow.carId,
-      amount,
+      amount: Math.round(amount),
       date: newRow.date.slice(0, 10),
-      purpose: newRow.purpose.trim(),
+      purpose,
       note: newRow.note.trim() || undefined,
-      channel: newRow.channel,
-      method: newRow.method,
     });
     setNewRow({
       carId: newRow.carId,
       amount: "",
       date: new Date().toISOString().slice(0, 10),
-      purpose: "",
+      purposeChoice: "",
+      purposeCustom: "",
       note: "",
-      channel: "office",
-      method: "cash",
     });
     showToast(t("fleetExpenseCreatedToast"), "success");
   };
@@ -118,17 +122,24 @@ export default function AdminFinanceOutcomes() {
     ev.preventDefault();
     if (!editRow) return;
     const amount = Number.parseFloat(String(editRow.amount).replace(",", "."));
-    if (!editRow.purpose.trim() || Number.isNaN(amount) || amount <= 0) {
+    if (!editPurposeChoice || Number.isNaN(amount) || amount <= 0) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    if (editPurposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM && !editPurposeCustom.trim()) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    const purpose = purposeFromPurposeForm(editPurposeChoice, editPurposeCustom);
+    if (!purpose) {
       showToast(t("fillRequired"), "error");
       return;
     }
     await updateExpense(editRow.id, {
-      amount,
+      amount: Math.round(amount),
       date: editRow.date.slice(0, 10),
-      purpose: editRow.purpose.trim(),
+      purpose,
       note: editRow.note?.trim() || undefined,
-      channel: normChannel(editRow.channel),
-      method: normMethod(editRow.method),
     });
     setEditRow(null);
     showToast(t("fleetExpenseSavedToast"), "success");
@@ -154,9 +165,7 @@ export default function AdminFinanceOutcomes() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {breakdownRows.map((row) => (
               <Card key={row.key} className="p-4 border-border">
-                <p className="text-xs text-muted-foreground mb-1">
-                  {t(channelTKey(row.channel))} · {t(methodTKey(row.method))}
-                </p>
+                <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceBreakdownFleetSummary")}</p>
                 <p className="text-lg font-bold text-foreground tabular-nums">{formatAmd(row.total)}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {row.count} {row.count === 1 ? t("adminFinanceBreakdownTxSingular") : t("adminFinanceBreakdownTxPlural")}
@@ -178,8 +187,6 @@ export default function AdminFinanceOutcomes() {
               t("fleetExpenseColDate"),
               t("fleetColPlate"),
               t("fleetExpenseColPurpose"),
-              t("financeColChannel"),
-              t("financeColMethod"),
               t("fleetExpenseColAmount"),
               t("fleetExpenseColNote"),
             ]}
@@ -187,15 +194,13 @@ export default function AdminFinanceOutcomes() {
               ex.date,
               plateByCarId.get(String(ex.carId)) ?? String(ex.carId),
               ex.purpose,
-              t(channelTKey(normChannel(ex.channel))),
-              t(methodTKey(normMethod(ex.method))),
               String(ex.amount),
               ex.note ?? "—",
             ])}
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[56rem]">
+          <table className="w-full text-sm min-w-[42rem]">
             <thead className="bg-muted/40">
               <tr>
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColDate")} />
@@ -214,8 +219,6 @@ export default function AdminFinanceOutcomes() {
                   }
                 />
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColPurpose")} />
-                <TableColumnHeaderWithFilter title={t("financeColChannel")} />
-                <TableColumnHeaderWithFilter title={t("financeColMethod")} />
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColAmount")} />
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColNote")} />
                 <TableColumnHeaderWithFilter title={t("actions")} />
@@ -224,7 +227,7 @@ export default function AdminFinanceOutcomes() {
             <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {t("tableNoMatches")}
                   </td>
                 </tr>
@@ -248,8 +251,6 @@ export default function AdminFinanceOutcomes() {
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{ex.date}</td>
                       <td className="px-4 py-3 font-medium whitespace-nowrap">{plateByCarId.get(String(ex.carId)) ?? ex.carId}</td>
                       <td className="px-4 py-3 max-w-[14rem]">{ex.purpose}</td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t(channelTKey(normChannel(ex.channel)))}</td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t(methodTKey(normMethod(ex.method)))}</td>
                       <td className="px-4 py-3 font-medium tabular-nums whitespace-nowrap">{formatAmd(Math.abs(ex.amount))}</td>
                       <td className="px-4 py-3 text-muted-foreground text-sm max-w-[12rem] truncate" title={ex.note}>
                         {ex.note ?? "—"}
@@ -287,7 +288,7 @@ export default function AdminFinanceOutcomes() {
           <Plus className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomeAddTitle")}</h3>
         </div>
-        <form id={addFormId} onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+        <form id={addFormId} onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           <div className="sm:col-span-2">
             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetColPlate")} *</label>
             <select
@@ -318,37 +319,41 @@ export default function AdminFinanceOutcomes() {
             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColDate")} *</label>
             <Input type="date" value={newRow.date} onChange={(e) => setNewRow((r) => ({ ...r, date: e.target.value }))} className="h-10" />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
-            <select
-              value={newRow.channel}
-              onChange={(e) => setNewRow((r) => ({ ...r, channel: e.target.value as TxChannel }))}
-              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-            >
-              <option value="office">{t("financeChannelOffice")}</option>
-              <option value="pos">{t("financeChannelPos")}</option>
-              <option value="online">{t("financeChannelOnline")}</option>
-              <option value="bank">{t("financeChannelBank")}</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
-            <select
-              value={newRow.method}
-              onChange={(e) => setNewRow((r) => ({ ...r, method: e.target.value as TxMethod }))}
-              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-            >
-              <option value="cash">{t("financeMethodCash")}</option>
-              <option value="card">{t("financeMethodCard")}</option>
-              <option value="transfer">{t("financeMethodTransfer")}</option>
-              <option value="idram">{t("financeMethodIdram")}</option>
-            </select>
-          </div>
-          <div className="sm:col-span-2 lg:col-span-3">
+          <div className="sm:col-span-2 lg:col-span-2">
             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColPurpose")} *</label>
-            <Input value={newRow.purpose} onChange={(e) => setNewRow((r) => ({ ...r, purpose: e.target.value }))} className="h-10" />
+            <select
+              required
+              value={newRow.purposeChoice}
+              onChange={(e) => {
+                const v = e.target.value;
+                setNewRow((r) => ({
+                  ...r,
+                  purposeChoice: v,
+                  purposeCustom: v === FLEET_EXPENSE_PURPOSE_OTHER_AM ? r.purposeCustom : "",
+                }));
+              }}
+              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">{t("adminFinancePurposePick")}</option>
+              {FLEET_EXPENSE_PURPOSE_DROPDOWN_AM.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="sm:col-span-2 lg:col-span-3">
+          {newRow.purposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM ? (
+            <div className="sm:col-span-2 lg:col-span-4">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinancePurposeOtherLabel")}</label>
+              <Input
+                value={newRow.purposeCustom}
+                onChange={(e) => setNewRow((r) => ({ ...r, purposeCustom: e.target.value }))}
+                className="h-10"
+                placeholder={t("adminFinancePurposeOtherHint")}
+              />
+            </div>
+          ) : null}
+          <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColNote")}</label>
             <Input value={newRow.note} onChange={(e) => setNewRow((r) => ({ ...r, note: e.target.value }))} className="h-10" />
           </div>
@@ -398,35 +403,36 @@ export default function AdminFinanceOutcomes() {
               <Input type="date" value={editRow.date} onChange={(e) => setEditRow({ ...editRow, date: e.target.value })} className="h-10" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
-              <select
-                value={normChannel(editRow.channel)}
-                onChange={(e) => setEditRow({ ...editRow, channel: e.target.value as TxChannel })}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              >
-                <option value="office">{t("financeChannelOffice")}</option>
-                <option value="pos">{t("financeChannelPos")}</option>
-                <option value="online">{t("financeChannelOnline")}</option>
-                <option value="bank">{t("financeChannelBank")}</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
-              <select
-                value={normMethod(editRow.method)}
-                onChange={(e) => setEditRow({ ...editRow, method: e.target.value as TxMethod })}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              >
-                <option value="cash">{t("financeMethodCash")}</option>
-                <option value="card">{t("financeMethodCard")}</option>
-                <option value="transfer">{t("financeMethodTransfer")}</option>
-                <option value="idram">{t("financeMethodIdram")}</option>
-              </select>
-            </div>
-            <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColPurpose")} *</label>
-              <Input value={editRow.purpose} onChange={(e) => setEditRow({ ...editRow, purpose: e.target.value })} className="h-10" />
+              <select
+                required
+                value={editPurposeChoice}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setEditPurposeChoice(v);
+                  if (v !== FLEET_EXPENSE_PURPOSE_OTHER_AM) setEditPurposeCustom("");
+                }}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              >
+                <option value="">{t("adminFinancePurposePick")}</option>
+                {FLEET_EXPENSE_PURPOSE_DROPDOWN_AM.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
+            {editPurposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM ? (
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinancePurposeOtherLabel")}</label>
+                <Input
+                  value={editPurposeCustom}
+                  onChange={(e) => setEditPurposeCustom(e.target.value)}
+                  className="h-10"
+                  placeholder={t("adminFinancePurposeOtherHint")}
+                />
+              </div>
+            ) : null}
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColNote")}</label>
               <Input value={editRow.note ?? ""} onChange={(e) => setEditRow({ ...editRow, note: e.target.value })} className="h-10" />

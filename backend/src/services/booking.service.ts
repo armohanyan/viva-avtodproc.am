@@ -372,9 +372,15 @@ export default class BookingService {
     instructorUserId: number,
     fromIso: string,
     toIso: string,
+    excludeBookingId?: number,
   ): Promise<{ dateIso: string; time: string; studentUserId: number }[]> {
     const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
     if (!exists) return [];
+
+    const bookingWhere: Record<string, unknown> = { status: { [Op.in]: [...SLOT_RESERVING_STATUSES] } };
+    if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
+      bookingWhere.id = { [Op.ne]: excludeBookingId };
+    }
 
     const slotRows = await BookingSlot.findAll({
       attributes: ['dateIso', 'slotTime'],
@@ -388,7 +394,7 @@ export default class BookingService {
           as: 'booking',
           attributes: ['studentUserId'],
           required: true,
-          where: { status: { [Op.in]: [...SLOT_RESERVING_STATUSES] } },
+          where: bookingWhere,
         },
       ],
     });
@@ -402,15 +408,20 @@ export default class BookingService {
       };
     });
 
+    const legacyWhere: Record<string, unknown> = {
+      instructorUserId,
+      dateIso: { [Op.between]: [fromIso.slice(0, 10), toIso.slice(0, 10)] },
+      status: { [Op.in]: [...SLOT_RESERVING_STATUSES] },
+      [Op.and]: literal(
+        'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)',
+      ),
+    };
+    if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
+      legacyWhere.id = { [Op.ne]: excludeBookingId };
+    }
+
     const legacyBookings = await Booking.findAll({
-      where: {
-        instructorUserId,
-        dateIso: { [Op.between]: [fromIso.slice(0, 10), toIso.slice(0, 10)] },
-        status: { [Op.in]: [...SLOT_RESERVING_STATUSES] },
-        [Op.and]: literal(
-          'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)',
-        ),
-      },
+      where: legacyWhere,
     });
 
     const fromLegacy = legacyBookings.flatMap((b) => expandLegacyBookingHours(b));
@@ -896,6 +907,151 @@ export default class BookingService {
     return rows.find((x) => x.id === newId) ?? null;
   }
 
+  private static async updateAdminWithConsecutiveSlotsForExisting(opts: {
+    id: number;
+    row: Booking;
+    patch: Partial<{
+      studentId: number;
+      instructorName: string;
+      dateIso: string;
+      time: string;
+      type: 'practical' | 'theory' | 'theory_personal';
+      status: string;
+      branchId: number;
+      slots: readonly string[];
+      theoryCohortId?: number;
+    }>;
+    lessonType: 'practical' | 'theory';
+    slots: readonly string[];
+  }): Promise<BookingAdminDto | null> {
+    const { id, row, patch, lessonType, slots } = opts;
+    const dateIso =
+      patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
+    const sorted = normalizeAndSortSlots(slots);
+    assertConsecutiveHourly(sorted);
+    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
+
+    let instructorUserId: number;
+    let branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
+    const nextStudentId = patch.studentId !== undefined ? patch.studentId : row.studentUserId;
+
+    if (lessonType === 'theory') {
+      const theoryCohortId = patch.theoryCohortId;
+      if (theoryCohortId == null || !Number.isFinite(theoryCohortId)) {
+        throw new InputValidationError(
+          'theoryCohortId is required for theory group bookings.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      const cohort = await TheoryCohort.findByPk(theoryCohortId);
+      if (!cohort) {
+        throw new InputValidationError('Theory cohort not found.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (String(cohort.status).toLowerCase() !== 'active') {
+        throw new InputValidationError(
+          'Only active theory cohorts can be used for bookings.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      branchId = cohort.branchId;
+      const instructor = await User.findOne({
+        where: { name: cohort.instructorName, accountType: 'instructor' },
+      });
+      if (!instructor) {
+        throw new InputValidationError(
+          `No instructor user matches cohort instructor "${cohort.instructorName}".`,
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      instructorUserId = instructor.id;
+      try {
+        await TheoryCohortService.enroll(cohort.id, nextStudentId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '';
+        if (!(e instanceof ConflictError) || !msg.includes('already enrolled')) {
+          throw e;
+        }
+      }
+    } else {
+      let instructorName = patch.instructorName?.trim();
+      if (!instructorName) {
+        const prev = await User.findByPk(row.instructorUserId, { attributes: ['name'] });
+        instructorName = prev?.name?.trim() ?? '';
+      }
+      if (!instructorName) {
+        throw new InputValidationError(
+          'instructorName is required for practical bookings.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      const instructor = await User.findOne({
+        where: { name: instructorName, accountType: 'instructor' },
+      });
+      if (!instructor) return null;
+      instructorUserId = instructor.id;
+    }
+
+    const branchOk = await InstructorBranch.findOne({
+      where: { instructorUserId, branchId },
+    });
+    if (!branchOk) {
+      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
+    assertInstructorTeachesLessonType(profile, lessonType);
+    const hourly = profile ? Number(profile.hourlyPrice) : 0;
+    const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
+
+    for (const slot of sorted) {
+      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+        instructorUserId,
+        dateIso,
+        slot,
+      );
+      if (unavailable) {
+        throw new InputValidationError(
+          'Instructor is not available at this time (day off, break, or outside work hours).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+    }
+
+    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+
+    try {
+      await sequelize.transaction(async (transaction) => {
+        await row.update(
+          {
+            ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
+            instructorUserId,
+            dateIso,
+            time: sorted[0],
+            endTime: exclusiveEnd,
+            totalPriceAmd,
+            ...(patch.type !== undefined ? { lessonType: patch.type } : { lessonType }),
+            ...(patch.status !== undefined ? { status: patch.status } : {}),
+            branchId,
+          },
+          { transaction },
+        );
+        await replaceBookingSlotRows(id, instructorUserId, dateIso, sorted, transaction);
+        if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
+          await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+        }
+      });
+    } catch (e) {
+      if (isDuplicateSlotClaimError(e)) {
+        throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
+      }
+      throw e;
+    }
+
+    void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
+
+    return (await this.listAdmin()).find((x) => x.id === id) ?? null;
+  }
+
   static async updateAdmin(
     id: number,
     patch: Partial<{
@@ -906,10 +1062,32 @@ export default class BookingService {
       type: 'practical' | 'theory' | 'theory_personal';
       status: string;
       branchId: number;
+      slots?: readonly string[];
+      theoryCohortId?: number;
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
     if (!row) return null;
+
+    const effectiveType = patch.type ?? row.lessonType;
+    const slotList = patch.slots?.filter((s) => typeof s === 'string' && s.trim().length > 0) ?? [];
+    if (slotList.length > 0 && effectiveType === 'theory_personal') {
+      throw new InputValidationError(
+        'Personal theory bookings use a single time, not slots[]',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    const useMulti = slotList.length > 0 && (effectiveType === 'practical' || effectiveType === 'theory');
+    if (useMulti) {
+      return BookingService.updateAdminWithConsecutiveSlotsForExisting({
+        id,
+        row,
+        patch,
+        lessonType: effectiveType,
+        slots: slotList,
+      });
+    }
+
     let instructorUserId = row.instructorUserId;
     if (patch.instructorName !== undefined) {
       const instructor = await User.findOne({
@@ -939,6 +1117,8 @@ export default class BookingService {
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
     const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
 
+    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+
     try {
       await sequelize.transaction(async (transaction) => {
         await row.update(
@@ -960,7 +1140,7 @@ export default class BookingService {
         if (patch.dateIso !== undefined || patch.time !== undefined || patch.instructorName !== undefined) {
           await replaceBookingSlotRows(row.id, instructorUserId, nextDateIso, sorted, transaction);
         }
-        if (!rawBookingStatusReservesSlot(row.status)) {
+        if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
         }
       });

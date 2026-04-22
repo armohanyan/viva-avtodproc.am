@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Instructor } from "src/data/instructors";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { vivaApiJson } from "src/lib/vivaApi";
 
 export function useInstructors() {
@@ -14,6 +15,7 @@ export function useInstructors() {
 					? data.map((ins) => ({
 							...ins,
 							id: String(ins.id),
+							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.jpg",
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
 						}))
 					: [],

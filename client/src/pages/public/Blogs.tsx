@@ -7,6 +7,7 @@ import { useLang } from "src/lib/i18n";
 import type { Blog } from "src/lib/blogs";
 import { fetchPublishedBlogsApi } from "src/lib/blogsApi";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { Calendar, ArrowRight, ImageIcon } from "lucide-react";
 import { Reveal } from "src/lib/motion";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
@@ -61,7 +62,7 @@ export default function Blogs() {
           ) : (
             <div className="grid gap-8 md:grid-cols-2">
               {posts.map((post, i) => {
-                const cover = sanitizeCoverImageUrl(post.coverImage);
+                const cover = sameOriginStaffUploadUrl(sanitizeCoverImageUrl(post.coverImage));
                 return (
                   <Reveal key={post.id} delay={i * 0.06}>
                     <article className="group rounded-2xl border border-border bg-card overflow-hidden shadow-sm hover:border-primary/30 hover:shadow-md transition-all h-full flex flex-col">

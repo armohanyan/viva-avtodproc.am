@@ -21,7 +21,6 @@ type Cohort = {
   name: string;
   startDateIso: string;
   endDateIso: string;
-  schedule: string;
   seats: number;
   enrolled: number;
   instructorName: string;
@@ -132,7 +131,6 @@ export default function AdminLearnTheory() {
                       {isActive ? t("active") : t("cohortStatusLabelUpcoming")}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-1">{c.schedule}</p>
                   <p className="text-xs text-muted-foreground mb-4">
                     {formatShortDateFromIso(c.startDateIso, lang)} – {formatShortDateFromIso(c.endDateIso, lang)}
                   </p>
@@ -183,7 +181,6 @@ export default function AdminLearnTheory() {
           <form id={enrollFormId} onSubmit={handleEnroll} className="space-y-4">
             <div className="rounded-lg bg-muted/40 p-3 text-sm">
               <p className="font-medium text-foreground">{dialogCohort.name}</p>
-              <p className="text-muted-foreground text-xs mt-1">{dialogCohort.schedule}</p>
               <p className="text-xs text-muted-foreground mt-2">
                 {t("cohortColEnrollment")}: {dialogCohort.enrolled} / {dialogCohort.seats}
                 {seatsLeft > 0 ? ` · ${seatsLeft} ${t("adminTheorySeatsLeft")}` : ""}
