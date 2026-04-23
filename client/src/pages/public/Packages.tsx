@@ -85,7 +85,8 @@ export default function Packages() {
                         <span className="text-muted-foreground">֏</span>
                       </div>
                       <p className="text-sm text-muted-foreground mb-7">
-                        {pkg.lessons} {t("lessons")} · {t("lessonTypePractical")}
+                        {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
+                        {t("lessonTypeTheory").toLowerCase()}
                       </p>
                       <ul className="space-y-3 mb-8">
                         {pkg.features.map((feat, j) => (

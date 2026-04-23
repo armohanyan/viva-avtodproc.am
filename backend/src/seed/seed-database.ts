@@ -72,6 +72,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     name: 'Standard',
     priceDisplay: '55,000',
     lessons: 18,
+    theoryLessons: 12,
     status: 'active',
     featuresJson: JSON.stringify(['Practical lessons', 'Theory access', 'Practice exam', 'Certificate']),
   });
@@ -125,6 +126,8 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     instructorUserId: instructorUser.id,
     lessonsCompleted: 0,
     lessonsTotal: pkg.lessons,
+    theoryLessonsCompleted: 2,
+    theoryLessonsTotal: 12,
     enrollmentStatus: 'active',
     skillRating: 0,
     licenseAchieved: false,

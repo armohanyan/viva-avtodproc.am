@@ -28,6 +28,7 @@ import { User } from './user.model';
 import { RefreshToken } from './refresh-token.model';
 import { OAuthAccount } from './oauth-account.model';
 import { StudentInvitation } from './student-invitation.model';
+import { StudentExamStats } from './student-exam-stats.model';
 import { AdminMfaChallenge } from './admin-mfa-challenge.model';
 
 City.hasMany(Branch, { foreignKey: 'cityId', sourceKey: 'id' });
@@ -84,6 +85,9 @@ OAuthAccount.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 User.hasMany(StudentInvitation, { foreignKey: 'userId', sourceKey: 'id' });
 StudentInvitation.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 
+User.hasOne(StudentExamStats, { foreignKey: 'userId', sourceKey: 'id', as: 'examStats' });
+StudentExamStats.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'studentUser' });
+
 User.hasMany(AdminMfaChallenge, { foreignKey: 'userId', sourceKey: 'id' });
 AdminMfaChallenge.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 
@@ -118,6 +122,7 @@ export {
   Package,
   RefreshToken,
   StudentInvitation,
+  StudentExamStats,
   StudentExtraPractical,
   StudentProfile,
   TheoryCohort,
@@ -147,6 +152,64 @@ async function ensurePackagesImageUrlColumn(): Promise<void> {
     return;
   }
   await sequelize.query('ALTER TABLE `packages` ADD COLUMN `image_url` TEXT NULL');
+}
+
+/** Adds `packages.theory_lessons` when the table predates the field (sync without alter skips new columns). */
+async function ensurePackagesTheoryLessonsColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'packages'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'packages' AND COLUMN_NAME = 'theory_lessons'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `packages` ADD COLUMN `theory_lessons` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `lessons`',
+  );
+}
+
+/** Adds theory progress columns on `student_profiles` when missing. */
+async function ensureStudentProfilesTheoryLessonColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_profiles'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_profiles'
+       AND COLUMN_NAME IN ('theory_lessons_total', 'theory_lessons_completed')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('theory_lessons_total')) {
+    await sequelize.query(
+      'ALTER TABLE `student_profiles` ADD COLUMN `theory_lessons_total` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `lessons_total`',
+    );
+  }
+  if (!have.has('theory_lessons_completed')) {
+    await sequelize.query(
+      'ALTER TABLE `student_profiles` ADD COLUMN `theory_lessons_completed` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `theory_lessons_total`',
+    );
+  }
 }
 
 /** Adds password reset columns on `users` when the table predates the Sequelize model fields. */
@@ -452,6 +515,37 @@ async function ensureMarketingSettingsIdColumn(): Promise<void> {
       );
     }
   }
+}
+
+async function ensureStudentExamStatsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'student_exam_stats'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) {
+    return;
+  }
+  const users = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (users.length === 0) {
+    return;
+  }
+  await sequelize.query(`
+    CREATE TABLE \`student_exam_stats\` (
+      \`user_id\` INT UNSIGNED NOT NULL,
+      \`payload\` JSON NOT NULL,
+      PRIMARY KEY (\`user_id\`),
+      CONSTRAINT \`student_exam_stats_user_fk\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 async function ensureStudentInvitationsTable(): Promise<void> {
@@ -941,6 +1035,8 @@ export async function syncModels(): Promise<void> {
   await ensureTheoryCohortsDropScheduleColumn();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
+  await ensurePackagesTheoryLessonsColumn();
+  await ensureStudentProfilesTheoryLessonColumns();
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
@@ -956,4 +1052,5 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsConfirmationEmailSentAtColumn();
   await ensureBookingsCancellationRequestedAtColumn();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
+  await ensureStudentExamStatsTable();
 }

@@ -9,6 +9,9 @@ import {
   DashboardBookingsPage,
   DashboardPaymentsPage,
   DashboardProfilePage,
+  DashboardServicesPage,
+  DashboardLessonsPage,
+  DashboardProgressPage,
 } from "src/pages/dashboard-pages";
 
 const STUDENT: readonly AccountType[] = ["student"];
@@ -16,6 +19,9 @@ const STUDENT: readonly AccountType[] = ["student"];
 export const dashboardRoutes: readonly AppRoute[] = [
   { path: "/dashboard", component: DashboardPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn", component: DashboardLearnPage, allowedAccountTypes: STUDENT },
+  { path: "/dashboard/services", component: DashboardServicesPage, allowedAccountTypes: STUDENT },
+  { path: "/dashboard/lessons", component: DashboardLessonsPage, allowedAccountTypes: STUDENT },
+  { path: "/dashboard/progress", component: DashboardProgressPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/exam-tests/quiz/:mode", component: DashboardExamQuizPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/exam-tests", component: DashboardExamTestsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/thematic-tests", component: DashboardThematicTestsPage, allowedAccountTypes: STUDENT },

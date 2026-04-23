@@ -15,7 +15,7 @@ import { ArrowUpRight, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
-import { getExamStats, type ExamStats } from "src/lib/examStats";
+import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 export default function ExamTests() {
@@ -62,6 +62,7 @@ export default function ExamTests() {
 
   useEffect(() => {
     setStats(getExamStats());
+    return subscribeExamStatsChanged(() => setStats(getExamStats()));
   }, []);
 
   const totalQuestions = useMemo(

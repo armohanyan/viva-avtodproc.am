@@ -7,6 +7,7 @@ export type MarketingPackageRow = {
   name: string;
   price: string;
   lessons: number;
+  theoryLessons: number;
   status: string;
   features: string[];
   imageUrl: string | null;
@@ -28,6 +29,7 @@ export function usePackages() {
           .filter((p) => (p.status ?? "active") === "active")
           .map((p) => ({
             ...p,
+            theoryLessons: Number((p as MarketingPackageRow).theoryLessons ?? 0),
             imageUrl: sameOriginStaffUploadUrl(p.imageUrl ?? null),
             features: Array.isArray(p.features) ? p.features : [],
           })),

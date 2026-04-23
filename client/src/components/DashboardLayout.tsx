@@ -12,6 +12,9 @@ import {
 	BookOpen,
 	LogOut,
 	Settings,
+	Briefcase,
+	LineChart,
+	CalendarDays,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import LangToggle from "./LangToggle";
@@ -45,6 +48,9 @@ export default function DashboardLayout({ children }: Props) {
 	const iconByPath = {
 		"/dashboard": LayoutDashboard,
 		"/dashboard/learn": BookOpen,
+		"/dashboard/services": Briefcase,
+		"/dashboard/lessons": CalendarDays,
+		"/dashboard/progress": LineChart,
 		"/dashboard/bookings": Calendar,
 		"/dashboard/bookings/package": ShoppingBag,
 		"/dashboard/bookings/practical": CalendarClock,
@@ -86,6 +92,15 @@ export default function DashboardLayout({ children }: Props) {
 		}
 		if (location.startsWith("/dashboard/learn/thematic-tests")) {
 			return t("dashboardLearnThematicTests");
+		}
+		if (location.startsWith("/dashboard/services")) {
+			return t("dashboardNavServices");
+		}
+		if (location.startsWith("/dashboard/lessons")) {
+			return t("dashboardNavLessons");
+		}
+		if (location.startsWith("/dashboard/progress")) {
+			return t("dashboardNavProgress");
 		}
 		if (location.startsWith("/dashboard/learn")) {
 			return t("learn");

@@ -303,7 +303,8 @@ export default function Home() {
                           <span className="text-lg text-muted-foreground">֏</span>
                         </div>
                         <p className="text-muted-foreground text-sm mt-1">
-                          {pkg.lessons} {t("lessons")} · {t("lessonTypePractical")}
+                          {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
+                          {t("lessonTypeTheory").toLowerCase()}
                         </p>
                       </div>
                       <ul className="space-y-3 mb-8">

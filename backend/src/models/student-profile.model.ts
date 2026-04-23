@@ -13,6 +13,8 @@ export class StudentProfile extends Model<
   declare instructorUserId: CreationOptional<number | null>;
   declare lessonsCompleted: number;
   declare lessonsTotal: number;
+  declare theoryLessonsCompleted: CreationOptional<number>;
+  declare theoryLessonsTotal: CreationOptional<number>;
   declare enrollmentStatus: string;
   declare skillRating: number;
   declare licenseAchieved: boolean;
@@ -27,6 +29,8 @@ StudentProfile.init(
     instructorUserId: fkUnsignedIntNullable(),
     lessonsCompleted: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
     lessonsTotal: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    theoryLessonsCompleted: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+    theoryLessonsTotal: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
     enrollmentStatus: { type: DataTypes.STRING(32), allowNull: false },
     skillRating: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     licenseAchieved: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

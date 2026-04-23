@@ -1,11 +1,21 @@
 import { Branch, Package, StudentExtraPractical, StudentProfile, User } from '../models';
 
-function theorySessionsForPackage(pkg: Package): number {
+/** Fallback when legacy rows have `theory_lessons_total` = 0 but package defines theory. */
+function legacyTheorySessionsFromPackageName(pkg: Package): number {
   const name = pkg.name.toLowerCase();
   if (name.includes('premium')) return 16;
   if (name.includes('standard')) return 12;
   if (name.includes('basic') || name.includes('refresher')) return 8;
   return 10;
+}
+
+function effectiveTheoryTotal(pkg: Package | null, profile: StudentProfile): number {
+  const fromProfile = Number(profile.theoryLessonsTotal ?? 0);
+  if (fromProfile > 0) return fromProfile;
+  const fromPkg = pkg ? Number(pkg.theoryLessons ?? 0) : 0;
+  if (fromPkg > 0) return fromPkg;
+  if (pkg) return legacyTheorySessionsFromPackageName(pkg);
+  return 0;
 }
 
 export type PackageTierId = 'basic' | 'standard' | 'premium';
@@ -24,7 +34,8 @@ export type StudentEntitlementsDto = {
     purchasedAt: string;
     practicalTotal: number;
     practicalUsed: number;
-    theorySessions: number;
+    theoryTotal: number;
+    theoryUsed: number;
   }>;
   extras: Array<{
     id: number;
@@ -51,6 +62,8 @@ export default class StudentEntitlementsService {
       return { packages: [], extras: await this.listExtras(userId) };
     }
     const joined = typeof profile.joinedAt === 'string' ? profile.joinedAt.slice(0, 10) : String(profile.joinedAt).slice(0, 10);
+    const theoryTotal = effectiveTheoryTotal(pkg, profile);
+    const theoryUsed = Math.min(theoryTotal, Number(profile.theoryLessonsCompleted ?? 0));
     return {
       packages: [
         {
@@ -59,7 +72,8 @@ export default class StudentEntitlementsService {
           purchasedAt: joined,
           practicalTotal: profile.lessonsTotal,
           practicalUsed: profile.lessonsCompleted,
-          theorySessions: theorySessionsForPackage(pkg),
+          theoryTotal,
+          theoryUsed,
         },
       ],
       extras: await this.listExtras(userId),
@@ -82,6 +96,7 @@ export default class StudentEntitlementsService {
     if (!user || user.accountType !== 'student') return null;
     const pkg = await Package.findByPk(packageId);
     if (!pkg) return null;
+    const theoryTotal = Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : legacyTheorySessionsFromPackageName(pkg);
     let profile = await StudentProfile.findOne({ where: { userId } });
     if (!profile) {
       const branch = await Branch.findOne({ order: [['id', 'ASC']] });
@@ -93,6 +108,8 @@ export default class StudentEntitlementsService {
         instructorUserId: null,
         lessonsCompleted: 0,
         lessonsTotal: pkg.lessons,
+        theoryLessonsCompleted: 0,
+        theoryLessonsTotal: theoryTotal,
         enrollmentStatus: 'active',
         skillRating: 0,
         licenseAchieved: false,
@@ -103,6 +120,8 @@ export default class StudentEntitlementsService {
         packageId: pkg.id,
         lessonsTotal: pkg.lessons,
         lessonsCompleted: 0,
+        theoryLessonsTotal: theoryTotal,
+        theoryLessonsCompleted: 0,
         enrollmentStatus: 'active',
       });
     }

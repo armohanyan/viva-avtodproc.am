@@ -32,7 +32,7 @@ export interface ActiveSession {
   updatedAt: number;
 }
 
-interface StoredTopicStats {
+export interface StoredTopicStats {
   attempts: number;
   bestPct: number;
   lastPct: number;
@@ -43,7 +43,7 @@ interface StoredTopicStats {
   questionResults: Record<string, boolean>;
 }
 
-interface StoredExamStats {
+export interface StoredExamStats {
   attempts: number;
   bestPct: number;
   lastPct: number;
@@ -55,6 +55,86 @@ interface StoredExamStats {
 }
 
 const KEY = "exam.tests.stats.v2";
+
+const listeners = new Set<() => void>();
+
+export function subscribeExamStatsChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function emitExamStatsChanged(): void {
+  listeners.forEach((l) => {
+    try {
+      l();
+    } catch {
+      /* ignore subscriber errors */
+    }
+  });
+}
+
+let scheduleRemoteSave: (() => void) | null = null;
+
+/** Debounced server PUT is registered from the student exam-stats sync effect for logged-in students. */
+export function setExamStatsRemoteSaveScheduler(fn: (() => void) | null): void {
+  scheduleRemoteSave = fn;
+}
+
+function triggerRemoteSave(): void {
+  try {
+    scheduleRemoteSave?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistLocal(payload: StoredExamStats, opts?: { skipRemote?: boolean }): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(KEY, JSON.stringify(payload));
+  emitExamStatsChanged();
+  if (!opts?.skipRemote) {
+    triggerRemoteSave();
+  }
+}
+
+export function readStoredExamStatsSnapshot(): StoredExamStats {
+  return readStoredStats();
+}
+
+export function isStoredExamStatsVisiblyEmpty(s: StoredExamStats): boolean {
+  const qr = Object.keys(s.questionResults ?? {}).length;
+  const tp = Object.keys(s.topics ?? {}).length;
+  return (
+    (Number(s.attempts ?? 0) || 0) === 0 &&
+    qr === 0 &&
+    tp === 0 &&
+    (s.activeSession == null || s.activeSession === null)
+  );
+}
+
+/** Applies server payload to localStorage (does not trigger a remote save). */
+export function mergeStoredExamStatsFromServer(remote: StoredExamStats): ExamStats {
+  if (typeof window === "undefined") return EMPTY;
+  const topicsRaw = remote.topics && typeof remote.topics === "object" ? remote.topics : {};
+  const normalized: StoredExamStats = {
+    attempts: Number(remote.attempts ?? 0) || 0,
+    bestPct: Number(remote.bestPct ?? 0) || 0,
+    lastPct: Number(remote.lastPct ?? 0) || 0,
+    totalCorrect: Number(remote.totalCorrect ?? 0) || 0,
+    totalWrong: Number(remote.totalWrong ?? 0) || 0,
+    questionResults:
+      remote.questionResults && typeof remote.questionResults === "object"
+        ? (remote.questionResults as Record<string, boolean>)
+        : {},
+    topics: topicsRaw as Record<string, StoredTopicStats>,
+    activeSession:
+      remote.activeSession && typeof remote.activeSession === "object"
+        ? (remote.activeSession as ActiveSession)
+        : null,
+  };
+  persistLocal(normalized, { skipRemote: true });
+  return getExamStats();
+}
 
 const EMPTY: ExamStats = {
   answered: 0,
@@ -241,19 +321,17 @@ export function addExamAttempt(result: {
     },
     activeSession: null,
   };
-  if (typeof window !== "undefined") {
-    const payload: StoredExamStats = {
-      attempts: next.attempts,
-      bestPct: next.bestPct,
-      lastPct: next.lastPct,
-      totalCorrect: next.correct,
-      totalWrong: next.wrong,
-      questionResults: next.questionResults,
-      topics: nextTopics,
-      activeSession: null,
-    };
-    window.localStorage.setItem(KEY, JSON.stringify(payload));
-  }
+  const payload: StoredExamStats = {
+    attempts: next.attempts,
+    bestPct: next.bestPct,
+    lastPct: next.lastPct,
+    totalCorrect: next.correct,
+    totalWrong: next.wrong,
+    questionResults: next.questionResults,
+    topics: nextTopics,
+    activeSession: null,
+  };
+  persistLocal(payload);
   return next;
 }
 
@@ -286,9 +364,7 @@ export function updateActiveSession(result: {
     topics: stored.topics,
     activeSession,
   };
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(KEY, JSON.stringify(payload));
-  }
+  persistLocal(payload);
   return {
     ...current,
     activeSession,
@@ -308,9 +384,7 @@ export function clearActiveSession(): ExamStats {
     topics: stored.topics,
     activeSession: null,
   };
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(KEY, JSON.stringify(payload));
-  }
+  persistLocal(payload);
   return {
     ...current,
     activeSession: null,

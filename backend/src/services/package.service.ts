@@ -5,7 +5,9 @@ export type PackageDto = {
   id: number;
   name: string;
   price: string;
+  /** Practical (in-car) lessons — same value as legacy `lessons` column. */
   lessons: number;
+  theoryLessons: number;
   enrolled: number;
   status: string;
   features: string[];
@@ -23,6 +25,7 @@ export default class PackageService {
         name: p.name,
         price: p.priceDisplay,
         lessons: p.lessons,
+        theoryLessons: Number(p.theoryLessons ?? 0),
         enrolled,
         status: p.status,
         features: safeJsonArray(p.featuresJson),
@@ -36,6 +39,7 @@ export default class PackageService {
     name: string;
     price: string;
     lessons: number;
+    theoryLessons?: number;
     status?: string;
     features?: string[];
     imageUrl?: string | null;
@@ -45,6 +49,7 @@ export default class PackageService {
       name: input.name,
       priceDisplay: input.price,
       lessons: input.lessons,
+      theoryLessons: input.theoryLessons ?? 0,
       status: input.status ?? 'active',
       featuresJson: JSON.stringify(input.features ?? []),
       imageUrl: imageNorm,
@@ -54,7 +59,15 @@ export default class PackageService {
 
   static async update(
     id: number,
-    patch: Partial<{ name: string; price: string; lessons: number; status: string; features: string[]; imageUrl: string | null }>,
+    patch: Partial<{
+      name: string;
+      price: string;
+      lessons: number;
+      theoryLessons: number;
+      status: string;
+      features: string[];
+      imageUrl: string | null;
+    }>,
   ): Promise<PackageDto | null> {
     const row = await Package.findByPk(id);
     if (!row) return null;
@@ -62,6 +75,7 @@ export default class PackageService {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.price !== undefined ? { priceDisplay: patch.price } : {}),
       ...(patch.lessons !== undefined ? { lessons: patch.lessons } : {}),
+      ...(patch.theoryLessons !== undefined ? { theoryLessons: patch.theoryLessons } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
       ...(patch.features !== undefined ? { featuresJson: JSON.stringify(patch.features) } : {}),
       ...(patch.imageUrl !== undefined ? { imageUrl: normalizeImageUrl(patch.imageUrl) } : {}),

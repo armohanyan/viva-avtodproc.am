@@ -5,7 +5,7 @@ import DashboardLearnSubnav from "src/components/dashboard/DashboardLearnSubnav"
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
-import { getExamStats, type ExamStats } from "src/lib/examStats";
+import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
 import type { ExamQuizMode } from "src/data/examSampleQuestions";
 import { countQuestionsForExamMode } from "src/lib/examQuestions";
 import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
@@ -31,6 +31,7 @@ export default function DashboardExamTests() {
 
   useEffect(() => {
     setStats(getExamStats());
+    return subscribeExamStatsChanged(() => setStats(getExamStats()));
   }, []);
 
   const pool = useExamQuestionPool();

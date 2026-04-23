@@ -5,6 +5,7 @@ import { AuthUnauthorizedRecovery } from "src/core/providers/AuthUnauthorizedRec
 import { SyncStaffPanelLanguage } from "src/core/providers/SyncStaffPanelLanguage";
 import { AccountProvider } from "src/modules/accounts";
 import { StudentEntitlementsProvider } from "src/modules/dashboard/studentEntitlements";
+import StudentExamStatsSync from "src/modules/dashboard/StudentExamStatsSync";
 import { LangProvider } from "src/lib/i18n";
 import { ToastProvider } from "src/lib/toast";
 
@@ -16,6 +17,7 @@ export const AppProviders = ({ children }: PropsWithChildren): JSX.Element => (
         <AccountProvider>
           <AuthUnauthorizedRecovery />
           <StudentEntitlementsProvider>
+            <StudentExamStatsSync />
             {children}
             <VisitorContactFab />
           </StudentEntitlementsProvider>

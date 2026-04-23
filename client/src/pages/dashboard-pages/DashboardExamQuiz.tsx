@@ -12,6 +12,7 @@ import {
 import { CheckCircle2, CircleHelp, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
+import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
 import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 
@@ -37,6 +38,7 @@ export default function DashboardExamQuiz() {
 
   const topicParam =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") : null;
+  const topicId = topicParam || "5";
   const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
 
   const pool = useExamQuestionPool();
@@ -69,6 +71,64 @@ export default function DashboardExamQuiz() {
     liveRef.current = { index, selected, answers, questions, layoutMode };
   }, [index, selected, answers, questions, layoutMode]);
 
+  const statsSavedRef = useRef(false);
+  const discardSessionRef = useRef(false);
+
+  const updateSessionProgress = (attemptAnswers: (number | null)[]) => {
+    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
+    if (answered === 0) return;
+    const correct = questions.reduce((acc, question, i) => {
+      const userAns = attemptAnswers[i];
+      if (userAns === null || userAns === undefined) return acc;
+      return acc + (userAns === question.correctIndex ? 1 : 0);
+    }, 0);
+    updateActiveSession({
+      topicId,
+      answered,
+      correct,
+      wrong: Math.max(0, answered - correct),
+    });
+  };
+
+  const saveAttemptStats = (attemptAnswers: (number | null)[]) => {
+    if (questions.length === 0 || statsSavedRef.current) return;
+    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
+    if (answered === 0) return;
+    const correct = questions.reduce((acc, question, i) => {
+      const userAns = attemptAnswers[i];
+      if (userAns === null || userAns === undefined) return acc;
+      return acc + (userAns === question.correctIndex ? 1 : 0);
+    }, 0);
+    const wrong = Math.max(0, answered - correct);
+    const questionOutcomes = questions
+      .map((question, i) => {
+        const userAns = attemptAnswers[i];
+        if (userAns === null || userAns === undefined) return null;
+        return { questionId: question.id, isCorrect: userAns === question.correctIndex };
+      })
+      .filter((v): v is { questionId: string; isCorrect: boolean } => Boolean(v));
+    addExamAttempt({ topicId, answered, correct, wrong, questionOutcomes });
+    statsSavedRef.current = true;
+  };
+
+  useEffect(() => {
+    if (finished) return;
+    updateSessionProgress(answers);
+  }, [answers, finished, topicId, questions]);
+
+  useEffect(() => {
+    if (!finished || discardSessionRef.current) return;
+    saveAttemptStats(answers);
+  }, [finished, answers, topicId, questions]);
+
+  useEffect(() => {
+    return () => {
+      if (!discardSessionRef.current && finished) {
+        saveAttemptStats(answers);
+      }
+    };
+  }, [answers, finished, topicId, questions]);
+
   const handleTimeExpired = useCallback(() => {
     setEndedByTimeout(true);
     const { index: i, selected: sel, answers: ans, questions: qs, layoutMode: lm } = liveRef.current;
@@ -96,6 +156,8 @@ export default function DashboardExamQuiz() {
 
   useEffect(() => {
     setEndedByTimeout(false);
+    statsSavedRef.current = false;
+    discardSessionRef.current = false;
   }, [round, mode]);
 
   useEffect(() => {
@@ -155,6 +217,11 @@ export default function DashboardExamQuiz() {
   };
 
   const restart = () => {
+    if (finished) {
+      saveAttemptStats(answers);
+    }
+    statsSavedRef.current = false;
+    discardSessionRef.current = false;
     setEndedByTimeout(false);
     setRound((r) => r + 1);
     setIndex(0);
@@ -167,6 +234,8 @@ export default function DashboardExamQuiz() {
     if (timedExam && !finished) {
       if (!window.confirm(t("examQuizExitConfirm"))) return;
     }
+    discardSessionRef.current = true;
+    clearActiveSession();
     setLocation(backHref);
   };
 

@@ -14,7 +14,7 @@ import {
 import { countThematicTopicQuestions } from "src/lib/examQuestions";
 import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import { Reveal } from "src/lib/motion";
-import { getExamStats, type ExamStats } from "src/lib/examStats";
+import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
 
 export default function DashboardThematicTests() {
   const { t } = useLang();
@@ -45,6 +45,7 @@ export default function DashboardThematicTests() {
 
   useEffect(() => {
     setStats(getExamStats());
+    return subscribeExamStatsChanged(() => setStats(getExamStats()));
   }, []);
 
   const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);

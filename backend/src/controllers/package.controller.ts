@@ -12,6 +12,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   price: z.string().min(1),
   lessons: z.number().int().positive(),
+  theoryLessons: z.number().int().nonnegative().optional(),
   status: z.string().optional(),
   features: z.array(z.string()).optional(),
   imageUrl: z.union([z.string().max(4000), z.literal(''), z.null()]).optional(),

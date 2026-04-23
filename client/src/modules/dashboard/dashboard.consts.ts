@@ -3,6 +3,9 @@ import type { DashboardNavigationLink } from "./dashboard.types";
 export const DASHBOARD_NAV_LINKS: readonly DashboardNavigationLink[] = [
   { href: "/dashboard", translationKey: "dashboard" },
   { href: "/dashboard/learn", translationKey: "learn" },
+  { href: "/dashboard/services", translationKey: "dashboardNavServices" },
+  { href: "/dashboard/lessons", translationKey: "dashboardNavLessons" },
+  { href: "/dashboard/progress", translationKey: "dashboardNavProgress" },
   {
     href: "/dashboard/bookings",
     translationKey: "bookings",

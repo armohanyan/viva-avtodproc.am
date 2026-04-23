@@ -38,7 +38,7 @@ export default class StudentAdminService {
           phone: stu.phone ?? '',
           instructor: inst?.name ?? '',
           package: pkg?.name ?? '',
-          lessons: `${sp.lessonsCompleted}/${sp.lessonsTotal}`,
+          lessons: `${sp.lessonsCompleted}/${sp.lessonsTotal} · T ${sp.theoryLessonsCompleted ?? 0}/${sp.theoryLessonsTotal ?? 0}`,
           status: sp.enrollmentStatus,
           joinedIso: typeof sp.joinedAt === 'string' ? sp.joinedAt : String(sp.joinedAt),
           branchId: sp.branchId,
@@ -123,6 +123,8 @@ export default class StudentAdminService {
     instructorUserId?: number | null;
     lessonsCompleted?: number;
     lessonsTotal?: number;
+    theoryLessonsCompleted?: number;
+    theoryLessonsTotal?: number;
     enrollmentStatus?: string;
     skillRating?: number;
     licenseAchieved?: boolean;
@@ -141,6 +143,9 @@ export default class StudentAdminService {
       await User.destroy({ where: { id: user.id } });
       return null;
     }
+    const theoryTotal =
+      input.theoryLessonsTotal ??
+      (Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : 0);
     await StudentProfile.create({
       userId: user.id,
       branchId: input.branchId,
@@ -148,6 +153,8 @@ export default class StudentAdminService {
       instructorUserId: input.instructorUserId ?? null,
       lessonsCompleted: input.lessonsCompleted ?? 0,
       lessonsTotal: input.lessonsTotal ?? pkg.lessons,
+      theoryLessonsCompleted: input.theoryLessonsCompleted ?? 0,
+      theoryLessonsTotal: theoryTotal,
       enrollmentStatus: input.enrollmentStatus ?? 'active',
       skillRating: input.skillRating ?? 0,
       licenseAchieved: input.licenseAchieved ?? false,
@@ -168,6 +175,8 @@ export default class StudentAdminService {
       instructorUserId: number | null;
       lessonsCompleted: number;
       lessonsTotal: number;
+      theoryLessonsCompleted: number;
+      theoryLessonsTotal: number;
       enrollmentStatus: string;
       skillRating: number;
       licenseAchieved: boolean;
@@ -185,6 +194,7 @@ export default class StudentAdminService {
       });
     }
     let nextPackageId: number | null | undefined;
+    let packageForTheory: Package | null = null;
     if (patch.packageId !== undefined) {
       if (patch.packageId === null) {
         nextPackageId = null;
@@ -192,14 +202,33 @@ export default class StudentAdminService {
         const pkg = await Package.findByPk(patch.packageId);
         if (!pkg) return null;
         nextPackageId = patch.packageId;
+        packageForTheory = pkg;
       }
     }
+    const packageChangingToNew =
+      patch.packageId !== undefined &&
+      patch.packageId !== null &&
+      profile.packageId !== patch.packageId;
+    const syncTheoryFromPackage =
+      packageChangingToNew &&
+      packageForTheory != null &&
+      patch.theoryLessonsTotal === undefined &&
+      patch.theoryLessonsCompleted === undefined;
     await profile.update({
       ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
       ...(nextPackageId !== undefined ? { packageId: nextPackageId } : {}),
+      ...(nextPackageId === null ? { theoryLessonsTotal: 0, theoryLessonsCompleted: 0 } : {}),
+      ...(syncTheoryFromPackage
+        ? {
+            theoryLessonsTotal: Number(packageForTheory!.theoryLessons ?? 0),
+            theoryLessonsCompleted: 0,
+          }
+        : {}),
       ...(patch.instructorUserId !== undefined ? { instructorUserId: patch.instructorUserId } : {}),
       ...(patch.lessonsCompleted !== undefined ? { lessonsCompleted: patch.lessonsCompleted } : {}),
       ...(patch.lessonsTotal !== undefined ? { lessonsTotal: patch.lessonsTotal } : {}),
+      ...(patch.theoryLessonsCompleted !== undefined ? { theoryLessonsCompleted: patch.theoryLessonsCompleted } : {}),
+      ...(patch.theoryLessonsTotal !== undefined ? { theoryLessonsTotal: patch.theoryLessonsTotal } : {}),
       ...(patch.enrollmentStatus !== undefined ? { enrollmentStatus: patch.enrollmentStatus } : {}),
       ...(patch.skillRating !== undefined ? { skillRating: patch.skillRating } : {}),
       ...(patch.licenseAchieved !== undefined ? { licenseAchieved: patch.licenseAchieved } : {}),

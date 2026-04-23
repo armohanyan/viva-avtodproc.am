@@ -6,6 +6,7 @@ export type PackageListRow = {
   name: string;
   price: string;
   lessons: number;
+  theoryLessons: number;
   features: string[];
   status: string;
 };
@@ -21,7 +22,9 @@ export function useActivePackages() {
     try {
       const data = await vivaApiJson<PackageListRow[]>("/packages");
       const rows = Array.isArray(data) ? data : [];
-      const active = rows.filter((p) => String(p.status ?? "").toLowerCase() === "active");
+      const active = rows
+        .filter((p) => String(p.status ?? "").toLowerCase() === "active")
+        .map((p) => ({ ...p, theoryLessons: Number((p as PackageListRow).theoryLessons ?? 0) }));
       setPackages(active);
     } catch (e) {
       setPackages([]);

@@ -34,6 +34,7 @@ type Pkg = {
   name: string;
   price: string;
   lessons: number;
+  theoryLessons: number;
   enrolled: number;
   status: string;
   features: string[];
@@ -77,6 +78,7 @@ export default function AdminPackages() {
         Array.isArray(data)
           ? data.map((p) => ({
               ...p,
+              theoryLessons: Number((p as Pkg).theoryLessons ?? 0),
               imageUrl: sameOriginStaffUploadUrl(p.imageUrl ?? null),
             }))
           : [],
@@ -99,6 +101,7 @@ export default function AdminPackages() {
     name: "",
     price: "",
     lessons: 10,
+    theoryLessons: 0,
     featuresText: "",
     imageUrl: "",
     status: "active" as "active" | "inactive",
@@ -131,6 +134,7 @@ export default function AdminPackages() {
           name: editPkg.name,
           price: editPkg.price,
           lessons: editPkg.lessons,
+          theoryLessons: editPkg.theoryLessons,
           status: editPkg.status,
           features: featuresFromMultiline(editFeaturesText),
           imageUrl: editPkg.imageUrl?.trim() ? editPkg.imageUrl.trim() : null,
@@ -157,13 +161,14 @@ export default function AdminPackages() {
           name: newPkg.name,
           price: newPkg.price,
           lessons: newPkg.lessons,
+          theoryLessons: newPkg.theoryLessons,
           status: newPkg.status,
           features: featuresFromMultiline(newPkg.featuresText),
           imageUrl: newPkg.imageUrl.trim() ? newPkg.imageUrl.trim() : null,
         },
       });
       setAddOpen(false);
-      setNewPkg({ name: "", price: "", lessons: 10, featuresText: "", imageUrl: "", status: "active" });
+      setNewPkg({ name: "", price: "", lessons: 10, theoryLessons: 0, featuresText: "", imageUrl: "", status: "active" });
       await refresh();
       showToast(t("packageCreatedToast"), "success");
     } catch {
@@ -174,7 +179,17 @@ export default function AdminPackages() {
   const filteredPackages = useMemo(() => {
     const q = search.trim().toLowerCase();
     return packages.filter((pkg) => {
-      const hay = [pkg.id, pkg.name, pkg.price, String(pkg.lessons), String(pkg.enrolled), pkg.status, pkg.features.join(" "), pkg.imageUrl ?? ""]
+      const hay = [
+        pkg.id,
+        pkg.name,
+        pkg.price,
+        String(pkg.lessons),
+        String(pkg.theoryLessons),
+        String(pkg.enrolled),
+        pkg.status,
+        pkg.features.join(" "),
+        pkg.imageUrl ?? "",
+      ]
         .join(" ")
         .toLowerCase();
       const matchSearch = !q || hay.includes(q);
@@ -207,6 +222,7 @@ export default function AdminPackages() {
               t("packageColImage"),
               t("adminColPrice"),
               t("adminPackageColPracticalLessons"),
+              t("adminPackageColTheoryLessons"),
               t("adminColEnrolled"),
               t("adminColFeatures"),
               t("status"),
@@ -217,6 +233,7 @@ export default function AdminPackages() {
               pkg.imageUrl ?? "—",
               `${pkg.price} ֏`,
               String(pkg.lessons),
+              String(pkg.theoryLessons),
               String(pkg.enrolled),
               pkg.features.join(", ") || "—",
               t(pkg.status === "active" ? "active" : "inactive"),
@@ -232,6 +249,7 @@ export default function AdminPackages() {
                 <TableColumnHeaderWithFilter title={t("packageColImage")} />
                 <TableColumnHeaderWithFilter title={t("adminColPrice")} />
                 <TableColumnHeaderWithFilter title={t("adminPackageColPracticalLessons")} />
+                <TableColumnHeaderWithFilter title={t("adminPackageColTheoryLessons")} />
                 <TableColumnHeaderWithFilter title={t("adminColEnrolled")} />
                 <TableColumnHeaderWithFilter title={t("adminColFeatures")} />
                 <TableColumnHeaderWithFilter
@@ -286,6 +304,7 @@ export default function AdminPackages() {
                     </td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.price} ֏</td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.lessons}</td>
+                    <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.theoryLessons}</td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.enrolled}</td>
                     <td className="px-4 py-3.5 text-muted-foreground min-w-[240px]">{pkg.features.join(", ") || "—"}</td>
                     <td className="px-4 py-3.5">
@@ -375,6 +394,16 @@ export default function AdminPackages() {
               <Input type="number" value={editPkg.lessons} onChange={(e) => setEditPkg({ ...editPkg, lessons: +e.target.value })} className="h-10" />
             </div>
             <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelTheoryLessonsCount")}</label>
+              <Input
+                type="number"
+                min={0}
+                value={editPkg.theoryLessons}
+                onChange={(e) => setEditPkg({ ...editPkg, theoryLessons: +e.target.value })}
+                className="h-10"
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelStatus")}</label>
               <select
                 value={editPkg.status}
@@ -453,6 +482,16 @@ export default function AdminPackages() {
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelLessonsCount")}</label>
             <Input type="number" value={newPkg.lessons} onChange={(e) => setNewPkg({ ...newPkg, lessons: +e.target.value })} className="h-10" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelTheoryLessonsCount")}</label>
+            <Input
+              type="number"
+              min={0}
+              value={newPkg.theoryLessons}
+              onChange={(e) => setNewPkg({ ...newPkg, theoryLessons: +e.target.value })}
+              className="h-10"
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">{t("packageLabelStatus")}</label>

@@ -27,7 +27,8 @@ export type OwnedPackage = {
   purchasedAt: string;
   practicalTotal: number;
   practicalUsed: number;
-  theorySessions: number;
+  theoryTotal: number;
+  theoryUsed: number;
 };
 
 export type OwnedExtraPractical = {
@@ -50,7 +51,9 @@ type StudentEntitlementsContextValue = {
   packagePracticalRemaining: number;
   extraPracticalRemaining: number;
   hasTheoryFromPackage: boolean;
-  primaryTheorySessions: number;
+  primaryTheoryTotal: number;
+  primaryTheoryUsed: number;
+  theoryLessonsRemaining: number;
   completedPracticalLessons: number;
   upcomingBookingsCount: number;
   entitlementsLoading: boolean;
@@ -83,11 +86,20 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
       const data = await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements`);
       setOwnedPackages(
         Array.isArray(data.packages)
-          ? data.packages.map((p) => ({
-              ...p,
-              tier: normalizeTier(String(p.tier)),
-              purchaseId: Number(p.purchaseId),
-            }))
+          ? data.packages.map((p) => {
+              const raw = p as OwnedPackage & { theorySessions?: number };
+              const theoryTotal = Number(raw.theoryTotal ?? raw.theorySessions ?? 0);
+              const theoryUsed = Number(raw.theoryUsed ?? 0);
+              return {
+                purchaseId: Number(p.purchaseId),
+                tier: normalizeTier(String(p.tier)),
+                purchasedAt: String(p.purchasedAt),
+                practicalTotal: Number(p.practicalTotal),
+                practicalUsed: Number(p.practicalUsed),
+                theoryTotal,
+                theoryUsed,
+              };
+            })
           : [],
       );
       setExtraPracticalBlocks(Array.isArray(data.extras) ? data.extras.map((e) => ({ ...e, id: Number(e.id) })) : []);
@@ -118,12 +130,15 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
       exRem += Math.max(0, e.practicalTotal - e.practicalUsed);
     }
     const primary = ownedPackages[0];
+    const theoryRem = primary ? Math.max(0, primary.theoryTotal - primary.theoryUsed) : 0;
     return {
       packagePracticalRemaining: pkgRem,
       extraPracticalRemaining: exRem,
       practicalCreditsRemaining: pkgRem + exRem,
-      hasTheoryFromPackage: ownedPackages.length > 0,
-      primaryTheorySessions: primary?.theorySessions ?? 0,
+      hasTheoryFromPackage: ownedPackages.some((p) => p.theoryTotal > 0),
+      primaryTheoryTotal: primary?.theoryTotal ?? 0,
+      primaryTheoryUsed: primary?.theoryUsed ?? 0,
+      theoryLessonsRemaining: theoryRem,
       completedPracticalLessons: pkgUsed + extraPracticalBlocks.reduce((a, e) => a + e.practicalUsed, 0),
       upcomingBookingsCount: countUpcomingStudentBookings(bookings),
     };
@@ -159,7 +174,9 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
         packagePracticalRemaining: aggregates.packagePracticalRemaining,
         extraPracticalRemaining: aggregates.extraPracticalRemaining,
         hasTheoryFromPackage: aggregates.hasTheoryFromPackage,
-        primaryTheorySessions: aggregates.primaryTheorySessions,
+        primaryTheoryTotal: aggregates.primaryTheoryTotal,
+        primaryTheoryUsed: aggregates.primaryTheoryUsed,
+        theoryLessonsRemaining: aggregates.theoryLessonsRemaining,
         completedPracticalLessons: aggregates.completedPracticalLessons,
         upcomingBookingsCount: aggregates.upcomingBookingsCount,
         entitlementsLoading,

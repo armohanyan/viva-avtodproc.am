@@ -21,7 +21,7 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
-type PackageRow = { id: string; name: string; lessons: number };
+type PackageRow = { id: string; name: string; lessons: number; theoryLessons: number };
 
 function parseLessons(lessons: string): { completed: number; total: number } | null {
   const m = /^(\d+)\s*\/\s*(\d+)$/.exec(lessons.trim());
@@ -101,7 +101,16 @@ export default function AdminUsers() {
         vivaApiJson<PackageRow[]>("/packages"),
       ]);
       setUsers(Array.isArray(stu) ? stu : []);
-      setPackages(Array.isArray(pkg) ? pkg.map((p) => ({ id: p.id, name: p.name, lessons: p.lessons })) : []);
+      setPackages(
+        Array.isArray(pkg)
+          ? pkg.map((p) => ({
+              id: p.id,
+              name: p.name,
+              lessons: p.lessons,
+              theoryLessons: Number((p as PackageRow).theoryLessons ?? 0),
+            }))
+          : [],
+      );
     } catch {
       showToast(t("fillRequired"), "error");
     }
@@ -218,6 +227,8 @@ export default function AdminUsers() {
           enrollmentStatus: "active",
           lessonsCompleted: 0,
           lessonsTotal: pkg.lessons,
+          theoryLessonsCompleted: 0,
+          theoryLessonsTotal: pkg.theoryLessons,
           skillRating: Number(newUser.skillRating ?? 0),
           licenseAchieved: !!newUser.licenseAchieved,
           joinedIso: todayIsoDate(),

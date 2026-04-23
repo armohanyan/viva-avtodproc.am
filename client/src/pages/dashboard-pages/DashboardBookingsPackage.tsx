@@ -49,7 +49,8 @@ export function DashboardBookingsPackageTab() {
                 <li className="flex gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
                   <span>
-                    {pkg.lessons} {t("lessons")} · {t("lessonTypePractical").toLowerCase()}
+                    {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
+                    {t("lessonTypeTheory").toLowerCase()}
                   </span>
                 </li>
                 {pkg.features.slice(0, 4).map((feat, i) => (

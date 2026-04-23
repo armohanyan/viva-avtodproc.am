@@ -4,11 +4,12 @@ import { parseBody, parseParams, verifyAccessToken } from '../helpers';
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
+import StudentExamStatsService, { studentExamStatsPayloadSchema } from '../services/student-exam-stats.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
-const { ResourceNotFoundError, UnauthorizedError, PermissionError } = ErrorsUtil;
+const { ResourceNotFoundError, UnauthorizedError, PermissionError, InputValidationError } = ErrorsUtil;
 
 function readBearerToken(req: Request): string | undefined {
   const raw = req.headers.authorization;
@@ -24,6 +25,8 @@ const createSchema = z.object({
   instructorUserId: z.coerce.number().int().positive().nullable().optional(),
   lessonsCompleted: z.number().int().nonnegative().optional(),
   lessonsTotal: z.number().int().positive().optional(),
+  theoryLessonsCompleted: z.number().int().nonnegative().optional(),
+  theoryLessonsTotal: z.number().int().nonnegative().optional(),
   enrollmentStatus: z.string().optional(),
   skillRating: z.number().int().optional(),
   licenseAchieved: z.boolean().optional(),
@@ -59,6 +62,33 @@ const instructorFieldsPatchSchema = z
   .refine((o) => o.skillRating !== undefined || o.licenseAchieved !== undefined, {
     message: 'At least one of skillRating or licenseAchieved is required',
   });
+
+const MAX_EXAM_STATS_JSON_CHARS = 480_000;
+
+function assertStudentSelfAccess(req: Request, studentId: number, next: NextFunction): boolean {
+  const token = readBearerToken(req);
+  if (!token) {
+    next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+    return false;
+  }
+  let payload: ReturnType<typeof verifyAccessToken>;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+    return false;
+  }
+  if (payload.accountType !== 'student') {
+    next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+    return false;
+  }
+  const uid = Number(payload.sub);
+  if (!Number.isFinite(uid) || uid <= 0 || uid !== studentId) {
+    next(new PermissionError('You can only access your own exam progress', HttpStatusCodesUtil.FORBIDDEN));
+    return false;
+  }
+  return true;
+}
 
 export default class StudentController {
   static async list(req: Request, res: Response, next: NextFunction) {
@@ -232,6 +262,38 @@ export default class StudentController {
       const body = parseBody(instructorRatingSubmitSchema, req.body);
       await InstructorStudentRatingService.submit(id, body.instructorUserId, body.stars);
       res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsGet(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const data = await StudentExamStatsService.getForUser(id);
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsPut(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const rawLen = JSON.stringify(req.body ?? {}).length;
+      if (rawLen > MAX_EXAM_STATS_JSON_CHARS) {
+        return next(
+          new InputValidationError('Exam stats payload too large', HttpStatusCodesUtil.BAD_REQUEST),
+        );
+      }
+      const body = parseBody(studentExamStatsPayloadSchema, req.body);
+      const data = await StudentExamStatsService.putForUser(id, body);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
     } catch (e) {
       next(e);
     }
