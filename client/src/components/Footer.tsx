@@ -1,10 +1,10 @@
 import type { ComponentType } from "react";
 import { Facebook, Instagram, Youtube, Phone, Mail, MapPin } from "lucide-react";
 import { useLang } from "../lib/i18n";
-import { useToast } from "../lib/toast";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { useMemo } from "react";
+import { legalDoc } from "src/lib/legalDocsContent";
 
 function TikTokIcon({ className }: { className?: string }) {
   return (
@@ -17,8 +17,7 @@ function TikTokIcon({ className }: { className?: string }) {
 type SocialIcon = ComponentType<{ className?: string }>;
 
 export default function Footer() {
-  const { t } = useLang();
-  const { showToast } = useToast();
+  const { t, lang } = useLang();
   const { MarketingLink } = useAppNavigation();
   const { data: mkt } = useMarketingPublic();
 
@@ -41,6 +40,9 @@ export default function Footer() {
   const addr1 = mkt?.footer?.addressLine1?.trim();
   const addr2 = mkt?.footer?.addressLine2?.trim();
   const hasFooterContact = !!(footerPhone || footerEmail || addr1 || addr2);
+  const privacyDoc = legalDoc("privacy", lang);
+  const termsDoc = legalDoc("terms", lang);
+  const paymentsDoc = legalDoc("payments", lang);
 
   return (
     <footer className="bg-hero text-hero-foreground">
@@ -134,21 +136,16 @@ export default function Footer() {
           <p className="text-xs text-hero-foreground/70">
             © 2026 {t("brandName")}. {t("allRights")}
           </p>
-          <div className="flex gap-4 text-xs text-hero-foreground/70">
-            <button
-              type="button"
-              onClick={() => showToast("Privacy policy page is coming soon.", "info")}
-              className="hover:text-hero-foreground/90"
-            >
-              Privacy Policy
-            </button>
-            <button
-              type="button"
-              onClick={() => showToast("Terms of service page is coming soon.", "info")}
-              className="hover:text-hero-foreground/90"
-            >
-              Terms of Service
-            </button>
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-hero-foreground/70">
+            <MarketingLink href="/privacy" className="hover:text-hero-foreground/90">
+              {privacyDoc.pageTitle}
+            </MarketingLink>
+            <MarketingLink href="/terms" className="hover:text-hero-foreground/90">
+              {termsDoc.pageTitle}
+            </MarketingLink>
+            <MarketingLink href="/payments-and-refunds" className="hover:text-hero-foreground/90">
+              {paymentsDoc.pageTitle}
+            </MarketingLink>
           </div>
         </div>
       </div>

@@ -15,6 +15,20 @@ function uploadProxyOrigin(): string {
 }
 
 const nextConfig: NextConfig = {
+  /** Baseline HTTP headers for security review / acquiring partner questionnaires. */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          { key: "X-DNS-Prefetch-Control", value: "on" },
+        ],
+      },
+    ];
+  },
   output: "standalone",
   // Monorepo: trace files from repo root so production `next start` / standalone
   // bundles include code and deps pulled in from `../../src`.

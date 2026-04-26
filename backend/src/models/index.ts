@@ -669,6 +669,79 @@ async function ensureBookingsCancellationRequestedAtColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `cancellation_requested_at` DATETIME NULL');
 }
 
+async function bookingTableColumnNames(): Promise<Set<string>> {
+  const rows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  return new Set(rows.map((r) => r.COLUMN_NAME));
+}
+
+/**
+ * Single nullable flag: lesson passed / did not pass / not set.
+ * Migrates legacy `instructor_lesson_confirmed` + `admin_lesson_passed_successfully` when present.
+ */
+async function ensureBookingsLessonPassedSuccessfullyColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+
+  let cols = await bookingTableColumnNames();
+
+  if (!cols.has('lesson_passed_successfully')) {
+    await sequelize.query(
+      'ALTER TABLE `bookings` ADD COLUMN `lesson_passed_successfully` TINYINT(1) NULL',
+    );
+    cols = await bookingTableColumnNames();
+  }
+
+  const hasInst = cols.has('instructor_lesson_confirmed');
+  const hasAdmin = cols.has('admin_lesson_passed_successfully');
+
+  if (hasInst && hasAdmin) {
+    await sequelize.query(`
+      UPDATE \`bookings\`
+      SET \`lesson_passed_successfully\` = CASE
+        WHEN \`admin_lesson_passed_successfully\` = 0 THEN 0
+        WHEN \`admin_lesson_passed_successfully\` = 1 OR \`instructor_lesson_confirmed\` = 1 THEN 1
+        ELSE NULL
+      END
+      WHERE \`lesson_passed_successfully\` IS NULL
+    `);
+  } else if (hasInst) {
+    await sequelize.query(`
+      UPDATE \`bookings\`
+      SET \`lesson_passed_successfully\` = CASE
+        WHEN \`instructor_lesson_confirmed\` = 1 THEN 1
+        ELSE NULL
+      END
+      WHERE \`lesson_passed_successfully\` IS NULL
+    `);
+  } else if (hasAdmin) {
+    await sequelize.query(`
+      UPDATE \`bookings\`
+      SET \`lesson_passed_successfully\` = \`admin_lesson_passed_successfully\`
+      WHERE \`lesson_passed_successfully\` IS NULL
+    `);
+  }
+
+  if (hasInst) {
+    await sequelize.query('ALTER TABLE `bookings` DROP COLUMN `instructor_lesson_confirmed`');
+  }
+  if (hasAdmin) {
+    await sequelize.query('ALTER TABLE `bookings` DROP COLUMN `admin_lesson_passed_successfully`');
+  }
+}
+
 async function ensureAuthTables(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -1051,6 +1124,7 @@ export async function syncModels(): Promise<void> {
   await ensureAdminMfaChallengesTable();
   await ensureBookingsConfirmationEmailSentAtColumn();
   await ensureBookingsCancellationRequestedAtColumn();
+  await ensureBookingsLessonPassedSuccessfullyColumn();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
   await ensureStudentExamStatsTable();
 }

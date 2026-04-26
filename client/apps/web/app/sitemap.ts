@@ -12,6 +12,9 @@ const staticPaths = [
   "/contact",
   "/thematic-questions",
   "/exam-tests",
+  "/privacy",
+  "/terms",
+  "/payments-and-refunds",
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

@@ -29,6 +29,11 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare confirmationEmailSentAt: CreationOptional<Date | null>;
   /** Student asked to cancel ≥24h before lesson; staff must confirm and process refund. */
   declare cancellationRequestedAt: CreationOptional<Date | null>;
+  /**
+   * Whether the lesson actually ran successfully (`true` / `false`), or not yet recorded (`null`).
+   * Instructors (assigned booking) and staff (admin / super_admin) may update the same field.
+   */
+  declare lessonPassedSuccessfully: CreationOptional<boolean | null>;
 }
 
 Booking.init(
@@ -48,6 +53,7 @@ Booking.init(
     holdExtensionCount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
     confirmationEmailSentAt: { type: DataTypes.DATE, allowNull: true },
     cancellationRequestedAt: { type: DataTypes.DATE, allowNull: true },
+    lessonPassedSuccessfully: { type: DataTypes.BOOLEAN, allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

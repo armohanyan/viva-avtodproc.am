@@ -12,6 +12,7 @@ router.post('/:id/complete-payment', BookingController.completeStudentPayment);
 router.post('/:id/approve-student-cancellation', requireStaff, BookingController.approveStudentCancellation);
 router.post('/:id/reject-student-cancellation', requireStaff, BookingController.rejectStudentCancellation);
 router.post('/:id/cancel-student', BookingController.cancelStudentBooking);
+router.patch('/:id/lesson-passed', BookingController.patchLessonPassed);
 router.patch('/:id', BookingController.update);
 router.delete('/:id', BookingController.remove);
 

@@ -9,7 +9,7 @@ import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
 
-const { InputValidationError, ConflictError } = ErrorsUtil;
+const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
 
 function assertInstructorTeachesLessonType(
   profile: InstructorProfile | null,
@@ -66,6 +66,8 @@ export type BookingAdminDto = {
   branchId: number;
   /** Set when the student requested cancellation (≥24h rule) and staff must act. */
   cancellationRequestedAt: string | null;
+  /** `null` = not set; instructor or staff may update. */
+  lessonPassedSuccessfully: boolean | null;
 };
 
 /** Canonical booking row statuses (DB + API). */
@@ -110,6 +112,8 @@ export type InstructorBookingDto = {
   type: 'practical' | 'theory' | 'theory_personal';
   status: BookingStatus;
   branchId: number;
+  /** `null` = not set; instructor or staff may update the same field. */
+  lessonPassedSuccessfully: boolean | null;
 };
 
 export type StudentMultiSlotBookingDto = {
@@ -134,6 +138,12 @@ function dateIsoString(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return String(v).slice(0, 10);
+}
+
+function lessonPassedSuccessfullyFromRow(b: Booking): boolean | null {
+  const v = b.lessonPassedSuccessfully;
+  if (v === null || v === undefined) return null;
+  return Boolean(v);
 }
 
 const BOOKING_STATUSES = new Set<string>(['confirmed', 'pending', 'cancelled', 'refunded']);
@@ -336,6 +346,26 @@ async function finalizePracticalCancellationInTx(opts: {
 }
 
 export default class BookingService {
+  private static mapRowToAdminDto(b: BookingWithUsers): BookingAdminDto {
+    const row = b as BookingWithUsers;
+    const inst = row.instructor;
+    const stu = row.student;
+    return {
+      id: b.id,
+      studentId: stu.id,
+      instructorName: inst.name,
+      dateIso: dateIsoString(b.dateIso),
+      time: b.time,
+      endTime: b.endTime ?? null,
+      totalPriceAmd: b.totalPriceAmd ?? null,
+      type: b.lessonType,
+      status: normalizeBookingStatus(b.status),
+      branchId: b.branchId,
+      cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
+      lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
+    };
+  }
+
   static async listAdmin(): Promise<BookingAdminDto[]> {
     const rows = await Booking.findAll({
       include: [
@@ -347,24 +377,50 @@ export default class BookingService {
         ['time', 'DESC'],
       ],
     });
-    return rows.map((b) => {
-      const row = b as BookingWithUsers;
-      const inst = row.instructor;
-      const stu = row.student;
-      return {
-        id: b.id,
-        studentId: stu.id,
-        instructorName: inst.name,
-        dateIso: dateIsoString(b.dateIso),
-        time: b.time,
-        endTime: b.endTime ?? null,
-        totalPriceAmd: b.totalPriceAmd ?? null,
-        type: b.lessonType,
-        status: normalizeBookingStatus(b.status),
-        branchId: b.branchId,
-        cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
-      };
+    return rows.map((b) => BookingService.mapRowToAdminDto(b as BookingWithUsers));
+  }
+
+  static async setLessonPassedSuccessfully(
+    bookingId: number,
+    value: boolean | null,
+    actor: { kind: 'staff' } | { kind: 'instructor'; instructorUserId: number },
+  ): Promise<BookingAdminDto | InstructorBookingDto | null> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [
+        { model: User, as: 'instructor', required: true, attributes: ['name'] },
+        { model: User, as: 'student', required: true, attributes: ['id', 'name'] },
+      ],
     });
+    if (!row) return null;
+
+    if (actor.kind === 'instructor') {
+      if (row.instructorUserId !== actor.instructorUserId) {
+        throw new PermissionError('You can only update your own bookings.', HttpStatusCodesUtil.FORBIDDEN);
+      }
+    }
+
+    const st = normalizeBookingStatus(row.status);
+    if (st === 'cancelled' || st === 'refunded') {
+      throw new InputValidationError(
+        'Lesson outcome cannot be updated for a cancelled or refunded booking.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+
+    await row.update({ lessonPassedSuccessfully: value });
+
+    const refreshed = await Booking.findByPk(bookingId, {
+      include: [
+        { model: User, as: 'instructor', required: true, attributes: ['name'] },
+        { model: User, as: 'student', required: true, attributes: ['id', 'name'] },
+      ],
+    });
+    if (!refreshed) return null;
+
+    if (actor.kind === 'staff') {
+      return BookingService.mapRowToAdminDto(refreshed as BookingWithUsers);
+    }
+    return BookingService.mapBookingToInstructorDto(refreshed as BookingWithStudent);
   }
 
   /** For calendar: each occupied hour for this instructor in the date range. */
@@ -485,6 +541,23 @@ export default class BookingService {
     });
   }
 
+  private static mapBookingToInstructorDto(b: BookingWithStudent): InstructorBookingDto {
+    const stu = b.student;
+    return {
+      id: b.id,
+      studentId: stu.id,
+      studentName: stu.name,
+      dateIso: dateIsoString(b.dateIso),
+      time: b.time,
+      endTime: b.endTime ?? null,
+      totalPriceAmd: b.totalPriceAmd ?? null,
+      type: b.lessonType,
+      status: normalizeBookingStatus(b.status),
+      branchId: b.branchId,
+      lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
+    };
+  }
+
   static async listForInstructor(instructorUserId: number): Promise<InstructorBookingDto[]> {
     const rows = await Booking.findAll({
       where: { instructorUserId },
@@ -494,22 +567,7 @@ export default class BookingService {
         ['time', 'DESC'],
       ],
     });
-    return rows.map((b) => {
-      const row = b as BookingWithStudent;
-      const stu = row.student;
-      return {
-        id: b.id,
-        studentId: stu.id,
-        studentName: stu.name,
-        dateIso: dateIsoString(b.dateIso),
-        time: b.time,
-        endTime: b.endTime ?? null,
-        totalPriceAmd: b.totalPriceAmd ?? null,
-        type: b.lessonType,
-        status: normalizeBookingStatus(b.status),
-        branchId: b.branchId,
-      };
-    });
+    return rows.map((b) => BookingService.mapBookingToInstructorDto(b as BookingWithStudent));
   }
 
   /**

@@ -14,6 +14,8 @@ export type InstructorPanelBooking = {
 	type: "practical" | "theory" | "theory_personal";
 	status: string;
 	branchId: number;
+	/** `null` = not set; same field staff and instructors update. */
+	lessonPassedSuccessfully: boolean | null;
 };
 
 export type InstructorPanelStudent = {
@@ -55,7 +57,17 @@ export function useInstructorPanelBookings(user: AccountSessionUser | null) {
 		try {
 			const q = new URLSearchParams({ instructorUserId: String(uid) });
 			const data = await vivaApiJson<InstructorPanelBooking[]>(`/bookings?${q.toString()}`);
-			setBookings(Array.isArray(data) ? data : []);
+			setBookings(
+				Array.isArray(data)
+					? data.map((b) => ({
+							...b,
+							lessonPassedSuccessfully:
+								b.lessonPassedSuccessfully === null || b.lessonPassedSuccessfully === undefined
+									? null
+									: Boolean(b.lessonPassedSuccessfully),
+						}))
+					: [],
+			);
 		} catch (e) {
 			setBookings([]);
 			setError(getApiErrorMessage(e));
@@ -69,6 +81,16 @@ export function useInstructorPanelBookings(user: AccountSessionUser | null) {
 	}, [refresh]);
 
 	return { bookings, loading, error, refresh };
+}
+
+export async function patchBookingLessonPassed(
+	bookingId: number,
+	lessonPassedSuccessfully: boolean | null,
+): Promise<InstructorPanelBooking> {
+	return vivaApiJson<InstructorPanelBooking>(`/bookings/${encodeURIComponent(String(bookingId))}/lesson-passed`, {
+		method: "PATCH",
+		body: { lessonPassedSuccessfully },
+	});
 }
 
 export function useInstructorPanelStudents(user: AccountSessionUser | null) {

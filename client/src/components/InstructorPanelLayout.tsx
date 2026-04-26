@@ -5,7 +5,7 @@ import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
 	LayoutDashboard,
-	Calendar,
+	BookOpen,
 	GraduationCap,
 	Car,
 	User,
@@ -39,7 +39,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 	const iconByPath = {
 		"/instructor/dashboard": LayoutDashboard,
 		"/instructor/students": GraduationCap,
-		"/instructor/bookings": Calendar,
+		"/instructor/my-lessons": BookOpen,
 		"/instructor/cars": Car,
 		"/instructor/profile": User,
 	} as const;

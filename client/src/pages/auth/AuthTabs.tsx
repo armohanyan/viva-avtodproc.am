@@ -16,6 +16,9 @@ import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
+import { joinAppPath } from "src/lib/navigation/crossApp";
+import { resolvedViteMarketingOrigin } from "src/lib/navigation/viteMarketingOrigin";
+import { legalDoc } from "src/lib/legalDocsContent";
 
 function GoogleIcon() {
   return (
@@ -60,7 +63,12 @@ function AppleIcon() {
 type AuthTabKey = "login" | "register";
 
 export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const marketingBase = resolvedViteMarketingOrigin();
+  const termsHref = joinAppPath(marketingBase, "/terms");
+  const privacyHref = joinAppPath(marketingBase, "/privacy");
+  const termsDoc = legalDoc("terms", lang);
+  const privacyDoc = legalDoc("privacy", lang);
   const { showToast } = useToast();
   const { user, hydrated, signIn } = useAccount();
   const { data: mkt } = useMarketingPublic();
@@ -520,13 +528,23 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
                     className="mt-0.5 w-4 h-4 text-primary rounded border-border"
                   />
                   <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed">
-                    I agree to the{" "}
-                    <a href="#" className="text-primary hover:underline">
-                      Terms of Service
+                    {t("registerLegalAgreePrefix")}{" "}
+                    <a
+                      href={termsHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {termsDoc.pageTitle}
                     </a>{" "}
-                    and{" "}
-                    <a href="#" className="text-primary hover:underline">
-                      Privacy Policy
+                    {t("registerLegalAgreeConj")}{" "}
+                    <a
+                      href={privacyHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {privacyDoc.pageTitle}
                     </a>
                   </label>
                 </div>

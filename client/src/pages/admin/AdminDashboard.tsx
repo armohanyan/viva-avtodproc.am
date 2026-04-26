@@ -13,16 +13,44 @@ import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatShortDateFromIso } from "src/lib/adminFormat";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { Button } from "src/components/ui/button";
+import { hasLessonWindowEnded, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
+
+const SLOT_LIKE = ["confirmed", "pending", "pending_prebook", "pending_payment", "completed"] as const;
+
+function isSlotReservingStatus(s: string): boolean {
+	return (SLOT_LIKE as readonly string[]).includes(s);
+}
+
+function displayTimeHHMM(time: string): string {
+	const t = time.trim();
+	return t.length >= 5 ? t.slice(0, 5) : t;
+}
 
 type BookingAdminRow = {
-  id: string;
-  studentId: string;
-  instructorName: string;
-  dateIso: string;
-  time: string;
-  type: string;
-  status: string;
-  branchId: string;
+	id: number;
+	studentId: number;
+	instructorName: string;
+	dateIso: string;
+	time: string;
+	endTime: string | null;
+	type: string;
+	status: string;
+	branchId: number;
+	lessonPassedSuccessfully?: boolean | null;
+};
+
+type AdminTodayLessonRow = {
+	id: number;
+	studentId: number;
+	studentName: string;
+	instructorName: string;
+	dateIso: string;
+	time: string;
+	endTime: string | null;
+	type: string;
+	status: string;
+	lessonPassedSuccessfully: boolean | null;
 };
 
 type StudentMini = { id: string; name: string };
@@ -37,12 +65,20 @@ function canonicalBookingStatusForDashboard(raw: string): TranslationKey {
   return "pending";
 }
 
+function lessonTypeLabelKey(type: string): TranslationKey {
+  if (type === "theory") return "lessonTypeTheory";
+  if (type === "theory_personal") return "lessonTypeTheoryPersonal";
+  return "lessonTypePractical";
+}
+
 export default function AdminDashboard() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [bookingSearch, setBookingSearch] = useState("");
   const [bookingStatus, setBookingStatus] = useState<string>("all");
   const [recentBookingsData, setRecentBookingsData] = useState<RecentBookingRow[]>([]);
+  const [todayLessons, setTodayLessons] = useState<AdminTodayLessonRow[]>([]);
+  const [outcomeBusyId, setOutcomeBusyId] = useState<number | null>(null);
   const [statsValues, setStatsValues] = useState({ users: 0, bookings: 0, revenueMonth: 0, activeInstructors: 0 });
 
   const loadDashboard = useCallback(async () => {
@@ -53,9 +89,35 @@ export default function AdminDashboard() {
         vivaApiJson<Array<{ status?: string }>>("/instructors"),
         vivaApiJson<FinanceTx[]>("/finance/transactions"),
       ]);
-      const byStudent = new Map((Array.isArray(students) ? students : []).map((s) => [s.id, s.name]));
-      const rows = (Array.isArray(bookings) ? bookings : []).slice(0, 12).map((b) => ({
-        student: byStudent.get(b.studentId) ?? b.studentId,
+      const byStudent = new Map((Array.isArray(students) ? students : []).map((s) => [String(s.id), s.name]));
+      const bookingList = Array.isArray(bookings) ? bookings : [];
+      const todayY = yerevanTodayIso();
+      const todayRows: AdminTodayLessonRow[] = bookingList
+        .filter((b) => String(b.dateIso).slice(0, 10) === todayY && isSlotReservingStatus(String(b.status)))
+        .map((b) => {
+          const sid = typeof b.studentId === "number" ? b.studentId : Number(b.studentId);
+          return {
+            id: typeof b.id === "number" ? b.id : Number(b.id),
+            studentId: Number.isFinite(sid) ? sid : 0,
+            studentName: byStudent.get(String(b.studentId)) ?? String(b.studentId),
+            instructorName: b.instructorName,
+            dateIso: String(b.dateIso).slice(0, 10),
+            time: b.time,
+            endTime: b.endTime ?? null,
+            type: b.type,
+            status: b.status,
+            lessonPassedSuccessfully:
+              b.lessonPassedSuccessfully === null || b.lessonPassedSuccessfully === undefined
+                ? null
+                : Boolean(b.lessonPassedSuccessfully),
+          };
+        })
+        .filter((b) => b.id > 0)
+        .sort((a, b) => a.time.localeCompare(b.time));
+      setTodayLessons(todayRows);
+
+      const rows = bookingList.slice(0, 12).map((b) => ({
+        student: byStudent.get(String(b.studentId)) ?? String(b.studentId),
         instructor: b.instructorName,
         date: formatShortDateFromIso(b.dateIso, lang),
         time: b.time,
@@ -74,7 +136,7 @@ export default function AdminDashboard() {
         .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
       setStatsValues({
         users: Array.isArray(students) ? students.length : 0,
-        bookings: Array.isArray(bookings) ? bookings.length : 0,
+        bookings: bookingList.length,
         revenueMonth: rev,
         activeInstructors: (Array.isArray(instructors) ? instructors : []).filter((i) => i.status !== "inactive").length,
       });
@@ -82,6 +144,40 @@ export default function AdminDashboard() {
       showToast(getApiErrorMessage(e), "error");
     }
   }, [lang, showToast]);
+
+  const saveLessonPassed = useCallback(
+    async (row: AdminTodayLessonRow, value: boolean | null) => {
+      setOutcomeBusyId(row.id);
+      try {
+        const updated = await vivaApiJson<BookingAdminRow>(
+          `/bookings/${encodeURIComponent(String(row.id))}/lesson-passed`,
+          {
+            method: "PATCH",
+            body: { lessonPassedSuccessfully: value },
+          },
+        );
+        setTodayLessons((prev) =>
+          prev.map((r) =>
+            r.id === row.id
+              ? {
+                  ...r,
+                  lessonPassedSuccessfully:
+                    updated.lessonPassedSuccessfully === null || updated.lessonPassedSuccessfully === undefined
+                      ? null
+                      : Boolean(updated.lessonPassedSuccessfully),
+                }
+              : r,
+          ),
+        );
+        showToast(t("lessonPassedSaved"), "success");
+      } catch (e) {
+        showToast(getApiErrorMessage(e), "error");
+      } finally {
+        setOutcomeBusyId(null);
+      }
+    },
+    [showToast, t],
+  );
 
   useEffect(() => {
     void loadDashboard();
@@ -152,6 +248,103 @@ export default function AdminDashboard() {
           </Card>
         ))}
       </div>
+
+      {/* Today's lessons — shared lesson-passed flag (instructor or staff) */}
+      <Card className="border-border overflow-hidden min-w-0 mb-8">
+        <div className="p-5 border-b border-border">
+          <h3 className="font-semibold text-foreground">{t("adminTodayLessonsTitle")}</h3>
+          <p className="text-sm text-muted-foreground mt-1 max-w-3xl">{t("adminTodayLessonsSubtitle")}</p>
+        </div>
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[48rem]">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("bookingColStudent")}</th>
+                <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("cohortColInstructor")}</th>
+                <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("bookingColTime")}</th>
+                <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("bookingsTableColType")}</th>
+                <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("status")}</th>
+                <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("lessonPassedColumnTitle")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {todayLessons.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground">
+                    {t("tableNoMatches")}
+                  </td>
+                </tr>
+              ) : (
+                todayLessons.map((row) => {
+                  const ended = hasLessonWindowEnded(row.dateIso, row.time, row.endTime);
+                  const st = canonicalBookingStatusForDashboard(row.status);
+                  return (
+                    <tr key={row.id} className="hover:bg-muted/30 transition-colors align-top">
+                      <td className="px-5 py-3.5 font-medium text-foreground">{row.studentName}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground">{row.instructorName}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
+                        {displayTimeHHMM(row.time)}
+                        {row.endTime ? `–${displayTimeHHMM(row.endTime)}` : null}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <Badge className="text-xs bg-muted text-foreground">{t(lessonTypeLabelKey(row.type))}</Badge>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <Badge className={`text-xs ${statusColor[st] ?? statusColor.pending}`}>{t(st)}</Badge>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {!ended ? (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        ) : (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={row.lessonPassedSuccessfully === true ? "default" : "outline"}
+                                disabled={outcomeBusyId === row.id}
+                                onClick={() => void saveLessonPassed(row, true)}
+                              >
+                                {t("lessonPassedPass")}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={row.lessonPassedSuccessfully === false ? "destructive" : "outline"}
+                                className={row.lessonPassedSuccessfully === false ? "" : "border-destructive/50 text-destructive"}
+                                disabled={outcomeBusyId === row.id}
+                                onClick={() => void saveLessonPassed(row, false)}
+                              >
+                                {t("lessonPassedFail")}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={outcomeBusyId === row.id || row.lessonPassedSuccessfully === null}
+                                onClick={() => void saveLessonPassed(row, null)}
+                              >
+                                {t("lessonPassedClear")}
+                              </Button>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {row.lessonPassedSuccessfully === null
+                                ? t("lessonPassedNotSet")
+                                : row.lessonPassedSuccessfully
+                                  ? t("lessonPassedPass")
+                                  : t("lessonPassedFail")}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </AdminTableScroll>
+      </Card>
 
       {/* Recent Bookings Table */}
       <Card className="border-border overflow-hidden min-w-0">

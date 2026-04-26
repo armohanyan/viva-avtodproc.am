@@ -9,15 +9,12 @@ import { CountUpText } from "src/lib/motion";
 import { useMemo } from "react";
 import { useAccount } from "src/modules/accounts";
 import { useInstructorPanelBookings, useInstructorPanelStudents } from "src/modules/instructor/useInstructorPanelData";
+import { yerevanAddCalendarDays, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 
 const SLOT_LIKE = ["confirmed", "pending", "pending_prebook", "pending_payment", "completed"] as const;
 
 function isSlotReservingStatus(s: string): boolean {
 	return (SLOT_LIKE as readonly string[]).includes(s);
-}
-
-function todayIsoUtc(): string {
-	return new Date().toISOString().slice(0, 10);
 }
 
 function displayTimeHHMM(time: string): string {
@@ -34,12 +31,11 @@ export default function InstructorDashboard() {
 	const { students, loading: loadingSt, error: errSt } = useInstructorPanelStudents(user);
 
 	const upcoming = useMemo(() => {
-		const today = todayIsoUtc();
+		const tomorrowY = yerevanAddCalendarDays(yerevanTodayIso(), 1);
 		return bookings
-			.filter((b) => b.dateIso >= today && isSlotReservingStatus(b.status))
+			.filter((b) => b.dateIso === tomorrowY && isSlotReservingStatus(b.status))
 			.slice()
-			.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time))
-			.slice(0, 8);
+			.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time));
 	}, [bookings]);
 
 	const totalBookings = bookings.length;
@@ -111,10 +107,10 @@ export default function InstructorDashboard() {
 				<div className="flex items-center justify-between gap-4 mb-4">
 					<h3 className="font-semibold text-foreground">{t("instructorKpiUpcomingTitle")}</h3>
 					<Link
-						href="/instructor/bookings"
+						href="/instructor/my-lessons"
 						className="text-sm font-medium text-primary inline-flex items-center gap-1 hover:underline"
 					>
-						{t("bookings")} <ArrowRight className="w-4 h-4" />
+						{t("instructorNavMyLessons")} <ArrowRight className="w-4 h-4" />
 					</Link>
 				</div>
 				<div className="space-y-3">

@@ -56,6 +56,10 @@ const createSchema = createBodySchema.superRefine((data, ctx) => {
 
 const updateSchema = createBodySchema.partial();
 
+const lessonPassedBodySchema = z.object({
+  lessonPassedSuccessfully: z.boolean().nullable(),
+});
+
 const studentMultiSlotSchema = z
   .object({
     instructorId: z.coerce.number().int().positive().optional(),
@@ -250,6 +254,48 @@ export default class BookingController {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
       SuccessHandlerUtil.handleAdd(res, next, row);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** Instructor (own booking) or staff (admin / super_admin): single `lessonPassedSuccessfully` flag. */
+  static async patchLessonPassed(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = readBearerToken(req);
+      if (!token) {
+        return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      let payload: ReturnType<typeof verifyAccessToken>;
+      try {
+        payload = verifyAccessToken(token);
+      } catch {
+        return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const body = parseBody(lessonPassedBodySchema, req.body);
+
+      let row;
+      if (payload.accountType === 'admin' || payload.accountType === 'super_admin') {
+        row = await BookingService.setLessonPassedSuccessfully(id, body.lessonPassedSuccessfully, { kind: 'staff' });
+      } else if (payload.accountType === 'instructor') {
+        const instructorUserId = Number(payload.sub);
+        if (!Number.isFinite(instructorUserId) || instructorUserId <= 0) {
+          return next(new UnauthorizedError('Invalid token subject', HttpStatusCodesUtil.UNAUTHORIZED));
+        }
+        row = await BookingService.setLessonPassedSuccessfully(id, body.lessonPassedSuccessfully, {
+          kind: 'instructor',
+          instructorUserId,
+        });
+      } else {
+        return next(new PermissionError('Instructor or staff access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+
+      if (!row) {
+        return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      SuccessHandlerUtil.handleUpdate(res, next, row);
     } catch (e) {
       next(e);
     }
