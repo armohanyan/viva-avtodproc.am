@@ -34,6 +34,8 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
    * Instructors (assigned booking) and staff (admin / super_admin) may update the same field.
    */
   declare lessonPassedSuccessfully: CreationOptional<boolean | null>;
+  /** Package / extra practical credits used for this booking; restored on cancellation. */
+  declare prepaidMeta: CreationOptional<Record<string, unknown> | null>;
 }
 
 Booking.init(
@@ -54,6 +56,7 @@ Booking.init(
     confirmationEmailSentAt: { type: DataTypes.DATE, allowNull: true },
     cancellationRequestedAt: { type: DataTypes.DATE, allowNull: true },
     lessonPassedSuccessfully: { type: DataTypes.BOOLEAN, allowNull: true },
+    prepaidMeta: { type: DataTypes.JSON, allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

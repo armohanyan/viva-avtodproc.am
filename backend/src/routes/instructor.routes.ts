@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { InstructorController } from '../controllers';
-import { requireStaff } from '../middleware/staff-auth.middleware';
+import { attachStaffIfPresent, requireStaff } from '../middleware/staff-auth.middleware';
 
 const router = Router();
 
-router.get('/', InstructorController.list);
+router.get('/', attachStaffIfPresent, InstructorController.list);
 router.post('/', requireStaff, InstructorController.create);
 
 router.get('/:id/availability-blocks', InstructorController.listAvailabilityBlocks);

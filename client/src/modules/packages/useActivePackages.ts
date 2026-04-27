@@ -5,10 +5,12 @@ export type PackageListRow = {
   id: number;
   name: string;
   price: string;
+  priceAmd: number;
   lessons: number;
   theoryLessons: number;
   features: string[];
   status: string;
+  imageUrl?: string | null;
 };
 
 export function useActivePackages() {
@@ -24,7 +26,14 @@ export function useActivePackages() {
       const rows = Array.isArray(data) ? data : [];
       const active = rows
         .filter((p) => String(p.status ?? "").toLowerCase() === "active")
-        .map((p) => ({ ...p, theoryLessons: Number((p as PackageListRow).theoryLessons ?? 0) }));
+        .map((p) => {
+          const r = p as PackageListRow;
+          return {
+            ...p,
+            theoryLessons: Number(r.theoryLessons ?? 0),
+            priceAmd: Math.max(0, Number(r.priceAmd ?? 0)),
+          };
+        });
       setPackages(active);
     } catch (e) {
       setPackages([]);

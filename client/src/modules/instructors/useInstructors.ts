@@ -17,6 +17,8 @@ export function useInstructors() {
 							id: String(ins.id),
 							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.jpg",
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
+							fleetCarIds: Array.isArray(ins.fleetCarIds) ? ins.fleetCarIds : [],
+							...(typeof ins.inviteEligible === "boolean" ? { inviteEligible: ins.inviteEligible } : {}),
 						}))
 					: [],
 			);

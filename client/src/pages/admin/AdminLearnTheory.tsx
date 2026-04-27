@@ -1,7 +1,7 @@
 import AdminLayout from "src/components/AdminLayout";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
-import { formatShortDateFromIso } from "src/lib/adminFormat";
+import { formatCohortSessionTimeLabel, formatShortDateFromIso } from "src/lib/adminFormat";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
@@ -27,6 +27,8 @@ type Cohort = {
   meetLink: string;
   status: string;
   branchId: string;
+  sessionStartTime: string | null;
+  sessionEndTime: string | null;
 };
 
 export default function AdminLearnTheory() {
@@ -133,6 +135,11 @@ export default function AdminLearnTheory() {
                   </div>
                   <p className="text-xs text-muted-foreground mb-4">
                     {formatShortDateFromIso(c.startDateIso, lang)} – {formatShortDateFromIso(c.endDateIso, lang)}
+                    {formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime) ? (
+                      <span className="block mt-1 text-foreground/90">
+                        {formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime)}
+                      </span>
+                    ) : null}
                   </p>
                   <div className="flex items-center justify-between text-sm mt-auto pt-2 border-t border-border gap-2">
                     <span className="text-muted-foreground shrink-0">{t("cohortColInstructor")}</span>

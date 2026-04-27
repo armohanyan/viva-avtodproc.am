@@ -24,7 +24,7 @@ const rawEnvSchema = z.object({
   MYSQL_LOGGING: z.string().optional(),
   /** Set to `1` to run sequelize.sync({ alter: true }) on startup (dev only). */
   DB_SYNC_ALTER: z.string().optional(),
-  /** Auto-seed when DB is empty (cities count === 0). Set to `0` to disable. */
+  /** Auto-seed when `users` is empty (initial super admin). Set to `0` to disable. */
   DB_AUTO_SEED: z.string().optional(),
   PSQL_URL: z.string().optional(),
   PSQL_PORT: z.string().optional(),

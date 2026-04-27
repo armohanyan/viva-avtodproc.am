@@ -219,8 +219,25 @@ export default class StudentController {
   static async entitlementsAssignPackage(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
       const body = parseBody(entitlementsPackageSchema, req.body);
       const data = await StudentEntitlementsService.assignPackage(id, body.packageId);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student or package not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** Student: complete simulated card payment and enroll in a package (theory + practical allowances). */
+  static async entitlementsPurchasePackage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const body = parseBody(entitlementsPackageSchema, req.body);
+      const data = await StudentEntitlementsService.purchasePackageAfterOnlinePayment(id, body.packageId);
       if (!data) {
         return next(new ResourceNotFoundError('Student or package not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -233,6 +250,7 @@ export default class StudentController {
   static async entitlementsAddExtra(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
       const body = parseBody(entitlementsExtraSchema, req.body);
       const data = await StudentEntitlementsService.addExtraPractical(id, body.practicalTotal);
       if (!data) {

@@ -6,7 +6,7 @@ import AdminTableRowActions, {
 } from "src/components/AdminTableRowActions";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
-import { formatShortDateFromIso } from "src/lib/adminFormat";
+import { formatCohortSessionTimeLabel, formatShortDateFromIso } from "src/lib/adminFormat";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
@@ -18,7 +18,7 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
+import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -34,6 +34,8 @@ type Cohort = {
   meetLink: string;
   status: string;
   branchId: string;
+  sessionStartTime: string | null;
+  sessionEndTime: string | null;
 };
 
 type CohortStudentRow = {
@@ -89,7 +91,9 @@ export default function AdminCohorts() {
     seats: 15,
     instructorName: instructorNames[0] ?? "",
     meetLink: "",
-    branchId: DEFAULT_PRIMARY_BRANCH_ID,
+    branchId: "",
+    sessionStartTime: "",
+    sessionEndTime: "",
   });
 
   const handleDelete = async () => {
@@ -119,6 +123,8 @@ export default function AdminCohorts() {
           meetLink: editCohort.meetLink?.trim() ?? "",
           status: editCohort.status,
           branchId: editCohort.branchId,
+          sessionStartTime: editCohort.sessionStartTime?.trim() || null,
+          sessionEndTime: editCohort.sessionEndTime?.trim() || null,
         },
       });
       setEditCohort(null);
@@ -146,7 +152,9 @@ export default function AdminCohorts() {
           instructorName: newCohort.instructorName || instructorNames[0] || "—",
           meetLink: newCohort.meetLink?.trim() ?? "",
           status: "upcoming",
-          branchId: newCohort.branchId || DEFAULT_PRIMARY_BRANCH_ID,
+          branchId: newCohort.branchId || branches[0]?.id || "",
+          sessionStartTime: newCohort.sessionStartTime?.trim() || null,
+          sessionEndTime: newCohort.sessionEndTime?.trim() || null,
         },
       });
       setAddOpen(false);
@@ -157,7 +165,9 @@ export default function AdminCohorts() {
         seats: 15,
         instructorName: instructorNames[0] ?? "",
         meetLink: "",
-        branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID,
+        branchId: branches[0]?.id ?? "",
+        sessionStartTime: "",
+        sessionEndTime: "",
       });
       showToast(t("cohortCreatedToast"), "success");
       await refreshCohorts();
@@ -196,8 +206,9 @@ export default function AdminCohorts() {
     const q = search.trim().toLowerCase();
     return cohorts.filter((c) => {
       const branchLabel = branchNameById(branches, c.branchId);
-      const period = `${formatShortDateFromIso(c.startDateIso, lang)} ${formatShortDateFromIso(c.endDateIso, lang)}`;
-      const hay = [c.id, c.name, c.instructorName, c.startDateIso, c.endDateIso, period, c.status, c.meetLink, branchLabel].join(" ").toLowerCase();
+      const timePart = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
+      const period = `${formatShortDateFromIso(c.startDateIso, lang)} ${formatShortDateFromIso(c.endDateIso, lang)}${timePart ? ` ${timePart}` : ""}`;
+      const hay = [c.id, c.name, c.instructorName, c.startDateIso, c.endDateIso, timePart, period, c.status, c.meetLink, branchLabel].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchStatus = statusFilter === "all" || c.status === statusFilter;
       const matchBranch = branchFilter === "all" || c.branchId === branchFilter;
@@ -212,8 +223,11 @@ export default function AdminCohorts() {
     return s;
   };
 
-  const periodLabel = (c: Cohort) =>
-    `${formatShortDateFromIso(c.startDateIso, lang)} – ${formatShortDateFromIso(c.endDateIso, lang)}`;
+  const periodLabel = (c: Cohort) => {
+    const dates = `${formatShortDateFromIso(c.startDateIso, lang)} – ${formatShortDateFromIso(c.endDateIso, lang)}`;
+    const timePart = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
+    return timePart ? `${dates} · ${timePart}` : dates;
+  };
 
   return (
     <AdminLayout>
@@ -226,7 +240,7 @@ export default function AdminCohorts() {
             onClick={() => {
               setNewCohort((n) => ({
                 ...n,
-                branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID,
+                branchId: branches[0]?.id ?? "",
                 instructorName: instructorNames[0] ?? n.instructorName,
               }));
               setAddOpen(true);
@@ -433,6 +447,26 @@ export default function AdminCohorts() {
                   <Input type="date" value={editCohort.endDateIso} onChange={(e) => setEditCohort({ ...editCohort, endDateIso: e.target.value })} className="h-10" />
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeStart")}</label>
+                  <Input
+                    type="time"
+                    value={editCohort.sessionStartTime ?? ""}
+                    onChange={(e) => setEditCohort({ ...editCohort, sessionStartTime: e.target.value || null })}
+                    className="h-10"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeEnd")}</label>
+                  <Input
+                    type="time"
+                    value={editCohort.sessionEndTime ?? ""}
+                    onChange={(e) => setEditCohort({ ...editCohort, sessionEndTime: e.target.value || null })}
+                    className="h-10"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("seats")}</label>
                 <Input
@@ -568,6 +602,26 @@ export default function AdminCohorts() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelEndShort")}</label>
                 <Input type="date" value={newCohort.endDateIso} onChange={(e) => setNewCohort({ ...newCohort, endDateIso: e.target.value })} className="h-10" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeStart")}</label>
+                <Input
+                  type="time"
+                  value={newCohort.sessionStartTime}
+                  onChange={(e) => setNewCohort({ ...newCohort, sessionStartTime: e.target.value })}
+                  className="h-10"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeEnd")}</label>
+                <Input
+                  type="time"
+                  value={newCohort.sessionEndTime}
+                  onChange={(e) => setNewCohort({ ...newCohort, sessionEndTime: e.target.value })}
+                  className="h-10"
+                />
               </div>
             </div>
             <div>

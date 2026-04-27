@@ -7,7 +7,6 @@ export type Instructor = {
   rating: number;
   hourlyPrice: number;
   status: "active" | "inactive";
-  location: string;
   car: string;
   transmission: string;
   imageSrc: string;
@@ -19,6 +18,10 @@ export type Instructor = {
   teachesTheory: boolean;
   /** When > 0, public rating is averaged from student reviews (admin cannot override the number). */
   studentRatingCount?: number;
+  /** Fleet vehicle ids (`fleet_car_instructors`) assigned to this instructor. */
+  fleetCarIds?: number[];
+  /** Admin list only (staff token): invitation/setup email can still be sent. */
+  inviteEligible?: boolean;
 };
 
 export const instructors: Instructor[] = [
@@ -31,7 +34,6 @@ export const instructors: Instructor[] = [
     rating: 4.9,
     hourlyPrice: 7000,
     status: "active",
-    location: "Yerevan",
     car: "Toyota Corolla",
     transmission: "Manual",
     imageSrc: "/logo.jpg",
@@ -48,7 +50,6 @@ export const instructors: Instructor[] = [
     rating: 4.8,
     hourlyPrice: 6500,
     status: "active",
-    location: "Yerevan",
     car: "Kia Rio",
     transmission: "Automatic",
     imageSrc: "/logo.jpg",
@@ -65,7 +66,6 @@ export const instructors: Instructor[] = [
     rating: 5.0,
     hourlyPrice: 8000,
     status: "active",
-    location: "Yerevan",
     car: "Kia Cerato",
     transmission: "Automatic",
     imageSrc: "/logo.jpg",
@@ -82,7 +82,6 @@ export const instructors: Instructor[] = [
     rating: 4.7,
     hourlyPrice: 6000,
     status: "active",
-    location: "Yerevan",
     car: "Nissan Versa",
     transmission: "Automatic",
     imageSrc: "/logo.jpg",
@@ -99,7 +98,6 @@ export const instructors: Instructor[] = [
     rating: 4.9,
     hourlyPrice: 7200,
     status: "inactive",
-    location: "Yerevan",
     car: "Hyundai Elantra",
     transmission: "Manual",
     imageSrc: "/logo.jpg",

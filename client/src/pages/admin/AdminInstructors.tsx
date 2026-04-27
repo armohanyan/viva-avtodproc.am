@@ -22,11 +22,7 @@ import { branchNameById, branchOptionLabel, useBranches } from "src/modules/bran
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
 import { useAccount } from "src/modules/accounts";
-import {
-  deriveInstructorLocationFromBranches,
-  formatInstructorBranches,
-  formatInstructorCities,
-} from "src/modules/instructors/instructorLabels";
+import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
 import type { ScheduleRuleKind } from "src/modules/instructors/instructorAvailability";
 
 type InstructorForm = Pick<
@@ -39,7 +35,12 @@ type InstructorForm = Pick<
   | "teachesTheory"
   | "status"
   | "availableBranchIds"
+  | "hourlyPrice"
+  | "imageSrc"
+  | "fleetCarIds"
 >;
+
+type FleetCarRow = { id: number; plate: string; make: string; model: string };
 
 const createNewInstructorDraft = (): InstructorForm => ({
   name: "",
@@ -50,6 +51,9 @@ const createNewInstructorDraft = (): InstructorForm => ({
   teachesTheory: false,
   status: "active",
   availableBranchIds: [],
+  hourlyPrice: 7000,
+  imageSrc: "/logo.jpg",
+  fleetCarIds: [],
 });
 
 type InstructorScheduleRuleRow = {
@@ -159,7 +163,31 @@ export default function AdminInstructors() {
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [fleetCars, setFleetCars] = useState<FleetCarRow[]>([]);
   const [invitingId, setInvitingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void vivaApiJson<FleetCarRow[]>("/fleet/cars")
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) setFleetCars(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setFleetCars([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const fleetCarSelectOptions = useMemo(
+    () =>
+      fleetCars.map((c) => ({
+        value: String(c.id),
+        label: [c.make, c.model].filter(Boolean).join(" ").trim() || c.plate,
+      })),
+    [fleetCars],
+  );
 
   const loadInstructors = useCallback(async () => {
     try {
@@ -172,6 +200,8 @@ export default function AdminInstructors() {
               studentRatingCount: typeof i.studentRatingCount === "number" ? i.studentRatingCount : 0,
               /** API uses numeric ids; branch options and validation use strings (see useBranches). */
               availableBranchIds: (i.availableBranchIds ?? []).map(String),
+              fleetCarIds: Array.isArray(i.fleetCarIds) ? i.fleetCarIds : [],
+              ...(typeof i.inviteEligible === "boolean" ? { inviteEligible: i.inviteEligible } : {}),
             }))
           : [],
       );
@@ -207,7 +237,6 @@ export default function AdminInstructors() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [cityFilter, setCityFilter] = useState<"all" | string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -389,14 +418,12 @@ export default function AdminInstructors() {
         .filter(Boolean)
         .join(" ");
       const branchHay = ins.availableBranchIds.map((id) => branchNameById(branches, id)).join(" ");
-      const citiesHay = formatInstructorCities(ins, branches, cities);
       const hay = [
         ins.name,
         ins.email,
         ins.phone,
         ins.status,
         teachingLabels,
-        citiesHay,
         branchHay,
         ins.imageSrc,
         String(ins.years),
@@ -404,27 +431,20 @@ export default function AdminInstructors() {
       ]
         .join(" ")
         .toLowerCase();
-      const cityIds = new Set<string>();
-      for (const bid of ins.availableBranchIds) {
-        const b = branches.find((x) => String(x.id) === String(bid));
-        if (b) cityIds.add(String(b.cityId));
-      }
-      return { ins, hay, cityIds };
+      return { ins, hay };
     });
-  }, [instructors, branches, cities, t]);
+  }, [instructors, branches, t]);
 
   const filteredInstructors = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const wantCity = String(cityFilter);
     return instructorSearchPrep
-      .filter(({ ins, hay, cityIds }) => {
+      .filter(({ ins, hay }) => {
         const matchesSearch = !q || hay.includes(q);
         const matchesStatus = statusFilter === "all" || ins.status === statusFilter;
-        const matchesCity = cityFilter === "all" || cityIds.has(wantCity);
-        return matchesSearch && matchesStatus && matchesCity && teachingFilterMatch(ins);
+        return matchesSearch && matchesStatus && teachingFilterMatch(ins);
       })
       .map((row) => row.ins);
-  }, [instructorSearchPrep, search, statusFilter, cityFilter, teachingFilterMatch]);
+  }, [instructorSearchPrep, search, statusFilter, teachingFilterMatch]);
 
   const instructorStatusLabel = useCallback((s: string) => (s === "active" ? t("active") : t("inactive")), [t]);
 
@@ -436,7 +456,6 @@ export default function AdminInstructors() {
       [ins.teachesPractical ? t("instructorTeachingPractical") : "", ins.teachesTheory ? t("instructorTeachingTheory") : ""]
         .filter(Boolean)
         .join(" + ") || "-",
-      formatInstructorCities(ins, branches, cities),
       formatInstructorBranches(ins, branches, cities),
       ins.phone,
       ins.rating.toFixed(1),
@@ -488,12 +507,10 @@ export default function AdminInstructors() {
         years: editIns.years,
         hourlyPrice: editIns.hourlyPrice,
         status: editIns.status,
-        location: deriveInstructorLocationFromBranches(editIns.availableBranchIds, branches, cities, "Yerevan"),
-        car: editIns.car,
-        transmission: editIns.transmission,
         imageSrc: editIns.imageSrc,
         teachesPractical: editIns.teachesPractical,
         teachesTheory: editIns.teachesTheory,
+        fleetCarIds: editIns.fleetCarIds ?? [],
       };
       if (isSuperAdmin) {
         body.availableBranchIds = editIns.availableBranchIds;
@@ -519,14 +536,10 @@ export default function AdminInstructors() {
     }
 
     const branchIdsForCreate = isSuperAdmin ? newIns.availableBranchIds : [];
-    const nextPayload: Omit<Instructor, "id" | "rating" | "studentRatingCount"> = {
+    const nextPayload = {
       ...newIns,
+      fleetCarIds: newIns.fleetCarIds ?? [],
       availableBranchIds: branchIdsForCreate,
-      hourlyPrice: 7000,
-      location: deriveInstructorLocationFromBranches(branchIdsForCreate, branches, cities, "Yerevan"),
-      car: "Toyota Corolla",
-      transmission: "Manual",
-      imageSrc: "/logo.jpg",
     };
 
     try {
@@ -566,7 +579,6 @@ export default function AdminInstructors() {
               t("adminInstructorColInstructor"),
               t("emailAddress"),
               t("adminInstructorColTeachingType"),
-              t("instructorCitiesLabel"),
               t("instructorBranchesLabel"),
               t("phone"),
               t("adminInstructorColRating"),
@@ -578,7 +590,7 @@ export default function AdminInstructors() {
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[62rem]">
+          <table className="w-full text-sm min-w-[54rem]">
             <thead className="bg-muted/40">
               <tr>
                 <TableColumnHeaderWithFilter title={t("adminInstructorColPhoto")} />
@@ -595,20 +607,6 @@ export default function AdminInstructors() {
                         { value: "practical_only", label: t("instructorFilterTeachingPracticalOnly") },
                         { value: "theory_only", label: t("instructorFilterTeachingTheoryOnly") },
                         { value: "both", label: t("instructorFilterTeachingBoth") },
-                      ]}
-                    />
-                  }
-                />
-                <TableColumnHeaderWithFilter
-                  title={t("instructorCitiesLabel")}
-                  filter={
-                    <TableColumnFilter
-                      value={cityFilter}
-                      onChange={(v) => setCityFilter(v as "all" | string)}
-                      ariaLabel={t("instructorCitiesLabel")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...cities.map((c) => ({ value: c.id, label: c.name })),
                       ]}
                     />
                   }
@@ -649,13 +647,17 @@ export default function AdminInstructors() {
                       icon: Edit2,
                       onClick: () => setEditId(ins.id),
                     },
-                    {
-                      kind: "item",
-                      id: "invite",
-                      label: invitingId === ins.id ? t("loading") : t("inviteInstructor"),
-                      icon: Mail,
-                      onClick: () => void inviteInstructor(ins.id),
-                    },
+                    ...(ins.inviteEligible
+                      ? [
+                          {
+                            kind: "item" as const,
+                            id: "invite",
+                            label: invitingId === ins.id ? t("loading") : t("inviteInstructor"),
+                            icon: Mail,
+                            onClick: () => void inviteInstructor(ins.id),
+                          },
+                        ]
+                      : []),
                     {
                       kind: "item",
                       id: "schedule",
@@ -700,7 +702,6 @@ export default function AdminInstructors() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 text-muted-foreground max-w-[12rem] text-sm">{formatInstructorCities(ins, branches, cities)}</td>
                     <td className="px-4 py-3.5 text-muted-foreground max-w-[14rem] text-xs align-top">
                       <div
                         className="leading-snug line-clamp-2 break-words"
@@ -730,13 +731,17 @@ export default function AdminInstructors() {
                             icon: Edit2,
                             onClick: () => setEditId(ins.id),
                           },
-                          {
-                            kind: "item",
-                            id: "invite",
-                            label: invitingId === ins.id ? t("loading") : t("inviteInstructor"),
-                            icon: Mail,
-                            onClick: () => void inviteInstructor(ins.id),
-                          },
+                          ...(ins.inviteEligible
+                            ? [
+                                {
+                                  kind: "item" as const,
+                                  id: "invite",
+                                  label: invitingId === ins.id ? t("loading") : t("inviteInstructor"),
+                                  icon: Mail,
+                                  onClick: () => void inviteInstructor(ins.id),
+                                },
+                              ]
+                            : []),
                           {
                             kind: "item",
                             id: "schedule",
@@ -827,11 +832,9 @@ export default function AdminInstructors() {
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("ratingDisplayLabel")}</label>
                   <Input readOnly value={editIns.rating.toFixed(1)} className="h-10 bg-muted/40" />
-                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                    {editIns.studentRatingCount && editIns.studentRatingCount > 0
-                      ? t("instructorRatingFromStudentsHint")
-                      : t("instructorRatingDefaultUntilRatedHint")}
-                  </p>
+                  {editIns.studentRatingCount && editIns.studentRatingCount > 0 ? (
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorRatingFromStudentsHint")}</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("hourlyRateLabel")}</label>
@@ -845,26 +848,18 @@ export default function AdminInstructors() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorCitiesLabel")}</label>
-                <p className="text-sm text-foreground min-h-[2.5rem] px-3 py-2 rounded-lg border border-input bg-muted/30">
-                  {formatInstructorCities(editIns, branches, cities)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorLocationDerivedHint")}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("carColModel")}</label>
-                <Input value={editIns.car} onChange={(e) => updateEdit(editIns.id, { car: e.target.value })} className="h-10" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("carColTransmission")}</label>
-                <select
-                  value={editIns.transmission === "Automatic" ? "Automatic" : "Manual"}
-                  onChange={(e) => updateEdit(editIns.id, { transmission: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="Manual">{t("transmissionManual")}</option>
-                  <option value="Automatic">{t("transmissionAutomatic")}</option>
-                </select>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorCarsTitle")}</label>
+                <MultiSelectDropdown
+                  options={fleetCarSelectOptions}
+                  value={(editIns.fleetCarIds ?? []).map(String)}
+                  onChange={(nextIds) =>
+                    updateEdit(editIns.id, {
+                      fleetCarIds: nextIds.map((id) => Number(id)),
+                    })
+                  }
+                  placeholder={t("instructorCarsTitle")}
+                  ariaLabel={t("instructorCarsTitle")}
+                />
               </div>
               <div>
                 <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
@@ -931,7 +926,7 @@ export default function AdminInstructors() {
         open={addOpen}
         onOpenChange={setAddOpen}
         title={t("instructorDialogAddTitle")}
-        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        contentClassName="max-w-lg max-h-[min(90vh,720px)]"
         footer={
           <div className="flex gap-3">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
@@ -944,69 +939,147 @@ export default function AdminInstructors() {
         }
       >
         <form id={addInstructorFormId} onSubmit={handleAdd} className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
-              <Input value={newIns.name} onChange={(e) => setNewIns({ ...newIns, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
-              <Input type="email" value={newIns.email} onChange={(e) => setNewIns({ ...newIns, email: e.target.value })} placeholder="name@vivadrive.am" className="h-10" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
-              <Input value={newIns.phone} onChange={(e) => setNewIns({ ...newIns, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
-              <Input type="number" value={newIns.years} onChange={(e) => setNewIns({ ...newIns, years: +e.target.value || 1 })} className="h-10" />
-            </div>
-            <div>
-              <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
-              <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={newIns.teachesPractical}
-                    onChange={() => setNewIns((s) => ({ ...s, teachesPractical: !s.teachesPractical }))}
-                    className="h-4 w-4 rounded border-input accent-primary"
-                  />
-                  {t("instructorTeachingPractical")}
-                </label>
-                <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={newIns.teachesTheory}
-                    onChange={() => setNewIns((s) => ({ ...s, teachesTheory: !s.teachesTheory }))}
-                    className="h-4 w-4 rounded border-input accent-primary"
-                  />
-                  {t("instructorTeachingTheory")}
-                </label>
-              </div>
-            </div>
-            {branches.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>
+                <div className="flex items-center gap-4">
+                  <img
+                    src={newIns.imageSrc}
+                    alt=""
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted shrink-0"
+                    onError={(e) => {
+                      e.currentTarget.src = "/logo.jpg";
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor={`${addInstructorFormId}-name`}>
+                      {t("name")} *
+                    </label>
+                    <Input
+                      id={`${addInstructorFormId}-name`}
+                      value={newIns.name}
+                      onChange={(e) => setNewIns({ ...newIns, name: e.target.value })}
+                      placeholder={t("placeholderFullName")}
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
+                <Input
+                  type="email"
+                  value={newIns.email}
+                  onChange={(e) => setNewIns({ ...newIns, email: e.target.value })}
+                  placeholder="name@vivadrive.am"
+                  className="h-10"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
+                <Input
+                  value={newIns.phone}
+                  onChange={(e) => setNewIns({ ...newIns, phone: e.target.value })}
+                  placeholder="+374 99 000 000"
+                  className="h-10"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
+                <Input
+                  type="number"
+                  value={newIns.years}
+                  onChange={(e) => setNewIns({ ...newIns, years: +e.target.value || 1 })}
+                  className="h-10"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("ratingDisplayLabel")}</label>
+                  <Input readOnly value="—" className="h-10 bg-muted/40" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("hourlyRateLabel")}</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={newIns.hourlyPrice}
+                    onChange={(e) => setNewIns({ ...newIns, hourlyPrice: +e.target.value || 0 })}
+                    className="h-10"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorCarsTitle")}</label>
                 <MultiSelectDropdown
-                  options={branches.map((b) => ({
-                    value: b.id,
-                    label: branchOptionLabel(b, cityNameById(cities, b.cityId)),
-                  }))}
-                  value={newIns.availableBranchIds ?? []}
+                  options={fleetCarSelectOptions}
+                  value={(newIns.fleetCarIds ?? []).map(String)}
                   onChange={(nextIds) =>
                     setNewIns({
                       ...newIns,
-                      availableBranchIds: nextIds as string[],
+                      fleetCarIds: nextIds.map((id) => Number(id)),
                     })
                   }
-                  placeholder={t("instructorBranchesLabel")}
-                  ariaLabel={t("instructorBranchesLabel")}
-                  disabled={!isSuperAdmin}
+                  placeholder={t("instructorCarsTitle")}
+                  ariaLabel={t("instructorCarsTitle")}
                 />
-                {!isSuperAdmin ? (
-                  <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorBranchesSuperAdminOnly")}</p>
-                ) : null}
               </div>
-            )}
+              <div>
+                <p className="block text-sm font-medium text-muted-foreground mb-1.5">{t("instructorTeachingFormLabel")}</p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={newIns.teachesPractical}
+                      onChange={() => setNewIns((s) => ({ ...s, teachesPractical: !s.teachesPractical }))}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    {t("instructorTeachingPractical")}
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={newIns.teachesTheory}
+                      onChange={() => setNewIns((s) => ({ ...s, teachesTheory: !s.teachesTheory }))}
+                      className="h-4 w-4 rounded border-input accent-primary"
+                    />
+                    {t("instructorTeachingTheory")}
+                  </label>
+                </div>
+              </div>
+              {branches.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>
+                  <MultiSelectDropdown
+                    options={branches.map((b) => ({
+                      value: b.id,
+                      label: branchOptionLabel(b, cityNameById(cities, b.cityId)),
+                    }))}
+                    value={newIns.availableBranchIds ?? []}
+                    onChange={(nextIds) =>
+                      setNewIns({
+                        ...newIns,
+                        availableBranchIds: nextIds as string[],
+                      })
+                    }
+                    placeholder={t("instructorBranchesLabel")}
+                    ariaLabel={t("instructorBranchesLabel")}
+                    disabled={!isSuperAdmin}
+                  />
+                  {!isSuperAdmin ? (
+                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorBranchesSuperAdminOnly")}</p>
+                  ) : null}
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
+                <select
+                  value={newIns.status}
+                  onChange={(e) => setNewIns({ ...newIns, status: e.target.value as "active" | "inactive" })}
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="active">{t("active")}</option>
+                  <option value="inactive">{t("inactive")}</option>
+                </select>
+              </div>
         </form>
       </AppModal>
 

@@ -18,13 +18,11 @@ const createSchema = z.object({
   years: z.number().int().nonnegative(),
   hourlyPrice: z.number().int().nonnegative(),
   status: z.enum(['active', 'inactive']),
-  location: z.string(),
-  car: z.string(),
-  transmission: z.string(),
   imageSrc: z.string(),
   availableBranchIds: z.array(z.coerce.number().int().positive()),
   teachesPractical: z.boolean(),
   teachesTheory: z.boolean(),
+  fleetCarIds: z.array(z.number().int().positive()).optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -63,9 +61,11 @@ const instructorAvailabilityBlockParamsSchema = z.object({
 });
 
 export default class InstructorController {
-  static async list(_req: Request, res: Response, next: NextFunction) {
+  static async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await InstructorService.list();
+      const staff = (req as StaffRequest).staff;
+      const enrichInvite = Boolean(staff);
+      const data = await InstructorService.list(enrichInvite);
 
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {

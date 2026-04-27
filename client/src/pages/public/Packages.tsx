@@ -64,50 +64,52 @@ export default function Packages() {
                   return (
                     <Reveal
                       key={pkg.id}
-                      className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} p-6 sm:p-8 flex flex-col h-full`}
+                      className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} bg-card overflow-hidden p-0 flex flex-col h-full`}
                       delay={i * 0.06}
                     >
                       {popular && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
                           <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                         </div>
                       )}
                       {pkg.imageUrl ? (
-                        <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
+                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0">
                           <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
                         </div>
                       ) : null}
-                      <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
-                      <div className="flex items-baseline gap-1 mb-1">
-                        <span className="text-4xl font-bold text-foreground">
-                          <CountUpText value={pkg.price} />
-                        </span>
-                        <span className="text-muted-foreground">֏</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-7">
-                        {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
-                        {t("lessonTypeTheory").toLowerCase()}
-                      </p>
-                      <ul className="space-y-3 mb-8">
-                        {pkg.features.map((feat, j) => (
-                          <li key={j} className="flex items-center gap-2.5 text-sm">
-                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                            <span className="text-foreground">{feat}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="mt-auto">
-                        <a href={panelHref("/register")}>
-                          <Button
-                            className={`w-full ${
-                              popular
-                                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                                : "bg-accent hover:bg-accent/80 text-foreground"
-                            }`}
-                          >
-                            {t("choosePackage")}
-                          </Button>
-                        </a>
+                      <div className="p-6 sm:p-8 flex flex-col flex-1 min-h-0">
+                        <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
+                        <div className="flex items-baseline gap-1 mb-1">
+                          <span className="text-4xl font-bold text-foreground">
+                            <CountUpText value={pkg.price} />
+                          </span>
+                          <span className="text-muted-foreground">֏</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-7">
+                          {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
+                          {t("lessonTypeTheory").toLowerCase()}
+                        </p>
+                        <ul className="space-y-3 mb-8">
+                          {pkg.features.map((feat, j) => (
+                            <li key={j} className="flex items-center gap-2.5 text-sm">
+                              <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                              <span className="text-foreground">{feat}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-auto">
+                          <a href={panelHref("/register")}>
+                            <Button
+                              className={`w-full ${
+                                popular
+                                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                                  : "bg-accent hover:bg-accent/80 text-foreground"
+                              }`}
+                            >
+                              {t("choosePackage")}
+                            </Button>
+                          </a>
+                        </div>
                       </div>
                     </Reveal>
                   );

@@ -30,6 +30,32 @@ export function requireStaff(req: Request, _res: Response, next: NextFunction): 
   }
 }
 
+/**
+ * When `Authorization: Bearer` is present and valid for `admin` / `super_admin`, sets `req.staff`.
+ * Invalid or missing tokens are ignored (route still runs). Use on public GET routes that optionally enrich for staff.
+ */
+export function attachStaffIfPresent(req: Request, _res: Response, next: NextFunction): void {
+  const raw = req.headers.authorization;
+  const token = raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+
+  if (!token) {
+    next();
+    return;
+  }
+
+  try {
+    const payload = verifyAccessToken(token);
+
+    if (payload.accountType === 'admin' || payload.accountType === 'super_admin') {
+      (req as StaffRequest).staff = payload;
+    }
+  } catch {
+    // ignore invalid/expired token
+  }
+
+  next();
+}
+
 /** Only `super_admin` may access marketing CMS mutations (stricter than general staff). */
 export function requireSuperAdmin(req: Request, _res: Response, next: NextFunction): void {
   const raw = req.headers.authorization;

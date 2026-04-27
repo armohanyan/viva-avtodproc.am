@@ -8,6 +8,7 @@ router.post('/', StudentController.create);
 router.get('/:id/instructor-ratings/status', StudentController.instructorRatingsStatus);
 router.post('/:id/instructor-ratings', StudentController.instructorRatingsSubmit);
 router.get('/:id/entitlements', StudentController.entitlements);
+router.post('/:id/entitlements/package/complete-purchase', StudentController.entitlementsPurchasePackage);
 router.post('/:id/entitlements/package', StudentController.entitlementsAssignPackage);
 router.post('/:id/entitlements/extra-practical', StudentController.entitlementsAddExtra);
 router.get('/:id/exam-stats', StudentController.examStatsGet);

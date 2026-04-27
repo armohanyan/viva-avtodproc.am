@@ -12,6 +12,10 @@ export class TheoryCohort extends Model<InferAttributes<TheoryCohort>, InferCrea
   declare meetLink: string;
   declare status: string;
   declare branchId: number;
+  /** Local clock time (HH:MM) when the recurring theory session usually starts, optional. */
+  declare sessionStartTime: string | null;
+  /** Local clock time (HH:MM) when the session usually ends, optional. */
+  declare sessionEndTime: string | null;
 }
 
 TheoryCohort.init(
@@ -25,6 +29,8 @@ TheoryCohort.init(
     meetLink: { type: DataTypes.STRING(512), allowNull: false, defaultValue: '' },
     status: { type: DataTypes.STRING(32), allowNull: false },
     branchId: fkUnsignedInt(),
+    sessionStartTime: { type: DataTypes.STRING(5), allowNull: true, defaultValue: null },
+    sessionEndTime: { type: DataTypes.STRING(5), allowNull: true, defaultValue: null },
   },
   { sequelize, tableName: 'theory_cohorts', modelName: 'TheoryCohort' },
 );

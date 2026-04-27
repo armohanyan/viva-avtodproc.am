@@ -1,4 +1,14 @@
-import { InstructorBranch, InstructorProfile, InstructorScheduleRule, User } from '../models';
+import {
+  FleetCar,
+  FleetCarInstructor,
+  InstructorBranch,
+  InstructorProfile,
+  InstructorScheduleRule,
+  OAuthAccount,
+  User,
+} from '../models';
+import { Op } from 'sequelize';
+import FleetService from './fleet.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -18,13 +28,20 @@ export type InstructorDto = {
   studentRatingCount: number;
   hourlyPrice: number;
   status: 'active' | 'inactive';
-  location: string;
+  /** From `fleet_car_instructors` + `fleet_cars` (not stored on profile). */
   car: string;
   transmission: string;
   imageSrc: string;
   availableBranchIds: number[];
   teachesPractical: boolean;
   teachesTheory: boolean;
+  /** Fleet vehicles assigned to this instructor (`fleet_car_instructors`). */
+  fleetCarIds: number[];
+  /**
+   * Only on `GET /instructors` when called with a staff Bearer token.
+   * `true` if the invite/setup email can still be sent (no password, no OAuth).
+   */
+  inviteEligible?: boolean;
 };
 
 function clampRating(n: number): number {
@@ -37,6 +54,9 @@ function toDto(
   branchIds: number[],
   effectiveRating: number,
   studentRatingCount: number,
+  fleetCarIds: number[],
+  derived: { car: string; transmission: string },
+  invite?: { eligible: boolean },
 ): InstructorDto {
   return {
     id: user.id,
@@ -48,21 +68,32 @@ function toDto(
     studentRatingCount,
     hourlyPrice: profile.hourlyPrice,
     status: profile.status,
-    location: profile.location,
-    car: profile.carLabel,
-    transmission: profile.transmission,
+    car: derived.car,
+    transmission: derived.transmission,
     imageSrc: profile.imageSrc,
     availableBranchIds: branchIds,
     teachesPractical: profile.teachesPractical,
     teachesTheory: profile.teachesTheory,
+    fleetCarIds,
+    ...(invite ? { inviteEligible: invite.eligible } : {}),
   };
 }
 
 export default class InstructorService {
-  static async list(): Promise<InstructorDto[]> {
+  static async list(includeInviteEligibility = false): Promise<InstructorDto[]> {
     const profiles = await InstructorProfile.findAll({
       include: [{ model: User, as: 'user', required: true }],
     });
+    const instructorUserIds = profiles.map((p) => p.userId);
+    let oauthUserIds = new Set<number>();
+    if (includeInviteEligibility && instructorUserIds.length > 0) {
+      const oauthRows = await OAuthAccount.findAll({
+        where: { userId: { [Op.in]: instructorUserIds } },
+        attributes: ['userId'],
+      });
+      oauthUserIds = new Set(oauthRows.map((r) => r.userId));
+    }
+
     const links = await InstructorBranch.findAll();
     const byInstructor = new Map<number, number[]>();
     for (const l of links) {
@@ -71,6 +102,18 @@ export default class InstructorService {
       byInstructor.set(l.instructorUserId, list);
     }
     const aggs = await InstructorStudentRatingService.aggregatesForInstructors(profiles.map((p) => p.userId));
+    const fleetByInst = await FleetService.listCarIdsByInstructorIds(profiles.map((p) => p.userId));
+
+    const allFleetCarIds = new Set<number>();
+    for (const ids of fleetByInst.values()) {
+      ids.forEach((id) => allFleetCarIds.add(id));
+    }
+    const fleetCars =
+      allFleetCarIds.size === 0
+        ? []
+        : await FleetCar.findAll({ where: { id: [...allFleetCarIds] } });
+    const carById = new Map(fleetCars.map((c) => [c.id, c]));
+
     return profiles
       .map((p) => {
         const u = (p as ProfileWithUser).user;
@@ -78,13 +121,28 @@ export default class InstructorService {
         const agg = aggs.get(p.userId);
         const studentRatingCount = agg?.count ?? 0;
         const effective = studentRatingCount > 0 ? (agg?.avg ?? p.rating) : 5;
-        return toDto(u, p, byInstructor.get(p.userId) ?? [], effective, studentRatingCount);
+        const bIds = byInstructor.get(p.userId) ?? [];
+        const fcIds = fleetByInst.get(p.userId) ?? [];
+        const carsForInst = fcIds.map((id) => carById.get(id)).filter((c): c is FleetCar => c != null);
+        const { car, transmission } = FleetService.derivePublicCarFields(carsForInst);
+        const invite =
+          includeInviteEligibility
+            ? {
+                eligible: !u.passwordHash && !oauthUserIds.has(u.id),
+              }
+            : undefined;
+        return toDto(u, p, bIds, effective, studentRatingCount, fcIds, { car, transmission }, invite);
       })
       .filter((row): row is InstructorDto => row != null);
   }
 
   static async create(
-    input: Omit<InstructorDto, 'id' | 'studentRatingCount' | 'rating'>,
+    input: Omit<
+      InstructorDto,
+      'id' | 'studentRatingCount' | 'rating' | 'fleetCarIds' | 'car' | 'transmission'
+    > & {
+      fleetCarIds?: number[];
+    },
   ): Promise<InstructorDto> {
     const emailNorm = input.email.trim().toLowerCase();
     const existingUser = await User.findOne({ where: { email: emailNorm } });
@@ -99,7 +157,6 @@ export default class InstructorService {
       throw new ConflictError('This email is already registered.', HttpStatusCodesUtil.CONFLICT);
     }
 
-    /** Public rating is always 5 until students rate; never accept a manual seed. */
     const seedRating = 5;
     const user = await User.create({
       email: emailNorm,
@@ -113,9 +170,6 @@ export default class InstructorService {
       years: input.years,
       rating: seedRating,
       hourlyPrice: input.hourlyPrice,
-      location: input.location,
-      carLabel: input.car,
-      transmission: input.transmission,
       imageSrc: input.imageSrc,
       teachesPractical: input.teachesPractical,
       teachesTheory: input.teachesTheory,
@@ -125,7 +179,6 @@ export default class InstructorService {
     for (const branchId of input.availableBranchIds) {
       await InstructorBranch.create({ instructorUserId: user.id, branchId });
     }
-    /** Default daily lunch break for practical booking slots (admin can change in Availability). */
     await InstructorScheduleRule.create({
       instructorUserId: user.id,
       ruleKind: 'lunch',
@@ -135,13 +188,19 @@ export default class InstructorService {
       timeEnd: '15:00',
       allDay: false,
     });
+    if (input.fleetCarIds !== undefined) {
+      await FleetService.syncInstructorCars(user.id, input.fleetCarIds);
+    }
     return (await this.getById(user.id))!;
   }
 
   static async update(
     id: number,
-    patch: Partial<Omit<InstructorDto, 'id' | 'availableBranchIds' | 'studentRatingCount'>> & {
+    patch: Partial<
+      Omit<InstructorDto, 'id' | 'availableBranchIds' | 'studentRatingCount' | 'car' | 'transmission'>
+    > & {
       availableBranchIds?: number[];
+      fleetCarIds?: number[];
     },
   ): Promise<InstructorDto | null> {
     const user = await User.findByPk(id);
@@ -164,9 +223,6 @@ export default class InstructorService {
     await profile.update({
       ...(patch.years !== undefined ? { years: patch.years } : {}),
       ...(patch.hourlyPrice !== undefined ? { hourlyPrice: patch.hourlyPrice } : {}),
-      ...(patch.location !== undefined ? { location: patch.location } : {}),
-      ...(patch.car !== undefined ? { carLabel: patch.car } : {}),
-      ...(patch.transmission !== undefined ? { transmission: patch.transmission } : {}),
       ...(patch.imageSrc !== undefined ? { imageSrc: patch.imageSrc } : {}),
       ...(patch.teachesPractical !== undefined ? { teachesPractical: patch.teachesPractical } : {}),
       ...(patch.teachesTheory !== undefined ? { teachesTheory: patch.teachesTheory } : {}),
@@ -177,6 +233,9 @@ export default class InstructorService {
       for (const branchId of patch.availableBranchIds) {
         await InstructorBranch.create({ instructorUserId: id, branchId });
       }
+    }
+    if (patch.fleetCarIds !== undefined) {
+      await FleetService.syncInstructorCars(id, patch.fleetCarIds);
     }
     return this.getById(id);
   }
@@ -194,18 +253,25 @@ export default class InstructorService {
     const agg = aggs.get(id);
     const studentRatingCount = agg?.count ?? 0;
     const effective = studentRatingCount > 0 ? (agg?.avg ?? profile.rating) : 5;
-    return toDto(
-      u,
-      profile,
-      links.map((l) => l.branchId),
-      effective,
-      studentRatingCount,
-    );
+    const branchIds = links.map((l) => l.branchId);
+    const fleetCarIds = await FleetService.listCarIdsForInstructor(id);
+
+    const fleetCars =
+      fleetCarIds.length === 0
+        ? []
+        : await FleetCar.findAll({ where: { id: { [Op.in]: fleetCarIds } } });
+    const { car, transmission } = FleetService.derivePublicCarFields(fleetCars);
+
+    return toDto(u, profile, branchIds, effective, studentRatingCount, fleetCarIds, {
+      car,
+      transmission,
+    });
   }
 
   static async remove(id: number): Promise<boolean> {
     await InstructorStudentRatingService.removeAllForInstructor(id);
     await InstructorScheduleRule.destroy({ where: { instructorUserId: id } });
+    await FleetCarInstructor.destroy({ where: { instructorUserId: id } });
     await InstructorBranch.destroy({ where: { instructorUserId: id } });
     const p = await InstructorProfile.destroy({ where: { userId: id } });
     const u = await User.destroy({ where: { id } });

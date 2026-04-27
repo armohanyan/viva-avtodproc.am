@@ -18,7 +18,7 @@ import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen, Mail } fro
 import { Link } from "wouter";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
+import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 type PackageRow = { id: string; name: string; lessons: number; theoryLessons: number };
@@ -132,7 +132,7 @@ export default function AdminUsers() {
     instructor: instructorOptions[0],
     package: "Basic",
     status: "active",
-    branchId: DEFAULT_PRIMARY_BRANCH_ID,
+    branchId: "",
     skillRating: 0,
     licenseAchieved: false,
   });
@@ -221,7 +221,7 @@ export default function AdminUsers() {
           name: newUser.name,
           email: newUser.email,
           phone: newUser.phone || "",
-          branchId: newUser.branchId || DEFAULT_PRIMARY_BRANCH_ID,
+          branchId: newUser.branchId || branches[0]?.id || "",
           packageId: pkg.id,
           instructorUserId: ins?.id ?? null,
           enrollmentStatus: "active",
@@ -242,7 +242,7 @@ export default function AdminUsers() {
         instructor: instructorOptions[0],
         package: "Basic",
         status: "active",
-        branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID,
+        branchId: branches[0]?.id ?? "",
         skillRating: 0,
         licenseAchieved: false,
       });
@@ -268,7 +268,7 @@ export default function AdminUsers() {
             </Link>
             <Button
               onClick={() => {
-                setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID }));
+                setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? "" }));
                 setAddOpen(true);
               }}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 sm:w-auto"

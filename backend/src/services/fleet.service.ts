@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import { CarExpense, FleetCar, FleetCarInstructor, User } from '../models';
 
 export type FleetCarDto = {
@@ -152,5 +153,80 @@ export default class FleetService {
         await FleetCarInstructor.create({ carId, instructorUserId: u.id });
       }
     }
+  }
+
+  /** All fleet car ids linked to an instructor (for API DTOs). */
+  static async listCarIdsForInstructor(instructorUserId: number): Promise<number[]> {
+    const rows = await FleetCarInstructor.findAll({
+      where: { instructorUserId },
+      attributes: ['carId'],
+      order: [['carId', 'ASC']],
+    });
+    return rows.map((r) => r.carId);
+  }
+
+  static async listCarIdsByInstructorIds(instructorUserIds: readonly number[]): Promise<Map<number, number[]>> {
+    const out = new Map<number, number[]>();
+    if (instructorUserIds.length === 0) return out;
+    const rows = await FleetCarInstructor.findAll({
+      where: { instructorUserId: { [Op.in]: [...instructorUserIds] } },
+      attributes: ['instructorUserId', 'carId'],
+      order: [
+        ['instructorUserId', 'ASC'],
+        ['carId', 'ASC'],
+      ],
+    });
+    for (const r of rows) {
+      const list = out.get(r.instructorUserId) ?? [];
+      list.push(r.carId);
+      out.set(r.instructorUserId, list);
+    }
+    return out;
+  }
+
+  /** Replace instructor ↔ car links; invalid car ids are skipped. */
+  static async syncInstructorCars(instructorUserId: number, carIds: readonly number[]): Promise<void> {
+    const wantUniq = [...new Set(carIds)].filter((n) => Number.isFinite(n) && n > 0);
+    const existing = await FleetCarInstructor.findAll({ where: { instructorUserId } });
+    const current = new Set(existing.map((e) => e.carId));
+    const want = new Set<number>();
+    if (wantUniq.length > 0) {
+      const cars = await FleetCar.findAll({ where: { id: { [Op.in]: wantUniq } }, attributes: ['id'] });
+      for (const c of cars) want.add(c.id);
+    }
+    for (const carId of current) {
+      if (!want.has(carId)) {
+        await FleetCarInstructor.destroy({ where: { carId, instructorUserId } });
+      }
+    }
+    for (const carId of want) {
+      if (!current.has(carId)) {
+        await FleetCarInstructor.create({ carId, instructorUserId });
+      }
+    }
+  }
+
+  /** Strings for instructor API/cards — derived only from fleet rows (no duplicated profile columns). */
+  static derivePublicCarFields(cars: FleetCar[]): { car: string; transmission: string } {
+    const sorted = [...cars].sort((a, b) => a.plate.localeCompare(b.plate));
+    if (sorted.length === 0) return { car: '—', transmission: '—' };
+    const labels = sorted.map((c) => {
+      const mm = [c.make, c.model].filter(Boolean).join(' ').trim();
+      return mm || c.plate;
+    });
+    const car = labels.join(', ');
+    const transVals = sorted
+      .map((c) => c.transmission)
+      .filter((v): v is 'manual' | 'automatic' => v === 'manual' || v === 'automatic');
+    const uniq = [...new Set(transVals)];
+    const transmission =
+      uniq.length === 0
+        ? '—'
+        : uniq.length === 1
+          ? uniq[0] === 'manual'
+            ? 'Manual'
+            : 'Automatic'
+          : 'Mixed';
+    return { car, transmission };
   }
 }

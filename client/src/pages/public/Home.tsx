@@ -284,49 +284,51 @@ export default function Home() {
                   return (
                     <div
                       key={pkg.id}
-                      className={`relative bg-card rounded-2xl border-2 ${borderClass} p-6 sm:p-8 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
+                      className={`relative bg-card rounded-2xl border-2 ${borderClass} overflow-hidden p-0 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
                     >
                       {popular && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
                           <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                         </div>
                       )}
                       {pkg.imageUrl ? (
-                        <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border bg-muted mb-5 -mt-1">
+                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0">
                           <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
                         </div>
                       ) : null}
-                      <div className="mb-6">
-                        <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-4xl font-bold text-foreground">{pkg.price}</span>
-                          <span className="text-lg text-muted-foreground">֏</span>
+                      <div className="p-6 sm:p-8 flex flex-col flex-1 min-h-0">
+                        <div className="mb-6">
+                          <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-4xl font-bold text-foreground">{pkg.price}</span>
+                            <span className="text-lg text-muted-foreground">֏</span>
+                          </div>
+                          <p className="text-muted-foreground text-sm mt-1">
+                            {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
+                            {t("lessonTypeTheory").toLowerCase()}
+                          </p>
                         </div>
-                        <p className="text-muted-foreground text-sm mt-1">
-                          {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
-                          {t("lessonTypeTheory").toLowerCase()}
-                        </p>
-                      </div>
-                      <ul className="space-y-3 mb-8">
-                        {pkg.features.map((f, j) => (
-                          <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                            {f}
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="mt-auto">
-                        <a href={panelHref("/register")}>
-                          <Button
-                            className={`w-full ${
-                              popular
-                                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                                : "bg-background hover:bg-accent text-foreground"
-                            }`}
-                          >
-                            {t("choosePackage")}
-                          </Button>
-                        </a>
+                        <ul className="space-y-3 mb-8">
+                          {pkg.features.map((f, j) => (
+                            <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-auto">
+                          <a href={panelHref("/register")}>
+                            <Button
+                              className={`w-full ${
+                                popular
+                                  ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                                  : "bg-background hover:bg-accent text-foreground"
+                              }`}
+                            >
+                              {t("choosePackage")}
+                            </Button>
+                          </a>
+                        </div>
                       </div>
                     </div>
                   );

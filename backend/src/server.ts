@@ -5,7 +5,6 @@ import config from './config';
 import { connectDatabase } from './database/sequelize';
 import { syncModels } from './models';
 import { seedDatabaseIfEmpty } from './seed/seed-database';
-import MarketingService from './services/marketing.service';
 import BookingCronService from './services/booking-cron.service';
 import { LoggerUtil } from './utils';
 
@@ -40,8 +39,6 @@ async function start() {
       await seedDatabaseIfEmpty();
       LoggerUtil.info('Seed check completed');
     }
-    await MarketingService.ensureMarketingDefaults();
-    LoggerUtil.info('Marketing defaults ensured');
   } catch (e) {
     LoggerUtil.error(`Database startup failed: ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);

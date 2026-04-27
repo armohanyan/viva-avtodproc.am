@@ -4,7 +4,7 @@ import { Card } from "src/components/ui/card";
 import { CountUpText } from "src/lib/motion";
 import { useLang } from "src/lib/i18n";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
-import { Star, CalendarDays, MapPin, Car, Gauge } from "lucide-react";
+import { Star, CalendarDays, Car, Gauge } from "lucide-react";
 import type { Instructor } from "src/data/instructors";
 
 type Props = {
@@ -106,10 +106,6 @@ export default function InstructorCard({
             <span className="break-words">
               {t("lessonPrice")}: <CountUpText value={instructor.hourlyPrice} /> ֏ / {t("perHour")}
             </span>
-          </div>
-          <div className="min-w-0 flex items-center gap-1.5">
-            <MapPin className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
-            <span className="break-words">{instructor.location}</span>
           </div>
           <div className="min-w-0 flex items-center gap-1.5">
             <Car className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />

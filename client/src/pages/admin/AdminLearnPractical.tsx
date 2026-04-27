@@ -7,13 +7,7 @@ import LessonBookingCalendar from "src/components/LessonBookingCalendar";
 import { CalendarClock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
-import {
-  branchNameById,
-  branchOptionLabel,
-  branchesInCity,
-  DEFAULT_PRIMARY_BRANCH_ID,
-  useBranches,
-} from "src/modules/branches";
+import { branchNameById, branchOptionLabel, branchesInCity, useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 import { useAdminLearnSearchParams } from "src/lib/adminLearnSearchParams";
 import AdminStudentSearchSelect from "src/components/admin/AdminStudentSearchSelect";
@@ -41,7 +35,7 @@ export default function AdminLearnPractical() {
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [instructorId, setInstructorId] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [branchId, setBranchId] = useState(DEFAULT_PRIMARY_BRANCH_ID);
+  const [branchId, setBranchId] = useState("");
 
   const branchesForCity = useMemo(() => (cityId ? branchesInCity(branches, cityId) : []), [branches, cityId]);
   const branchIdsForCity = useMemo(() => branchesForCity.map((b) => b.id), [branchesForCity]);

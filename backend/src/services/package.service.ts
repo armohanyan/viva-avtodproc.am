@@ -1,10 +1,13 @@
 import { sequelize } from '../database/sequelize';
 import { Package, StudentProfile } from '../models';
+import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
 
 export type PackageDto = {
   id: number;
   name: string;
   price: string;
+  /** Parsed AMD amount from {@link price} for checkout (0 if unknown). */
+  priceAmd: number;
   /** Practical (in-car) lessons — same value as legacy `lessons` column. */
   lessons: number;
   theoryLessons: number;
@@ -24,6 +27,7 @@ export default class PackageService {
         id: p.id,
         name: p.name,
         price: p.priceDisplay,
+        priceAmd: parseAmdFromPriceDisplay(p.priceDisplay),
         lessons: p.lessons,
         theoryLessons: Number(p.theoryLessons ?? 0),
         enrolled,

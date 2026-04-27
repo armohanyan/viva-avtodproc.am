@@ -1,4 +1,12 @@
+import type { Transaction } from 'sequelize';
+import { sequelize } from '../database/sequelize';
 import { Branch, Package, StudentExtraPractical, StudentProfile, User } from '../models';
+import FinanceService from './finance.service';
+import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
+import ErrorsUtil from '../utils/errors.util';
+import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+
+const { InputValidationError } = ErrorsUtil;
 
 /** Fallback when legacy rows have `theory_lessons_total` = 0 but package defines theory. */
 function legacyTheorySessionsFromPackageName(pkg: Package): number {
@@ -91,40 +99,101 @@ export default class StudentEntitlementsService {
     }));
   }
 
-  static async assignPackage(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
+  /**
+   * Applies package enrollment (profile rows). Used both for admin-style assigns and paid checkout.
+   */
+  private static async applyPackageAssignment(
+    userId: number,
+    packageId: number,
+    transaction?: Transaction,
+  ): Promise<{ branchId: number } | null> {
+    const user = await User.findByPk(userId, { transaction });
+    if (!user || user.accountType !== 'student') return null;
+    const pkg = await Package.findByPk(packageId, { transaction });
+    if (!pkg) return null;
+    const theoryTotal =
+      Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : legacyTheorySessionsFromPackageName(pkg);
+    let profile = await StudentProfile.findOne({ where: { userId }, transaction });
+    if (!profile) {
+      const branch = await Branch.findOne({ order: [['id', 'ASC']], transaction });
+      if (!branch) return null;
+      await StudentProfile.create(
+        {
+          userId,
+          branchId: branch.id,
+          packageId: pkg.id,
+          instructorUserId: null,
+          lessonsCompleted: 0,
+          lessonsTotal: pkg.lessons,
+          theoryLessonsCompleted: 0,
+          theoryLessonsTotal: theoryTotal,
+          enrollmentStatus: 'active',
+          skillRating: 0,
+          licenseAchieved: false,
+          joinedAt: new Date().toISOString().slice(0, 10),
+        },
+        { transaction },
+      );
+      return { branchId: branch.id };
+    }
+    await profile.update(
+      {
+        packageId: pkg.id,
+        lessonsTotal: pkg.lessons,
+        lessonsCompleted: 0,
+        theoryLessonsTotal: theoryTotal,
+        theoryLessonsCompleted: 0,
+        enrollmentStatus: 'active',
+      },
+      { transaction },
+    );
+    return { branchId: profile.branchId };
+  }
+
+  /** Simulated online checkout: records POS-style payment then enrolls the student in the package. */
+  static async purchasePackageAfterOnlinePayment(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
     if (!user || user.accountType !== 'student') return null;
     const pkg = await Package.findByPk(packageId);
     if (!pkg) return null;
-    const theoryTotal = Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : legacyTheorySessionsFromPackageName(pkg);
-    let profile = await StudentProfile.findOne({ where: { userId } });
-    if (!profile) {
-      const branch = await Branch.findOne({ order: [['id', 'ASC']] });
-      if (!branch) return null;
-      await StudentProfile.create({
-        userId,
-        branchId: branch.id,
-        packageId: pkg.id,
-        instructorUserId: null,
-        lessonsCompleted: 0,
-        lessonsTotal: pkg.lessons,
-        theoryLessonsCompleted: 0,
-        theoryLessonsTotal: theoryTotal,
-        enrollmentStatus: 'active',
-        skillRating: 0,
-        licenseAchieved: false,
-        joinedAt: new Date().toISOString().slice(0, 10),
-      });
-    } else {
-      await profile.update({
-        packageId: pkg.id,
-        lessonsTotal: pkg.lessons,
-        lessonsCompleted: 0,
-        theoryLessonsTotal: theoryTotal,
-        theoryLessonsCompleted: 0,
-        enrollmentStatus: 'active',
-      });
+    const gross = parseAmdFromPriceDisplay(pkg.priceDisplay);
+    if (gross <= 0) {
+      throw new InputValidationError(
+        'This package does not have a valid price for online payment.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
     }
+
+    await sequelize.transaction(async (transaction) => {
+      const applied = await this.applyPackageAssignment(userId, packageId, transaction);
+      if (!applied) {
+        throw new InputValidationError('Could not enroll in package.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      await FinanceService.create({
+        customer: user.name.trim() || 'Student',
+        email: user.email ?? '',
+        description: `Driving package: ${pkg.name}`,
+        branchId: applied.branchId,
+        channel: 'online',
+        method: 'card',
+        grossAmd: gross,
+        feeAmd: 0,
+        status: 'completed',
+        providerRef: `package-pos:${userId}:${packageId}:${Date.now()}`,
+        source: 'system',
+        bookingId: null,
+        transaction,
+      });
+    });
+
+    return this.get(userId);
+  }
+
+  static async assignPackage(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
+    const applied = await sequelize.transaction(async (transaction) =>
+      this.applyPackageAssignment(userId, packageId, transaction),
+    );
+    if (!applied) return null;
     return this.get(userId);
   }
 

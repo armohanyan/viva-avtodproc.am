@@ -17,6 +17,8 @@ export type TheoryCohortDto = {
   meetLink: string;
   status: string;
   branchId: number;
+  sessionStartTime: string | null;
+  sessionEndTime: string | null;
 };
 
 export type TheoryCohortEnrollmentStudentDto = {
@@ -31,6 +33,15 @@ function dateIso(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return String(v).slice(0, 10);
+}
+
+const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function timeHmOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (s.length === 0) return null;
+  return HM.test(s) ? s : null;
 }
 
 async function enrolledCount(cohortId: number): Promise<number> {
@@ -49,6 +60,8 @@ function toDto(c: TheoryCohort, enrolled: number): TheoryCohortDto {
     meetLink: c.meetLink,
     status: c.status,
     branchId: c.branchId,
+    sessionStartTime: timeHmOrNull(c.sessionStartTime),
+    sessionEndTime: timeHmOrNull(c.sessionEndTime),
   };
 }
 
@@ -71,7 +84,11 @@ export default class TheoryCohortService {
     meetLink?: string;
     status: string;
     branchId: number;
+    sessionStartTime?: string | null;
+    sessionEndTime?: string | null;
   }): Promise<TheoryCohortDto> {
+    const startT = timeHmOrNull(input.sessionStartTime);
+    const endT = timeHmOrNull(input.sessionEndTime);
     const c = await TheoryCohort.create({
       name: input.name.trim(),
       startDateIso: input.startDateIso,
@@ -81,6 +98,8 @@ export default class TheoryCohortService {
       meetLink: input.meetLink?.trim() ?? '',
       status: input.status,
       branchId: input.branchId,
+      sessionStartTime: startT,
+      sessionEndTime: endT,
     });
     return toDto(c, 0);
   }
@@ -96,6 +115,8 @@ export default class TheoryCohortService {
       meetLink: string;
       status: string;
       branchId: number;
+      sessionStartTime: string | null;
+      sessionEndTime: string | null;
     }>,
   ): Promise<TheoryCohortDto | null> {
     const c = await TheoryCohort.findByPk(id);
@@ -113,6 +134,8 @@ export default class TheoryCohortService {
       ...(patch.meetLink !== undefined ? { meetLink: patch.meetLink.trim() } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
       ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
+      ...(patch.sessionStartTime !== undefined ? { sessionStartTime: timeHmOrNull(patch.sessionStartTime) } : {}),
+      ...(patch.sessionEndTime !== undefined ? { sessionEndTime: timeHmOrNull(patch.sessionEndTime) } : {}),
     });
     await c.reload();
     return toDto(c, enc);

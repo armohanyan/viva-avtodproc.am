@@ -742,6 +742,29 @@ async function ensureBookingsLessonPassedSuccessfullyColumn(): Promise<void> {
   }
 }
 
+async function ensureBookingsPrepaidMetaColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'prepaid_meta'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `prepaid_meta` JSON NULL');
+}
+
 async function ensureAuthTables(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -998,6 +1021,35 @@ async function ensureInstructorProfilesDropScheduleColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `instructor_profiles` DROP COLUMN `schedule`');
 }
 
+/** Derived display fields removed — location comes from branches/cities; car/transmission from fleet links. */
+async function ensureInstructorProfilesDropRedundantDisplayColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_profiles'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const dropIfExists = async (columnName: string) => {
+    const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_profiles' AND COLUMN_NAME = ?`,
+      { replacements: [columnName], type: QueryTypes.SELECT },
+    );
+    if (colRows.length === 0) {
+      return;
+    }
+    await sequelize.query(`ALTER TABLE \`instructor_profiles\` DROP COLUMN \`${columnName}\``);
+  };
+  await dropIfExists('location');
+  await dropIfExists('car_label');
+  await dropIfExists('transmission');
+}
+
 /** Drops legacy `theory_cohorts.schedule` (free-text); period is `start_date_iso` / `end_date_iso`. */
 async function ensureTheoryCohortsDropScheduleColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -1020,6 +1072,36 @@ async function ensureTheoryCohortsDropScheduleColumn(): Promise<void> {
     return;
   }
   await sequelize.query('ALTER TABLE `theory_cohorts` DROP COLUMN `schedule`');
+}
+
+/** `session_start_time` / `session_end_time` — local HH:MM for when the group’s theory class runs. */
+async function ensureTheoryCohortSessionTimeColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const addTimeCol = async (column: string) => {
+    const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts' AND COLUMN_NAME = ?`,
+      { replacements: [column], type: QueryTypes.SELECT },
+    );
+    if (colRows.length > 0) {
+      return;
+    }
+    await sequelize.query(
+      `ALTER TABLE \`theory_cohorts\` ADD COLUMN \`${column}\` VARCHAR(5) NULL`,
+    );
+  };
+  await addTimeCol('session_start_time');
+  await addTimeCol('session_end_time');
 }
 
 /**
@@ -1105,7 +1187,9 @@ export async function syncModels(): Promise<void> {
   await ensureOAuthAccountsIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureInstructorProfilesDropScheduleColumn();
+  await ensureInstructorProfilesDropRedundantDisplayColumns();
   await ensureTheoryCohortsDropScheduleColumn();
+  await ensureTheoryCohortSessionTimeColumns();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensurePackagesTheoryLessonsColumn();
@@ -1125,6 +1209,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsConfirmationEmailSentAtColumn();
   await ensureBookingsCancellationRequestedAtColumn();
   await ensureBookingsLessonPassedSuccessfullyColumn();
+  await ensureBookingsPrepaidMetaColumn();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
   await ensureStudentExamStatsTable();
 }

@@ -3,7 +3,7 @@ import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
-import { formatShortDateFromIso, todayIsoDate } from "src/lib/adminFormat";
+import { formatCohortSessionTimeLabel, formatShortDateFromIso, todayIsoDate } from "src/lib/adminFormat";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
@@ -20,7 +20,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import LessonBookingCalendar, { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
-import { branchNameById, DEFAULT_PRIMARY_BRANCH_ID, useBranches } from "src/modules/branches";
+import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import {
@@ -205,7 +205,15 @@ export default function AdminBookings() {
   const [editTheoryCohortId, setEditTheoryCohortId] = useState("");
   const lastEditSlotInitKey = useRef("");
   const [theoryCohorts, setTheoryCohorts] = useState<
-    { id: string; name: string; branchId: string; instructorName: string; status: string }[]
+    {
+      id: string;
+      name: string;
+      branchId: string;
+      instructorName: string;
+      status: string;
+      sessionStartTime: string | null;
+      sessionEndTime: string | null;
+    }[]
   >([]);
 
   const activeTheoryCohorts = useMemo(
@@ -289,7 +297,15 @@ export default function AdminBookings() {
     void (async () => {
       try {
         const data = await vivaApiJson<
-          { id: number; name: string; branchId: number; instructorName: string; status: string }[]
+          {
+            id: number;
+            name: string;
+            branchId: number;
+            instructorName: string;
+            status: string;
+            sessionStartTime: string | null;
+            sessionEndTime: string | null;
+          }[]
         >("/theory-cohorts");
         if (cancelled) return;
         setTheoryCohorts(
@@ -300,6 +316,8 @@ export default function AdminBookings() {
                 branchId: String(c.branchId),
                 instructorName: c.instructorName,
                 status: c.status,
+                sessionStartTime: c.sessionStartTime ?? null,
+                sessionEndTime: c.sessionEndTime ?? null,
               }))
             : [],
         );
@@ -359,7 +377,7 @@ export default function AdminBookings() {
       time: "10:00",
       type: "practical",
       status: "confirmed",
-      branchId: branches[0]?.id ?? DEFAULT_PRIMARY_BRANCH_ID,
+      branchId: branches[0]?.id ?? "",
     };
     setSlotPick(null);
     setTheoryCohortId("");
@@ -1186,11 +1204,15 @@ export default function AdminBookings() {
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
-                      {activeTheoryCohorts.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
+                      {activeTheoryCohorts.map((c) => {
+                        const time = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.name} — {c.instructorName}
+                            {time ? ` · ${time}` : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                     <p className="text-xs text-muted-foreground mt-1">{t("adminBookingTheoryCohortHint")}</p>
                   </div>
@@ -1458,11 +1480,15 @@ export default function AdminBookings() {
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
-                      {activeTheoryCohorts.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
+                      {activeTheoryCohorts.map((c) => {
+                        const time = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.name} — {c.instructorName}
+                            {time ? ` · ${time}` : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                     <p className="text-xs text-muted-foreground mt-1">{t("adminBookingTheoryCohortHint")}</p>
                   </div>

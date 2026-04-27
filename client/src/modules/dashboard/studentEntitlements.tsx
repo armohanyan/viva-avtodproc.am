@@ -59,7 +59,7 @@ type StudentEntitlementsContextValue = {
   entitlementsLoading: boolean;
   entitlementsError: string | null;
   refreshEntitlements: () => Promise<void>;
-  purchasePackage: (packageId: number) => Promise<void>;
+  completePackagePurchase: (packageId: number) => Promise<void>;
   purchaseExtraPracticalBlock: () => Promise<void>;
 };
 
@@ -144,13 +144,16 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
     };
   }, [ownedPackages, extraPracticalBlocks, bookings]);
 
-  const purchasePackage = useCallback(
+  const completePackagePurchase = useCallback(
     async (packageId: number) => {
       if (!user?.id || user.accountType !== "student") return;
-      await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements/package`, {
-        method: "POST",
-        body: { packageId },
-      });
+      await vivaApiJson<EntitlementsApi>(
+        `/students/${encodeURIComponent(user.id)}/entitlements/package/complete-purchase`,
+        {
+          method: "POST",
+          body: { packageId },
+        },
+      );
       await refreshEntitlements();
     },
     [user?.id, user?.accountType, refreshEntitlements],
@@ -182,7 +185,7 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
         entitlementsLoading,
         entitlementsError,
         refreshEntitlements,
-        purchasePackage,
+        completePackagePurchase,
         purchaseExtraPracticalBlock,
       }) satisfies StudentEntitlementsContextValue,
     [
@@ -192,7 +195,7 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
       entitlementsLoading,
       entitlementsError,
       refreshEntitlements,
-      purchasePackage,
+      completePackagePurchase,
       purchaseExtraPracticalBlock,
     ],
   );

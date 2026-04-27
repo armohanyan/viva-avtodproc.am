@@ -8,6 +8,12 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { ResourceNotFoundError } = ErrorsUtil;
 
+const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const optionalSessionTime = z
+  .union([z.string().regex(HM, 'Time must be HH:MM (24h)'), z.null(), z.literal('')])
+  .optional()
+  .transform((s) => (s === undefined || s === null || s === '' ? null : s));
+
 const createSchema = z.object({
   name: z.string().min(1),
   startDateIso: z.string().min(1),
@@ -17,6 +23,8 @@ const createSchema = z.object({
   meetLink: z.string().optional(),
   status: z.string().min(1),
   branchId: z.coerce.number().int().positive(),
+  sessionStartTime: optionalSessionTime,
+  sessionEndTime: optionalSessionTime,
 });
 
 const updateSchema = createSchema.partial();

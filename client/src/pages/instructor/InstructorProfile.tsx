@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { useAccount } from "src/modules/accounts";
 import { useInstructors } from "src/modules/instructors/useInstructors";
-import { formatInstructorBranches, formatInstructorCities } from "src/modules/instructors/instructorLabels";
+import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
 import { useBranches } from "src/modules/branches";
 import { useCities } from "src/modules/cities";
 import { vivaApiJson } from "src/lib/vivaApi";
@@ -68,7 +68,6 @@ export default function InstructorProfile() {
     }
   };
 
-  const citiesLine = me ? formatInstructorCities(me, branches, cities) : "—";
   const branchesLine = me ? formatInstructorBranches(me, branches, cities) : "—";
 
   return (
@@ -113,10 +112,6 @@ export default function InstructorProfile() {
                 </div>
                 <div className="sm:col-span-2 space-y-3 rounded-lg border border-border/80 bg-muted/10 p-4">
                   <h4 className="text-sm font-semibold text-foreground">{t("instructorProfileTeachingAreasTitle")}</h4>
-                  <div>
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorCitiesLabel")}</label>
-                    <p className="text-sm text-foreground">{citiesLine}</p>
-                  </div>
                   <div>
                     <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>
                     <p className="text-sm text-foreground leading-snug">{branchesLine}</p>

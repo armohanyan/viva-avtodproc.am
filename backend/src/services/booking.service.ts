@@ -5,6 +5,7 @@ import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import FinanceService from './finance.service';
 import BookingConfirmationNotifier from './booking-confirmation-notifier.service';
+import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
@@ -132,6 +133,8 @@ export type StudentMultiSlotBookingDto = {
   maxHoldExtensions: number;
   /** True when lesson is within the “pay now / hold” calendar horizon. */
   paymentRequiredNow: boolean;
+  /** True when the booking is fully covered by package / extra practical credits (no card payment). */
+  coveredByPrepaidCredits: boolean;
 };
 
 function dateIsoString(v: unknown): string {
@@ -292,6 +295,23 @@ async function replaceBookingSlotRows(
   );
 }
 
+function coercePrepaidMetaFromRow(raw: unknown): PrepaidMeta | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const pkg = Math.max(0, Math.floor(Number(o.pkg) || 0));
+  const extras: Array<{ id: number; n: number }> = [];
+  if (Array.isArray(o.extras)) {
+    for (const e of o.extras) {
+      if (e && typeof e === 'object') {
+        const ex = e as Record<string, unknown>;
+        extras.push({ id: Math.floor(Number(ex.id) || 0), n: Math.max(0, Math.floor(Number(ex.n) || 0)) });
+      }
+    }
+  }
+  const m: PrepaidMeta = { pkg, extras: extras.filter((x) => x.id > 0 && x.n > 0) };
+  return StudentPracticalCreditsService.isNonEmptyMeta(m) ? m : null;
+}
+
 /** Ends a practical booking, frees slots, optionally records a refund line when the student had paid. */
 async function finalizePracticalCancellationInTx(opts: {
   row: Booking;
@@ -305,12 +325,18 @@ async function finalizePracticalCancellationInTx(opts: {
   const gross = row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
   const nextStatus: BookingStatus = refundIfPaid && wasPaid && gross > 0 ? 'refunded' : 'cancelled';
 
+  const prepaidMeta = coercePrepaidMetaFromRow(row.prepaidMeta as unknown);
+  if (prepaidMeta) {
+    await StudentPracticalCreditsService.restoreSlots(studentUserId, prepaidMeta, transaction);
+  }
+
   await row.update(
     {
       status: nextStatus,
       holdExpiresAt: null,
       holdExtensionCount: 0,
       cancellationRequestedAt: null,
+      prepaidMeta: null,
     },
     { transaction },
   );
@@ -642,65 +668,125 @@ export default class BookingService {
 
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
     const today = todayIsoUtc();
-    const paymentRequiredNow = isLessonOnOrBeforePayHorizon(dateIso, today);
-
-    if (paymentRequiredNow && input.payNow === false) {
-      throw new InputValidationError(
-        'Payment is required for this lesson date; you cannot defer payment.',
-        HttpStatusCodesUtil.BAD_REQUEST,
-      );
-    }
-
-    const startPaymentHold = paymentRequiredNow || input.payNow === true;
-    const holdExpiresAt = startPaymentHold ? new Date(Date.now() + PAYMENT_HOLD_MS) : null;
 
     try {
-      const row = await sequelize.transaction(async (transaction) => {
-        for (const slot of sorted) {
-          const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-            input.instructorUserId,
-            dateIso,
-            slot,
-          );
+      const { row, coveredByPrepaidCredits, paymentRequiredNow, holdExpiresAt } = await sequelize.transaction(
+        async (transaction) => {
+          for (const slot of sorted) {
+            const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+              input.instructorUserId,
+              dateIso,
+              slot,
+            );
 
-          if (unavailable) {
+            if (unavailable) {
+              throw new InputValidationError(
+                'Instructor is not available at this time (day off, break, or outside work hours).',
+                HttpStatusCodesUtil.BAD_REQUEST,
+              );
+            }
+          }
+
+          const creditAvailable = await StudentPracticalCreditsService.availableSlotCount(
+            input.studentUserId,
+            transaction,
+          );
+          if (creditAvailable >= sorted.length) {
+            const meta = await StudentPracticalCreditsService.consumeSlots(
+              input.studentUserId,
+              sorted.length,
+              transaction,
+            );
+            const paidAt = new Date();
+            const booking = await Booking.create(
+              {
+                studentUserId: input.studentUserId,
+                instructorUserId: input.instructorUserId,
+                branchId: input.branchId,
+                dateIso,
+                time: sorted[0],
+                endTime: exclusiveEnd,
+                totalPriceAmd: 0,
+                lessonType: 'practical',
+                status: 'confirmed',
+                paidAt,
+                holdExpiresAt: null,
+                holdExtensionCount: 0,
+                prepaidMeta: meta as unknown as Record<string, unknown>,
+              },
+              { transaction },
+            );
+
+            await BookingSlot.bulkCreate(
+              sorted.map((slotTime) => ({
+                bookingId: booking.id,
+                instructorUserId: input.instructorUserId,
+                dateIso,
+                slotTime,
+              })),
+              { transaction },
+            );
+
+            return {
+              row: booking,
+              coveredByPrepaidCredits: true,
+              paymentRequiredNow: false,
+              holdExpiresAt: null as Date | null,
+            };
+          }
+
+          const paymentRequiredNow = isLessonOnOrBeforePayHorizon(dateIso, today);
+          if (paymentRequiredNow && input.payNow === false) {
             throw new InputValidationError(
-              'Instructor is not available at this time (day off, break, or outside work hours).',
+              'Payment is required for this lesson date; you cannot defer payment.',
               HttpStatusCodesUtil.BAD_REQUEST,
             );
           }
-        }
 
-        const booking = await Booking.create(
-          {
-            studentUserId: input.studentUserId,
-            instructorUserId: input.instructorUserId,
-            branchId: input.branchId,
-            dateIso,
-            time: sorted[0],
-            endTime: exclusiveEnd,
-            totalPriceAmd,
-            lessonType: 'practical',
-            status: 'pending',
-            paidAt: null,
-            holdExpiresAt,
-            holdExtensionCount: 0,
-          },
-          { transaction },
-        );
+          const startPaymentHold = paymentRequiredNow || input.payNow === true;
+          const holdExp = startPaymentHold ? new Date(Date.now() + PAYMENT_HOLD_MS) : null;
 
-        await BookingSlot.bulkCreate(
-          sorted.map((slotTime) => ({
-            bookingId: booking.id,
-            instructorUserId: input.instructorUserId,
-            dateIso,
-            slotTime,
-          })),
-          { transaction },
-        );
+          const booking = await Booking.create(
+            {
+              studentUserId: input.studentUserId,
+              instructorUserId: input.instructorUserId,
+              branchId: input.branchId,
+              dateIso,
+              time: sorted[0],
+              endTime: exclusiveEnd,
+              totalPriceAmd,
+              lessonType: 'practical',
+              status: 'pending',
+              paidAt: null,
+              holdExpiresAt: holdExp,
+              holdExtensionCount: 0,
+              prepaidMeta: null,
+            },
+            { transaction },
+          );
 
-        return booking;
-      });
+          await BookingSlot.bulkCreate(
+            sorted.map((slotTime) => ({
+              bookingId: booking.id,
+              instructorUserId: input.instructorUserId,
+              dateIso,
+              slotTime,
+            })),
+            { transaction },
+          );
+
+          return {
+            row: booking,
+            coveredByPrepaidCredits: false,
+            paymentRequiredNow,
+            holdExpiresAt: holdExp,
+          };
+        },
+      );
+
+      if (coveredByPrepaidCredits) {
+        void BookingConfirmationNotifier.trySendForBookingId(row.id).catch(() => {});
+      }
 
       return {
         id: row.id,
@@ -709,17 +795,17 @@ export default class BookingService {
         slots: sorted,
         startTime: sorted[0],
         endTimeExclusive: exclusiveEnd,
-        totalPriceAmd,
+        totalPriceAmd: coveredByPrepaidCredits ? 0 : totalPriceAmd,
         hourlyRateAmd: hourly,
-        status: 'pending',
+        status: coveredByPrepaidCredits ? 'confirmed' : 'pending',
         branchId: input.branchId,
         holdExpiresAt: holdExpiresAt ? holdExpiresAt.toISOString() : null,
         holdExtensionCount: 0,
         maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
         paymentRequiredNow,
+        coveredByPrepaidCredits,
       };
     } catch (e) {
-      console.log(e, 'eee')
       if (isDuplicateSlotClaimError(e)) {
         throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
       }

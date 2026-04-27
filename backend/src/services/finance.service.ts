@@ -1,4 +1,4 @@
-import { col, fn, where as sqlWhere } from 'sequelize';
+import { col, fn, where as sqlWhere, type Transaction } from 'sequelize';
 import type {
   FinanceTxChannel,
   FinanceTxMethod,
@@ -82,11 +82,12 @@ export default class FinanceService {
     source: FinanceTxSource;
     createdAt?: string;
     bookingId?: number | null;
+    transaction?: Transaction;
   }): Promise<FinanceTxDto> {
     const bookingIdNorm =
       input.bookingId === undefined || input.bookingId === null ? null : Number(input.bookingId);
     if (bookingIdNorm != null && Number.isFinite(bookingIdNorm)) {
-      const booking = await Booking.findByPk(bookingIdNorm);
+      const booking = await Booking.findByPk(bookingIdNorm, { transaction: input.transaction });
       if (!booking) {
         throw new ErrorsUtil.InputValidationError('Linked booking was not found.', HttpStatusCodesUtil.BAD_REQUEST);
       }
@@ -99,21 +100,24 @@ export default class FinanceService {
     }
 
     const createdAt = input.createdAt ? new Date(input.createdAt) : new Date();
-    const row = await FinanceTransaction.create({
-      customer: input.customer.trim(),
-      email: (input.email ?? '').trim(),
-      description: input.description.trim(),
-      branchId: input.branchId,
-      channel: input.channel,
-      method: input.method,
-      grossAmd: input.grossAmd,
-      feeAmd: input.feeAmd,
-      status: input.status,
-      providerRef: (input.providerRef ?? '').trim() || '—',
-      source: input.source,
-      createdAt,
-      bookingId: bookingIdNorm,
-    } as never);
+    const row = await FinanceTransaction.create(
+      {
+        customer: input.customer.trim(),
+        email: (input.email ?? '').trim(),
+        description: input.description.trim(),
+        branchId: input.branchId,
+        channel: input.channel,
+        method: input.method,
+        grossAmd: input.grossAmd,
+        feeAmd: input.feeAmd,
+        status: input.status,
+        providerRef: (input.providerRef ?? '').trim() || '—',
+        source: input.source,
+        createdAt,
+        bookingId: bookingIdNorm,
+      } as never,
+      { transaction: input.transaction },
+    );
     return toDto(row);
   }
 

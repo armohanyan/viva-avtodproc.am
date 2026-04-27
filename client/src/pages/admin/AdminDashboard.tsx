@@ -253,7 +253,6 @@ export default function AdminDashboard() {
       <Card className="border-border overflow-hidden min-w-0 mb-8">
         <div className="p-5 border-b border-border">
           <h3 className="font-semibold text-foreground">{t("adminTodayLessonsTitle")}</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-3xl">{t("adminTodayLessonsSubtitle")}</p>
         </div>
         <AdminTableScroll>
           <table className="w-full text-sm min-w-[48rem]">

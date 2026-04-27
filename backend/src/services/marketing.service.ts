@@ -56,25 +56,18 @@ const SK = {
   SOCIAL_WHATSAPP: 'social_whatsapp',
 } as const;
 
-const DEFAULT_STATS: MarketingStatDto[] = [
-  { key: 'years_exp', value: '14+', sortOrder: 0 },
-  { key: 'students', value: '3,200+', sortOrder: 1 },
-  { key: 'instructors', value: '18', sortOrder: 2 },
-  { key: 'success_rate', value: '94%', sortOrder: 3 },
-];
-
-function parseJsonArray(raw: string | undefined, fallback: string[]): string[] {
-  if (!raw?.trim()) return fallback;
+function parseJsonArray(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
   try {
     const v = JSON.parse(raw) as unknown;
-    return Array.isArray(v) ? v.map(String) : fallback;
+    return Array.isArray(v) ? v.map(String) : [];
   } catch {
-    return fallback;
+    return [];
   }
 }
 
-function getSetting(map: Map<string, string>, key: string, fallback: string): string {
-  return map.get(key)?.trim() || fallback;
+function getSetting(map: Map<string, string>, key: string): string {
+  return map.get(key)?.trim() ?? '';
 }
 
 async function loadSettingsMap(): Promise<Map<string, string>> {
@@ -92,29 +85,29 @@ async function readContactFooterSocial(): Promise<{
   social: MarketingSocialDto;
 }> {
   const m = await loadSettingsMap();
-  const phones = parseJsonArray(m.get(SK.CONTACT_PHONES), ['+374 10 123 456', '+374 99 123 456']);
-  const emails = parseJsonArray(m.get(SK.CONTACT_EMAILS), ['info@vivadrive.am', 'support@vivadrive.am']);
-  const primaryTel = getSetting(m, SK.PRIMARY_TEL_HREF, 'tel:+37410123456');
-  const primaryMail = getSetting(m, SK.PRIMARY_MAILTO_HREF, 'mailto:info@vivadrive.am');
+  const phones = parseJsonArray(m.get(SK.CONTACT_PHONES));
+  const emails = parseJsonArray(m.get(SK.CONTACT_EMAILS));
+  const primaryTel = getSetting(m, SK.PRIMARY_TEL_HREF);
+  const primaryMail = getSetting(m, SK.PRIMARY_MAILTO_HREF);
   return {
     contact: {
       phones,
       emails,
-      hoursWeekdays: getSetting(m, SK.HOURS_WEEKDAYS, 'Mon–Fri: 9:00–18:00'),
-      hoursSaturday: getSetting(m, SK.HOURS_SATURDAY, 'Sat: 9:00–15:00'),
+      hoursWeekdays: getSetting(m, SK.HOURS_WEEKDAYS),
+      hoursSaturday: getSetting(m, SK.HOURS_SATURDAY),
       primaryTelHref: primaryTel,
       primaryMailtoHref: primaryMail,
     },
     footer: {
-      addressLine1: getSetting(m, SK.FOOTER_LINE1, 'Yerevan, Armenia'),
-      addressLine2: getSetting(m, SK.FOOTER_LINE2, 'Mashtots Ave, 45'),
+      addressLine1: getSetting(m, SK.FOOTER_LINE1),
+      addressLine2: getSetting(m, SK.FOOTER_LINE2),
     },
     social: {
-      facebook: getSetting(m, SK.SOCIAL_FB, 'https://facebook.com'),
-      instagram: getSetting(m, SK.SOCIAL_IG, 'https://instagram.com'),
-      youtube: getSetting(m, SK.SOCIAL_YT, 'https://youtube.com'),
-      tiktok: getSetting(m, SK.SOCIAL_TT, 'https://www.tiktok.com'),
-      whatsapp: getSetting(m, SK.SOCIAL_WHATSAPP, ''),
+      facebook: getSetting(m, SK.SOCIAL_FB),
+      instagram: getSetting(m, SK.SOCIAL_IG),
+      youtube: getSetting(m, SK.SOCIAL_YT),
+      tiktok: getSetting(m, SK.SOCIAL_TT),
+      whatsapp: getSetting(m, SK.SOCIAL_WHATSAPP),
     },
   };
 }
@@ -139,62 +132,7 @@ function testimonialToDto(r: MarketingTestimonial): MarketingTestimonialDto {
 }
 
 export default class MarketingService {
-  static async ensureDefaultStatsIfEmpty(): Promise<void> {
-    const n = await MarketingStat.count();
-    if (n > 0) return;
-    await MarketingStat.bulkCreate(
-      DEFAULT_STATS.map((s) => ({
-        statKey: s.key,
-        value: s.value,
-        sortOrder: s.sortOrder,
-      })),
-    );
-  }
-
-  static async ensureDefaultSettingsIfEmpty(): Promise<void> {
-    const n = await MarketingSetting.count();
-    if (n > 0) return;
-    const { contact, footer, social } = await readContactFooterSocial();
-    await this.replaceSettingsInternal({ contact, footer, social });
-  }
-
-  static async ensureDefaultTestimonialsIfEmpty(): Promise<void> {
-    const n = await MarketingTestimonial.count();
-    if (n > 0) return;
-    await MarketingTestimonial.bulkCreate([
-      {
-        authorName: 'Anahit K.',
-        quote:
-          'Passed my exam on the first try! The instructors are incredibly patient and professional.',
-        rating: 5,
-        sortOrder: 0,
-        published: true,
-      },
-      {
-        authorName: 'Tigran M.',
-        quote: 'Great experience from start to finish. The booking system made it so easy to schedule lessons.',
-        rating: 5,
-        sortOrder: 1,
-        published: true,
-      },
-      {
-        authorName: 'Mariam S.',
-        quote: 'I was terrified of driving but Viva helped me become confident behind the wheel.',
-        rating: 5,
-        sortOrder: 2,
-        published: true,
-      },
-    ]);
-  }
-
-  static async ensureMarketingDefaults(): Promise<void> {
-    await this.ensureDefaultStatsIfEmpty();
-    await this.ensureDefaultSettingsIfEmpty();
-    await this.ensureDefaultTestimonialsIfEmpty();
-  }
-
   static async listStats(): Promise<MarketingStatDto[]> {
-    await this.ensureDefaultStatsIfEmpty();
     const rows = await MarketingStat.findAll({ order: [['sortOrder', 'ASC']] });
     return rows.map(statRowToDto);
   }
@@ -216,13 +154,11 @@ export default class MarketingService {
   }
 
   static async listTestimonialsAll(): Promise<MarketingTestimonialDto[]> {
-    await this.ensureDefaultTestimonialsIfEmpty();
     const rows = await MarketingTestimonial.findAll({ order: [['sortOrder', 'ASC'], ['id', 'ASC']] });
     return rows.map(testimonialToDto);
   }
 
   static async listTestimonialsPublished(): Promise<MarketingTestimonialDto[]> {
-    await this.ensureDefaultTestimonialsIfEmpty();
     const rows = await MarketingTestimonial.findAll({
       where: { published: true },
       order: [['sortOrder', 'ASC'], ['id', 'ASC']],
@@ -313,7 +249,6 @@ export default class MarketingService {
   }
 
   static async getPublicBundle(): Promise<MarketingPublicBundle> {
-    await this.ensureMarketingDefaults();
     const stats = await this.listStats();
     const testimonials = await this.listTestimonialsPublished();
     const { contact, footer, social } = await readContactFooterSocial();
@@ -338,7 +273,6 @@ export default class MarketingService {
     footer: MarketingFooterDto;
     social: MarketingSocialDto;
   }> {
-    await this.ensureMarketingDefaults();
     const stats = await this.listStats();
     const testimonials = await this.listTestimonialsAll();
     const { contact, footer, social } = await readContactFooterSocial();
