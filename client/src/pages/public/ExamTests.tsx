@@ -10,6 +10,7 @@ import {
   THEMATIC_TOPIC_TITLE_KEYS,
 } from "src/data/thematicTopics";
 import { countThematicTopicQuestions } from "src/lib/examQuestions";
+import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import { ArrowUpRight, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "src/components/ui/button";
@@ -33,6 +34,7 @@ export default function ExamTests() {
     topicStats: {},
     activeSession: null,
   });
+  const [thematicCardTitles, setThematicCardTitles] = useState<string[]>(() => defaultExamQuestionMeta().thematicCardTitles);
 
   const pool = useExamQuestionPool();
 
@@ -44,14 +46,14 @@ export default function ExamTests() {
 
       return {
           iconSrc: THEMATIC_TOPIC_ICON[topicId],
-          title: t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
+          title: thematicCardTitles[i] || t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
           topicId,
           total,
           isFree,
           href: isFree ? `/thematic-questions/quiz/topics?topic=${topicId}` : lockedTopicHref,
         };
       }),
-    [pool, t, lockedTopicHref],
+    [pool, t, lockedTopicHref, thematicCardTitles],
   );
 
   const steps = [
@@ -63,6 +65,20 @@ export default function ExamTests() {
   useEffect(() => {
     setStats(getExamStats());
     return subscribeExamStatsChanged(() => setStats(getExamStats()));
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const sync = async () => {
+      const meta = await loadExamQuestionMeta();
+      if (mounted) setThematicCardTitles(meta.thematicCardTitles);
+    };
+    void sync();
+    const off = subscribeExamQuestionMetaUpdated(() => void sync());
+    return () => {
+      mounted = false;
+      off();
+    };
   }, []);
 
   const totalQuestions = useMemo(

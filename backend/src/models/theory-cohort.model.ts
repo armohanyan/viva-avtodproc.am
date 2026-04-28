@@ -16,6 +16,8 @@ export class TheoryCohort extends Model<InferAttributes<TheoryCohort>, InferCrea
   declare sessionStartTime: string | null;
   /** Local clock time (HH:MM) when the session usually ends, optional. */
   declare sessionEndTime: string | null;
+  /** Fixed course price for the group (AMD). When null, booking total falls back to instructor hourly × slot hours. */
+  declare priceAmd: CreationOptional<number | null>;
 }
 
 TheoryCohort.init(
@@ -31,6 +33,7 @@ TheoryCohort.init(
     branchId: fkUnsignedInt(),
     sessionStartTime: { type: DataTypes.STRING(5), allowNull: true, defaultValue: null },
     sessionEndTime: { type: DataTypes.STRING(5), allowNull: true, defaultValue: null },
+    priceAmd: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, defaultValue: null },
   },
   { sequelize, tableName: 'theory_cohorts', modelName: 'TheoryCohort' },
 );

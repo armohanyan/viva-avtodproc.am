@@ -2,7 +2,7 @@ import AdminLayout from "src/components/AdminLayout";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Landmark, TrendingUp, ArrowDownRight } from "lucide-react";
+import { Landmark, TrendingUp, ArrowDownRight, Wallet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
@@ -16,6 +16,7 @@ import {
   monthStartsInRange,
   monthRange,
   grossCompletedInRange,
+  financeOutcomeTotalInRange,
   expensesTotalInRange,
 } from "./adminFinanceShared";
 import { Bar, Line } from "react-chartjs-2";
@@ -80,11 +81,12 @@ export default function AdminFinanceOverview() {
 
   const locale = localeFromLang(lang);
 
-  const { grossTotal, expenseTotal, monthLabels, incomeByMonth, expensesByMonth } = useMemo(() => {
+  const { grossTotal, expenseTotal, netTotal, monthLabels, incomeByMonth, expensesByMonth } = useMemo(() => {
     const n = financePeriodMonthCount(period);
     const { start: rangeStartInner, end: rangeEndInner } = rollingCalendarMonthsRange(n);
     const gross = grossCompletedInRange(transactions, rangeStartInner, rangeEndInner);
-    const exp = expensesTotalInRange(expenses, rangeStartInner, rangeEndInner);
+    const txOutcomes = financeOutcomeTotalInRange(transactions, rangeStartInner, rangeEndInner);
+    const exp = expensesTotalInRange(expenses, rangeStartInner, rangeEndInner) + txOutcomes;
     const months = monthStartsInRange(rangeStartInner, rangeEndInner);
     const income: number[] = [];
     const expM: number[] = [];
@@ -93,11 +95,12 @@ export default function AdminFinanceOverview() {
       const { start, end } = monthRange(ms);
       labels.push(monthChartLabel(ms, locale));
       income.push(grossCompletedInRange(transactions, start, end));
-      expM.push(expensesTotalInRange(expenses, start, end));
+      expM.push(expensesTotalInRange(expenses, start, end) + financeOutcomeTotalInRange(transactions, start, end));
     }
     return {
       grossTotal: gross,
       expenseTotal: exp,
+      netTotal: gross - exp,
       monthLabels: labels,
       incomeByMonth: income,
       expensesByMonth: expM,
@@ -263,7 +266,7 @@ export default function AdminFinanceOverview() {
         actions={periodSelect}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
         <Card className="p-5 border-border">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -287,6 +290,19 @@ export default function AdminFinanceOverview() {
             </div>
             <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
               <ArrowDownRight className="w-5 h-5 text-amber-700 dark:text-amber-400" />
+            </div>
+          </div>
+        </Card>
+        <Card className="p-5 border-border">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground mb-1 leading-snug">{t("adminFinanceKpiNetFlowMonth")}</p>
+              <p className="text-lg font-bold text-foreground tabular-nums break-words">
+                {loading ? "…" : formatAmd(netTotal)}
+              </p>
+            </div>
+            <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center shrink-0">
+              <Wallet className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
             </div>
           </div>
         </Card>

@@ -1,6 +1,14 @@
 import { Op, Transaction, UniqueConstraintError, literal } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { Booking, BookingSlot, InstructorBranch, InstructorProfile, TheoryCohort, User } from '../models';
+import {
+  Booking,
+  BookingSlot,
+  FinanceTransaction,
+  InstructorBranch,
+  InstructorProfile,
+  TheoryCohort,
+  User,
+} from '../models';
 import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import FinanceService from './finance.service';
@@ -11,6 +19,22 @@ import { HttpStatusCodesUtil } from '../utils';
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
 
 const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
+
+/** Cohort statuses that accept new group-theory bookings (admin + student flows). */
+const THEORY_COHORT_OPEN_FOR_BOOKING = new Set(['active', 'upcoming', 'scheduled', 'planned', 'open']);
+
+function theoryCohortAllowsNewBookings(status: unknown): boolean {
+  return THEORY_COHORT_OPEN_FOR_BOOKING.has(String(status ?? '').trim().toLowerCase());
+}
+
+/** Group theory: use cohort fixed `priceAmd` when set; otherwise instructor hourly × number of slot hours. */
+function totalPriceAmdForTheoryCohortBooking(cohort: TheoryCohort, hourly: number, slotCount: number): number {
+  const raw = cohort.getDataValue('priceAmd') as number | null | undefined;
+  if (raw != null && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+    return Math.round(Number(raw));
+  }
+  return Number.isFinite(hourly) ? Math.round(hourly * slotCount) : 0;
+}
 
 function assertInstructorTeachesLessonType(
   profile: InstructorProfile | null,
@@ -69,6 +93,8 @@ export type BookingAdminDto = {
   cancellationRequestedAt: string | null;
   /** `null` = not set; instructor or staff may update. */
   lessonPassedSuccessfully: boolean | null;
+  /** From `booking_slots` when loaded (admin calendar / multi-day edits). */
+  slotEntries?: { dateIso: string; time: string }[];
 };
 
 /** Canonical booking row statuses (DB + API). */
@@ -295,6 +321,64 @@ async function replaceBookingSlotRows(
   );
 }
 
+const MAX_ADMIN_SLOT_ENTRIES = 64;
+
+type AdminSlotEntry = { dateIso: string; time: string };
+
+/** Dedupe, normalize, sort chronologically; drops invalid hour-starts. */
+function normalizeAdminSlotEntries(raw: readonly { dateIso: string; time: string }[]): AdminSlotEntry[] {
+  const seen = new Set<string>();
+  const out: AdminSlotEntry[] = [];
+  for (const r of raw) {
+    const d = dateIsoString(r.dateIso);
+    const t = normalizeTimeHHMM(String(r.time ?? '').trim());
+    if (!t || !TIME_RE.test(t)) continue;
+    if (parseTimeToMinutes(t) % 60 !== 0) continue;
+    const key = `${d}\t${t}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ dateIso: d, time: t });
+  }
+  out.sort(
+    (a, b) => a.dateIso.localeCompare(b.dateIso) || parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time),
+  );
+  return out;
+}
+
+/** Same calendar day, consecutive full hours → exclusive end on that day; otherwise `null`. */
+function endTimeExclusiveForSlotEntries(entries: readonly AdminSlotEntry[]): string | null {
+  if (entries.length === 0) return null;
+  const d0 = entries[0].dateIso;
+  if (!entries.every((e) => e.dateIso === d0)) return null;
+  const times = [...entries.map((e) => e.time)].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+  for (const t of times) {
+    if (!TIME_RE.test(t) || parseTimeToMinutes(t) % 60 !== 0) return null;
+  }
+  for (let i = 1; i < times.length; i++) {
+    if (parseTimeToMinutes(times[i]) !== parseTimeToMinutes(times[i - 1]) + 60) return null;
+  }
+  return exclusiveEndFromSortedStarts(times);
+}
+
+async function replaceBookingSlotRowsFromEntries(
+  bookingId: number,
+  instructorUserId: number,
+  entries: readonly AdminSlotEntry[],
+  transaction: Transaction,
+): Promise<void> {
+  await BookingSlot.destroy({ where: { bookingId }, transaction });
+  if (entries.length === 0) return;
+  await BookingSlot.bulkCreate(
+    entries.map((e) => ({
+      bookingId,
+      instructorUserId,
+      dateIso: e.dateIso.slice(0, 10),
+      slotTime: e.time,
+    })),
+    { transaction },
+  );
+}
+
 function coercePrepaidMetaFromRow(raw: unknown): PrepaidMeta | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -399,11 +483,35 @@ export default class BookingService {
         { model: User, as: 'student', required: true, attributes: ['id'] },
       ],
       order: [
-        ['dateIso', 'DESC'],
-        ['time', 'DESC'],
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
       ],
     });
-    return rows.map((b) => BookingService.mapRowToAdminDto(b as BookingWithUsers));
+    const bookingIds = rows.map((r) => r.id);
+    const slotByBooking = new Map<number, { dateIso: string; time: string }[]>();
+    if (bookingIds.length > 0) {
+      const slotRows = await BookingSlot.findAll({
+        where: { bookingId: { [Op.in]: bookingIds } },
+        order: [
+          ['dateIso', 'ASC'],
+          ['slotTime', 'ASC'],
+        ],
+      });
+      for (const s of slotRows) {
+        const bid = s.bookingId;
+        const list = slotByBooking.get(bid) ?? [];
+        list.push({ dateIso: dateIsoString(s.dateIso), time: s.slotTime });
+        slotByBooking.set(bid, list);
+      }
+    }
+    return rows.map((b) => {
+      const dto = BookingService.mapRowToAdminDto(b as BookingWithUsers);
+      const se = slotByBooking.get(b.id);
+      if (se && se.length > 0) {
+        (dto as BookingAdminDto).slotEntries = se;
+      }
+      return dto;
+    });
   }
 
   static async setLessonPassedSuccessfully(
@@ -813,6 +921,84 @@ export default class BookingService {
     }
   }
 
+  /** Admin practical / personal theory: any set of on-the-hour slots across multiple calendar days. */
+  private static async createAdminWithArbitrarySlotEntries(input: {
+    studentId: number;
+    instructorName: string;
+    entries: AdminSlotEntry[];
+    lessonType: 'practical' | 'theory_personal';
+    status: string;
+    branchId: number;
+  }): Promise<BookingAdminDto | null> {
+    const entries = input.entries;
+    const instructor = await User.findOne({
+      where: { name: input.instructorName.trim(), accountType: 'instructor' },
+    });
+    if (!instructor) return null;
+    const instructorUserId = instructor.id;
+    const branchOk = await InstructorBranch.findOne({
+      where: { instructorUserId, branchId: input.branchId },
+    });
+    if (!branchOk) {
+      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
+    assertInstructorTeachesLessonType(profile, input.lessonType);
+    const hourly = profile ? Number(profile.hourlyPrice) : 0;
+    const totalPriceAmd = Number.isFinite(hourly) ? hourly * entries.length : 0;
+
+    for (const e of entries) {
+      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+        instructorUserId,
+        e.dateIso,
+        e.time,
+      );
+      if (unavailable) {
+        throw new InputValidationError(
+          'Instructor is not available at this time (day off, break, or outside work hours).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+    }
+
+    const first = entries[0];
+    const endTime = endTimeExclusiveForSlotEntries(entries);
+
+    let newId = 0;
+    try {
+      await sequelize.transaction(async (transaction) => {
+        const created = await Booking.create(
+          {
+            studentUserId: input.studentId,
+            instructorUserId,
+            branchId: input.branchId,
+            dateIso: first.dateIso,
+            time: first.time,
+            endTime,
+            totalPriceAmd,
+            lessonType: input.lessonType,
+            status: input.status,
+            paidAt: null,
+            holdExpiresAt: null,
+          },
+          { transaction },
+        );
+        newId = created.id;
+        await replaceBookingSlotRowsFromEntries(newId, instructorUserId, entries, transaction);
+      });
+    } catch (e) {
+      if (isDuplicateSlotClaimError(e)) {
+        throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
+      }
+      throw e;
+    }
+
+    void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
+
+    const rows = await this.listAdmin();
+    return rows.find((x) => x.id === newId) ?? null;
+  }
+
   static async createAdmin(input: {
     studentId: number;
     instructorName: string;
@@ -823,14 +1009,35 @@ export default class BookingService {
     branchId: number;
     slots?: readonly string[];
     theoryCohortId?: number;
+    slotEntries?: readonly { dateIso: string; time: string }[];
   }): Promise<BookingAdminDto | null> {
+    const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? []);
+    if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
+      if (entriesNorm.length > MAX_ADMIN_SLOT_ENTRIES) {
+        throw new InputValidationError(
+          `At most ${MAX_ADMIN_SLOT_ENTRIES} slot(s) allowed per booking.`,
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      return BookingService.createAdminWithArbitrarySlotEntries({
+        studentId: input.studentId,
+        instructorName: input.instructorName,
+        entries: entriesNorm,
+        lessonType: input.type,
+        status: input.status,
+        branchId: input.branchId,
+      });
+    }
+
     const dateIso = input.dateIso.slice(0, 10);
     const slotList = input.slots?.filter((s) => typeof s === 'string' && s.trim().length > 0) ?? [];
     const useMulti =
-      slotList.length > 0 && (input.type === 'practical' || input.type === 'theory');
+      slotList.length > 0 &&
+      (input.type === 'practical' || input.type === 'theory' || input.type === 'theory_personal');
 
     if (useMulti) {
-      const lessonType: 'practical' | 'theory' = input.type === 'theory' ? 'theory' : 'practical';
+      const lessonType: 'practical' | 'theory' | 'theory_personal' =
+        input.type === 'theory' ? 'theory' : input.type === 'theory_personal' ? 'theory_personal' : 'practical';
       return BookingService.createAdminWithConsecutiveSlots({
         studentId: input.studentId,
         dateIso,
@@ -908,12 +1115,12 @@ export default class BookingService {
     return rows.find((x) => x.id === newId) ?? null;
   }
 
-  /** Admin: one booking spanning consecutive hourly slots (practical or theory group). */
+  /** Admin: one booking spanning consecutive hourly slots (practical, theory group, or personal theory). */
   private static async createAdminWithConsecutiveSlots(input: {
     studentId: number;
     dateIso: string;
     slots: readonly string[];
-    lessonType: 'practical' | 'theory';
+    lessonType: 'practical' | 'theory' | 'theory_personal';
     status: string;
     branchId: number;
     instructorName: string;
@@ -928,6 +1135,7 @@ export default class BookingService {
 
     let instructorUserId: number;
     let branchId = input.branchId;
+    let theoryCohort: TheoryCohort | null = null;
 
     if (input.lessonType === 'theory') {
       if (input.theoryCohortId == null || !Number.isFinite(input.theoryCohortId)) {
@@ -937,8 +1145,12 @@ export default class BookingService {
       if (!cohort) {
         throw new InputValidationError('Theory cohort not found.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      if (String(cohort.status).toLowerCase() !== 'active') {
-        throw new InputValidationError('Only active theory cohorts can be used for new bookings.', HttpStatusCodesUtil.BAD_REQUEST);
+      theoryCohort = cohort;
+      if (!theoryCohortAllowsNewBookings(cohort.status)) {
+        throw new InputValidationError(
+          'This theory group is not open for new bookings (wrong status).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
       }
       branchId = cohort.branchId;
       const instructor = await User.findOne({
@@ -977,7 +1189,12 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, input.lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : 0;
+    const totalPriceAmd =
+      input.lessonType === 'theory' && theoryCohort
+        ? totalPriceAmdForTheoryCohortBooking(theoryCohort, hourly, sorted.length)
+        : Number.isFinite(hourly)
+          ? hourly * sorted.length
+          : 0;
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
     for (const slot of sorted) {
@@ -1065,7 +1282,7 @@ export default class BookingService {
       slots: readonly string[];
       theoryCohortId?: number;
     }>;
-    lessonType: 'practical' | 'theory';
+    lessonType: 'practical' | 'theory' | 'theory_personal';
     slots: readonly string[];
   }): Promise<BookingAdminDto | null> {
     const { id, row, patch, lessonType, slots } = opts;
@@ -1078,6 +1295,7 @@ export default class BookingService {
     let instructorUserId: number;
     let branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
     const nextStudentId = patch.studentId !== undefined ? patch.studentId : row.studentUserId;
+    let theoryCohortForPrice: TheoryCohort | null = null;
 
     if (lessonType === 'theory') {
       const theoryCohortId = patch.theoryCohortId;
@@ -1091,9 +1309,10 @@ export default class BookingService {
       if (!cohort) {
         throw new InputValidationError('Theory cohort not found.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      if (String(cohort.status).toLowerCase() !== 'active') {
+      theoryCohortForPrice = cohort;
+      if (!theoryCohortAllowsNewBookings(cohort.status)) {
         throw new InputValidationError(
-          'Only active theory cohorts can be used for bookings.',
+          'This theory group is not open for bookings (wrong status).',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
@@ -1124,7 +1343,7 @@ export default class BookingService {
       }
       if (!instructorName) {
         throw new InputValidationError(
-          'instructorName is required for practical bookings.',
+          'instructorName is required for practical or personal theory bookings.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
@@ -1145,7 +1364,12 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
+    const totalPriceAmd =
+      lessonType === 'theory' && theoryCohortForPrice
+        ? totalPriceAmdForTheoryCohortBooking(theoryCohortForPrice, hourly, sorted.length)
+        : Number.isFinite(hourly)
+          ? hourly * sorted.length
+          : row.totalPriceAmd ?? null;
 
     for (const slot of sorted) {
       const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
@@ -1196,6 +1420,95 @@ export default class BookingService {
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
 
+  private static async updateAdminWithArbitrarySlotEntriesForExisting(opts: {
+    id: number;
+    row: Booking;
+    patch: Partial<{
+      studentId: number;
+      instructorName: string;
+      dateIso: string;
+      time: string;
+      type: 'practical' | 'theory' | 'theory_personal';
+      status: string;
+      branchId: number;
+    }>;
+    lessonType: 'practical' | 'theory_personal';
+    entries: AdminSlotEntry[];
+  }): Promise<BookingAdminDto | null> {
+    const { id, row, patch, lessonType, entries } = opts;
+    const nextStudentId = patch.studentId !== undefined ? patch.studentId : row.studentUserId;
+
+    let instructorUserId = row.instructorUserId;
+    if (patch.instructorName !== undefined) {
+      const instructor = await User.findOne({
+        where: { name: patch.instructorName.trim(), accountType: 'instructor' },
+      });
+      if (!instructor) return null;
+      instructorUserId = instructor.id;
+    }
+
+    const branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
+    const branchOk = await InstructorBranch.findOne({ where: { instructorUserId, branchId } });
+    if (!branchOk) {
+      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
+    assertInstructorTeachesLessonType(profile, lessonType);
+    const hourly = profile ? Number(profile.hourlyPrice) : 0;
+    const totalPriceAmd = Number.isFinite(hourly) ? hourly * entries.length : row.totalPriceAmd ?? null;
+
+    for (const e of entries) {
+      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+        instructorUserId,
+        e.dateIso,
+        e.time,
+      );
+      if (unavailable) {
+        throw new InputValidationError(
+          'Instructor is not available at this time (day off, break, or outside work hours).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+    }
+
+    const first = entries[0];
+    const endTime = endTimeExclusiveForSlotEntries(entries);
+    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+
+    try {
+      await sequelize.transaction(async (transaction) => {
+        await row.update(
+          {
+            ...(patch.studentId !== undefined ? { studentUserId: nextStudentId } : {}),
+            instructorUserId,
+            dateIso: first.dateIso,
+            time: first.time,
+            endTime,
+            totalPriceAmd,
+            ...(patch.type !== undefined ? { lessonType: patch.type } : {}),
+            ...(patch.status !== undefined ? { status: patch.status } : {}),
+            branchId,
+          },
+          { transaction },
+        );
+        await replaceBookingSlotRowsFromEntries(id, instructorUserId, entries, transaction);
+        if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
+          await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+        }
+      });
+    } catch (e) {
+      if (isDuplicateSlotClaimError(e)) {
+        throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
+      }
+      throw e;
+    }
+
+    void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
+
+    return (await this.listAdmin()).find((x) => x.id === id) ?? null;
+  }
+
   static async updateAdmin(
     id: number,
     patch: Partial<{
@@ -1208,20 +1521,37 @@ export default class BookingService {
       branchId: number;
       slots?: readonly string[];
       theoryCohortId?: number;
+      slotEntries?: readonly { dateIso: string; time: string }[];
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
     if (!row) return null;
 
     const effectiveType = patch.type ?? row.lessonType;
-    const slotList = patch.slots?.filter((s) => typeof s === 'string' && s.trim().length > 0) ?? [];
-    if (slotList.length > 0 && effectiveType === 'theory_personal') {
-      throw new InputValidationError(
-        'Personal theory bookings use a single time, not slots[]',
-        HttpStatusCodesUtil.BAD_REQUEST,
-      );
+    const slotEntriesNorm = normalizeAdminSlotEntries(patch.slotEntries ?? []);
+    if (
+      slotEntriesNorm.length > 0 &&
+      (effectiveType === 'practical' || effectiveType === 'theory_personal')
+    ) {
+      if (slotEntriesNorm.length > MAX_ADMIN_SLOT_ENTRIES) {
+        throw new InputValidationError(
+          `At most ${MAX_ADMIN_SLOT_ENTRIES} slot(s) allowed per booking.`,
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+      return BookingService.updateAdminWithArbitrarySlotEntriesForExisting({
+        id,
+        row,
+        patch,
+        lessonType: effectiveType as 'practical' | 'theory_personal',
+        entries: slotEntriesNorm,
+      });
     }
-    const useMulti = slotList.length > 0 && (effectiveType === 'practical' || effectiveType === 'theory');
+
+    const slotList = patch.slots?.filter((s) => typeof s === 'string' && s.trim().length > 0) ?? [];
+    const useMulti =
+      slotList.length > 0 &&
+      (effectiveType === 'practical' || effectiveType === 'theory' || effectiveType === 'theory_personal');
     if (useMulti) {
       return BookingService.updateAdminWithConsecutiveSlotsForExisting({
         id,
@@ -1569,8 +1899,14 @@ export default class BookingService {
     return { ok: true as const };
   }
 
+  /**
+   * Hard-delete a booking and any linked finance rows (`booking_id` FK is ON DELETE RESTRICT).
+   */
   static async remove(id: number): Promise<boolean> {
-    const n = await Booking.destroy({ where: { id } });
-    return n > 0;
+    return sequelize.transaction(async (transaction) => {
+      await FinanceTransaction.destroy({ where: { bookingId: id }, transaction });
+      const n = await Booking.destroy({ where: { id }, transaction });
+      return n > 0;
+    });
   }
 }

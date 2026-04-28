@@ -10,7 +10,7 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Landmark, Plus } from "lucide-react";
+import { Landmark, Plus, CreditCard, Wallet, CheckCircle2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useToast } from "src/lib/toast";
@@ -77,7 +77,9 @@ export default function AdminFinanceIncome() {
       const data = await vivaApiJson<FinanceTx[]>("/finance/transactions");
       setTransactions(
         Array.isArray(data)
-          ? data.map((tx) => ({ ...tx, bookingId: tx.bookingId ?? null }))
+          ? data
+              .map((tx) => ({ ...tx, bookingId: tx.bookingId ?? null, entryType: tx.entryType ?? "income" }))
+              .filter((tx) => tx.entryType === "income")
           : [],
       );
     } catch (e) {
@@ -209,6 +211,7 @@ export default function AdminFinanceIncome() {
           status: manualForm.status,
           providerRef: manualForm.ref.trim() || "—",
           source: "manual",
+          entryType: "income",
           ...(bookingId !== undefined ? { bookingId } : {}),
         },
       });
@@ -254,6 +257,22 @@ export default function AdminFinanceIncome() {
     return incomeBreakdownCompletedInRange(transactions, start, end);
   }, [transactions]);
 
+  const monthlyTotals = useMemo(() => {
+    const { start, end } = monthRange();
+    let gross = 0;
+    let net = 0;
+    let count = 0;
+    for (const tx of transactions) {
+      if (tx.status !== "completed") continue;
+      const d = new Date(tx.createdAt);
+      if (d < start || d > end) continue;
+      gross += tx.grossAmd;
+      net += netOf(tx);
+      count += 1;
+    }
+    return { gross, net, count };
+  }, [transactions]);
+
   return (
     <AdminLayout>
       <PanelPageHeader
@@ -273,6 +292,35 @@ export default function AdminFinanceIncome() {
       />
 
       <div className="mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <Card className="p-4 border-border">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">{t("adminFinanceKpiGrossMonth")}</p>
+                <p className="text-lg font-bold tabular-nums">{formatAmd(monthlyTotals.gross)}</p>
+              </div>
+              <CreditCard className="w-4 h-4 text-primary mt-1" />
+            </div>
+          </Card>
+          <Card className="p-4 border-border">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">{t("adminFinanceKpiNetMonth")}</p>
+                <p className="text-lg font-bold tabular-nums">{formatAmd(monthlyTotals.net)}</p>
+              </div>
+              <Wallet className="w-4 h-4 text-emerald-600 mt-1" />
+            </div>
+          </Card>
+          <Card className="p-4 border-border">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">{t("adminFinanceBreakdownIncomeTitle")}</p>
+                <p className="text-lg font-bold tabular-nums">{monthlyTotals.count}</p>
+              </div>
+              <CheckCircle2 className="w-4 h-4 text-muted-foreground mt-1" />
+            </div>
+          </Card>
+        </div>
         <h3 className="text-sm font-semibold text-foreground mb-3">{t("adminFinanceBreakdownIncomeTitle")}</h3>
         {transactionsLoading ? (
           <p className="text-sm text-muted-foreground">…</p>

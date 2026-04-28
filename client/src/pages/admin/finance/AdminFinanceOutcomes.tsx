@@ -13,9 +13,18 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Landmark, Plus, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useToast } from "src/lib/toast";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { branchNameById, useBranches } from "src/modules/branches";
 import type { CarExpense } from "src/modules/cars";
 import { useFleetCars } from "src/modules/cars";
-import { formatAmd, monthRange, outcomesBreakdownInRange } from "./adminFinanceShared";
+import {
+  formatAmd,
+  monthRange,
+  outcomesBreakdownInRange,
+  type FinanceTx,
+  type TxChannel,
+  type TxMethod,
+} from "./adminFinanceShared";
 import {
   FLEET_EXPENSE_PURPOSE_DROPDOWN_AM,
   FLEET_EXPENSE_PURPOSE_OTHER_AM,
@@ -28,8 +37,10 @@ export default function AdminFinanceOutcomes() {
   const editFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
+  const { branches } = useBranches();
   const { cars, expenses, addExpense, updateExpense, removeExpense } = useFleetCars();
   const [search, setSearch] = useState("");
+  const [manualSearch, setManualSearch] = useState("");
   const [carFilter, setCarFilter] = useState<string>("all");
   const [editRow, setEditRow] = useState<CarExpense | null>(null);
   const [newRow, setNewRow] = useState({
@@ -42,6 +53,18 @@ export default function AdminFinanceOutcomes() {
   });
   const [editPurposeChoice, setEditPurposeChoice] = useState("");
   const [editPurposeCustom, setEditPurposeCustom] = useState("");
+  const [manualExpenses, setManualExpenses] = useState<FinanceTx[]>([]);
+  const [manualExpenseForm, setManualExpenseForm] = useState({
+    employeeName: "",
+    description: "",
+    branchId: "1",
+    channel: "office" as TxChannel,
+    method: "cash" as TxMethod,
+    units: "",
+    unitRateAmd: "",
+    grossAmd: "",
+    datetimeLocal: new Date().toISOString().slice(0, 16),
+  });
 
   const plateByCarId = useMemo(() => {
     const m = new Map<string, string>();
@@ -64,10 +87,54 @@ export default function AdminFinanceOutcomes() {
     });
   }, [sorted, search, carFilter, plateByCarId]);
 
-  const breakdownRows = useMemo(() => {
+  const monthStats = useMemo(() => {
     const { start, end } = monthRange();
-    return outcomesBreakdownInRange(expenses, start, end);
-  }, [expenses]);
+    const fleet = outcomesBreakdownInRange(expenses, start, end).reduce((s, r) => s + r.total, 0);
+    const manual = manualExpenses
+      .filter((tx) => tx.status === "completed")
+      .filter((tx) => {
+        const d = new Date(tx.createdAt);
+        return d >= start && d <= end;
+      })
+      .reduce((sum, tx) => sum + tx.grossAmd, 0);
+    return { fleet, manual, total: fleet + manual };
+  }, [expenses, manualExpenses]);
+
+  const manualFiltered = useMemo(() => {
+    const q = manualSearch.trim().toLowerCase();
+    return manualExpenses.filter((tx) => {
+      const hay = [
+        tx.id,
+        tx.customer,
+        tx.employeeName ?? "",
+        tx.description,
+        tx.expenseKind ?? "",
+        tx.status,
+        tx.unitRateAmd ?? "",
+        tx.units ?? "",
+        tx.grossAmd,
+        branchNameById(branches, tx.branchId),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return !q || hay.includes(q);
+    });
+  }, [manualExpenses, manualSearch, branches]);
+
+  const refreshManualExpenses = useCallback(async () => {
+    try {
+      const rows = await vivaApiJson<FinanceTx[]>("/finance/transactions");
+      const normalized = Array.isArray(rows) ? rows : [];
+      setManualExpenses(normalized.filter((x) => (x.entryType ?? "income") === "expense"));
+    } catch (e) {
+      setManualExpenses([]);
+      showToast(getApiErrorMessage(e), "error");
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    void refreshManualExpenses();
+  }, [refreshManualExpenses]);
 
   useEffect(() => {
     if (!editRow) {
@@ -153,32 +220,83 @@ export default function AdminFinanceOutcomes() {
     [removeExpense, showToast],
   );
 
+  const submitManualExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const units = manualExpenseForm.units.trim() ? Number.parseFloat(manualExpenseForm.units.replace(",", ".")) : NaN;
+    const unitRateAmd = manualExpenseForm.unitRateAmd.trim()
+      ? Number.parseFloat(manualExpenseForm.unitRateAmd.replace(",", "."))
+      : NaN;
+    const fallbackGross = manualExpenseForm.grossAmd.trim()
+      ? Number.parseFloat(manualExpenseForm.grossAmd.replace(",", "."))
+      : NaN;
+    const hasRateCalc = Number.isFinite(units) && Number.isFinite(unitRateAmd) && units > 0 && unitRateAmd > 0;
+    const grossAmd = hasRateCalc ? Math.round(units * unitRateAmd) : Math.round(fallbackGross);
+    if (!manualExpenseForm.description.trim() || !Number.isFinite(grossAmd) || grossAmd <= 0) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    try {
+      await vivaApiJson("/finance/transactions", {
+        method: "POST",
+        body: {
+          createdAt: new Date(manualExpenseForm.datetimeLocal).toISOString(),
+          customer: manualExpenseForm.employeeName.trim() || t("financeDefaultOperatingExpenseCustomer"),
+          email: "",
+          description: manualExpenseForm.description.trim(),
+          branchId: Number(manualExpenseForm.branchId) || 1,
+          channel: manualExpenseForm.channel,
+          method: manualExpenseForm.method,
+          grossAmd,
+          feeAmd: 0,
+          status: "completed",
+          providerRef: "—",
+          source: "manual",
+          entryType: "expense",
+          expenseKind: hasRateCalc ? "hourly_rate" : "other",
+          employeeName: manualExpenseForm.employeeName.trim() || null,
+          ...(hasRateCalc ? { units, unitRateAmd: Math.round(unitRateAmd) } : {}),
+        },
+      });
+      setManualExpenseForm({
+        employeeName: "",
+        description: "",
+        branchId: manualExpenseForm.branchId,
+        channel: "office",
+        method: "cash",
+        units: "",
+        unitRateAmd: "",
+        grossAmd: "",
+        datetimeLocal: new Date().toISOString().slice(0, 16),
+      });
+      showToast(t("adminFinanceOutcomeSavedToast"), "success");
+      await refreshManualExpenses();
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    }
+  };
+
   return (
     <AdminLayout>
       <PanelPageHeader icon={Landmark} title={t("adminFinanceOutcomesTitle")} subtitle={t("adminFinanceOutcomesSubtitle")} />
 
-      <div className="mb-8">
-        <h3 className="text-sm font-semibold text-foreground mb-3">{t("adminFinanceBreakdownOutcomesDetailTitle")}</h3>
-        {breakdownRows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("adminFinanceBreakdownEmpty")}</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {breakdownRows.map((row) => (
-              <Card key={row.key} className="p-4 border-border">
-                <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceBreakdownFleetSummary")}</p>
-                <p className="text-lg font-bold text-foreground tabular-nums">{formatAmd(row.total)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {row.count} {row.count === 1 ? t("adminFinanceBreakdownTxSingular") : t("adminFinanceBreakdownTxPlural")}
-                </p>
-              </Card>
-            ))}
-          </div>
-        )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <Card className="p-5 border-border">
+          <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiFleet")}</p>
+          <p className="text-lg font-bold tabular-nums">{formatAmd(monthStats.fleet)}</p>
+        </Card>
+        <Card className="p-5 border-border">
+          <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiManual")}</p>
+          <p className="text-lg font-bold tabular-nums">{formatAmd(monthStats.manual)}</p>
+        </Card>
+        <Card className="p-5 border-border">
+          <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiTotal")}</p>
+          <p className="text-lg font-bold tabular-nums">{formatAmd(monthStats.total)}</p>
+        </Card>
       </div>
 
       <Card className="border-border overflow-hidden min-w-0 mb-8">
         <div className="p-5 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomesLedgerTitle")}</h3>
+          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomesFleetLedgerTitle")}</h3>
         </div>
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
@@ -360,6 +478,89 @@ export default function AdminFinanceOutcomes() {
           <div className="sm:col-span-2 flex items-end">
             <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto">
               {t("fleetAddExpense")}
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="border-border overflow-hidden min-w-0 mt-6 mb-8">
+        <div className="p-5 border-b border-border">
+          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomesManualLedgerTitle")}</h3>
+        </div>
+        <DataTableToolbar value={manualSearch} onChange={setManualSearch} placeholder={`${t("search")}…`} />
+        <AdminTableScroll>
+          <table className="w-full text-sm min-w-[58rem]">
+            <thead className="bg-muted/40">
+              <tr>
+                <TableColumnHeaderWithFilter title={t("tableColId")} />
+                <TableColumnHeaderWithFilter title={t("financeColDateTime")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeEmployeeVendor")} />
+                <TableColumnHeaderWithFilter title={t("financeColProduct")} />
+                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeUnits")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeRateAmd")} />
+                <TableColumnHeaderWithFilter title={t("fleetExpenseColAmount")} />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {manualFiltered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {t("tableNoMatches")}
+                  </td>
+                </tr>
+              ) : (
+                manualFiltered.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3 text-muted-foreground text-xs font-mono">{tx.id}</td>
+                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-foreground">{tx.employeeName || tx.customer || "—"}</td>
+                    <td className="px-4 py-3 max-w-[16rem]">{tx.description}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{branchNameById(branches, tx.branchId)}</td>
+                    <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.units ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.unitRateAmd != null ? formatAmd(tx.unitRateAmd) : "—"}</td>
+                    <td className="px-4 py-3 font-medium tabular-nums">{formatAmd(tx.grossAmd)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </AdminTableScroll>
+      </Card>
+
+      <Card className="p-5 sm:p-6 border-border border-dashed mt-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Plus className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomeFormManualTitle")}</h3>
+        </div>
+        <form onSubmit={submitManualExpense} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeEmployeeVendor")}</label>
+            <Input value={manualExpenseForm.employeeName} onChange={(e) => setManualExpenseForm((r) => ({ ...r, employeeName: e.target.value }))} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColProduct")} *</label>
+            <Input value={manualExpenseForm.description} onChange={(e) => setManualExpenseForm((r) => ({ ...r, description: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColDateTime")} *</label>
+            <Input type="datetime-local" value={manualExpenseForm.datetimeLocal} onChange={(e) => setManualExpenseForm((r) => ({ ...r, datetimeLocal: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeUnits")}</label>
+            <Input value={manualExpenseForm.units} onChange={(e) => setManualExpenseForm((r) => ({ ...r, units: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeRateAmd")}</label>
+            <Input value={manualExpenseForm.unitRateAmd} onChange={(e) => setManualExpenseForm((r) => ({ ...r, unitRateAmd: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
+            <Input value={manualExpenseForm.grossAmd} onChange={(e) => setManualExpenseForm((r) => ({ ...r, grossAmd: e.target.value }))} placeholder={t("adminFinanceOutcomeAmountHint")} />
+          </div>
+          <div className="sm:col-span-2 flex items-end">
+            <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("adminFinanceOutcomeSaveExpense")}
             </Button>
           </div>
         </form>

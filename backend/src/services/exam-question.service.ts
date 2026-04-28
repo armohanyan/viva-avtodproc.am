@@ -1,14 +1,15 @@
-import { Op } from 'sequelize';
+import { promises as fs } from 'fs';
+import path from 'path';
 import {
   addManagedFilenameFromUrl,
   deleteManagedUploadFile,
   deleteManagedUploadFiles,
   managedFilenameFromUrl,
 } from '../helpers/managed-upload.helper';
-import { ExamQuestion } from '../models';
+import { ExamQuestion, ExamQuestionMeta } from '../models';
 
 export type ExamQuestionDto = {
-  id: number;
+  id: string;
   text: Record<string, string>;
   options: Record<string, string[]>;
   optionExplanations?: Record<string, (string | null)[]>;
@@ -18,105 +19,277 @@ export type ExamQuestionDto = {
   imageUrl?: string | null;
 };
 
-function toDto(row: ExamQuestion): ExamQuestionDto {
-  const text = JSON.parse(row.textJson) as Record<string, string>;
-  const options = JSON.parse(row.optionsJson) as Record<string, string[]>;
+export type ExamQuestionMetaDto = {
+  thematicCardTitles: string[];
+  examCardTitles: string[];
+  thematicCardQuestionIds: string[][];
+  examCardQuestionIds: string[][];
+};
+
+const THEMATIC_CARD_COUNT = 10;
+const EXAM_CARD_COUNT = 60;
+const THEMATIC_TOPIC_IDS = ['5', '3', '2', '6', '8', '7', '10', '4', '9', '1'] as const;
+const STORAGE_FILE = path.resolve(__dirname, '../../data/exam-questions.store.json');
+
+type QuestionStore = {
+  questions: ExamQuestionDto[];
+  meta?: Partial<ExamQuestionMetaDto>;
+};
+
+function defaultCardTitles(prefix: string, size: number): string[] {
+  return Array.from({ length: size }, (_, i) => `${prefix} ${i + 1}`);
+}
+
+function withLength(values: unknown, size: number, fallbackPrefix: string): string[] {
+  const fallback = defaultCardTitles(fallbackPrefix, size);
+  if (!Array.isArray(values)) return fallback;
+  return Array.from({ length: size }, (_, i) => {
+    const v = values[i];
+    if (typeof v !== 'string') return fallback[i];
+    const trimmed = v.trim();
+    return trimmed || fallback[i];
+  });
+}
+
+function normalizeCardQuestions(values: unknown, size: number): string[][] {
+  if (!Array.isArray(values)) return Array.from({ length: size }, () => []);
+  return Array.from({ length: size }, (_, i) => {
+    const row = values[i];
+    if (!Array.isArray(row)) return [];
+    const uniq = new Set<string>();
+    for (const item of row) {
+      if (typeof item !== 'string') continue;
+      const id = item.trim();
+      if (!id) continue;
+      uniq.add(id);
+    }
+    return [...uniq];
+  });
+}
+
+function normalizeQuestion(raw: unknown): ExamQuestionDto | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const q = raw as Record<string, unknown>;
+  if (typeof q.id !== 'string' || !q.id.trim()) return null;
+  if (!q.text || typeof q.text !== 'object') return null;
+  if (!q.options || typeof q.options !== 'object') return null;
+  const ci = Number(q.correctIndex);
+  const category = q.category;
+  if (!Number.isInteger(ci) || ci < 0 || ci > 3) return null;
+  if (category !== 'rules' && category !== 'signs' && category !== 'safety') return null;
+  const text = q.text as Record<string, string>;
+  const options = q.options as Record<string, string[]>;
   let optionExplanations: Record<string, (string | null)[]> | undefined;
-  if (row.optionExplanationsJson) {
-    optionExplanations = JSON.parse(row.optionExplanationsJson) as Record<string, (string | null)[]>;
+  if (q.optionExplanations && typeof q.optionExplanations === 'object') {
+    optionExplanations = q.optionExplanations as Record<string, (string | null)[]>;
   }
   return {
-    id: row.id,
+    id: q.id.trim(),
     text,
     options,
     optionExplanations,
-    correctIndex: row.correctIndex,
-    category: row.category,
-    topicId: row.topicId ?? undefined,
-    imageUrl: row.imageUrl,
+    correctIndex: ci,
+    category,
+    topicId: typeof q.topicId === 'string' ? q.topicId : undefined,
+    imageUrl: typeof q.imageUrl === 'string' || q.imageUrl === null ? (q.imageUrl as string | null) : undefined,
   };
 }
 
-function rowPayload(q: Omit<ExamQuestionDto, 'id'>) {
-  return {
-    category: q.category,
-    topicId: q.topicId ?? null,
-    correctIndex: q.correctIndex,
-    imageUrl: q.imageUrl ?? null,
-    textJson: JSON.stringify(q.text),
-    optionsJson: JSON.stringify(q.options),
-    optionExplanationsJson: q.optionExplanations ? JSON.stringify(q.optionExplanations) : null,
-  };
+function sortQuestions(rows: ExamQuestionDto[]): ExamQuestionDto[] {
+  return [...rows].sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
+}
+
+async function ensureStoreDir(): Promise<void> {
+  await fs.mkdir(path.dirname(STORAGE_FILE), { recursive: true });
+}
+
+async function readStore(): Promise<QuestionStore> {
+  await ensureStoreDir();
+  try {
+    const raw = await fs.readFile(STORAGE_FILE, 'utf8');
+    const parsed = JSON.parse(raw) as QuestionStore;
+    const questions = Array.isArray(parsed.questions)
+      ? parsed.questions.map(normalizeQuestion).filter((x): x is ExamQuestionDto => Boolean(x))
+      : [];
+    return { questions: sortQuestions(questions), meta: parsed.meta ?? {} };
+  } catch {
+    const migrated = await migrateFromDatabase();
+    if (migrated) {
+      await writeStore(migrated);
+      return migrated;
+    }
+    return { questions: [], meta: {} };
+  }
+}
+
+async function writeStore(store: QuestionStore): Promise<void> {
+  await ensureStoreDir();
+  const tmp = `${STORAGE_FILE}.tmp`;
+  await fs.writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+  await fs.rename(tmp, STORAGE_FILE);
+}
+
+async function migrateFromDatabase(): Promise<QuestionStore | null> {
+  try {
+    const rows = await ExamQuestion.findAll({ order: [['id', 'ASC']] });
+    if (!rows.length) return null;
+    const questions: ExamQuestionDto[] = rows.map((row) => ({
+      id: String(row.id),
+      text: JSON.parse(row.textJson) as Record<string, string>,
+      options: JSON.parse(row.optionsJson) as Record<string, string[]>,
+      optionExplanations: row.optionExplanationsJson
+        ? (JSON.parse(row.optionExplanationsJson) as Record<string, (string | null)[]>)
+        : undefined,
+      correctIndex: row.correctIndex,
+      category: row.category,
+      topicId: row.topicId ?? undefined,
+      imageUrl: row.imageUrl ?? undefined,
+    }));
+    let meta: Partial<ExamQuestionMetaDto> | undefined;
+    const metaRow = await ExamQuestionMeta.findOne({ where: { settingKey: 'card_titles' } });
+    if (metaRow?.valueJson) {
+      try {
+        meta = JSON.parse(metaRow.valueJson) as Partial<ExamQuestionMetaDto>;
+      } catch {
+        meta = undefined;
+      }
+    }
+    return { questions: sortQuestions(questions), meta };
+  } catch {
+    return null;
+  }
 }
 
 export default class ExamQuestionService {
+  private static async inferMappings(): Promise<Pick<ExamQuestionMetaDto, 'thematicCardQuestionIds' | 'examCardQuestionIds'>> {
+    const store = await readStore();
+    const thematicCardQuestionIds = Array.from({ length: THEMATIC_CARD_COUNT }, () => [] as string[]);
+    const examCardQuestionIds = Array.from({ length: EXAM_CARD_COUNT }, () => [] as string[]);
+    for (const row of store.questions) {
+      const qid = row.id;
+      const topicIndex = THEMATIC_TOPIC_IDS.findIndex((tid) => tid === (row.topicId ?? ''));
+      if (topicIndex >= 0 && (row.category === 'rules' || row.category === 'safety')) {
+        thematicCardQuestionIds[topicIndex].push(qid);
+      }
+      examCardQuestionIds[0].push(qid);
+    }
+    return { thematicCardQuestionIds, examCardQuestionIds };
+  }
+
   static async list(): Promise<ExamQuestionDto[]> {
-    const rows = await ExamQuestion.findAll({ order: [['id', 'ASC']] });
-    return rows.map(toDto);
+    const store = await readStore();
+    return store.questions;
   }
 
   static async replaceAll(questions: Omit<ExamQuestionDto, 'id'>[]): Promise<void> {
-    const oldRows = await ExamQuestion.findAll();
+    const store = await readStore();
     const oldFiles = new Set<string>();
-    for (const r of oldRows) {
-      addManagedFilenameFromUrl(r.imageUrl, oldFiles);
+    for (const r of store.questions) {
+      addManagedFilenameFromUrl(r.imageUrl ?? null, oldFiles);
     }
     const newFiles = new Set<string>();
     for (const q of questions) {
       addManagedFilenameFromUrl(q.imageUrl ?? null, newFiles);
     }
 
-    await ExamQuestion.destroy({ where: {} });
-    await ExamQuestion.bulkCreate(questions.map((q) => rowPayload(q)));
+    const nextQuestions: ExamQuestionDto[] = questions.map((q, idx) => ({
+      id: String(idx + 1),
+      ...q,
+    }));
+    await writeStore({ ...store, questions: sortQuestions(nextQuestions) });
 
     const toRemove = [...oldFiles].filter((f) => !newFiles.has(f));
     await deleteManagedUploadFiles(toRemove);
   }
 
-  static async upsertOne(q: Omit<ExamQuestionDto, 'id'> & { id?: number }): Promise<ExamQuestionDto> {
-    const hasId = q.id != null && Number.isFinite(q.id) && q.id > 0;
-    const prev = hasId ? await ExamQuestion.findByPk(q.id!) : null;
+  static async upsertOne(q: Omit<ExamQuestionDto, 'id'> & { id?: string }): Promise<ExamQuestionDto> {
+    const store = await readStore();
+    const requestedId = typeof q.id === 'string' ? q.id.trim() : '';
+    const hasId = Boolean(requestedId);
+    const prev = hasId ? store.questions.find((x) => x.id === requestedId) : undefined;
     const prevFile = managedFilenameFromUrl(prev?.imageUrl ?? null);
     const nextFile = managedFilenameFromUrl(q.imageUrl ?? null);
 
-    let row: ExamQuestion;
-    if (hasId && prev) {
-      await prev.update(rowPayload(q));
-      row = (await ExamQuestion.findByPk(q.id!))!;
-    } else {
-      row = await ExamQuestion.create(rowPayload(q));
+    let id = requestedId;
+    if (!id) {
+      id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
     }
+    const row: ExamQuestionDto = { id, ...q };
+    const nextQuestions = prev
+      ? store.questions.map((x) => (x.id === id ? row : x))
+      : [...store.questions, row];
+    await writeStore({ ...store, questions: sortQuestions(nextQuestions) });
 
     if (prevFile && prevFile !== nextFile) {
-      const others = await ExamQuestion.count({
-        where: {
-          id: { [Op.ne]: row.id },
-          imageUrl: { [Op.like]: `%/upload/${prevFile}%` },
-        },
-      });
+      const others = nextQuestions.filter((x) => x.id !== id && managedFilenameFromUrl(x.imageUrl ?? null) === prevFile).length;
       if (others === 0) {
         await deleteManagedUploadFile(prevFile);
       }
     }
 
-    return toDto(row);
+    return row;
   }
 
-  static async remove(id: number): Promise<boolean> {
-    const found = await ExamQuestion.findByPk(id);
+  static async remove(id: string): Promise<boolean> {
+    const store = await readStore();
+    const found = store.questions.find((x) => x.id === id);
     const file = managedFilenameFromUrl(found?.imageUrl ?? null);
-    const n = await ExamQuestion.destroy({ where: { id } });
-    if (n > 0 && file) {
-      const others = await ExamQuestion.count({
-        where: {
-          id: { [Op.ne]: id },
-          imageUrl: { [Op.like]: `%/upload/${file}%` },
-        },
-      });
+    const nextQuestions = store.questions.filter((x) => x.id !== id);
+    const removed = nextQuestions.length !== store.questions.length;
+    if (!removed) return false;
+    await writeStore({ ...store, questions: nextQuestions });
+    if (file) {
+      const others = nextQuestions.filter((x) => managedFilenameFromUrl(x.imageUrl ?? null) === file).length;
       if (others === 0) {
         await deleteManagedUploadFile(file);
       }
     }
-    return n > 0;
+    return true;
+  }
+
+  static async getMeta(): Promise<ExamQuestionMetaDto> {
+    const store = await readStore();
+    const inferred = await this.inferMappings();
+    const parsed = (store.meta ?? {}) as {
+      thematicCardTitles?: unknown;
+      examCardTitles?: unknown;
+      thematicCardQuestionIds?: unknown;
+      examCardQuestionIds?: unknown;
+    };
+    const validIds = new Set(store.questions.map((q) => q.id));
+    const prune = (rows: string[][]): string[][] => rows.map((row) => row.filter((id) => validIds.has(id)));
+    return {
+      thematicCardTitles: withLength(parsed.thematicCardTitles, THEMATIC_CARD_COUNT, 'Թեմա'),
+      examCardTitles: withLength(parsed.examCardTitles, EXAM_CARD_COUNT, 'Թեստ'),
+      thematicCardQuestionIds: prune(
+        normalizeCardQuestions(parsed.thematicCardQuestionIds, THEMATIC_CARD_COUNT).map((row, idx) =>
+          row.length ? row : inferred.thematicCardQuestionIds[idx],
+        ),
+      ),
+      examCardQuestionIds: prune(
+        normalizeCardQuestions(parsed.examCardQuestionIds, EXAM_CARD_COUNT).map((row, idx) =>
+          row.length ? row : inferred.examCardQuestionIds[idx],
+        ),
+      ),
+    };
+  }
+
+  static async updateMeta(input: Partial<ExamQuestionMetaDto>): Promise<ExamQuestionMetaDto> {
+    const store = await readStore();
+    const current = await this.getMeta();
+    const validIds = new Set(store.questions.map((q) => q.id));
+    const prune = (rows: string[][]): string[][] => rows.map((row) => row.filter((id) => validIds.has(id)));
+    const next: ExamQuestionMetaDto = {
+      thematicCardTitles: withLength(input.thematicCardTitles ?? current.thematicCardTitles, THEMATIC_CARD_COUNT, 'Թեմա'),
+      examCardTitles: withLength(input.examCardTitles ?? current.examCardTitles, EXAM_CARD_COUNT, 'Թեստ'),
+      thematicCardQuestionIds: prune(
+        normalizeCardQuestions(input.thematicCardQuestionIds ?? current.thematicCardQuestionIds, THEMATIC_CARD_COUNT),
+      ),
+      examCardQuestionIds: prune(
+        normalizeCardQuestions(input.examCardQuestionIds ?? current.examCardQuestionIds, EXAM_CARD_COUNT),
+      ),
+    };
+    await writeStore({ ...store, meta: next });
+    return next;
   }
 }

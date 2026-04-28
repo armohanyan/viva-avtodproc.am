@@ -4,6 +4,8 @@ export type TxStatus = "completed" | "pending" | "failed" | "refunded";
 export type TxChannel = "online" | "pos" | "office" | "bank";
 export type TxMethod = "card" | "idram" | "cash" | "transfer";
 export type TxSource = "system" | "manual";
+export type TxEntryType = "income" | "expense";
+export type TxExpenseKind = "salary" | "hourly_rate" | "rent" | "utilities" | "maintenance" | "marketing" | "other";
 
 export type ManualFormShape = {
   studentDirectoryId: string;
@@ -35,6 +37,11 @@ export type FinanceTx = {
   status: TxStatus;
   providerRef: string;
   source: TxSource;
+  entryType?: TxEntryType;
+  expenseKind?: TxExpenseKind | null;
+  employeeName?: string | null;
+  units?: number | null;
+  unitRateAmd?: number | null;
   bookingId: string | null;
 };
 
@@ -91,7 +98,22 @@ export function grossCompletedInRange(
 ): number {
   let sum = 0;
   for (const tx of transactions) {
-    if (tx.status !== "completed") continue;
+    if ((tx.entryType ?? "income") !== "income" || tx.status !== "completed") continue;
+    const d = new Date(tx.createdAt);
+    if (d < rangeStart || d > rangeEnd) continue;
+    sum += tx.grossAmd;
+  }
+  return sum;
+}
+
+export function financeOutcomeTotalInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  let sum = 0;
+  for (const tx of transactions) {
+    if ((tx.entryType ?? "income") !== "expense" || tx.status !== "completed") continue;
     const d = new Date(tx.createdAt);
     if (d < rangeStart || d > rangeEnd) continue;
     sum += tx.grossAmd;
@@ -185,7 +207,7 @@ export function incomeBreakdownCompletedInRange(
 ): { key: string; channel: TxChannel; method: TxMethod; gross: number; net: number; count: number }[] {
   const map = new Map<string, { channel: TxChannel; method: TxMethod; gross: number; net: number; count: number }>();
   for (const tx of transactions) {
-    if (tx.status !== "completed") continue;
+    if ((tx.entryType ?? "income") !== "income" || tx.status !== "completed") continue;
     const d = new Date(tx.createdAt);
     if (d < monthStart || d > monthEnd) continue;
     const key = `${tx.channel}|${tx.method}`;

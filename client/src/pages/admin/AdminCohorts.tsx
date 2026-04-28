@@ -22,6 +22,7 @@ import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useInstructors } from "src/modules/instructors/useInstructors";
+import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 
 type Cohort = {
   id: string;
@@ -36,6 +37,7 @@ type Cohort = {
   branchId: string;
   sessionStartTime: string | null;
   sessionEndTime: string | null;
+  priceAmd: number | null;
 };
 
 type CohortStudentRow = {
@@ -64,8 +66,43 @@ export default function AdminCohorts() {
 
   const refreshCohorts = useCallback(async () => {
     try {
-      const data = await vivaApiJson<Cohort[]>("/theory-cohorts");
-      setCohorts(Array.isArray(data) ? data : []);
+      const data = await vivaApiJson<
+        {
+          id: number;
+          name: string;
+          startDateIso: string;
+          endDateIso: string;
+          seats: number;
+          enrolled: number;
+          instructorName: string;
+          meetLink: string;
+          status: string;
+          branchId: number;
+          sessionStartTime: string | null;
+          sessionEndTime: string | null;
+          priceAmd?: number | null;
+        }[]
+      >("/theory-cohorts");
+      setCohorts(
+        Array.isArray(data)
+          ? data.map((row) => ({
+              id: String(row.id),
+              name: row.name,
+              startDateIso: String(row.startDateIso ?? "").slice(0, 10),
+              endDateIso: String(row.endDateIso ?? "").slice(0, 10),
+              seats: row.seats,
+              enrolled: row.enrolled,
+              instructorName: row.instructorName,
+              meetLink: row.meetLink ?? "",
+              status: row.status,
+              branchId: String(row.branchId),
+              sessionStartTime: row.sessionStartTime ?? null,
+              sessionEndTime: row.sessionEndTime ?? null,
+              priceAmd:
+                typeof row.priceAmd === "number" && Number.isFinite(row.priceAmd) ? row.priceAmd : null,
+            }))
+          : [],
+      );
     } catch (e) {
       setCohorts([]);
       showToast(getApiErrorMessage(e), "error");
@@ -94,6 +131,7 @@ export default function AdminCohorts() {
     branchId: "",
     sessionStartTime: "",
     sessionEndTime: "",
+    priceAmd: "",
   });
 
   const handleDelete = async () => {
@@ -125,6 +163,10 @@ export default function AdminCohorts() {
           branchId: editCohort.branchId,
           sessionStartTime: editCohort.sessionStartTime?.trim() || null,
           sessionEndTime: editCohort.sessionEndTime?.trim() || null,
+          priceAmd:
+            editCohort.priceAmd === null || editCohort.priceAmd === undefined
+              ? null
+              : Math.max(0, Math.round(Number(editCohort.priceAmd))),
         },
       });
       setEditCohort(null);
@@ -142,6 +184,10 @@ export default function AdminCohorts() {
       return;
     }
     try {
+      const priceRaw = newCohort.priceAmd.trim();
+      const parsedPrice = priceRaw === "" ? null : parseAmdInput(priceRaw);
+      const priceAmd =
+        priceRaw === "" || !Number.isFinite(parsedPrice) || parsedPrice < 0 ? null : Math.round(parsedPrice);
       await vivaApiJson("/theory-cohorts", {
         method: "POST",
         body: {
@@ -155,6 +201,7 @@ export default function AdminCohorts() {
           branchId: newCohort.branchId || branches[0]?.id || "",
           sessionStartTime: newCohort.sessionStartTime?.trim() || null,
           sessionEndTime: newCohort.sessionEndTime?.trim() || null,
+          priceAmd,
         },
       });
       setAddOpen(false);
@@ -168,6 +215,7 @@ export default function AdminCohorts() {
         branchId: branches[0]?.id ?? "",
         sessionStartTime: "",
         sessionEndTime: "",
+        priceAmd: "",
       });
       showToast(t("cohortCreatedToast"), "success");
       await refreshCohorts();
@@ -264,6 +312,7 @@ export default function AdminCohorts() {
               t("cohortColInstructor"),
               t("cohortColPeriod"),
               t("cohortColEnrollment"),
+              t("cohortGroupPriceAmdLabel"),
               t("status"),
             ]}
             rows={filteredCohorts.map((c) => [
@@ -273,6 +322,7 @@ export default function AdminCohorts() {
               c.instructorName,
               periodLabel(c),
               `${c.enrolled} / ${c.seats}`,
+              c.priceAmd != null && Number.isFinite(c.priceAmd) ? formatAmd(Math.round(c.priceAmd)) : "—",
               cohortStatusLabel(c.status),
             ])}
           />
@@ -300,6 +350,7 @@ export default function AdminCohorts() {
                 <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
                 <TableColumnHeaderWithFilter title={t("cohortColPeriod")} />
                 <TableColumnHeaderWithFilter title={t("cohortColEnrollment")} />
+                <TableColumnHeaderWithFilter title={t("cohortGroupPriceAmdLabel")} />
                 <TableColumnHeaderWithFilter
                   title={t("status")}
                   filter={
@@ -369,6 +420,9 @@ export default function AdminCohorts() {
                       <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{periodLabel(c)}</td>
                       <td className="px-4 py-3.5 text-foreground whitespace-nowrap">
                         {c.enrolled} / {c.seats}
+                      </td>
+                      <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap tabular-nums">
+                        {c.priceAmd != null && Number.isFinite(c.priceAmd) ? formatAmd(Math.round(c.priceAmd)) : "—"}
                       </td>
                       <td className="px-4 py-3.5">
                         <Badge className={`text-xs ${statusColor[c.status]}`}>{cohortStatusLabel(c.status)}</Badge>
@@ -476,6 +530,26 @@ export default function AdminCohorts() {
                   onChange={(e) => setEditCohort({ ...editCohort, seats: Math.max(1, parseInt(e.target.value, 10) || 1) })}
                   className="h-10"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortGroupPriceAmdLabel")}</label>
+                <Input
+                  inputMode="numeric"
+                  placeholder="45000"
+                  value={editCohort.priceAmd == null ? "" : String(editCohort.priceAmd)}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    if (v === "") {
+                      setEditCohort({ ...editCohort, priceAmd: null });
+                      return;
+                    }
+                    const n = parseAmdInput(v);
+                    if (!Number.isFinite(n) || n < 0) return;
+                    setEditCohort({ ...editCohort, priceAmd: Math.round(n) });
+                  }}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground mt-1">{t("cohortGroupPriceAmdHint")}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>
@@ -633,6 +707,17 @@ export default function AdminCohorts() {
                 onChange={(e) => setNewCohort({ ...newCohort, seats: Math.max(1, parseInt(e.target.value, 10) || 1) })}
                 className="h-10"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortGroupPriceAmdLabel")}</label>
+              <Input
+                inputMode="numeric"
+                placeholder="45000"
+                value={newCohort.priceAmd}
+                onChange={(e) => setNewCohort({ ...newCohort, priceAmd: e.target.value })}
+                className="h-10"
+              />
+              <p className="text-xs text-muted-foreground mt-1">{t("cohortGroupPriceAmdHint")}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>

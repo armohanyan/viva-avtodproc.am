@@ -15,6 +15,7 @@ import { useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { useMemo } from "react";
+import { apiFetch, apiV1Path, getApiErrorMessage } from "src/lib/api";
 
 export default function Contact() {
   const { t } = useLang();
@@ -67,7 +68,7 @@ export default function Contact() {
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.firstName || !form.email || !form.message) {
       showToast(t("fillRequired"), "error");
@@ -78,11 +79,29 @@ export default function Contact() {
       return;
     }
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await apiFetch(apiV1Path("/contact-requests"), {
+        method: "POST",
+        body: {
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim() || null,
+          email: form.email.trim(),
+          phone: form.phone.trim() || null,
+          subject: form.subject.trim() || null,
+          message: form.message.trim(),
+        },
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || res.statusText);
+      }
       setLoading(false);
       setForm({ firstName: "", lastName: "", email: "", phone: "", subject: "", message: "" });
       showToast(t("messageSent"), "success");
-    }, 800);
+    } catch (e) {
+      setLoading(false);
+      showToast(getApiErrorMessage(e), "error");
+    }
   };
 
   return (

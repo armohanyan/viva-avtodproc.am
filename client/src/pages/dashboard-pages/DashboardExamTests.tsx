@@ -8,6 +8,7 @@ import { Card } from "src/components/ui/card";
 import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
 import type { ExamQuizMode } from "src/data/examSampleQuestions";
 import { countQuestionsForExamMode } from "src/lib/examQuestions";
+import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 
 export default function DashboardExamTests() {
@@ -28,10 +29,25 @@ export default function DashboardExamTests() {
     topicStats: {},
     activeSession: null,
   });
+  const [examCardTitles, setExamCardTitles] = useState<string[]>(() => defaultExamQuestionMeta().examCardTitles);
 
   useEffect(() => {
     setStats(getExamStats());
     return subscribeExamStatsChanged(() => setStats(getExamStats()));
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const sync = async () => {
+      const meta = await loadExamQuestionMeta();
+      if (mounted) setExamCardTitles(meta.examCardTitles);
+    };
+    void sync();
+    const off = subscribeExamQuestionMetaUpdated(() => void sync());
+    return () => {
+      mounted = false;
+      off();
+    };
   }, []);
 
   const pool = useExamQuestionPool();
@@ -123,7 +139,7 @@ export default function DashboardExamTests() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {modes.map((m, index) => {
             const answeredInMode = 0;
-            const testLabel = `${t("examTestsNumberedTitle")} ${index + 1}`;
+            const testLabel = examCardTitles[index] || `${t("examTestsNumberedTitle")} ${index + 1}`;
 
             return (
               <Link key={m.href} href={m.href} className="block">

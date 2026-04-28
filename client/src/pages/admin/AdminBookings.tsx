@@ -17,7 +17,19 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import LessonBookingCalendar, { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
+import { useLocation, useSearch } from "wouter";
+import { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
+import type { AdminBookingFlowKind, AdminPackageOption, TheoryCohortOption } from "src/modules/admin/booking/types";
+import { theoryGroupSlotPlanFromCohort } from "src/modules/admin/booking/theoryGroupSlotPlan";
+import { isTheoryCohortBookableStatus } from "src/modules/admin/booking/adminTheoryCohort";
+import BookingTypeSelector from "src/modules/admin/booking/BookingTypeSelector";
+import InstructorSelector from "src/modules/admin/booking/InstructorSelector";
+import GroupLessonSelector from "src/modules/admin/booking/GroupLessonSelector";
+import PackageSelector from "src/modules/admin/booking/PackageSelector";
+import SlotSelector from "src/modules/admin/booking/SlotSelector";
+import CheckoutSummary, { type CheckoutSummaryLines } from "src/modules/admin/booking/CheckoutSummary";
+import { useBookingPriceCalculator, type BookingPriceInput } from "src/modules/admin/booking/useBookingPriceCalculator";
+import { validateAdminBookingAdd } from "src/modules/admin/booking/useBookingValidation";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, useBranches } from "src/modules/branches";
@@ -25,9 +37,7 @@ import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import {
   type FinanceTx,
-  type TxChannel,
   type TxMethod,
-  type TxStatus,
   channelTKey,
   formatAmd,
   methodTKey,
@@ -44,6 +54,8 @@ type Booking = {
   dateIso: string;
   time: string;
   endTime?: string | null;
+  /** Present when the server stored multiple `booking_slots` rows (multi-day / non-consecutive). */
+  slotEntries?: { dateIso: string; time: string }[];
   totalPriceAmd?: number | null;
   type: "practical" | "theory" | "theory_personal";
   status: string;
@@ -80,25 +92,23 @@ function bookingLessonTypeTKey(type: Booking["type"]): TranslationKey {
 }
 
 type BookingPaymentFields = {
-  description: string;
-  channel: TxChannel;
   method: TxMethod;
   grossStr: string;
-  feeStr: string;
-  status: TxStatus;
-  ref: string;
   datetimeLocal: string;
 };
 
+function financeStatusFromBookingStatus(status: string): FinanceTx["status"] {
+  const s = toCanonicalBookingStatus(status);
+  if (s === "confirmed") return "completed";
+  if (s === "refunded") return "refunded";
+  if (s === "cancelled") return "failed";
+  return "pending";
+}
+
 function defaultPaymentFields(): BookingPaymentFields {
   return {
-    description: "",
-    channel: "office",
     method: "cash",
     grossStr: "",
-    feeStr: "0",
-    status: "completed",
-    ref: "",
     datetimeLocal: toDatetimeLocalValue(new Date()),
   };
 }
@@ -138,9 +148,50 @@ function hourlyStartsFromBookingRange(startTime: string, endTimeExclusive?: stri
   return out;
 }
 
+function padSlotTime(t: string): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t).trim());
+  if (!m) return t;
+  return `${String(Number(m[1])).padStart(2, "0")}:${String(Number(m[2])).padStart(2, "0")}`;
+}
+
+function sortTimesUniqueAdmin(times: readonly string[]): string[] {
+  const set = new Set(times.map((x) => padSlotTime(x)));
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeSlotEntriesFromApi(
+  entries: readonly { dateIso: string; time: string }[],
+): { dateIso: string; time: string }[] {
+  return [...entries]
+    .map((e) => ({ dateIso: e.dateIso.slice(0, 10), time: padSlotTime(e.time) }))
+    .sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time));
+}
+
+function slotPickSummaryLine(pick: LessonBookingPayload | null): string | null {
+  if (!pick) return null;
+  if (pick.slotEntries && pick.slotEntries.length > 0) {
+    return pick.slotEntries.map((e) => `${e.dateIso} ${e.time}`).join(" · ");
+  }
+  if (pick.times.length > 0) return `${pick.dateIso} · ${pick.times.join(", ")}`;
+  return null;
+}
+
+function theoryCohortSelectSuffix(c: TheoryCohortOption): string {
+  const time = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
+  const pricePart =
+    c.priceAmd != null && Number.isFinite(Number(c.priceAmd)) && Number(c.priceAmd) > 0
+      ? ` · ${formatAmd(Math.round(Number(c.priceAmd)))}`
+      : "";
+  const timePart = time ? ` · ${time}` : "";
+  return `${pricePart}${timePart}`;
+}
+
 export default function AdminBookings() {
   const editBookingFormId = useId();
   const addBookingFormId = useId();
+  const [, setLocation] = useLocation();
+  /** Wouter may include a leading `?`; strip so `URLSearchParams` parses keys correctly. */
+  const bookingIntentSearch = (useSearch() ?? "").replace(/^\?/, "");
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -204,22 +255,22 @@ export default function AdminBookings() {
   const [theoryCohortId, setTheoryCohortId] = useState("");
   const [editTheoryCohortId, setEditTheoryCohortId] = useState("");
   const lastEditSlotInitKey = useRef("");
-  const [theoryCohorts, setTheoryCohorts] = useState<
-    {
-      id: string;
-      name: string;
-      branchId: string;
-      instructorName: string;
-      status: string;
-      sessionStartTime: string | null;
-      sessionEndTime: string | null;
-    }[]
-  >([]);
+  const [theoryCohorts, setTheoryCohorts] = useState<TheoryCohortOption[]>([]);
+  const [theoryCohortsLoadError, setTheoryCohortsLoadError] = useState(false);
 
-  const activeTheoryCohorts = useMemo(
-    () => theoryCohorts.filter((c) => String(c.status).toLowerCase() === "active"),
+  const bookableTheoryCohorts = useMemo(
+    () => theoryCohorts.filter((c) => isTheoryCohortBookableStatus(c.status)),
     [theoryCohorts],
   );
+
+  const [addFlowKind, setAddFlowKind] = useState<AdminBookingFlowKind>("practical");
+  const [addPackageId, setAddPackageId] = useState("");
+  const [addPackagePracticalSlotPick, setAddPackagePracticalSlotPick] = useState<LessonBookingPayload | null>(null);
+  const [addPackageTheoryCohortId, setAddPackageTheoryCohortId] = useState("");
+  const [addPackageTheorySlotPick, setAddPackageTheorySlotPick] = useState<LessonBookingPayload | null>(null);
+  const [packagesList, setPackagesList] = useState<AdminPackageOption[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [packagesFetchError, setPackagesFetchError] = useState(false);
 
   const practicalInstructorsForCalendar = useMemo(
     () => instructors.filter((i) => i.status === "active" && i.teachesPractical),
@@ -237,29 +288,17 @@ export default function AdminBookings() {
     [instructors],
   );
 
-  const theoryCalendarInstructors = useMemo(() => {
-    const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
-    if (draft?.type !== "theory" || !theoryCohortId) return base;
-    const c = theoryCohorts.find((x) => x.id === theoryCohortId);
-    if (!c) return base;
-    const full = instructors.find((i) => i.name === c.instructorName);
-    if (full && !base.some((b) => b.id === full.id)) {
-      return [...base, full];
-    }
-    return base;
-  }, [draft?.type, theoryCohortId, theoryCohorts, instructors]);
-
   const theoryEditCalendarInstructors = useMemo(() => {
     const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
     if (editBooking?.type !== "theory" || !editTheoryCohortId) return base;
-    const c = theoryCohorts.find((x) => x.id === editTheoryCohortId);
+    const c = bookableTheoryCohorts.find((x) => x.id === editTheoryCohortId);
     if (!c) return base;
     const full = instructors.find((i) => i.name === c.instructorName);
     if (full && !base.some((b) => b.id === full.id)) {
       return [...base, full];
     }
     return base;
-  }, [editBooking?.type, editTheoryCohortId, theoryCohorts, instructors]);
+  }, [editBooking?.type, editTheoryCohortId, bookableTheoryCohorts, instructors]);
 
   const calendarInstructorId = useMemo(() => {
     if (!draft) return "";
@@ -268,28 +307,77 @@ export default function AdminBookings() {
       return m?.id ?? "";
     }
     if (draft.type === "theory" && theoryCohortId) {
-      const c = theoryCohorts.find((x) => x.id === theoryCohortId);
+      const c = bookableTheoryCohorts.find((x) => x.id === theoryCohortId);
       if (!c) return "";
       const m = instructors.find((i) => i.name === c.instructorName);
       return m?.id ?? "";
     }
     return "";
-  }, [draft, instructors, theoryCohortId, theoryCohorts]);
+  }, [draft, instructors, theoryCohortId, bookableTheoryCohorts]);
 
   const editCalendarInstructorId = useMemo(() => {
     if (!editBooking) return "";
-    if (editBooking.type === "practical") {
+    if (editBooking.type === "practical" || editBooking.type === "theory_personal") {
       const m = instructors.find((i) => i.name === editBooking.instructorName);
       return m?.id ?? "";
     }
     if (editBooking.type === "theory" && editTheoryCohortId) {
-      const c = theoryCohorts.find((x) => x.id === editTheoryCohortId);
+      const c = bookableTheoryCohorts.find((x) => x.id === editTheoryCohortId);
       if (!c) return "";
       const m = instructors.find((i) => i.name === c.instructorName);
       return m?.id ?? "";
     }
     return "";
-  }, [editBooking, instructors, editTheoryCohortId, theoryCohorts]);
+  }, [editBooking, instructors, editTheoryCohortId, bookableTheoryCohorts]);
+
+  const packageTheoryCalendarInstructors = useMemo(() => {
+    const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
+    if (!addPackageTheoryCohortId) return base;
+    const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
+    if (!c) return base;
+    const full = instructors.find((i) => i.name === c.instructorName);
+    if (full && !base.some((b) => b.id === full.id)) {
+      return [...base, full];
+    }
+    return base;
+  }, [addPackageTheoryCohortId, bookableTheoryCohorts, instructors]);
+
+  const packageTheoryCalendarInstructorId = useMemo(() => {
+    if (!addPackageTheoryCohortId) return "";
+    const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
+    if (!c) return "";
+    const m = instructors.find((i) => i.name === c.instructorName);
+    return m?.id ?? "";
+  }, [addPackageTheoryCohortId, bookableTheoryCohorts, instructors]);
+
+  const theoryPersonalCalendarInstructors = useMemo(
+    () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
+    [instructors],
+  );
+
+  const theoryPersonalCalendarInstructorId = useMemo(() => {
+    if (!draft || draft.type !== "theory_personal") return "";
+    const m = instructors.find((i) => i.name === draft.instructorName);
+    return m?.id ?? "";
+  }, [draft, instructors]);
+
+  const packagePracticalCalendarInstructorId = useMemo(() => {
+    if (addPackagePracticalSlotPick?.instructorUserId) {
+      return String(addPackagePracticalSlotPick.instructorUserId);
+    }
+    const name = addPackagePracticalSlotPick?.instructor || draft?.instructorName || "";
+    const m = instructors.find((i) => i.name === name);
+    return m?.id ?? practicalInstructorsForCalendar[0]?.id ?? "";
+  }, [addPackagePracticalSlotPick, draft?.instructorName, instructors, practicalInstructorsForCalendar]);
+
+  useEffect(() => {
+    if (addFlowKind !== "package" || !addPackageTheoryCohortId) return;
+    const pkg = packagesList.find((p) => p.id === addPackageId);
+    if (!pkg || pkg.theoryLessons <= 0) return;
+    const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
+    if (!c) return;
+    setDraft((d) => (d ? { ...d, branchId: c.branchId } : d));
+  }, [addFlowKind, addPackageTheoryCohortId, addPackageId, packagesList, bookableTheoryCohorts]);
 
   useEffect(() => {
     if (!addOpen && !editBooking) return;
@@ -305,24 +393,31 @@ export default function AdminBookings() {
             status: string;
             sessionStartTime: string | null;
             sessionEndTime: string | null;
+            priceAmd?: number | null;
           }[]
         >("/theory-cohorts");
         if (cancelled) return;
+        setTheoryCohortsLoadError(false);
         setTheoryCohorts(
           Array.isArray(data)
             ? data.map((c) => ({
                 id: String(c.id),
                 name: c.name,
+                startDateIso: String(c.startDateIso ?? "").slice(0, 10),
                 branchId: String(c.branchId),
                 instructorName: c.instructorName,
                 status: c.status,
                 sessionStartTime: c.sessionStartTime ?? null,
                 sessionEndTime: c.sessionEndTime ?? null,
+                priceAmd: typeof c.priceAmd === "number" && Number.isFinite(c.priceAmd) ? c.priceAmd : null,
               }))
             : [],
         );
       } catch {
-        if (!cancelled) setTheoryCohorts([]);
+        if (!cancelled) {
+          setTheoryCohorts([]);
+          setTheoryCohortsLoadError(true);
+        }
       }
     })();
     return () => {
@@ -331,20 +426,86 @@ export default function AdminBookings() {
   }, [addOpen, editBooking]);
 
   useEffect(() => {
+    if (!addOpen) return;
+    let cancelled = false;
+    void (async () => {
+      setPackagesLoading(true);
+      setPackagesFetchError(false);
+      try {
+        const data = await vivaApiJson<
+          {
+            id: number;
+            name: string;
+            price: string;
+            priceAmd?: number;
+            lessons: number;
+            theoryLessons: number;
+            status: string;
+          }[]
+        >("/packages");
+        if (cancelled) return;
+        setPackagesList(
+          Array.isArray(data)
+            ? data.map((p) => ({
+                id: String(p.id),
+                name: p.name,
+                price: p.price,
+                priceAmd: typeof p.priceAmd === "number" ? p.priceAmd : undefined,
+                lessons: p.lessons,
+                theoryLessons: p.theoryLessons ?? 0,
+                status: p.status,
+              }))
+            : [],
+        );
+      } catch {
+        if (!cancelled) {
+          setPackagesList([]);
+          setPackagesFetchError(true);
+        }
+      } finally {
+        if (!cancelled) setPackagesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen]);
+
+  useEffect(() => {
     if (!editBooking) {
       setEditSlotPick(null);
       lastEditSlotInitKey.current = "";
       return;
     }
-    if (editBooking.type !== "practical" && editBooking.type !== "theory") {
+    if (editBooking.type !== "practical" && editBooking.type !== "theory" && editBooking.type !== "theory_personal") {
       setEditSlotPick(null);
       lastEditSlotInitKey.current = "";
       return;
     }
-    const key = `${editBooking.id}-${editBooking.type}`;
+    const seKey =
+      editBooking.slotEntries && editBooking.slotEntries.length > 0
+        ? normalizeSlotEntriesFromApi(editBooking.slotEntries)
+            .map((e) => `${e.dateIso}|${e.time}`)
+            .join(";")
+        : "";
+    const key = `${editBooking.id}-${editBooking.type}-${seKey}-${editBooking.time}-${editBooking.endTime ?? ""}`;
     if (lastEditSlotInitKey.current === key) return;
     lastEditSlotInitKey.current = key;
     const inst = instructors.find((i) => i.name === editBooking.instructorName);
+    if (editBooking.slotEntries && editBooking.slotEntries.length > 0) {
+      const sorted = normalizeSlotEntriesFromApi(editBooking.slotEntries);
+      const first = sorted[0];
+      const sameDayTimes = sorted.filter((e) => e.dateIso === first.dateIso).map((e) => e.time);
+      setEditSlotPick({
+        instructorUserId: inst?.id != null ? String(inst.id) : "",
+        instructor: editBooking.instructorName,
+        dateIso: first.dateIso,
+        time: sortTimesUniqueAdmin(sameDayTimes)[0] ?? first.time,
+        times: sortTimesUniqueAdmin(sameDayTimes.length > 0 ? sameDayTimes : [first.time]),
+        slotEntries: sorted,
+      });
+      return;
+    }
     const times = hourlyStartsFromBookingRange(editBooking.time, editBooking.endTime);
     const slotTimes = times.length > 0 ? times : [editBooking.time];
     setEditSlotPick({
@@ -361,34 +522,283 @@ export default function AdminBookings() {
       setEditTheoryCohortId("");
       return;
     }
-    const matches = activeTheoryCohorts.filter(
+    const matches = bookableTheoryCohorts.filter(
       (c) => c.branchId === editBooking.branchId && c.instructorName === editBooking.instructorName,
     );
     const next = matches[0]?.id ?? "";
     setEditTheoryCohortId((prev) => (prev && matches.some((m) => m.id === prev) ? prev : next));
-  }, [editBooking, activeTheoryCohorts]);
+  }, [editBooking, bookableTheoryCohorts]);
 
-  const openAdd = () => {
-    const newDraft: Booking = {
-      id: "",
-      studentId: studentsMini[0]?.id ?? "",
-      instructorName: defaultPracticalInstructorName,
-      dateIso: todayIsoDate(),
-      time: "10:00",
-      type: "practical",
-      status: "confirmed",
-      branchId: branches[0]?.id ?? "",
+  const openAdd = useCallback(
+    (opts?: { studentId?: string; branchId?: string }) => {
+      const pickStudent =
+        opts?.studentId && studentsMini.some((s) => s.id === opts.studentId)
+          ? opts.studentId
+          : (studentsMini[0]?.id ?? "");
+      const pickBranch =
+        opts?.branchId && branches.some((b) => b.id === opts.branchId)
+          ? opts.branchId
+          : (branches[0]?.id ?? "");
+      const newDraft: Booking = {
+        id: "",
+        studentId: pickStudent,
+        instructorName: defaultPracticalInstructorName,
+        dateIso: todayIsoDate(),
+        time: "10:00",
+        type: "practical",
+        status: "confirmed",
+        branchId: pickBranch,
+      };
+      setAddFlowKind("practical");
+      setAddPackageId("");
+      setAddPackagePracticalSlotPick(null);
+      setAddPackageTheoryCohortId("");
+      setAddPackageTheorySlotPick(null);
+      setSlotPick(null);
+      setTheoryCohortId("");
+      setDraft(newDraft);
+      setAddPayment(defaultPaymentFields());
+      setBookingModalTab("booking");
+      setAddOpen(true);
+    },
+    [branches, defaultPracticalInstructorName, studentsMini],
+  );
+
+  const consumedBookingIntentSearch = useRef<string | null>(null);
+
+  useEffect(() => {
+    const raw = bookingIntentSearch || "";
+    const p = new URLSearchParams(raw);
+    const wantNew = p.get("new") === "1";
+    const studentQ = p.get("student")?.trim() ?? "";
+    const branchQ = p.get("branch")?.trim() ?? "";
+
+    if (!wantNew && !studentQ) {
+      consumedBookingIntentSearch.current = null;
+      return;
+    }
+    if (consumedBookingIntentSearch.current === raw) return;
+    if (studentQ && studentsMini.length === 0) return;
+
+    const studentOk = !studentQ || studentsMini.some((s) => s.id === studentQ);
+    if (!wantNew && studentQ && studentsMini.length > 0 && !studentOk) {
+      consumedBookingIntentSearch.current = raw;
+      setLocation("/admin/bookings", { replace: true });
+      return;
+    }
+
+    const validStudent = studentQ && studentOk ? studentQ : "";
+    const validBranch = branchQ && branches.some((b) => b.id === branchQ) ? branchQ : "";
+
+    consumedBookingIntentSearch.current = raw;
+    openAdd(
+      validStudent
+        ? { studentId: validStudent, ...(validBranch ? { branchId: validBranch } : {}) }
+        : undefined,
+    );
+    setLocation("/admin/bookings", { replace: true });
+  }, [bookingIntentSearch, branches, openAdd, setLocation, studentsMini]);
+
+  useEffect(() => {
+    const raw = bookingIntentSearch || "";
+    const p = new URLSearchParams(raw);
+    const editId = p.get("edit")?.trim() ?? "";
+    const deleteIdQ = p.get("delete")?.trim() ?? "";
+    if (!editId && !deleteIdQ) return;
+    if (bookings.length === 0) return;
+    if (editId) {
+      const row = bookings.find((b) => String(b.id) === editId);
+      if (row) {
+        setBookingModalTab("booking");
+        setEditBooking({ ...row, status: toCanonicalBookingStatus(row.status) });
+      }
+      setLocation("/admin/bookings", { replace: true });
+      return;
+    }
+    if (deleteIdQ) {
+      const row = bookings.find((b) => String(b.id) === deleteIdQ);
+      if (row) {
+        setDeleteId(String(row.id));
+      }
+      setLocation("/admin/bookings", { replace: true });
+    }
+  }, [bookingIntentSearch, bookings, setLocation]);
+
+  const handleAddFlowKindChange = useCallback(
+    (flow: AdminBookingFlowKind) => {
+      setAddFlowKind(flow);
+      setSlotPick(null);
+      setTheoryCohortId("");
+      setAddPackageId("");
+      setAddPackagePracticalSlotPick(null);
+      setAddPackageTheoryCohortId("");
+      setAddPackageTheorySlotPick(null);
+      setDraft((d) => {
+        if (!d) return d;
+        if (flow === "practical") {
+          return {
+            ...d,
+            type: "practical",
+            instructorName: defaultPracticalInstructorName || d.instructorName,
+          };
+        }
+        if (flow === "theory_group") {
+          return { ...d, type: "theory" };
+        }
+        if (flow === "theory_personal") {
+          return {
+            ...d,
+            type: "theory_personal",
+            instructorName: theoryPersonalInstructorNames[0] ?? d.instructorName,
+          };
+        }
+        return { ...d, type: "practical" };
+      });
+    },
+    [defaultPracticalInstructorName, theoryPersonalInstructorNames],
+  );
+
+  const selectedAddPackage = useMemo(
+    () => packagesList.find((p) => p.id === addPackageId) ?? null,
+    [packagesList, addPackageId],
+  );
+
+  const addPriceInput: BookingPriceInput = useMemo(
+    () => ({
+      flowKind: addFlowKind,
+      instructors,
+      instructorName: draft?.instructorName ?? "",
+      slotPick,
+      theoryCohortId,
+      theoryCohorts: bookableTheoryCohorts,
+      selectedPackage: selectedAddPackage,
+      packagePracticalSlots: addPackagePracticalSlotPick,
+      packageTheorySlots: addPackageTheorySlotPick,
+    }),
+    [
+      addFlowKind,
+      instructors,
+      draft?.instructorName,
+      slotPick,
+      theoryCohortId,
+      bookableTheoryCohorts,
+      selectedAddPackage,
+      addPackagePracticalSlotPick,
+      addPackageTheorySlotPick,
+    ],
+  );
+
+  const addTotalAmd = useBookingPriceCalculator(addPriceInput);
+
+  const addValidation = useMemo(
+    () =>
+      validateAdminBookingAdd({
+        flowKind: addFlowKind,
+        studentId: draft?.studentId ?? "",
+        instructorName: draft?.instructorName ?? "",
+        slotPick,
+        theoryCohortId,
+        theoryCohorts: bookableTheoryCohorts,
+        calendarInstructorId:
+          addFlowKind === "theory_group"
+            ? calendarInstructorId
+            : addFlowKind === "theory_personal"
+              ? theoryPersonalCalendarInstructorId
+              : "",
+        selectedPackage: selectedAddPackage,
+        packagePracticalSlots: addPackagePracticalSlotPick,
+        packageTheoryCohortId: addPackageTheoryCohortId,
+        packageTheorySlots: addPackageTheorySlotPick,
+        packageTheoryCalendarInstructorId,
+      }),
+    [
+      addFlowKind,
+      draft?.studentId,
+      draft?.instructorName,
+      slotPick,
+      theoryCohortId,
+      bookableTheoryCohorts,
+      calendarInstructorId,
+      theoryPersonalCalendarInstructorId,
+      selectedAddPackage,
+      addPackagePracticalSlotPick,
+      addPackageTheoryCohortId,
+      addPackageTheorySlotPick,
+      packageTheoryCalendarInstructorId,
+    ],
+  );
+
+  const addCheckoutLines: CheckoutSummaryLines | null = useMemo(() => {
+    if (!draft) return null;
+    if (addFlowKind === "practical") {
+      return {
+        typeLabel: t("lessonTypePractical"),
+        detailLines: [draft.instructorName].filter(Boolean),
+        slotsLine: slotPickSummaryLine(slotPick),
+      };
+    }
+    if (addFlowKind === "theory_group") {
+      const c = bookableTheoryCohorts.find((x) => x.id === theoryCohortId);
+      const plan = c ? theoryGroupSlotPlanFromCohort(c) : null;
+      const details: string[] = [];
+      if (c) details.push(`${c.name} — ${c.instructorName}`);
+      if (c && c.priceAmd != null && Number.isFinite(Number(c.priceAmd)) && Number(c.priceAmd) >= 0) {
+        details.push(`${t("cohortGroupPriceAmdLabel")}: ${formatAmd(Math.round(Number(c.priceAmd)))}`);
+      } else if (c && plan && plan.times.length > 0) {
+        const ins = instructors.find((i) => i.name === c.instructorName);
+        const hourly = ins && Number.isFinite(ins.hourlyPrice) ? ins.hourlyPrice : 0;
+        if (hourly > 0) {
+          details.push(
+            `${t("lessonPrice")}: ${formatAmd(Math.round(hourly))} / ${t("perHour")} · ${plan.times.length} ${t("bookingHoursUnit")}`,
+          );
+        }
+      }
+      return {
+        typeLabel: t("adminBookingFlowTheoryGroup"),
+        detailLines: details.length ? details : ["—"],
+        slotsLine: plan ? `${plan.dateIso} · ${plan.times.join(", ")}` : null,
+      };
+    }
+    if (addFlowKind === "theory_personal") {
+      return {
+        typeLabel: t("lessonTypeTheoryPersonal"),
+        detailLines: [draft.instructorName],
+        slotsLine: slotPickSummaryLine(slotPick),
+      };
+    }
+    const pkg = selectedAddPackage;
+    const lines: string[] = [];
+    if (pkg) lines.push(pkg.name);
+    if (pkg && pkg.lessons > 0 && addPackagePracticalSlotPick) {
+      lines.push(
+        `${t("lessonTypePractical")}: ${addPackagePracticalSlotPick.instructor} · ${addPackagePracticalSlotPick.dateIso} · ${addPackagePracticalSlotPick.times.join(", ")}`,
+      );
+    }
+    if (pkg && pkg.theoryLessons > 0) {
+      const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
+      if (c) lines.push(`${t("lessonTypeTheory")}: ${c.name}`);
+      if (addPackageTheorySlotPick && addPackageTheorySlotPick.times.length > 0) {
+        lines.push(`${addPackageTheorySlotPick.dateIso} · ${addPackageTheorySlotPick.times.join(", ")}`);
+      }
+    }
+    return {
+      typeLabel: t("adminBookingFlowPackage"),
+      detailLines: lines.length ? lines : ["—"],
+      slotsLine: null,
     };
-    setSlotPick(null);
-    setTheoryCohortId("");
-    setDraft(newDraft);
-    setAddPayment({
-      ...defaultPaymentFields(),
-      description: paymentDescriptionLine(newDraft),
-    });
-    setBookingModalTab("booking");
-    setAddOpen(true);
-  };
+  }, [
+    draft,
+    addFlowKind,
+    t,
+    slotPick,
+    theoryCohortId,
+    bookableTheoryCohorts,
+    instructors,
+    selectedAddPackage,
+    addPackagePracticalSlotPick,
+    addPackageTheoryCohortId,
+    addPackageTheorySlotPick,
+  ]);
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => {
@@ -425,13 +835,8 @@ export default function AdminBookings() {
       setEditManualTxId(manual.id);
       setEditSystemPayment(null);
       setEditPayment({
-        description: manual.description,
-        channel: manual.channel,
         method: manual.method,
         grossStr: String(manual.grossAmd),
-        feeStr: String(manual.feeAmd),
-        status: manual.status,
-        ref: manual.providerRef === "—" ? "" : manual.providerRef,
         datetimeLocal: toDatetimeLocalValue(new Date(manual.createdAt)),
       });
     } else if (system) {
@@ -441,7 +846,6 @@ export default function AdminBookings() {
         editBooking.totalPriceAmd != null && editBooking.totalPriceAmd > 0 ? String(editBooking.totalPriceAmd) : "";
       setEditPayment({
         ...defaultPaymentFields(),
-        description: paymentDescriptionLine(editBooking),
         grossStr: gross,
       });
     } else {
@@ -451,7 +855,6 @@ export default function AdminBookings() {
         editBooking.totalPriceAmd != null && editBooking.totalPriceAmd > 0 ? String(editBooking.totalPriceAmd) : "";
       setEditPayment({
         ...defaultPaymentFields(),
-        description: paymentDescriptionLine(editBooking),
         grossStr: gross,
       });
     }
@@ -496,21 +899,12 @@ export default function AdminBookings() {
     requireAmount: boolean,
   ): boolean => {
     const gross = parseAmdInput(payment.grossStr);
-    const fee = payment.feeStr.trim() === "" ? 0 : parseAmdInput(payment.feeStr);
     if (!Number.isFinite(gross) || gross <= 0) {
       if (requireAmount) {
         showToast(t("financeManualErrorAmount"), "error");
         return false;
       }
       return true;
-    }
-    if (!payment.description.trim()) {
-      showToast(t("financeManualErrorRequired"), "error");
-      return false;
-    }
-    if (!Number.isFinite(fee) || fee < 0 || fee > gross) {
-      showToast(t("financeManualErrorFee"), "error");
-      return false;
     }
     const created = new Date(payment.datetimeLocal);
     if (Number.isNaN(created.getTime())) {
@@ -525,34 +919,43 @@ export default function AdminBookings() {
     return true;
   };
 
-  const postManualFinance = async (payment: BookingPaymentFields, ctx: { studentId: string; branchId: string; bookingIdNum: number }) => {
+  const postManualFinance = async (
+    payment: BookingPaymentFields,
+    ctx: { studentId: string; branchId: string; bookingIdNum: number | null; bookingStatus: string },
+  ) => {
     const gross = parseAmdInput(payment.grossStr);
-    const fee = payment.feeStr.trim() === "" ? 0 : parseAmdInput(payment.feeStr);
     const created = new Date(payment.datetimeLocal);
     const { name, email } = studentContact(studentsMini, ctx.studentId);
+    const bid =
+      ctx.bookingIdNum != null && Number.isFinite(ctx.bookingIdNum) && ctx.bookingIdNum > 0 ? ctx.bookingIdNum : null;
     await vivaApiJson("/finance/transactions", {
       method: "POST",
       body: {
         createdAt: created.toISOString(),
         customer: name.trim(),
         email: email.trim(),
-        description: payment.description.trim(),
         branchId: Number(ctx.branchId),
-        channel: payment.channel,
         method: payment.method,
         grossAmd: gross,
-        feeAmd: fee,
-        status: payment.status,
-        providerRef: payment.ref.trim() || "—",
+        status: financeStatusFromBookingStatus(ctx.bookingStatus),
         source: "manual",
-        bookingId: ctx.bookingIdNum,
+        bookingId: bid,
       },
     });
   };
 
-  const patchManualFinance = async (txId: number, payment: BookingPaymentFields, ctx: { studentId: string; branchId: string; bookingIdNum: number }) => {
+  const patchManualFinance = async (
+    txId: number,
+    payment: BookingPaymentFields,
+    ctx: {
+      studentId: string;
+      branchId: string;
+      bookingIdNum: number;
+      financeDescription: string;
+      bookingStatus: string;
+    },
+  ) => {
     const gross = parseAmdInput(payment.grossStr);
-    const fee = payment.feeStr.trim() === "" ? 0 : parseAmdInput(payment.feeStr);
     const created = new Date(payment.datetimeLocal);
     const { name, email } = studentContact(studentsMini, ctx.studentId);
     await vivaApiJson(`/finance/transactions/${encodeURIComponent(String(txId))}`, {
@@ -560,14 +963,11 @@ export default function AdminBookings() {
       body: {
         customer: name.trim(),
         email: email.trim(),
-        description: payment.description.trim(),
+        description: ctx.financeDescription.trim(),
         branchId: Number(ctx.branchId),
-        channel: payment.channel,
         method: payment.method,
         grossAmd: gross,
-        feeAmd: fee,
-        status: payment.status,
-        providerRef: payment.ref.trim() || "—",
+        status: financeStatusFromBookingStatus(ctx.bookingStatus),
         createdAt: created.toISOString(),
         bookingId: ctx.bookingIdNum,
       },
@@ -577,8 +977,11 @@ export default function AdminBookings() {
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editBooking) return;
-    if (editBooking.type === "practical" || editBooking.type === "theory") {
-      if (!editSlotPick || editSlotPick.times.length === 0) {
+    if (editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal") {
+      const hasSlots =
+        editSlotPick &&
+        ((editSlotPick.slotEntries?.length ?? 0) > 0 || editSlotPick.times.length > 0);
+      if (!hasSlots) {
         showToast(t("adminBookingSlotsNotSelected"), "error");
         return;
       }
@@ -591,17 +994,22 @@ export default function AdminBookings() {
       return;
     }
     try {
+      const pick = editSlotPick!;
+      const useArbitrarySlots =
+        (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
+        (pick.slotEntries?.length ?? 0) > 0;
       const body =
-        editBooking.type === "practical" || editBooking.type === "theory"
+        editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
           ? {
               studentId: editBooking.studentId,
               branchId: Number(editBooking.branchId),
               status: editBooking.status,
               type: editBooking.type,
-              dateIso: editSlotPick!.dateIso,
-              slots: editSlotPick!.times,
-              ...(editBooking.type === "practical"
-                ? { instructorName: editSlotPick!.instructor || editBooking.instructorName }
+              dateIso: pick.dateIso,
+              slots: pick.times,
+              ...(useArbitrarySlots ? { slotEntries: pick.slotEntries } : {}),
+              ...(editBooking.type === "practical" || editBooking.type === "theory_personal"
+                ? { instructorName: pick.instructor || editBooking.instructorName }
                 : { theoryCohortId: Number(editTheoryCohortId) }),
             }
           : {
@@ -618,6 +1026,7 @@ export default function AdminBookings() {
         body,
       });
       const bookingIdNum = Number(editBooking.id);
+      const financeDateIso = editSlotPick?.dateIso ?? editBooking.dateIso;
       if (!editSystemPayment) {
         const gross = parseAmdInput(editPayment.grossStr);
         const wantsNewOrUpdate = editManualTxId != null || (Number.isFinite(gross) && gross > 0);
@@ -629,12 +1038,19 @@ export default function AdminBookings() {
               studentId: editBooking.studentId,
               branchId: editBooking.branchId,
               bookingIdNum,
+              bookingStatus: editBooking.status,
+              financeDescription: paymentDescriptionLine({
+                type: editBooking.type,
+                dateIso: financeDateIso,
+                id: editBooking.id,
+              }),
             });
           } else {
             await postManualFinance(editPayment, {
               studentId: editBooking.studentId,
               branchId: editBooking.branchId,
               bookingIdNum,
+              bookingStatus: editBooking.status,
             });
           }
         }
@@ -652,21 +1068,9 @@ export default function AdminBookings() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft) return;
-    if (!draft.studentId) {
-      showToast(t("fillRequired"), "error");
-      return;
-    }
-    if (draft.type === "practical" || draft.type === "theory") {
-      if (!slotPick || slotPick.times.length === 0) {
-        showToast(t("adminBookingSlotsNotSelected"), "error");
-        return;
-      }
-      if (draft.type === "theory" && !theoryCohortId.trim()) {
-        showToast(t("adminBookingTheoryCohortRequired"), "error");
-        return;
-      }
-    } else if (!draft.instructorName || !draft.dateIso || !draft.time) {
-      showToast(t("fillRequired"), "error");
+    const v = addValidation;
+    if (!v.ok) {
+      showToast(t(v.messageKeys[0]), "error");
       return;
     }
     const gross = parseAmdInput(addPayment.grossStr);
@@ -676,39 +1080,109 @@ export default function AdminBookings() {
       if (!ok) return;
     }
     try {
-      const body =
-        draft.type === "practical" || draft.type === "theory"
-          ? {
-              studentId: Number(draft.studentId),
-              branchId: Number(draft.branchId),
-              status: draft.status,
-              type: draft.type,
-              dateIso: slotPick!.dateIso,
-              slots: slotPick!.times,
-              ...(draft.type === "practical"
-                ? { instructorName: slotPick!.instructor || draft.instructorName }
-                : { theoryCohortId: Number(theoryCohortId) }),
-            }
-          : {
-              studentId: Number(draft.studentId),
-              instructorName: draft.instructorName,
-              dateIso: draft.dateIso,
-              time: draft.time,
-              type: draft.type,
-              status: draft.status,
-              branchId: Number(draft.branchId),
-            };
-      const created = await vivaApiJson<{ id: number }>("/bookings", {
-        method: "POST",
-        body,
-      });
-      const bookingIdNum = Number(created.id);
-      if (wantsPayment && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
-        await postManualFinance(addPayment, {
-          studentId: draft.studentId,
-          branchId: draft.branchId,
-          bookingIdNum,
+      if (addFlowKind === "package") {
+        const pkg = selectedAddPackage!;
+        const studentNum = Number(draft.studentId);
+        await vivaApiJson(`/students/${encodeURIComponent(String(studentNum))}`, {
+          method: "PATCH",
+          body: {
+            packageId: Number(pkg.id),
+            lessonsTotal: pkg.lessons,
+            theoryLessonsTotal: pkg.theoryLessons > 0 ? pkg.theoryLessons : 0,
+            branchId: Number(draft.branchId),
+          },
         });
+        let anchorBookingId: number | null = null;
+        if (pkg.lessons > 0) {
+          const pick = addPackagePracticalSlotPick!;
+          const cr = await vivaApiJson<{ id: number }>("/bookings", {
+            method: "POST",
+            body: {
+              studentId: studentNum,
+              branchId: Number(draft.branchId),
+              status: draft.status,
+              type: "practical",
+              dateIso: pick.dateIso,
+              slots: pick.times,
+              instructorName: pick.instructor || draft.instructorName,
+            },
+          });
+          anchorBookingId = Number(cr.id);
+        }
+        if (pkg.theoryLessons > 0) {
+          const pick = addPackageTheorySlotPick!;
+          const cr = await vivaApiJson<{ id: number }>("/bookings", {
+            method: "POST",
+            body: {
+              studentId: studentNum,
+              branchId: Number(draft.branchId),
+              status: draft.status,
+              type: "theory",
+              dateIso: pick.dateIso,
+              slots: pick.times,
+              theoryCohortId: Number(addPackageTheoryCohortId),
+            },
+          });
+          if (anchorBookingId == null || !Number.isFinite(anchorBookingId)) {
+            anchorBookingId = Number(cr.id);
+          }
+        }
+        if (wantsPayment) {
+          await postManualFinance(addPayment, {
+            studentId: draft.studentId,
+            branchId: draft.branchId,
+            bookingIdNum: anchorBookingId,
+            bookingStatus: draft.status,
+          });
+        }
+      } else {
+        const theoryCohort = bookableTheoryCohorts.find((x) => x.id === theoryCohortId);
+        const theoryPlan =
+          draft.type === "theory" && theoryCohort ? theoryGroupSlotPlanFromCohort(theoryCohort) : null;
+        const pick = slotPick!;
+        const arbitrary =
+          (addFlowKind === "practical" || addFlowKind === "theory_personal") &&
+          pick.slotEntries &&
+          pick.slotEntries.length > 0
+            ? { slotEntries: pick.slotEntries }
+            : {};
+        const body =
+          addFlowKind === "theory_personal"
+            ? {
+                studentId: Number(draft.studentId),
+                instructorName: pick.instructor || draft.instructorName,
+                dateIso: pick.dateIso,
+                type: "theory_personal" as const,
+                status: draft.status,
+                branchId: Number(draft.branchId),
+                slots: pick.times,
+                ...arbitrary,
+              }
+            : {
+                studentId: Number(draft.studentId),
+                branchId: Number(draft.branchId),
+                status: draft.status,
+                type: draft.type,
+                dateIso: theoryPlan ? theoryPlan.dateIso : pick.dateIso,
+                slots: theoryPlan ? theoryPlan.times : pick.times,
+                ...(draft.type === "practical"
+                  ? { instructorName: pick.instructor || draft.instructorName }
+                  : { theoryCohortId: Number(theoryCohortId) }),
+                ...(!theoryPlan ? arbitrary : {}),
+              };
+        const created = await vivaApiJson<{ id: number }>("/bookings", {
+          method: "POST",
+          body,
+        });
+        const bookingIdNum = Number(created.id);
+        if (wantsPayment && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
+          await postManualFinance(addPayment, {
+            studentId: draft.studentId,
+            branchId: draft.branchId,
+            bookingIdNum,
+            bookingStatus: draft.status,
+          });
+        }
       }
       setAddOpen(false);
       setDraft(null);
@@ -720,35 +1194,21 @@ export default function AdminBookings() {
     }
   };
 
+  const handleAddCheckoutContinue = useCallback(() => {
+    const amt = addTotalAmd;
+    setAddPayment((p) => ({
+      ...p,
+      grossStr: amt > 0 ? String(amt) : p.grossStr,
+    }));
+    setBookingModalTab("payment");
+  }, [addTotalAmd]);
+
   const renderPaymentFields = (
     payment: BookingPaymentFields,
     setPayment: React.Dispatch<React.SetStateAction<BookingPaymentFields>>,
   ) => (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">{t("adminBookingPaymentOptionalHint")}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProduct")}</label>
-          <Input
-            value={payment.description}
-            onChange={(e) => setPayment((p) => ({ ...p, description: e.target.value }))}
-            className="h-10"
-            placeholder={t("financeManualTxDescriptionPlaceholder")}
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColChannel")}</label>
-          <select
-            value={payment.channel}
-            onChange={(e) => setPayment((p) => ({ ...p, channel: e.target.value as TxChannel }))}
-            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="office">{t("financeChannelOffice")}</option>
-            <option value="pos">{t("financeChannelPos")}</option>
-            <option value="online">{t("financeChannelOnline")}</option>
-            <option value="bank">{t("financeChannelBank")}</option>
-          </select>
-        </div>
         <div className="sm:col-span-2">
           <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
           <select
@@ -762,7 +1222,6 @@ export default function AdminBookings() {
             <option value="idram">{t("financeMethodIdram")}</option>
           </select>
         </div>
-        <p className="sm:col-span-2 text-xs text-muted-foreground -mt-1">{t("financeManualChannelHint")}</p>
         <div>
           <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxGrossLabel")}</label>
           <Input
@@ -774,44 +1233,12 @@ export default function AdminBookings() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxFeeLabel")}</label>
-          <Input
-            inputMode="decimal"
-            value={payment.feeStr}
-            onChange={(e) => setPayment((p) => ({ ...p, feeStr: e.target.value }))}
-            className="h-10 tabular-nums"
-            placeholder="0"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-          <select
-            value={payment.status}
-            onChange={(e) => setPayment((p) => ({ ...p, status: e.target.value as TxStatus }))}
-            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="completed">{t("financeStatusCompleted")}</option>
-            <option value="pending">{t("financeStatusPending")}</option>
-            <option value="failed">{t("financeStatusFailed")}</option>
-            <option value="refunded">{t("financeStatusRefunded")}</option>
-          </select>
-        </div>
-        <div>
           <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")}</label>
           <Input
             type="datetime-local"
             value={payment.datetimeLocal}
             onChange={(e) => setPayment((p) => ({ ...p, datetimeLocal: e.target.value }))}
             className="h-10"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProviderRef")}</label>
-          <Input
-            value={payment.ref}
-            onChange={(e) => setPayment((p) => ({ ...p, ref: e.target.value }))}
-            className="h-10 font-mono text-sm"
-            placeholder={t("financeManualTxRefPlaceholder")}
           />
         </div>
       </div>
@@ -825,7 +1252,7 @@ export default function AdminBookings() {
         title={t("bookings")}
         subtitle={t("adminBookingsPageSubtitle")}
         actions={
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={openAdd}>
+          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={() => openAdd()}>
             <Plus className="w-4 h-4" />
             {t("addNew")}
           </Button>
@@ -1086,9 +1513,10 @@ export default function AdminBookings() {
         }}
         title={t("bookingDialogEditTitle")}
         contentClassName={
-          editBooking && (editBooking.type === "practical" || editBooking.type === "theory")
-            ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] max-h-[min(94vh,980px)]"
-            : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[min(92vh,900px)]"
+          editBooking &&
+          (editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal")
+            ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] h-[min(94vh,980px)]"
+            : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl h-[min(92vh,900px)]"
         }
         footer={
           editBooking ? (
@@ -1123,7 +1551,11 @@ export default function AdminBookings() {
                   {t("adminBookingModalTabPayment")}
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="booking" className="mt-4 space-y-3">
+              <TabsContent
+                value="booking"
+                forceMount
+                className="mt-4 space-y-3 data-[state=inactive]:hidden"
+              >
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
                   <select
@@ -1154,13 +1586,25 @@ export default function AdminBookings() {
                         next.instructorName = theoryPersonalInstructorNames[0] ?? next.instructorName;
                       }
                       setEditBooking(next);
-                      setEditPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
                     }}
                     className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   >
                     <option value="practical">{t("lessonTypePractical")}</option>
                     <option value="theory">{t("lessonTypeTheory")}</option>
                     <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
+                  <select
+                    value={editBooking.status}
+                    onChange={(e) => setEditBooking({ ...editBooking, status: e.target.value })}
+                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="confirmed">{t("confirmed")}</option>
+                    <option value="pending">{t("pending")}</option>
+                    <option value="cancelled">{t("cancelled")}</option>
+                    <option value="refunded">{t("refunded")}</option>
                   </select>
                 </div>
                 <div>
@@ -1188,7 +1632,7 @@ export default function AdminBookings() {
                         setEditTheoryCohortId(id);
                         setEditSlotPick(null);
                         lastEditSlotInitKey.current = "";
-                        const c = activeTheoryCohorts.find((x) => x.id === id);
+                        const c = bookableTheoryCohorts.find((x) => x.id === id);
                         if (c) {
                           setEditBooking((eb) =>
                             eb
@@ -1204,17 +1648,13 @@ export default function AdminBookings() {
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
-                      {activeTheoryCohorts.map((c) => {
-                        const time = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
-                        return (
-                          <option key={c.id} value={c.id}>
-                            {c.name} — {c.instructorName}
-                            {time ? ` · ${time}` : ""}
-                          </option>
-                        );
-                      })}
+                      {bookableTheoryCohorts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} — {c.instructorName}
+                          {theoryCohortSelectSuffix(c)}
+                        </option>
+                      ))}
                     </select>
-                    <p className="text-xs text-muted-foreground mt-1">{t("adminBookingTheoryCohortHint")}</p>
                   </div>
                 ) : null}
                 {editBooking.type === "practical" ? (
@@ -1241,7 +1681,10 @@ export default function AdminBookings() {
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
                     <select
                       value={editBooking.instructorName}
-                      onChange={(e) => setEditBooking({ ...editBooking, instructorName: e.target.value })}
+                      onChange={(e) => {
+                        setEditBooking({ ...editBooking, instructorName: e.target.value });
+                        lastEditSlotInitKey.current = "";
+                      }}
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       {theoryPersonalInstructorNames.map((name) => (
@@ -1252,53 +1695,25 @@ export default function AdminBookings() {
                     </select>
                   </div>
                 ) : null}
-                {editBooking.type === "practical" || editBooking.type === "theory" ? (
+                {editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal" ? (
                   <div className="space-y-2 pt-2 border-t border-border">
-                    <p className="text-sm text-muted-foreground">{t("adminBookingSlotCalendarHint")}</p>
-                    {editBooking.type === "theory" && !editTheoryCohortId ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingTheoryPickCohortFirst")}</p>
-                    ) : !editCalendarInstructorId ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
+                    <p className="text-sm text-muted-foreground">{t("bookingColTime")}</p>
+                    {editSlotPick && (editSlotPick.slotEntries?.length ?? 0) > 0 ? (
+                      <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+                        <ul className="space-y-1 text-sm text-foreground">
+                          {editSlotPick.slotEntries!.map((entry, idx) => (
+                            <li key={`${entry.dateIso}-${entry.time}-${idx}`}>
+                              {formatShortDateFromIso(entry.dateIso, lang)} · {entry.time}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : editSlotPick && editSlotPick.times.length > 0 ? (
+                      <div className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm text-foreground">
+                        {formatShortDateFromIso(editSlotPick.dateIso, lang)} · {editSlotPick.times.join(", ")}
+                      </div>
                     ) : (
-                      <LessonBookingCalendar
-                        key={`edit-${editBooking.id}-${editBooking.type === "practical" ? editBooking.instructorName : editTheoryCohortId}-${editBooking.branchId}`}
-                        mode="admin"
-                        instructors={
-                          editBooking.type === "practical" ? practicalInstructorsForCalendar : theoryEditCalendarInstructors
-                        }
-                        selectedInstructorId={editCalendarInstructorId}
-                        onInstructorChange={(insId) => {
-                          const ins = instructors.find((i) => i.id === insId);
-                          if (ins) {
-                            setEditBooking((eb) => (eb ? { ...eb, instructorName: ins.name } : eb));
-                            lastEditSlotInitKey.current = "";
-                          }
-                        }}
-                        branchId={editBooking.branchId}
-                        studentName={studentLabel(editBooking.studentId)}
-                        showInstructorPicker={editBooking.type === "practical"}
-                        ignoreBusyBookingId={editBooking.id}
-                        initialAdminSelection={
-                          editSlotPick && editSlotPick.times.length > 0
-                            ? { dateIso: editSlotPick.dateIso, times: editSlotPick.times }
-                            : null
-                        }
-                        onAdminSelectionCleared={() => setEditSlotPick(null)}
-                        onBookingConfirmed={(payload) => {
-                          setEditSlotPick(payload);
-                          setEditBooking((eb) => {
-                            if (!eb) return eb;
-                            const next: Booking = {
-                              ...eb,
-                              dateIso: payload.dateIso,
-                              time: payload.time,
-                              instructorName: payload.instructor || eb.instructorName,
-                            };
-                            setEditPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
-                            return next;
-                          });
-                        }}
-                      />
+                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingSlotsNotSelected")}</p>
                     )}
                   </div>
                 ) : (
@@ -1312,7 +1727,6 @@ export default function AdminBookings() {
                           const dateIso = e.target.value;
                           const next = { ...editBooking, dateIso };
                           setEditBooking(next);
-                          setEditPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
                         }}
                         className="h-10"
                       />
@@ -1329,21 +1743,8 @@ export default function AdminBookings() {
                     </div>
                   </div>
                 )}
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-                  <select
-                    value={editBooking.status}
-                    onChange={(e) => setEditBooking({ ...editBooking, status: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="confirmed">{t("confirmed")}</option>
-                    <option value="pending">{t("pending")}</option>
-                    <option value="cancelled">{t("cancelled")}</option>
-                    <option value="refunded">{t("refunded")}</option>
-                  </select>
-                </div>
               </TabsContent>
-              <TabsContent value="payment" className="mt-4">
+              <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
                 {editSystemPayment ? (
                   <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-foreground">
                     <p>{t("adminBookingPaymentSystemLinked")}</p>
@@ -1368,13 +1769,18 @@ export default function AdminBookings() {
           if (!o) {
             setDraft(null);
             setBookingModalTab("booking");
+            setAddFlowKind("practical");
+            setAddPackageId("");
+            setAddPackagePracticalSlotPick(null);
+            setAddPackageTheoryCohortId("");
+            setAddPackageTheorySlotPick(null);
           }
         }}
         title={t("bookingDialogAddTitle")}
         contentClassName={
-          draft && (draft.type === "practical" || draft.type === "theory")
-            ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] max-h-[min(94vh,980px)]"
-            : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[min(92vh,900px)]"
+          draft
+            ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] h-[min(94vh,980px)]"
+            : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl h-[min(92vh,900px)]"
         }
         footer={
           draft ? (
@@ -1400,147 +1806,217 @@ export default function AdminBookings() {
                   {t("adminBookingModalTabPayment")}
                 </TabsTrigger>
               </TabsList>
-              <TabsContent value="booking" className="mt-4 space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
-                  <select
-                    value={draft.studentId}
-                    onChange={(e) => setDraft({ ...draft, studentId: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {studentsMini.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
-                  <select
-                    value={draft.type}
-                    onChange={(e) => {
-                      const type = e.target.value as Booking["type"];
-                      const next: Booking = { ...draft, type };
-                      setSlotPick(null);
-                      if (type !== "theory") setTheoryCohortId("");
-                      if (type === "practical") {
-                        next.instructorName = defaultPracticalInstructorName || next.instructorName;
-                      }
-                      if (type === "theory_personal") {
-                        next.instructorName = theoryPersonalInstructorNames[0] ?? next.instructorName;
-                      }
-                      setDraft(next);
-                      setAddPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
-                    }}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="practical">{t("lessonTypePractical")}</option>
-                    <option value="theory">{t("lessonTypeTheory")}</option>
-                    <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
-                  <select
-                    value={draft.branchId}
-                    onChange={(e) => setDraft({ ...draft, branchId: e.target.value })}
-                    disabled={draft.type === "theory" && !!theoryCohortId}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-                  >
-                    {branches.map((br) => (
-                      <option key={br.id} value={br.id}>
-                        {br.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {draft.type === "theory" ? (
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminBookingTheoryCohortLabel")}</label>
-                    <select
-                      value={theoryCohortId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setTheoryCohortId(id);
-                        setSlotPick(null);
-                        const c = activeTheoryCohorts.find((x) => x.id === id);
-                        if (c) {
-                          setDraft((d) =>
-                            d
-                              ? {
-                                  ...d,
-                                  branchId: c.branchId,
-                                  instructorName: c.instructorName,
-                                }
-                              : d,
-                          );
-                        }
-                      }}
-                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
-                      {activeTheoryCohorts.map((c) => {
-                        const time = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
-                        return (
-                          <option key={c.id} value={c.id}>
-                            {c.name} — {c.instructorName}
-                            {time ? ` · ${time}` : ""}
+              <TabsContent value="booking" forceMount className="mt-4 data-[state=inactive]:hidden">
+                <div className="grid lg:grid-cols-[minmax(0,1fr)_min(280px,100%)] gap-6 items-start">
+                  <div className="space-y-3 min-w-0">
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
+                      <select
+                        value={draft.studentId}
+                        onChange={(e) => setDraft({ ...draft, studentId: e.target.value })}
+                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {studentsMini.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
                           </option>
-                        );
-                      })}
-                    </select>
-                    <p className="text-xs text-muted-foreground mt-1">{t("adminBookingTheoryCohortHint")}</p>
-                  </div>
-                ) : null}
-                {draft.type === "practical" ? (
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                    <select
-                      value={draft.instructorName}
-                      onChange={(e) => {
-                        setDraft({ ...draft, instructorName: e.target.value });
-                        setSlotPick(null);
-                      }}
-                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {practicalInstructorsForCalendar.map((ins) => (
-                        <option key={ins.id} value={ins.name}>
-                          {ins.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-                {draft.type === "theory_personal" ? (
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                    <select
-                      value={draft.instructorName}
-                      onChange={(e) => setDraft({ ...draft, instructorName: e.target.value })}
-                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {theoryPersonalInstructorNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
-                {draft.type === "practical" || draft.type === "theory" ? (
-                  <div className="space-y-2 pt-2 border-t border-border">
-                    <p className="text-sm text-muted-foreground">{t("adminBookingSlotCalendarHint")}</p>
-                    {draft.type === "theory" && !theoryCohortId ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingTheoryPickCohortFirst")}</p>
-                    ) : !calendarInstructorId ? (
-                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
-                    ) : (
-                      <LessonBookingCalendar
-                        key={`${draft.type}-${draft.type === "practical" ? draft.instructorName : theoryCohortId}-${draft.branchId}`}
-                        mode="admin"
-                        instructors={draft.type === "practical" ? practicalInstructorsForCalendar : theoryCalendarInstructors}
+                        ))}
+                      </select>
+                    </div>
+                    <BookingTypeSelector
+                      value={addFlowKind}
+                      onChange={handleAddFlowKindChange}
+                      label={t("bookingColType")}
+                      t={t}
+                    />
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
+                      <select
+                        value={draft.status}
+                        onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="confirmed">{t("confirmed")}</option>
+                        <option value="pending">{t("pending")}</option>
+                        <option value="cancelled">{t("cancelled")}</option>
+                        <option value="refunded">{t("refunded")}</option>
+                      </select>
+                    </div>
+                    {theoryCohortsLoadError ? (
+                      <p className="text-xs text-amber-600 dark:text-amber-500">{t("couldNotLoadData")}</p>
+                    ) : null}
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
+                      <select
+                        value={draft.branchId}
+                        onChange={(e) => setDraft({ ...draft, branchId: e.target.value })}
+                        disabled={
+                          (addFlowKind === "theory_group" && !!theoryCohortId) ||
+                          (addFlowKind === "package" &&
+                            !!addPackageTheoryCohortId &&
+                            (selectedAddPackage?.theoryLessons ?? 0) > 0)
+                        }
+                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                      >
+                        {branches.map((br) => (
+                          <option key={br.id} value={br.id}>
+                            {br.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {addFlowKind === "theory_group" ? (
+                      <GroupLessonSelector
+                        label={t("adminBookingTheoryCohortLabel")}
+                        placeholderKey="adminBookingTheoryCohortPlaceholder"
+                        cohorts={bookableTheoryCohorts}
+                        valueId={theoryCohortId}
+                        onChangeId={(id) => {
+                          setTheoryCohortId(id);
+                          setSlotPick(null);
+                          const c = bookableTheoryCohorts.find((x) => x.id === id);
+                          if (c) {
+                            const plan = theoryGroupSlotPlanFromCohort(c);
+                            setDraft((d) =>
+                              d
+                                ? {
+                                    ...d,
+                                    branchId: c.branchId,
+                                    instructorName: c.instructorName,
+                                    ...(plan
+                                      ? { dateIso: plan.dateIso, time: plan.times[0] ?? d.time }
+                                      : {}),
+                                  }
+                                : d,
+                            );
+                          }
+                        }}
+                        formatOptionSuffix={(c) => theoryCohortSelectSuffix(c)}
+                        t={t}
+                      />
+                    ) : null}
+
+                    {addFlowKind === "practical" ? (
+                      <InstructorSelector
+                        label={t("cohortColInstructor")}
+                        instructors={practicalInstructorsForCalendar}
+                        valueName={draft.instructorName}
+                        onChangeName={(name) => {
+                          setDraft({ ...draft, instructorName: name });
+                          setSlotPick(null);
+                        }}
+                      />
+                    ) : null}
+
+                    {addFlowKind === "theory_personal" ? (
+                      <InstructorSelector
+                        label={t("cohortColInstructor")}
+                        instructors={theoryPersonalCalendarInstructors}
+                        valueName={draft.instructorName}
+                        onChangeName={(name) => {
+                          setDraft({ ...draft, instructorName: name });
+                          setSlotPick(null);
+                        }}
+                      />
+                    ) : null}
+
+                    {addFlowKind === "package" ? (
+                      <>
+                        <PackageSelector
+                          label={t("packages")}
+                          packages={packagesList.filter((p) => String(p.status).toLowerCase() === "active")}
+                          valueId={addPackageId}
+                          onChangeId={(id) => {
+                            setAddPackageId(id);
+                            setAddPackagePracticalSlotPick(null);
+                            setAddPackageTheoryCohortId("");
+                            setAddPackageTheorySlotPick(null);
+                          }}
+                          loading={packagesLoading}
+                          error={packagesFetchError}
+                          emptyHintKey="adminBookingPackagesEmpty"
+                          t={t}
+                        />
+                        {selectedAddPackage && selectedAddPackage.lessons > 0 ? (
+                          <>
+                            <InstructorSelector
+                              label={t("cohortColInstructor")}
+                              instructors={practicalInstructorsForCalendar}
+                              valueName={draft.instructorName}
+                              onChangeName={(name) => {
+                                setDraft({ ...draft, instructorName: name });
+                                setAddPackagePracticalSlotPick(null);
+                              }}
+                            />
+                            <SlotSelector
+                              hint={t("adminBookingPackagePracticalSlotsHint").replace(
+                                /%n/g,
+                                String(selectedAddPackage.lessons),
+                              )}
+                              selectedInstructorId={packagePracticalCalendarInstructorId}
+                              instructors={practicalInstructorsForCalendar}
+                              onInstructorChange={(id) => {
+                                const ins = instructors.find((i) => i.id === id);
+                                if (ins) {
+                                  setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
+                                  setAddPackagePracticalSlotPick(null);
+                                }
+                              }}
+                              branchId={draft.branchId}
+                              studentName={studentLabel(draft.studentId)}
+                              showInstructorPicker
+                              onBookingConfirmed={setAddPackagePracticalSlotPick}
+                              onAdminSelectionCleared={() => setAddPackagePracticalSlotPick(null)}
+                              calendarKey={`add-pkg-prac-${draft.instructorName}-${draft.branchId}-${addPackageId}`}
+                              t={t}
+                            />
+                          </>
+                        ) : null}
+                        {selectedAddPackage && selectedAddPackage.theoryLessons > 0 ? (
+                          <>
+                            <GroupLessonSelector
+                              label={t("adminBookingTheoryCohortLabel")}
+                              placeholderKey="adminBookingTheoryCohortPlaceholder"
+                              cohorts={bookableTheoryCohorts}
+                              valueId={addPackageTheoryCohortId}
+                              onChangeId={(id) => {
+                                setAddPackageTheoryCohortId(id);
+                                setAddPackageTheorySlotPick(null);
+                                const c = bookableTheoryCohorts.find((x) => x.id === id);
+                                if (c) {
+                                  setDraft((d) => (d ? { ...d, branchId: c.branchId } : d));
+                                }
+                              }}
+                              formatOptionSuffix={(c) => theoryCohortSelectSuffix(c)}
+                              t={t}
+                            />
+                            <SlotSelector
+                              hint={t("adminBookingSlotCalendarHint")}
+                              blockingMessage={
+                                !addPackageTheoryCohortId ? t("adminBookingTheoryPickCohortFirst") : undefined
+                              }
+                              selectedInstructorId={packageTheoryCalendarInstructorId}
+                              instructors={packageTheoryCalendarInstructors}
+                              onInstructorChange={() => {}}
+                              branchId={draft.branchId}
+                              studentName={studentLabel(draft.studentId)}
+                              showInstructorPicker={false}
+                              onBookingConfirmed={setAddPackageTheorySlotPick}
+                              onAdminSelectionCleared={() => setAddPackageTheorySlotPick(null)}
+                              calendarKey={`add-pkg-th-${addPackageTheoryCohortId}-${draft.branchId}`}
+                              t={t}
+                            />
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {addFlowKind === "practical" ? (
+                      <SlotSelector
+                        hint={t("adminBookingSlotCalendarHint")}
                         selectedInstructorId={calendarInstructorId}
+                        instructors={practicalInstructorsForCalendar}
                         onInstructorChange={(id) => {
                           const ins = instructors.find((i) => i.id === id);
                           if (ins) {
@@ -1550,7 +2026,7 @@ export default function AdminBookings() {
                         }}
                         branchId={draft.branchId}
                         studentName={studentLabel(draft.studentId)}
-                        showInstructorPicker={draft.type === "practical"}
+                        showInstructorPicker
                         onBookingConfirmed={(payload) => {
                           setSlotPick(payload);
                           setDraft((d) => {
@@ -1561,56 +2037,66 @@ export default function AdminBookings() {
                               time: payload.time,
                               instructorName: payload.instructor || d.instructorName,
                             };
-                            setAddPayment((p) => ({ ...p, description: paymentDescriptionLine({ ...next, id: "" }) }));
                             return next;
                           });
                         }}
+                        onAdminSelectionCleared={() => setSlotPick(null)}
+                        calendarKey={`add-practical-${draft.instructorName}-${draft.branchId}`}
+                        t={t}
                       />
-                    )}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
-                      <Input
-                        type="date"
-                        value={draft.dateIso}
-                        onChange={(e) => {
-                          const dateIso = e.target.value;
-                          const next = { ...draft, dateIso };
-                          setDraft(next);
-                          setAddPayment((p) => ({ ...p, description: paymentDescriptionLine(next) }));
+                    ) : null}
+
+                    {addFlowKind === "theory_personal" ? (
+                      <SlotSelector
+                        hint={t("adminBookingSlotCalendarHint")}
+                        selectedInstructorId={theoryPersonalCalendarInstructorId}
+                        instructors={theoryPersonalCalendarInstructors}
+                        onInstructorChange={(id) => {
+                          const ins = instructors.find((i) => i.id === id);
+                          if (ins) {
+                            setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
+                            setSlotPick(null);
+                          }
                         }}
-                        className="h-10"
+                        branchId={draft.branchId}
+                        studentName={studentLabel(draft.studentId)}
+                        showInstructorPicker
+                        onBookingConfirmed={(payload) => {
+                          setSlotPick(payload);
+                          setDraft((d) => {
+                            if (!d) return d;
+                            const next: Booking = {
+                              ...d,
+                              dateIso: payload.dateIso,
+                              time: payload.time,
+                              instructorName: payload.instructor || d.instructorName,
+                            };
+                            return next;
+                          });
+                        }}
+                        onAdminSelectionCleared={() => setSlotPick(null)}
+                        calendarKey={`add-personal-${draft.instructorName}-${draft.branchId}`}
+                        t={t}
                       />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColTime")}</label>
-                      <Input
-                        type="time"
-                        value={draft.time}
-                        onChange={(e) => setDraft({ ...draft, time: e.target.value })}
-                        className="h-10"
-                        step={60}
-                      />
-                    </div>
+                    ) : null}
+
                   </div>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-                  <select
-                    value={draft.status}
-                    onChange={(e) => setDraft({ ...draft, status: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="confirmed">{t("confirmed")}</option>
-                    <option value="pending">{t("pending")}</option>
-                    <option value="cancelled">{t("cancelled")}</option>
-                    <option value="refunded">{t("refunded")}</option>
-                  </select>
+
+                  {addCheckoutLines ? (
+                    <CheckoutSummary
+                      title={t("adminBookingCheckoutTitle")}
+                      lines={addCheckoutLines}
+                      totalAmd={addTotalAmd}
+                      validationMessageKeys={addValidation.ok ? [] : addValidation.messageKeys}
+                      checkoutDisabled={!addValidation.ok}
+                      checkoutHintKey="adminBookingCheckoutHintIncomplete"
+                      onCheckout={handleAddCheckoutContinue}
+                      t={t}
+                    />
+                  ) : null}
                 </div>
               </TabsContent>
-              <TabsContent value="payment" className="mt-4">
+              <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
                 {renderPaymentFields(addPayment, setAddPayment)}
               </TabsContent>
             </Tabs>

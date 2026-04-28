@@ -10,14 +10,28 @@ export function AdminRedirectUsersAnalyticsToStudents() {
   return <Redirect to="/admin/students/analytics" replace />;
 }
 
-/** Old `/admin/learn/practical` — same page under Students; preserve query string. */
+/** Old `/admin/learn/practical` — bookings flow; preserve student/branch query. */
 export function AdminRedirectLearnPracticalToStudents() {
   const search = typeof window !== "undefined" ? window.location.search : "";
-  return <Redirect to={`/admin/students/practical${search}`} replace />;
+  const p = new URLSearchParams(search);
+  const next = new URLSearchParams();
+  const student = p.get("student");
+  const branch = p.get("branch");
+  if (student) next.set("student", student);
+  if (branch) next.set("branch", branch);
+  next.set("new", "1");
+  const q = next.toString();
+  return <Redirect to={`/admin/bookings${q ? `?${q}` : ""}`} replace />;
 }
 
-/** Old `/admin/learn/theory` — same page under Students; preserve query string. */
+/** Old `/admin/learn/theory` — bookings flow; preserve student query. */
 export function AdminRedirectLearnTheoryToStudents() {
   const search = typeof window !== "undefined" ? window.location.search : "";
-  return <Redirect to={`/admin/students/theory${search}`} replace />;
+  const p = new URLSearchParams(search);
+  const next = new URLSearchParams();
+  const student = p.get("student");
+  if (student) next.set("student", student);
+  next.set("new", "1");
+  const q = next.toString();
+  return <Redirect to={`/admin/bookings${q ? `?${q}` : ""}`} replace />;
 }

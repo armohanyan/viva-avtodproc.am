@@ -8,7 +8,9 @@ import { BookingSlot } from './booking-slot.model';
 import { Branch } from './branch.model';
 import { CarExpense } from './car-expense.model';
 import { City } from './city.model';
+import { ContactRequest } from './contact-request.model';
 import { ExamQuestion } from './exam-question.model';
+import { ExamQuestionMeta } from './exam-question-meta.model';
 import { FinanceTransaction } from './finance-transaction.model';
 import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
@@ -106,7 +108,9 @@ export {
   Branch,
   CarExpense,
   City,
+  ContactRequest,
   ExamQuestion,
+  ExamQuestionMeta,
   FinanceTransaction,
   FleetCar,
   FleetCarInstructor,
@@ -296,6 +300,53 @@ async function ensureFinanceTransactionsBookingIdColumn(): Promise<void> {
      FOREIGN KEY (\`booking_id\`) REFERENCES \`bookings\` (\`id\`)
      ON UPDATE CASCADE ON DELETE RESTRICT`,
   );
+}
+
+/** Adds finance income/expense classification and rate-based expense metadata when missing. */
+async function ensureFinanceTransactionsEntryColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'
+       AND COLUMN_NAME IN ('entry_type', 'expense_kind', 'employee_name', 'units', 'unit_rate_amd')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('entry_type')) {
+    await sequelize.query(
+      "ALTER TABLE `finance_transactions` ADD COLUMN `entry_type` ENUM('income','expense') NOT NULL DEFAULT 'income' AFTER `source`",
+    );
+  }
+  if (!have.has('expense_kind')) {
+    await sequelize.query(
+      "ALTER TABLE `finance_transactions` ADD COLUMN `expense_kind` ENUM('salary','hourly_rate','rent','utilities','maintenance','marketing','other') NULL AFTER `entry_type`",
+    );
+  }
+  if (!have.has('employee_name')) {
+    await sequelize.query(
+      'ALTER TABLE `finance_transactions` ADD COLUMN `employee_name` VARCHAR(255) NULL AFTER `expense_kind`',
+    );
+  }
+  if (!have.has('units')) {
+    await sequelize.query(
+      'ALTER TABLE `finance_transactions` ADD COLUMN `units` DECIMAL(10,2) NULL AFTER `employee_name`',
+    );
+  }
+  if (!have.has('unit_rate_amd')) {
+    await sequelize.query(
+      'ALTER TABLE `finance_transactions` ADD COLUMN `unit_rate_amd` INT UNSIGNED NULL AFTER `units`',
+    );
+  }
 }
 
 /** Drops legacy `car_expenses.channel` / `car_expenses.method` (fleet expenses no longer classify payments). */
@@ -1104,6 +1155,32 @@ async function ensureTheoryCohortSessionTimeColumns(): Promise<void> {
   await addTimeCol('session_end_time');
 }
 
+/** Fixed group-theory course price (AMD); null = use instructor hourly × hours when booking. */
+async function ensureTheoryCohortPriceAmdColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts' AND COLUMN_NAME = 'price_amd'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `theory_cohorts` ADD COLUMN `price_amd` INT UNSIGNED NULL DEFAULT NULL',
+  );
+}
+
 /**
  * Allows removing catalog `packages` rows while keeping student profiles: nulls `package_id` and
  * replaces restrictive FKs (e.g. `ON DELETE RESTRICT`) with `ON DELETE SET NULL`.
@@ -1190,6 +1267,7 @@ export async function syncModels(): Promise<void> {
   await ensureInstructorProfilesDropRedundantDisplayColumns();
   await ensureTheoryCohortsDropScheduleColumn();
   await ensureTheoryCohortSessionTimeColumns();
+  await ensureTheoryCohortPriceAmdColumn();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensurePackagesTheoryLessonsColumn();
@@ -1197,6 +1275,7 @@ export async function syncModels(): Promise<void> {
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
+  await ensureFinanceTransactionsEntryColumns();
   await ensureCarExpensesDropPaymentColumns();
   await ensureBookingsPaymentColumns();
   await ensureBookingsHoldExtensionCountColumn();

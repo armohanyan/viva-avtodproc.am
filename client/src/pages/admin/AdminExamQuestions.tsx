@@ -9,7 +9,6 @@ import { Input } from "src/components/ui/input";
 import { Label } from "src/components/ui/label";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
-import DataTableToolbar from "src/components/DataTableToolbar";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
@@ -19,12 +18,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "src/components/ui/select";
-import { ClipboardList, Edit2, ImageIcon, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ClipboardList, Edit2, ImageIcon, Plus, Trash2 } from "lucide-react";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
 import type { ExamQuestion, ExamQuestionCategory } from "src/data/examSampleQuestions";
-import { EXAM_QUESTION_POOL } from "src/data/examSampleQuestions";
 import { THEMATIC_TOPIC_IDS } from "src/data/thematicTopics";
 import { loadExamQuestions, notifyExamQuestionsUpdated } from "src/lib/examQuestions";
+import {
+  defaultExamQuestionMeta,
+  loadExamQuestionMeta,
+  updateExamQuestionMeta,
+  type ExamQuestionMeta,
+} from "src/lib/examQuestionMeta";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { cn } from "src/lib/utils";
@@ -38,6 +42,11 @@ const emptyOptions = (): Record<Lang, string[]> => ({
 });
 
 const emptyText = (): Record<Lang, string> => ({ en: "", ru: "", am: "" });
+const emptyExplanations = (): Record<Lang, (string | null)[]> => ({
+  en: [null, null, null, null],
+  ru: [null, null, null, null],
+  am: [null, null, null, null],
+});
 
 const EXAM_IMAGE_MAX_BYTES = 800 * 1024;
 
@@ -45,6 +54,7 @@ function questionToForm(q: ExamQuestion): {
   id: string;
   text: Record<Lang, string>;
   options: Record<Lang, string[]>;
+  optionExplanations: Record<Lang, (string | null)[]>;
   correctIndex: number;
   category: ExamQuestionCategory;
   topicId: string;
@@ -58,6 +68,11 @@ function questionToForm(q: ExamQuestion): {
       ru: [...q.options.ru],
       am: [...q.options.am],
     },
+    optionExplanations: {
+      en: [...(q.optionExplanations?.en ?? [null, null, null, null])],
+      ru: [...(q.optionExplanations?.ru ?? [null, null, null, null])],
+      am: [...(q.optionExplanations?.am ?? [null, null, null, null])],
+    },
     correctIndex: q.correctIndex,
     category: q.category,
     topicId: q.topicId ?? "",
@@ -70,6 +85,7 @@ function defaultForm() {
     id: "",
     text: emptyText(),
     options: emptyOptions(),
+    optionExplanations: emptyExplanations(),
     correctIndex: 0,
     category: "rules" as ExamQuestionCategory,
     topicId: "5",
@@ -129,27 +145,73 @@ export default function AdminExamQuestions() {
     void load();
   }, [load]);
 
-  const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<"all" | ExamQuestionCategory>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [resetOpen, setResetOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(() => defaultForm());
+  const [metaDraft, setMetaDraft] = useState<ExamQuestionMeta>(() => defaultExamQuestionMeta());
+  const [cardMode, setCardMode] = useState<"thematic" | "exam">("thematic");
+  const [selectedCardIndex, setSelectedCardIndex] = useState(0);
   const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const hasLoadedMetaRef = useRef(false);
+  const lastSavedMetaRef = useRef("");
+
+  const selectedCardQuestionIds = useMemo(() => {
+    const ids = cardMode === "thematic" ? metaDraft.thematicCardQuestionIds[selectedCardIndex] : metaDraft.examCardQuestionIds[selectedCardIndex];
+    return new Set(ids ?? []);
+  }, [cardMode, metaDraft.examCardQuestionIds, metaDraft.thematicCardQuestionIds, selectedCardIndex]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return questions.filter((row) => {
-      const hay = [row.id, row.text.en, row.text.ru, row.text.am, row.topicId ?? ""].join(" ").toLowerCase();
-      const okSearch = !q || hay.includes(q);
+      if (!selectedCardQuestionIds.has(row.id)) return false;
       const okCat = catFilter === "all" || row.category === catFilter;
-      return okSearch && okCat;
+      return okCat;
     });
-  }, [questions, search, catFilter]);
+  }, [questions, catFilter, selectedCardQuestionIds]);
+
+  useEffect(() => {
+    let mounted = true;
+    void loadExamQuestionMeta().then((meta) => {
+      if (mounted) {
+        setMetaDraft(meta);
+        lastSavedMetaRef.current = JSON.stringify(meta);
+        hasLoadedMetaRef.current = true;
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedMetaRef.current) return;
+    const raw = JSON.stringify(metaDraft);
+    if (raw === lastSavedMetaRef.current) return;
+    const tmr = window.setTimeout(async () => {
+      try {
+        const saved = await updateExamQuestionMeta(metaDraft);
+        lastSavedMetaRef.current = JSON.stringify(saved);
+        setMetaDraft(saved);
+      } catch {
+        showToast(t("fillRequired"), "error");
+      }
+    }, 400);
+    return () => window.clearTimeout(tmr);
+  }, [metaDraft, showToast, t]);
+
+  useEffect(() => {
+    const max = cardMode === "thematic" ? metaDraft.thematicCardTitles.length : metaDraft.examCardTitles.length;
+    if (selectedCardIndex >= max) setSelectedCardIndex(0);
+  }, [cardMode, metaDraft.examCardTitles.length, metaDraft.thematicCardTitles.length, selectedCardIndex]);
 
   const openAdd = () => {
-    setForm(defaultForm());
+    const next = defaultForm();
+    if (cardMode === "thematic") {
+      next.category = "rules";
+      next.topicId = THEMATIC_TOPIC_IDS[selectedCardIndex] ?? "5";
+    }
     setDialogOpen(true);
+    setForm(next);
   };
 
   const openEdit = (q: ExamQuestion) => {
@@ -175,6 +237,10 @@ export default function AdminExamQuestions() {
           return false;
         }
       }
+      if (!form.optionExplanations[L][form.correctIndex]?.trim()) {
+        showToast(t("fillRequired"), "error");
+        return false;
+      }
     }
     if (form.category !== "signs" && !form.topicId.trim()) {
       showToast(t("adminExamQuestionsErrTopic"), "error");
@@ -196,18 +262,37 @@ export default function AdminExamQuestions() {
     const id =
       form.id.trim() ||
       `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+    const isEditing = Boolean(form.id.trim());
+    const resolvedCategory: ExamQuestionCategory = isEditing
+      ? form.category
+      : cardMode === "thematic"
+        ? "rules"
+        : form.category;
+    const resolvedTopicId =
+      resolvedCategory !== "signs"
+        ? isEditing
+          ? form.topicId.trim() || "5"
+          : cardMode === "thematic"
+            ? THEMATIC_TOPIC_IDS[selectedCardIndex] ?? "5"
+            : form.topicId.trim() || "5"
+        : undefined;
+
     const body: ExamDto = {
       id,
       text: form.text,
       options: form.options as Record<string, string[]>,
+      optionExplanations: form.optionExplanations,
       correctIndex: form.correctIndex,
-      category: form.category,
-      ...(form.category !== "signs" && form.topicId.trim() ? { topicId: form.topicId.trim() } : {}),
+      category: resolvedCategory,
+      ...(resolvedTopicId ? { topicId: resolvedTopicId } : {}),
       ...(imageUrl ? { imageUrl } : {}),
     };
 
     try {
       await vivaApiJson("/exam-questions", { method: "POST", body });
+      const nextMeta = buildMetaWithAssignment(id);
+      const savedMeta = await updateExamQuestionMeta(nextMeta);
+      setMetaDraft(savedMeta);
       notifyExamQuestionsUpdated();
       setDialogOpen(false);
       await load();
@@ -221,6 +306,13 @@ export default function AdminExamQuestions() {
     if (!deleteId) return;
     try {
       await vivaApiJson(`/exam-questions/${encodeURIComponent(deleteId)}`, { method: "DELETE" });
+      const nextMeta: ExamQuestionMeta = {
+        ...metaDraft,
+        thematicCardQuestionIds: metaDraft.thematicCardQuestionIds.map((row) => row.filter((id) => id !== deleteId)),
+        examCardQuestionIds: metaDraft.examCardQuestionIds.map((row) => row.filter((id) => id !== deleteId)),
+      };
+      const savedMeta = await updateExamQuestionMeta(nextMeta);
+      setMetaDraft(savedMeta);
       setDeleteId(null);
       notifyExamQuestionsUpdated();
       await load();
@@ -230,32 +322,45 @@ export default function AdminExamQuestions() {
     }
   };
 
-  const handleReset = async () => {
+  const removeFromCurrentCard = async (questionId: string) => {
     try {
-      const seedQs: ExamDto[] = EXAM_QUESTION_POOL.map((q) => ({
-        id: q.id,
-        text: { ...q.text },
-        options: { en: [...q.options.en], ru: [...q.options.ru], am: [...q.options.am] },
-        optionExplanations: q.optionExplanations
+      const next: ExamQuestionMeta =
+        cardMode === "thematic"
           ? {
-              en: [...(q.optionExplanations.en ?? [])],
-              ru: [...(q.optionExplanations.ru ?? [])],
-              am: [...(q.optionExplanations.am ?? [])],
+              ...metaDraft,
+              thematicCardQuestionIds: metaDraft.thematicCardQuestionIds.map((row, idx) =>
+                idx === selectedCardIndex ? row.filter((id) => id !== questionId) : row,
+              ),
             }
-          : undefined,
-        correctIndex: q.correctIndex,
-        category: q.category,
-        topicId: q.topicId,
-        imageUrl: q.imageUrl ?? null,
-      }));
-      await vivaApiJson("/exam-questions/replace", { method: "PUT", body: { questions: seedQs } });
-      setResetOpen(false);
-      notifyExamQuestionsUpdated();
-      await load();
-      showToast(t("adminExamQuestionsResetDone"), "info");
+          : {
+              ...metaDraft,
+              examCardQuestionIds: metaDraft.examCardQuestionIds.map((row, idx) =>
+                idx === selectedCardIndex ? row.filter((id) => id !== questionId) : row,
+              ),
+            };
+      const saved = await updateExamQuestionMeta(next);
+      setMetaDraft(saved);
+      showToast(t("adminExamQuestionsSaved"), "info");
     } catch {
       showToast(t("fillRequired"), "error");
     }
+  };
+
+  const buildMetaWithAssignment = (questionId: string): ExamQuestionMeta => {
+    if (cardMode === "thematic") {
+      return {
+        ...metaDraft,
+        thematicCardQuestionIds: metaDraft.thematicCardQuestionIds.map((row, idx) =>
+          idx === selectedCardIndex ? [...row.filter((x) => x !== questionId), questionId] : row.filter((x) => x !== questionId),
+        ),
+      };
+    }
+    return {
+      ...metaDraft,
+      examCardQuestionIds: metaDraft.examCardQuestionIds.map((row, idx) =>
+        idx === selectedCardIndex ? [...row.filter((x) => x !== questionId), questionId] : row.filter((x) => x !== questionId),
+      ),
+    };
   };
 
   const preview = (q: ExamQuestion) => {
@@ -271,18 +376,81 @@ export default function AdminExamQuestions() {
         subtitle={t("adminExamQuestionsSubtitle")}
       />
 
-      <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="mt-6">
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:justify-end sm:gap-2">
-          <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto" onClick={() => setResetOpen(true)}>
-            <RotateCcw className="w-4 h-4 mr-1.5" />
-            {t("adminExamQuestionsReset")}
+      <div className="mt-6 flex justify-end">
+        <Button type="button" size="sm" className="w-full sm:w-auto" onClick={openAdd}>
+          <Plus className="w-4 h-4 mr-1.5" />
+          {t("adminExamQuestionsAdd")}
+        </Button>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-border bg-card p-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Քարտեր և հարցեր</h3>
+            <p className="text-xs text-muted-foreground">Ընտրեք քարտը, խմբագրեք վերնագիրը, հետո ավելացրեք/խմբագրեք/հեռացրեք հարցերը։</p>
+          </div>
+          <div className="text-xs text-muted-foreground">Փոփոխությունները պահվում են ավտոմատ</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={cardMode === "thematic" ? "default" : "outline"}
+            onClick={() => setCardMode("thematic")}
+          >
+            Թեմատիկ քարտեր
           </Button>
-          <Button type="button" size="sm" className="w-full sm:w-auto" onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-1.5" />
-            {t("adminExamQuestionsAdd")}
+          <Button type="button" size="sm" variant={cardMode === "exam" ? "default" : "outline"} onClick={() => setCardMode("exam")}>
+            Քննության քարտեր
           </Button>
         </div>
-      </DataTableToolbar>
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {(cardMode === "thematic" ? metaDraft.thematicCardTitles : metaDraft.examCardTitles).map((title, i) => (
+            <button
+              key={`${cardMode}-card-${i}`}
+              type="button"
+              onClick={() => setSelectedCardIndex(i)}
+              className={cn(
+                "rounded-md border px-3 py-2 text-left text-sm",
+                selectedCardIndex === i ? "border-primary bg-primary/10" : "border-border hover:bg-muted/30",
+              )}
+            >
+              <div className="font-medium truncate">{title}</div>
+              <div className="text-xs text-muted-foreground">
+                {cardMode === "thematic"
+                  ? `${metaDraft.thematicCardQuestionIds[i]?.length ?? 0} հարց`
+                  : `${metaDraft.examCardQuestionIds[i]?.length ?? 0} հարց`}
+              </div>
+            </button>
+          ))}
+        </div>
+        <div className="space-y-2">
+          <Label>Քարտի վերնագիր</Label>
+          <Input
+            value={cardMode === "thematic" ? metaDraft.thematicCardTitles[selectedCardIndex] ?? "" : metaDraft.examCardTitles[selectedCardIndex] ?? ""}
+            onChange={(e) =>
+              setMetaDraft((prev) => {
+                if (cardMode === "thematic") {
+                  const next = [...prev.thematicCardTitles];
+                  next[selectedCardIndex] = e.target.value;
+                  return { ...prev, thematicCardTitles: next };
+                }
+                const next = [...prev.examCardTitles];
+                next[selectedCardIndex] = e.target.value;
+                return { ...prev, examCardTitles: next };
+              })
+            }
+          />
+          {cardMode === "thematic" ? (
+            <p className="text-xs text-muted-foreground">Թեմայի ID: {THEMATIC_TOPIC_IDS[selectedCardIndex] ?? "—"}</p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Ընտրված քարտի հարցեր՝ {selectedCardQuestionIds.size}</span>
+          <span>•</span>
+          <span>Ստորև Add/Edit/Delete-ով կառավարեք այս քարտի բովանդակությունը</span>
+        </div>
+      </div>
 
       <AdminTableScroll className="mt-4">
         <table className="w-full text-sm">
@@ -326,6 +494,14 @@ export default function AdminExamQuestions() {
                   },
                   {
                     kind: "item",
+                    id: "remove-from-card",
+                    label: "Հեռացնել քարտից",
+                    ariaLabel: "Հեռացնել քարտից",
+                    icon: Trash2,
+                    onClick: () => void removeFromCurrentCard(q.id),
+                  },
+                  {
+                    kind: "item",
                     id: "delete",
                     label: t("adminExamQuestionsDelete"),
                     ariaLabel: t("adminExamQuestionsDelete"),
@@ -356,6 +532,14 @@ export default function AdminExamQuestions() {
                             ariaLabel: t("adminExamQuestionsEdit"),
                             icon: Edit2,
                             onClick: () => openEdit(q),
+                          },
+                          {
+                            kind: "item",
+                            id: "remove-from-card",
+                            label: "Հեռացնել քարտից",
+                            ariaLabel: "Հեռացնել քարտից",
+                            icon: Trash2,
+                            onClick: () => void removeFromCurrentCard(q.id),
                           },
                           {
                             kind: "item",
@@ -395,43 +579,10 @@ export default function AdminExamQuestions() {
         }
       >
         <form id={examQuestionFormId} onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>{t("adminExamQuestionsColCategory")}</Label>
-                <Select
-                  value={form.category}
-                  onValueChange={(v) =>
-                    setForm((f) => ({ ...f, category: v as ExamQuestionCategory }))
-                  }
-                >
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="rules">{t("adminExamQuestionsCategoryRules")}</SelectItem>
-                    <SelectItem value="signs">{t("adminExamQuestionsCategorySigns")}</SelectItem>
-                    <SelectItem value="safety">{t("adminExamQuestionsCategorySafety")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {form.category !== "signs" ? (
-                <div>
-                  <Label>{t("adminExamQuestionsTopicLabel")}</Label>
-                  <Select value={form.topicId || "5"} onValueChange={(v) => setForm((f) => ({ ...f, topicId: v }))}>
-                    <SelectTrigger className="mt-1.5">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {THEMATIC_TOPIC_IDS.map((tid) => (
-                        <SelectItem key={tid} value={tid}>
-                          {t("adminExamQuestionsTopicPrefix")} {tid}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-muted-foreground mt-1">{t("adminExamQuestionsTopicHint")}</p>
-                </div>
-              ) : null}
+            <div className="rounded-lg border border-border p-3">
+              <p className="text-xs text-muted-foreground">
+                Թեման և կատեգորիան որոշվում են ընտրված քարտով։ Այս պատուհանում պետք է լրացնել միայն հարցի բովանդակությունը։
+              </p>
             </div>
 
             <div className="rounded-lg border border-border p-3 space-y-3">
@@ -550,6 +701,21 @@ export default function AdminExamQuestions() {
                         })
                       }
                     />
+                    <Label className="text-[11px] mt-1.5 block text-muted-foreground">
+                      Բացատրություն {i + 1}
+                      {form.correctIndex === i ? " (պարտադիր է ճիշտ պատասխանի համար)" : ""}
+                    </Label>
+                    <Input
+                      className="mt-1"
+                      value={form.optionExplanations[L][i] ?? ""}
+                      onChange={(e) =>
+                        setForm((f) => {
+                          const next = { ...f.optionExplanations, [L]: [...f.optionExplanations[L]] };
+                          next[L][i] = e.target.value.trim() ? e.target.value : null;
+                          return { ...f, optionExplanations: next };
+                        })
+                      }
+                    />
                   </div>
                 ))}
               </div>
@@ -566,16 +732,6 @@ export default function AdminExamQuestions() {
         confirmLabel={t("adminExamQuestionsDelete")}
         danger
         onConfirm={handleDelete}
-      />
-
-      <ConfirmDialog
-        open={resetOpen}
-        onClose={() => setResetOpen(false)}
-        title={t("adminExamQuestionsResetTitle")}
-        description={t("adminExamQuestionsResetDesc")}
-        confirmLabel={t("adminExamQuestionsReset")}
-        danger
-        onConfirm={handleReset}
       />
     </AdminLayout>
   );

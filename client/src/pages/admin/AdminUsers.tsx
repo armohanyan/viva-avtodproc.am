@@ -14,8 +14,8 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, Edit2, Trash2, GraduationCap, CalendarClock, BookOpen, Mail } from "lucide-react";
-import { Link } from "wouter";
+import { Plus, Edit2, Trash2, GraduationCap, CalendarPlus, Mail } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, useBranches } from "src/modules/branches";
@@ -52,17 +52,17 @@ const statusColor: Record<string, string> = {
   inactive: "bg-slate-100 text-slate-500",
 };
 
-function adminLearnPracticalHref(userId: string, branchId: string) {
-  return `/admin/students/practical?${new URLSearchParams({ student: userId, branch: branchId }).toString()}`;
-}
-
-function adminLearnTheoryHref(userId: string) {
-  return `/admin/students/theory?${new URLSearchParams({ student: userId }).toString()}`;
+function adminBookingHref(opts: { studentId: string; branchId: string | number | null | undefined }) {
+  const p = new URLSearchParams({ student: String(opts.studentId) });
+  const branch = String(opts.branchId ?? "").trim();
+  if (branch) p.set("branch", branch);
+  return `/admin/bookings?${p.toString()}`;
 }
 
 export default function AdminUsers() {
   const editUserFormId = useId();
   const addUserFormId = useId();
+  const [, setLocation] = useLocation();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -267,14 +267,21 @@ export default function AdminUsers() {
               </Button>
             </Link>
             <Button
+              variant="outline"
+              className="w-full gap-2 sm:w-auto"
               onClick={() => {
                 setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? "" }));
                 setAddOpen(true);
               }}
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 sm:w-auto"
             >
               <Plus className="w-4 h-4" />
-              {t("addNew")}
+              {t("adminStudentsAddStudent")}
+            </Button>
+            <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 sm:w-auto">
+              <Link href="/admin/bookings?new=1">
+                <CalendarPlus className="w-4 h-4" />
+                {t("adminStudentsNewBooking")}
+              </Link>
             </Button>
           </div>
         }
@@ -364,19 +371,11 @@ export default function AdminUsers() {
                   actions={[
                     {
                       kind: "link",
-                      id: "practical",
-                      label: t("adminStudentQuickPractical"),
-                      href: adminLearnPracticalHref(u.id, u.branchId),
-                      icon: CalendarClock,
+                      id: "book",
+                      label: t("adminStudentBookLesson"),
+                      href: adminBookingHref({ studentId: u.id, branchId: u.branchId }),
+                      icon: CalendarPlus,
                     },
-                    {
-                      kind: "link",
-                      id: "theory",
-                      label: t("adminStudentQuickTheory"),
-                      href: adminLearnTheoryHref(u.id),
-                      icon: BookOpen,
-                    },
-                    { kind: "separator", id: "sep-learn" },
                     {
                       kind: "item",
                       id: "invite",
@@ -431,19 +430,11 @@ export default function AdminUsers() {
                         actions={[
                           {
                             kind: "link",
-                            id: "practical",
-                            label: t("adminStudentQuickPractical"),
-                            href: adminLearnPracticalHref(u.id, u.branchId),
-                            icon: CalendarClock,
+                            id: "book",
+                            label: t("adminStudentBookLesson"),
+                            href: adminBookingHref({ studentId: u.id, branchId: u.branchId }),
+                            icon: CalendarPlus,
                           },
-                          {
-                            kind: "link",
-                            id: "theory",
-                            label: t("adminStudentQuickTheory"),
-                            href: adminLearnTheoryHref(u.id),
-                            icon: BookOpen,
-                          },
-                          { kind: "separator", id: "sep-learn" },
                           {
                             kind: "item",
                             id: "invite",
@@ -487,11 +478,23 @@ export default function AdminUsers() {
         contentClassName="max-w-md max-h-[min(90vh,720px)]"
         footer={
           editUser ? (
-            <div className="flex gap-2 sm:gap-3 flex-1 min-w-0 w-full">
-              <Button type="button" variant="outline" className="flex-1 min-w-0" onClick={() => setEditUser(null)}>
+            <div className="flex flex-wrap gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:justify-end">
+              <Button type="button" variant="outline" className="min-w-[6rem] flex-1 sm:flex-none" onClick={() => setEditUser(null)}>
                 {t("cancel")}
               </Button>
-              <Button type="submit" form={editUserFormId} className="flex-1 min-w-0 bg-primary hover:bg-primary/90 text-primary-foreground">
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-w-0 flex-1 sm:flex-none gap-2"
+                onClick={() => {
+                  setLocation(adminBookingHref({ studentId: editUser.id, branchId: editUser.branchId }));
+                  setEditUser(null);
+                }}
+              >
+                <CalendarPlus className="w-4 h-4 shrink-0" />
+                {t("adminStudentBookLesson")}
+              </Button>
+              <Button type="submit" form={editUserFormId} className="min-w-[6rem] flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-primary-foreground">
                 {t("save")}
               </Button>
             </div>

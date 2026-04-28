@@ -20,14 +20,40 @@ const createBodySchema = z.object({
   branchId: z.coerce.number().int().positive(),
   slots: z.array(z.string().min(4)).optional(),
   theoryCohortId: z.coerce.number().int().positive().optional(),
+  slotEntries: z
+    .array(
+      z.object({
+        dateIso: z.string().min(1),
+        time: z.string().min(4),
+      }),
+    )
+    .optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
+    const slotEntries = data.slotEntries ?? [];
+    if (slotEntries.length > 0 && (data.type === 'practical' || data.type === 'theory_personal')) {
+      if (!data.instructorName?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['instructorName'],
+          message: 'Required when slotEntries is set',
+        });
+      }
+      return;
+    }
     const slots = data.slots ?? [];
     const hasSlots = slots.length > 0;
     if (data.type === 'theory_personal') {
       if (hasSlots) {
-        ctx.addIssue({ code: 'custom', path: ['slots'], message: 'Personal theory bookings use a single time, not slots[]' });
+        if (!data.instructorName?.trim()) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['instructorName'],
+            message: 'Required for personal theory bookings with multiple hours',
+          });
+        }
+        return;
       }
       if (!data.instructorName?.trim()) {
         ctx.addIssue({ code: 'custom', path: ['instructorName'], message: 'Required' });
@@ -206,6 +232,7 @@ export default class BookingController {
             branchId: body.branchId,
             slots: body.slots,
             theoryCohortId: body.theoryCohortId,
+            slotEntries: body.slotEntries,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -249,6 +276,7 @@ export default class BookingController {
         branchId: body.branchId,
         slots: body.slots,
         theoryCohortId: body.theoryCohortId,
+        slotEntries: body.slotEntries,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -313,6 +341,7 @@ export default class BookingController {
         branchId: number;
         slots: string[];
         theoryCohortId: number;
+        slotEntries: { dateIso: string; time: string }[];
       }>;
       const row = await BookingService.updateAdmin(Number(req.params.id), body);
       if (!row) {

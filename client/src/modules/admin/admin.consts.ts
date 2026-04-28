@@ -3,18 +3,11 @@ import type { AdminNavigationLink } from "./admin.types";
 /** Sidebar order: overview → day-to-day ops → people & programs → catalog → locations → money → content → access control */
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
-  { href: "/admin/bookings", translationKey: "bookings" },
-  { href: "/admin/booked-calls", translationKey: "adminBookedCalls" },
   {
     href: "/admin/students",
     translationKey: "adminSidebarStudents",
     collapsible: true,
-    children: [
-      { href: "/admin/students", translationKey: "adminStudentsList" },
-      { href: "/admin/students/practical", translationKey: "adminLearnNavRegisterPractical" },
-      { href: "/admin/students/theory", translationKey: "adminLearnNavRegisterTheory" },
-      { href: "/admin/students/analytics", translationKey: "adminStudentsAnalytics" },
-    ],
+    children: [{ href: "/admin/students/analytics", translationKey: "adminStudentsAnalytics" }],
   },
   {
     href: "/admin/learn",
@@ -45,5 +38,8 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
     translationKey: "adminMarketingContent",
     allowedAccountTypes: ["super_admin"],
   },
+  { href: "/admin/bookings", translationKey: "bookings" },
+  { href: "/admin/contact-requests", translationKey: "adminContactRequests" },
+  { href: "/admin/booked-calls", translationKey: "adminBookedCalls" },
   { href: "/admin/accounts", translationKey: "adminAccounts" },
 ];

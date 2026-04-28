@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { cn } from "src/lib/utils";
@@ -22,6 +22,7 @@ import {
 	ChevronDown,
 	Users,
 	PhoneCall,
+  Mail,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import {
@@ -54,35 +55,15 @@ export default function AdminLayout({ children }: Props) {
 	const { user, signOut } = useAccount();
 	const [location, setLocation] = useLocation();
 
-	/** `href` of a `collapsible` nav group that is expanded in the sidebar. */
-	const [openCollapsibleHref, setOpenCollapsibleHref] = useState<string | null>(null);
-
-	useEffect(() => {
-		const collapsibles = ADMIN_NAV_LINKS.filter((l) => l.collapsible && l.children?.length);
-		for (const link of collapsibles) {
-			if (!link.children?.length) continue;
-			const onChild = link.children.some(
-				(c) => location === c.href || location.startsWith(`${c.href}/`),
-			);
-			if (onChild) {
-				setOpenCollapsibleHref(link.href);
-				return;
-			}
-		}
-		for (const link of collapsibles) {
-			if (location === link.href || location.startsWith(`${link.href}/`)) {
-				setOpenCollapsibleHref(link.href);
-				return;
-			}
-		}
-		setOpenCollapsibleHref(null);
-	}, [location]);
+	/** `href`s of `collapsible` nav groups manually expanded in the sidebar. */
+	const [openCollapsibleHrefs, setOpenCollapsibleHrefs] = useState<string[]>([]);
 
 	const iconByPath = {
 		"/admin/dashboard": LayoutDashboard,
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
 		"/admin/bookings": Calendar,
+		"/admin/contact-requests": Mail,
 		"/admin/booked-calls": PhoneCall,
 		"/admin/learn": School,
 		"/admin/learn/groups": Users,
@@ -116,11 +97,11 @@ export default function AdminLayout({ children }: Props) {
 		const hasChildren = Boolean(link.children?.length);
 
 		if (link.collapsible && link.children?.length) {
-			const isOpen = openCollapsibleHref === link.href;
 			const onParent = location === link.href;
 			const underParent = link.children.some(
 				(c) => location === c.href || location.startsWith(`${c.href}/`),
 			);
+			const isOpen = onParent || underParent || openCollapsibleHrefs.includes(link.href);
 			const childOwnsParentPath = link.children.some((c) => c.href === link.href && location === link.href);
 			const parentStrong = onParent && !childOwnsParentPath;
 			const parentSoft = underParent && !onParent;
@@ -131,7 +112,9 @@ export default function AdminLayout({ children }: Props) {
 						type="button"
 						aria-expanded={isOpen}
 						onClick={() => {
-							setOpenCollapsibleHref((prev) => (prev === link.href ? null : link.href));
+							setOpenCollapsibleHrefs((prev) =>
+								prev.includes(link.href) ? prev.filter((href) => href !== link.href) : [...prev, link.href],
+							);
 							closeMobileNav();
 						}}
 						className={cn(
@@ -246,8 +229,6 @@ export default function AdminLayout({ children }: Props) {
 
 	const headerTitle = useMemo(() => {
 		if (location === "/admin/profile") return t("adminProfileTitle");
-		if (location === "/admin/students/practical") return t("adminLearnPracticalTitle");
-		if (location === "/admin/students/theory") return t("adminLearnTheoryTitle");
 		if (location === "/admin/learn/exam-questions") return t("adminExamQuestionsTitle");
 		if (location === "/admin/learn/groups") return t("adminSidebarGroups");
 		if (location === "/admin/learn/packages") return t("packages");

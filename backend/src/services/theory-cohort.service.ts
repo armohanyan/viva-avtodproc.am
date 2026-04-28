@@ -19,6 +19,8 @@ export type TheoryCohortDto = {
   branchId: number;
   sessionStartTime: string | null;
   sessionEndTime: string | null;
+  /** Whole-group price (AMD); omitted or null means “use instructor hourly × hours” at booking time. */
+  priceAmd: number | null;
 };
 
 export type TheoryCohortEnrollmentStudentDto = {
@@ -48,6 +50,12 @@ async function enrolledCount(cohortId: number): Promise<number> {
   return TheoryCohortEnrollment.count({ where: { cohortId } });
 }
 
+function priceAmdOrNull(c: TheoryCohort): number | null {
+  const v = c.getDataValue('priceAmd') as number | null | undefined;
+  if (v == null || !Number.isFinite(Number(v)) || Number(v) < 0) return null;
+  return Math.round(Number(v));
+}
+
 function toDto(c: TheoryCohort, enrolled: number): TheoryCohortDto {
   return {
     id: c.id,
@@ -62,6 +70,7 @@ function toDto(c: TheoryCohort, enrolled: number): TheoryCohortDto {
     branchId: c.branchId,
     sessionStartTime: timeHmOrNull(c.sessionStartTime),
     sessionEndTime: timeHmOrNull(c.sessionEndTime),
+    priceAmd: priceAmdOrNull(c),
   };
 }
 
@@ -86,9 +95,14 @@ export default class TheoryCohortService {
     branchId: number;
     sessionStartTime?: string | null;
     sessionEndTime?: string | null;
+    priceAmd?: number | null;
   }): Promise<TheoryCohortDto> {
     const startT = timeHmOrNull(input.sessionStartTime);
     const endT = timeHmOrNull(input.sessionEndTime);
+    const price =
+      input.priceAmd != null && Number.isFinite(Number(input.priceAmd)) && Number(input.priceAmd) >= 0
+        ? Math.round(Number(input.priceAmd))
+        : null;
     const c = await TheoryCohort.create({
       name: input.name.trim(),
       startDateIso: input.startDateIso,
@@ -100,6 +114,7 @@ export default class TheoryCohortService {
       branchId: input.branchId,
       sessionStartTime: startT,
       sessionEndTime: endT,
+      priceAmd: price,
     });
     return toDto(c, 0);
   }
@@ -117,6 +132,7 @@ export default class TheoryCohortService {
       branchId: number;
       sessionStartTime: string | null;
       sessionEndTime: string | null;
+      priceAmd?: number | null;
     }>,
   ): Promise<TheoryCohortDto | null> {
     const c = await TheoryCohort.findByPk(id);
@@ -136,6 +152,14 @@ export default class TheoryCohortService {
       ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
       ...(patch.sessionStartTime !== undefined ? { sessionStartTime: timeHmOrNull(patch.sessionStartTime) } : {}),
       ...(patch.sessionEndTime !== undefined ? { sessionEndTime: timeHmOrNull(patch.sessionEndTime) } : {}),
+      ...(patch.priceAmd !== undefined
+        ? {
+            priceAmd:
+              patch.priceAmd == null || !Number.isFinite(Number(patch.priceAmd)) || Number(patch.priceAmd) < 0
+                ? null
+                : Math.round(Number(patch.priceAmd)),
+          }
+        : {}),
     });
     await c.reload();
     return toDto(c, enc);

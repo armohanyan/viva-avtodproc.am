@@ -5,6 +5,7 @@ export { default as BookedCallController } from './booked-call.controller';
 export { default as BookingController } from './booking.controller';
 export { default as BranchController } from './branch.controller';
 export { default as CityController } from './city.controller';
+export { default as ContactRequestController } from './contact-request.controller';
 export { default as ExamQuestionController } from './exam-question.controller';
 export { default as FleetController } from './fleet.controller';
 export { default as InstructorController } from './instructor.controller';

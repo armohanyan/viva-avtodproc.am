@@ -8,26 +8,49 @@ import { SuccessHandlerUtil } from '../utils';
 
 const { InputValidationError } = ErrorsUtil;
 
-const createSchema = z.object({
+const financeTxBodySchema = z.object({
   customer: z.string().min(1),
   email: z.string().optional(),
-  description: z.string().min(1),
+  /** Omitted for booking-linked manual payments: server fills from the booking. */
+  description: z.string().optional(),
   branchId: z.coerce.number().int().positive(),
-  channel: z.enum(['online', 'pos', 'office', 'bank']),
+  /** Defaults to `office` when omitted (e.g. admin booking payment). */
+  channel: z.enum(['online', 'pos', 'office', 'bank']).optional(),
   method: z.enum(['card', 'idram', 'cash', 'transfer']),
   grossAmd: z.number().int().nonnegative(),
-  feeAmd: z.number().int().nonnegative(),
-  status: z.enum(['completed', 'pending', 'failed', 'refunded']),
+  /** Defaults to `0` when omitted. */
+  feeAmd: z.number().int().nonnegative().optional(),
+  /** Defaults to `completed` when omitted. */
+  status: z.enum(['completed', 'pending', 'failed', 'refunded']).optional(),
   providerRef: z.string().optional(),
   source: z.enum(['system', 'manual']),
+  entryType: z.enum(['income', 'expense']).optional(),
+  expenseKind: z.enum(['salary', 'hourly_rate', 'rent', 'utilities', 'maintenance', 'marketing', 'other']).nullish(),
+  employeeName: z.string().nullish(),
+  units: z.number().positive().nullish(),
+  unitRateAmd: z.number().int().positive().nullish(),
   createdAt: z.string().optional(),
   bookingId: z.coerce.number().int().positive().nullish(),
 });
 
-const updateSchema = createSchema
+const createSchema = financeTxBodySchema.superRefine((data, ctx) => {
+  const desc = (data.description ?? '').trim();
+  const bid = data.bookingId != null && data.bookingId > 0;
+  if (!desc && !bid) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'description is required when bookingId is not set',
+      path: ['description'],
+    });
+  }
+});
+
+const updateSchema = financeTxBodySchema
   .omit({ source: true })
   .partial()
-  .refine((obj) => Object.keys(obj).length > 0, { message: 'At least one field is required' });
+  .refine((obj: Record<string, unknown>) => Object.keys(obj).length > 0, {
+    message: 'At least one field is required',
+  });
 
 export default class FinanceController {
   static async listStudent(req: Request, res: Response, next: NextFunction) {

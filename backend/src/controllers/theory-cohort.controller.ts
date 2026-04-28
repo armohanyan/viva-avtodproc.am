@@ -25,6 +25,8 @@ const createSchema = z.object({
   branchId: z.coerce.number().int().positive(),
   sessionStartTime: optionalSessionTime,
   sessionEndTime: optionalSessionTime,
+  /** Whole-group price (AMD); omit or null to derive from instructor hourly at booking time. */
+  priceAmd: z.union([z.coerce.number().int().min(0), z.null()]).optional(),
 });
 
 const updateSchema = createSchema.partial();
