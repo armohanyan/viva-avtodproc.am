@@ -35,6 +35,13 @@ import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
+import MultiSelectDropdown from "src/components/MultiSelectDropdown";
+import {
+  PRACTICAL_LESSON_TYPES,
+  getLessonTypeLabel,
+  type PracticalLessonType,
+} from "src/modules/instructors/instructor-booking";
+import { defaultExamQuestionMeta, loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 import {
   type FinanceTx,
   type TxMethod,
@@ -257,6 +264,11 @@ export default function AdminBookings() {
   const lastEditSlotInitKey = useRef("");
   const [theoryCohorts, setTheoryCohorts] = useState<TheoryCohortOption[]>([]);
   const [theoryCohortsLoadError, setTheoryCohortsLoadError] = useState(false);
+  const [thematicTitles, setThematicTitles] = useState<string[]>(() => defaultExamQuestionMeta().thematicCardTitles);
+  const [addPracticalLessonType, setAddPracticalLessonType] = useState<PracticalLessonType | "">("");
+  const [editPracticalLessonType, setEditPracticalLessonType] = useState<PracticalLessonType | "">("");
+  const [addTheoryThemeTitles, setAddTheoryThemeTitles] = useState<string[]>([]);
+  const [editTheoryThemeTitles, setEditTheoryThemeTitles] = useState<string[]>([]);
 
   const bookableTheoryCohorts = useMemo(
     () => theoryCohorts.filter((c) => isTheoryCohortBookableStatus(c.status)),
@@ -426,6 +438,27 @@ export default function AdminBookings() {
   }, [addOpen, editBooking]);
 
   useEffect(() => {
+    if (!addOpen && !editBooking) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const meta = await loadExamQuestionMeta();
+        if (cancelled) return;
+        setThematicTitles(
+          Array.isArray(meta.thematicCardTitles) && meta.thematicCardTitles.length > 0
+            ? meta.thematicCardTitles
+            : defaultExamQuestionMeta().thematicCardTitles,
+        );
+      } catch {
+        if (!cancelled) setThematicTitles(defaultExamQuestionMeta().thematicCardTitles);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, editBooking]);
+
+  useEffect(() => {
     if (!addOpen) return;
     let cancelled = false;
     void (async () => {
@@ -529,6 +562,20 @@ export default function AdminBookings() {
     setEditTheoryCohortId((prev) => (prev && matches.some((m) => m.id === prev) ? prev : next));
   }, [editBooking, bookableTheoryCohorts]);
 
+  useEffect(() => {
+    if (!editBooking || editBooking.type !== "practical") {
+      setEditPracticalLessonType("");
+      return;
+    }
+    setEditPracticalLessonType((prev) => (prev ? prev : "exam"));
+  }, [editBooking]);
+
+  useEffect(() => {
+    if (!editBooking || editBooking.type !== "theory_personal") {
+      setEditTheoryThemeTitles([]);
+    }
+  }, [editBooking]);
+
   const openAdd = useCallback(
     (opts?: { studentId?: string; branchId?: string }) => {
       const pickStudent =
@@ -554,6 +601,8 @@ export default function AdminBookings() {
       setAddPackagePracticalSlotPick(null);
       setAddPackageTheoryCohortId("");
       setAddPackageTheorySlotPick(null);
+      setAddPracticalLessonType("");
+      setAddTheoryThemeTitles([]);
       setSlotPick(null);
       setTheoryCohortId("");
       setDraft(newDraft);
@@ -633,6 +682,8 @@ export default function AdminBookings() {
       setAddPackagePracticalSlotPick(null);
       setAddPackageTheoryCohortId("");
       setAddPackageTheorySlotPick(null);
+      if (flow !== "practical") setAddPracticalLessonType("");
+      if (flow !== "theory_personal") setAddTheoryThemeTitles([]);
       setDraft((d) => {
         if (!d) return d;
         if (flow === "practical") {
@@ -710,6 +761,8 @@ export default function AdminBookings() {
         packageTheoryCohortId: addPackageTheoryCohortId,
         packageTheorySlots: addPackageTheorySlotPick,
         packageTheoryCalendarInstructorId,
+        practicalLessonType: addPracticalLessonType,
+        theoryThemeTitles: addTheoryThemeTitles,
       }),
     [
       addFlowKind,
@@ -725,15 +778,18 @@ export default function AdminBookings() {
       addPackageTheoryCohortId,
       addPackageTheorySlotPick,
       packageTheoryCalendarInstructorId,
+      addPracticalLessonType,
+      addTheoryThemeTitles,
     ],
   );
 
   const addCheckoutLines: CheckoutSummaryLines | null = useMemo(() => {
     if (!draft) return null;
     if (addFlowKind === "practical") {
+      const lessonLabel = addPracticalLessonType ? getLessonTypeLabel(addPracticalLessonType) : "";
       return {
         typeLabel: t("lessonTypePractical"),
-        detailLines: [draft.instructorName].filter(Boolean),
+        detailLines: [lessonLabel, draft.instructorName].filter(Boolean),
         slotsLine: slotPickSummaryLine(slotPick),
       };
     }
@@ -760,9 +816,10 @@ export default function AdminBookings() {
       };
     }
     if (addFlowKind === "theory_personal") {
+      const themesLine = addTheoryThemeTitles.length > 0 ? addTheoryThemeTitles.join(", ") : "";
       return {
         typeLabel: t("lessonTypeTheoryPersonal"),
-        detailLines: [draft.instructorName],
+        detailLines: [draft.instructorName, themesLine].filter(Boolean),
         slotsLine: slotPickSummaryLine(slotPick),
       };
     }
@@ -798,6 +855,8 @@ export default function AdminBookings() {
     addPackagePracticalSlotPick,
     addPackageTheoryCohortId,
     addPackageTheorySlotPick,
+    addPracticalLessonType,
+    addTheoryThemeTitles,
   ]);
 
   const filtered = useMemo(() => {
@@ -978,6 +1037,14 @@ export default function AdminBookings() {
     e.preventDefault();
     if (!editBooking) return;
     if (editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal") {
+      if (editBooking.type === "practical" && !editPracticalLessonType) {
+        showToast(t("fillRequired"), "error");
+        return;
+      }
+      if (editBooking.type === "theory_personal" && editTheoryThemeTitles.length === 0) {
+        showToast(t("fillRequired"), "error");
+        return;
+      }
       const hasSlots =
         editSlotPick &&
         ((editSlotPick.slotEntries?.length ?? 0) > 0 || editSlotPick.times.length > 0);
@@ -1507,6 +1574,8 @@ export default function AdminBookings() {
           if (!o) {
             setEditBooking(null);
             setEditSlotPick(null);
+            setEditPracticalLessonType("");
+            setEditTheoryThemeTitles([]);
             lastEditSlotInitKey.current = "";
             setBookingModalTab("booking");
           }
@@ -1528,6 +1597,8 @@ export default function AdminBookings() {
                 onClick={() => {
                   setEditBooking(null);
                   setEditSlotPick(null);
+                  setEditPracticalLessonType("");
+                  setEditTheoryThemeTitles([]);
                   lastEditSlotInitKey.current = "";
                 }}
               >
@@ -1659,6 +1730,23 @@ export default function AdminBookings() {
                 ) : null}
                 {editBooking.type === "practical" ? (
                   <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingStepLessonType")}</label>
+                    <select
+                      value={editPracticalLessonType}
+                      onChange={(e) => setEditPracticalLessonType(e.target.value as PracticalLessonType | "")}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">{t("bookingSelectLessonTypePlaceholder")}</option>
+                      {PRACTICAL_LESSON_TYPES.map((value) => (
+                        <option key={value} value={value}>
+                          {getLessonTypeLabel(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                {editBooking.type === "practical" ? (
+                  <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
                     <select
                       value={editBooking.instructorName}
@@ -1674,6 +1762,18 @@ export default function AdminBookings() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                ) : null}
+                {editBooking.type === "theory_personal" ? (
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("examTestsTopicsHeading")}</label>
+                    <MultiSelectDropdown
+                      options={thematicTitles.map((title) => ({ value: title, label: title }))}
+                      value={editTheoryThemeTitles}
+                      onChange={(next) => setEditTheoryThemeTitles(next as string[])}
+                      placeholder={t("examTestsTopicsHeading")}
+                      ariaLabel={t("examTestsTopicsHeading")}
+                    />
                   </div>
                 ) : null}
                 {editBooking.type === "theory_personal" ? (
@@ -1774,6 +1874,8 @@ export default function AdminBookings() {
             setAddPackagePracticalSlotPick(null);
             setAddPackageTheoryCohortId("");
             setAddPackageTheorySlotPick(null);
+            setAddPracticalLessonType("");
+            setAddTheoryThemeTitles([]);
           }
         }}
         title={t("bookingDialogAddTitle")}
@@ -1898,6 +2000,25 @@ export default function AdminBookings() {
                     ) : null}
 
                     {addFlowKind === "practical" ? (
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">
+                          {t("bookingStepLessonType")}
+                        </label>
+                        <select
+                          value={addPracticalLessonType}
+                          onChange={(e) => setAddPracticalLessonType(e.target.value as PracticalLessonType | "")}
+                          className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        >
+                          <option value="">{t("bookingSelectLessonTypePlaceholder")}</option>
+                          {PRACTICAL_LESSON_TYPES.map((value) => (
+                            <option key={value} value={value}>
+                              {getLessonTypeLabel(value)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {addFlowKind === "practical" ? (
                       <InstructorSelector
                         label={t("cohortColInstructor")}
                         instructors={practicalInstructorsForCalendar}
@@ -1907,6 +2028,21 @@ export default function AdminBookings() {
                           setSlotPick(null);
                         }}
                       />
+                    ) : null}
+
+                    {addFlowKind === "theory_personal" ? (
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">
+                          {t("examTestsTopicsHeading")}
+                        </label>
+                        <MultiSelectDropdown
+                          options={thematicTitles.map((title) => ({ value: title, label: title }))}
+                          value={addTheoryThemeTitles}
+                          onChange={(next) => setAddTheoryThemeTitles(next as string[])}
+                          placeholder={t("examTestsTopicsHeading")}
+                          ariaLabel={t("examTestsTopicsHeading")}
+                        />
+                      </div>
                     ) : null}
 
                     {addFlowKind === "theory_personal" ? (

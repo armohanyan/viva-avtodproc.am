@@ -3,6 +3,7 @@ import type { LessonBookingPayload } from "src/components/LessonBookingCalendar"
 import type { AdminBookingFlowKind, AdminPackageOption, TheoryCohortOption } from "./types";
 import { isTheoryCohortBookableStatus } from "./adminTheoryCohort";
 import { theoryGroupSlotPlanFromCohort } from "./theoryGroupSlotPlan";
+import type { PracticalLessonType } from "src/modules/instructors/instructor-booking";
 
 export type BookingValidationResult = { ok: boolean; messageKeys: TranslationKey[] };
 
@@ -20,6 +21,8 @@ export type BookingValidationInput = {
   packageTheoryCohortId: string;
   packageTheorySlots: LessonBookingPayload | null;
   packageTheoryCalendarInstructorId: string;
+  practicalLessonType: PracticalLessonType | "";
+  theoryThemeTitles: readonly string[];
 };
 
 function strTrim(v: unknown): string {
@@ -39,6 +42,9 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
   }
 
   if (input.flowKind === "practical") {
+    if (!strTrim(input.practicalLessonType)) {
+      keys.push("fillRequired");
+    }
     if (!strTrim(input.instructorName)) {
       keys.push("adminBookingValSelectInstructor");
     }
@@ -69,6 +75,9 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
   }
 
   if (input.flowKind === "theory_personal") {
+    if ((input.theoryThemeTitles ?? []).length === 0) {
+      keys.push("fillRequired");
+    }
     if (!strTrim(input.instructorName)) {
       keys.push("adminBookingValSelectInstructor");
     }
