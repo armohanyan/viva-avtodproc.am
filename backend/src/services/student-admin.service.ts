@@ -119,7 +119,7 @@ export default class StudentAdminService {
     email: string;
     phone?: string;
     branchId: number;
-    packageId: number;
+    packageId?: number | null;
     instructorUserId?: number | null;
     lessonsCompleted?: number;
     lessonsTotal?: number;
@@ -138,21 +138,21 @@ export default class StudentAdminService {
       accountType: 'student',
       passwordHash: null,
     });
-    const pkg = await Package.findByPk(input.packageId);
-    if (!pkg) {
+    const pkg = input.packageId ? await Package.findByPk(input.packageId) : null;
+    if (input.packageId && !pkg) {
       await User.destroy({ where: { id: user.id } });
       return null;
     }
     const theoryTotal =
       input.theoryLessonsTotal ??
-      (Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : 0);
+      (Number(pkg?.theoryLessons ?? 0) > 0 ? Number(pkg?.theoryLessons) : 0);
     await StudentProfile.create({
       userId: user.id,
       branchId: input.branchId,
-      packageId: input.packageId,
+      packageId: input.packageId ?? null,
       instructorUserId: input.instructorUserId ?? null,
       lessonsCompleted: input.lessonsCompleted ?? 0,
-      lessonsTotal: input.lessonsTotal ?? pkg.lessons,
+      lessonsTotal: input.lessonsTotal ?? pkg?.lessons ?? 0,
       theoryLessonsCompleted: input.theoryLessonsCompleted ?? 0,
       theoryLessonsTotal: theoryTotal,
       enrollmentStatus: input.enrollmentStatus ?? 'active',

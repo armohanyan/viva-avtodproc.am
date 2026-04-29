@@ -4,6 +4,7 @@ import type { AccountType } from '../models/user.model';
 import { User } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+import StudentInvitationService from './student-invitation.service';
 
 const { ConflictError } = ErrorsUtil;
 
@@ -37,9 +38,18 @@ function toRow(u: User): AccountRow {
 }
 
 export default class AccountsService {
-  static async list(): Promise<AccountRow[]> {
-    const rows = await User.findAll({ order: [['createdAt', 'DESC']] });
+  static async list(filters?: { roles?: AccountType[] }): Promise<AccountRow[]> {
+    const rows = await User.findAll({
+      where: filters?.roles?.length ? { accountType: { [Op.in]: filters.roles } } : undefined,
+      order: [['createdAt', 'DESC']],
+    });
     return rows.map(toRow);
+  }
+
+  static async getById(id: number): Promise<AccountRow | null> {
+    const user = await User.findByPk(id);
+    if (!user) return null;
+    return toRow(user);
   }
 
   static async create(input: {
@@ -49,6 +59,7 @@ export default class AccountsService {
     accountType: AccountType;
     password?: string;
     isActive?: boolean;
+    sendInvite?: boolean;
   }): Promise<AccountRow> {
     const email = input.email.trim().toLowerCase();
     const dup = await User.findOne({ where: { email } });
@@ -67,6 +78,12 @@ export default class AccountsService {
       passwordHash,
       isActive: input.isActive !== false,
     });
+    if (input.sendInvite && !input.password) {
+      if (input.accountType === 'student') await StudentInvitationService.createAndEmailInvite(u.id);
+      if (input.accountType === 'instructor') await StudentInvitationService.createAndEmailInstructorInvite(u.id);
+      if (input.accountType === 'admin') await StudentInvitationService.createAndEmailAdminInvite(u.id);
+      if (input.accountType === 'super_admin') await StudentInvitationService.createAndEmailSuperAdminInvite(u.id);
+    }
     return toRow(u);
   }
 

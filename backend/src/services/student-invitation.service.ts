@@ -15,7 +15,7 @@ function randomUrlToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
-type PanelInviteRole = 'student' | 'instructor';
+type PanelInviteRole = 'student' | 'instructor' | 'admin' | 'super_admin';
 
 export default class StudentInvitationService {
   static async createAndEmailInvite(studentUserId: number): Promise<{ ok: true } | { ok: false; message: string }> {
@@ -28,20 +28,33 @@ export default class StudentInvitationService {
     return this.createAndEmailPanelInvite(instructorUserId, 'instructor');
   }
 
+  static async createAndEmailAdminInvite(adminUserId: number): Promise<{ ok: true } | { ok: false; message: string }> {
+    return this.createAndEmailPanelInvite(adminUserId, 'admin');
+  }
+
+  static async createAndEmailSuperAdminInvite(
+    superAdminUserId: number,
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
+    return this.createAndEmailPanelInvite(superAdminUserId, 'super_admin');
+  }
+
   private static async createAndEmailPanelInvite(
     userId: number,
     role: PanelInviteRole,
   ): Promise<{ ok: true } | { ok: false; message: string }> {
     const user = await User.findByPk(userId);
     if (!user || user.accountType !== role) {
-      return { ok: false, message: role === 'student' ? 'Student not found' : 'Instructor not found' };
+      if (role === 'student') return { ok: false, message: 'Student not found' };
+      if (role === 'instructor') return { ok: false, message: 'Instructor not found' };
+      if (role === 'admin') return { ok: false, message: 'Admin not found' };
+      return { ok: false, message: 'Super admin not found' };
     }
 
     if (user.passwordHash) {
-      return {
-        ok: false,
-        message: role === 'student' ? 'This student already has a password set' : 'This instructor already has a password set',
-      };
+      if (role === 'student') return { ok: false, message: 'This student already has a password set' };
+      if (role === 'instructor') return { ok: false, message: 'This instructor already has a password set' };
+      if (role === 'admin') return { ok: false, message: 'This admin already has a password set' };
+      return { ok: false, message: 'This super admin already has a password set' };
     }
 
     const oauthCount = await OAuthAccount.count({ where: { userId: user.id } });
@@ -73,11 +86,10 @@ export default class StudentInvitationService {
     const setupUrl = `${base}/setup-password?token=${encodeURIComponent(plainToken)}`;
 
     try {
-      if (role === 'student') {
-        await MailService.sendStudentInvitation(user.email, user.name, setupUrl);
-      } else {
-        await MailService.sendInstructorInvitation(user.email, user.name, setupUrl);
-      }
+      if (role === 'student') await MailService.sendStudentInvitation(user.email, user.name, setupUrl);
+      if (role === 'instructor') await MailService.sendInstructorInvitation(user.email, user.name, setupUrl);
+      if (role === 'admin') await MailService.sendAdminInvitation(user.email, user.name, setupUrl);
+      if (role === 'super_admin') await MailService.sendSuperAdminInvitation(user.email, user.name, setupUrl);
     } catch (e) {
       await StudentInvitation.destroy({ where: { tokenHash } });
       const msg = e instanceof Error ? e.message : 'Failed to send email';
@@ -124,7 +136,13 @@ export default class StudentInvitationService {
     }
 
     const user = await User.findByPk(inv.userId);
-    if (!user || (user.accountType !== 'student' && user.accountType !== 'instructor')) {
+    if (
+      !user ||
+      (user.accountType !== 'student' &&
+        user.accountType !== 'instructor' &&
+        user.accountType !== 'admin' &&
+        user.accountType !== 'super_admin')
+    ) {
       return { ok: false, message: 'Invalid invitation' };
     }
 

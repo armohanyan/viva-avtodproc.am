@@ -129,8 +129,6 @@ export default function AdminUsers() {
     name: "",
     email: "",
     phone: "",
-    instructor: instructorOptions[0],
-    package: "Basic",
     status: "active",
     branchId: "",
     skillRating: 0,
@@ -207,13 +205,6 @@ export default function AdminUsers() {
       showToast(t("fillRequired"), "error");
       return;
     }
-    const pkg =
-      packages.find((p) => p.name === (newUser.package || "Basic")) ?? packages[0];
-    const ins = instructorRows.find((i) => i.name === (newUser.instructor || instructorOptions[0]));
-    if (!pkg) {
-      showToast(t("fillRequired"), "error");
-      return;
-    }
     try {
       await vivaApiJson("/students", {
         method: "POST",
@@ -222,13 +213,13 @@ export default function AdminUsers() {
           email: newUser.email,
           phone: newUser.phone || "",
           branchId: newUser.branchId || branches[0]?.id || "",
-          packageId: pkg.id,
-          instructorUserId: ins?.id ?? null,
+          packageId: null,
+          instructorUserId: null,
           enrollmentStatus: "active",
           lessonsCompleted: 0,
-          lessonsTotal: pkg.lessons,
+          lessonsTotal: 0,
           theoryLessonsCompleted: 0,
-          theoryLessonsTotal: pkg.theoryLessons,
+          theoryLessonsTotal: 0,
           skillRating: Number(newUser.skillRating ?? 0),
           licenseAchieved: !!newUser.licenseAchieved,
           joinedIso: todayIsoDate(),
@@ -239,8 +230,6 @@ export default function AdminUsers() {
         name: "",
         email: "",
         phone: "",
-        instructor: instructorOptions[0],
-        package: "Basic",
         status: "active",
         branchId: branches[0]?.id ?? "",
         skillRating: 0,
@@ -267,7 +256,6 @@ export default function AdminUsers() {
               </Button>
             </Link>
             <Button
-              variant="outline"
               className="w-full gap-2 sm:w-auto"
               onClick={() => {
                 setNewUser((n) => ({ ...n, branchId: branches[0]?.id ?? "" }));
@@ -276,12 +264,6 @@ export default function AdminUsers() {
             >
               <Plus className="w-4 h-4" />
               {t("adminStudentsAddStudent")}
-            </Button>
-            <Button asChild className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 sm:w-auto">
-              <Link href="/admin/bookings?new=1">
-                <CalendarPlus className="w-4 h-4" />
-                {t("adminStudentsNewBooking")}
-              </Link>
             </Button>
           </div>
         }
@@ -577,20 +559,6 @@ export default function AdminUsers() {
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
-              </select></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-              <select value={newUser.instructor} onChange={e => setNewUser({ ...newUser, instructor: e.target.value })}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                {instructorOptions.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColPackage")}</label>
-              <select value={newUser.package} onChange={e => setNewUser({ ...newUser, package: e.target.value })}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="Basic">{t("basic")}</option>
-                <option value="Standard">{t("standard")}</option>
-                <option value="Premium">{t("premium")}</option>
               </select></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("studentSkillRating")} (0-10)</label>
               <Input type="number" min={0} max={10} value={newUser.skillRating ?? 0} onChange={e => setNewUser({ ...newUser, skillRating: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })} className="h-10" /></div>

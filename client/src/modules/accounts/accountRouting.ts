@@ -43,8 +43,7 @@ export function canInviteAccountType(
   target: AccountType,
 ): boolean {
   if (inviter !== "super_admin" && inviter !== "admin") return false;
-  if (target === "student" || target === "instructor") return true;
-  if (target === "admin") return inviter === "super_admin";
-  if (target === "super_admin") return false;
+  if (target === "admin") return true;
+  if (target === "super_admin") return inviter === "super_admin";
   return false;
 }

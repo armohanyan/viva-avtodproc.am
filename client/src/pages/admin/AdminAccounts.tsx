@@ -10,7 +10,7 @@ import { Button } from "src/components/ui/button";
 import { AppModal } from "src/components/AppModal";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
-import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
+import { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Users } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
@@ -36,7 +36,7 @@ const roleBadge: Record<AccountType, string> = {
   student: "bg-slate-100 text-slate-700",
 };
 
-const ALL_ROLES: AccountType[] = ["super_admin", "admin", "instructor", "student"];
+const ALL_ROLES: AccountType[] = ["super_admin", "admin"];
 
 function roleOptionsForEdit(editor: AccountType, current: AccountType): AccountType[] {
   return ALL_ROLES.filter((r) => r === current || canInviteAccountType(editor, r));
@@ -64,14 +64,13 @@ export default function AdminAccounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [scope, setScope] = useState<"staff" | "all">("staff");
   const [edit, setEdit] = useState<Account | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState<Partial<Account>>({
     name: "",
     email: "",
     phone: "",
-    role: "instructor",
+    role: "admin",
     status: "active",
   });
 
@@ -82,14 +81,12 @@ export default function AdminAccounts() {
     return ALL_ROLES.filter((r) => canInviteAccountType(editor, r));
   }, [editor]);
 
-  const defaultInviteRole: AccountType = assignableRoles.includes("instructor")
-    ? "instructor"
-    : assignableRoles[0] ?? "student";
+  const defaultInviteRole: AccountType = assignableRoles.includes("admin") ? "admin" : assignableRoles[0] ?? "admin";
 
   const refreshAccounts = useCallback(async () => {
     setListLoading(true);
     try {
-      const data = await vivaApiJson<Account[]>("/accounts");
+      const data = await vivaApiJson<Account[]>("/accounts?roles=admin,super_admin");
       setAccounts(Array.isArray(data) ? data : []);
     } catch (e) {
       setAccounts([]);
@@ -106,11 +103,12 @@ export default function AdminAccounts() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return accounts.filter((a) => {
-      if (scope === "staff" && !isStaffAccountType(a.role)) return false;
+      if (!isStaffAccountType(a.role)) return false;
+      if (a.role !== "admin" && a.role !== "super_admin") return false;
       const hay = [a.id, a.name, a.email, a.phone, a.role, a.status, a.created].join(" ").toLowerCase();
       return !q || hay.includes(q);
     });
-  }, [accounts, search, scope]);
+  }, [accounts, search]);
 
   const roleLabel = (r: AccountType) => t(roleLabelKey(r));
 
@@ -149,7 +147,7 @@ export default function AdminAccounts() {
       showToast(t("fillRequired"), "error");
       return;
     }
-    const role = (draft.role as AccountType) || "student";
+    const role = (draft.role as AccountType) || "admin";
     if (!editor || !canInviteAccountType(editor, role)) {
       showToast(t("accountsInviteAdminRolesHint"), "error");
       return;
@@ -230,21 +228,7 @@ export default function AdminAccounts() {
                 <TableColumnHeaderWithFilter title={t("name")} />
                 <TableColumnHeaderWithFilter title={t("accountsColEmail")} />
                 <TableColumnHeaderWithFilter title={t("phoneNumber")} />
-                <TableColumnHeaderWithFilter
-                  title={t("accountsColRole")}
-                  filter={
-                    <TableColumnFilter
-                      value={scope}
-                      onChange={(v) => setScope(v as "staff" | "all")}
-                      ariaLabel={t("accountsColRole")}
-                      allValue="staff"
-                      options={[
-                        { value: "staff", label: t("accountsStaffFilter") },
-                        { value: "all", label: t("accountsFilterAll") },
-                      ]}
-                    />
-                  }
-                />
+                <TableColumnHeaderWithFilter title={t("accountsColRole")} />
                 <TableColumnHeaderWithFilter title={t("status")} />
                 <TableColumnHeaderWithFilter title={t("accountsColCreated")} />
                 <TableColumnHeaderWithFilter title={t("actions")} align="end" />

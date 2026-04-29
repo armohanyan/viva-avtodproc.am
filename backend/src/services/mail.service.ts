@@ -150,6 +150,42 @@ export default class MailService {
     });
   }
 
+  static async sendAdminInvitation(toEmail: string, adminName: string, setupPasswordUrl: string): Promise<void> {
+    const safeName = adminName.trim() || 'Ադմին';
+    const inner = `
+        <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
+        <p style="margin:0 0 16px;">Ձեզ հրավիրում ենք <strong style="color:${BRAND.text};">Viva</strong> ադմին վահանակ։ Մուտք գործելու համար նախ սահմանեք Ձեր գաղտնաբառը։</p>
+        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
+        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
+    `;
+    await sendTransactionalEmail({
+      to: [{ email: toEmail, name: safeName }],
+      subject: 'Viva — հրավեր ադմին հաշիվ ակտիվացնելու համար',
+      htmlContent: emailShell(inner),
+      textContent: `Բարև, ${safeName},\n\nՍահմանեք Ձեր գաղտնաբառը՝ ${setupPasswordUrl}\n\nՀղումը շուտով կդառնա անվավեր։\n`,
+    });
+  }
+
+  static async sendSuperAdminInvitation(toEmail: string, adminName: string, setupPasswordUrl: string): Promise<void> {
+    const safeName = adminName.trim() || 'Գլխավոր ադմին';
+    const inner = `
+        <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
+        <p style="margin:0 0 16px;">Ձեզ հրավիրում ենք <strong style="color:${BRAND.text};">Viva</strong> գլխավոր ադմին վահանակ։ Մուտք գործելու համար նախ սահմանեք Ձեր գաղտնաբառը։</p>
+        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
+        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
+        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
+    `;
+    await sendTransactionalEmail({
+      to: [{ email: toEmail, name: safeName }],
+      subject: 'Viva — հրավեր գլխավոր ադմին հաշիվ ակտիվացնելու համար',
+      htmlContent: emailShell(inner),
+      textContent: `Բարև, ${safeName},\n\nՍահմանեք Ձեր գաղտնաբառը՝ ${setupPasswordUrl}\n\nՀղումը շուտով կդառնա անվավեր։\n`,
+    });
+  }
+
   static async sendAdminEmailOtp(toEmail: string, adminName: string, code: string): Promise<void> {
     const safeName = adminName.trim() || 'Ադմին';
     const inner = `
