@@ -324,4 +324,18 @@ export default class FinanceService {
     await row.reload();
     return toDto(row);
   }
+
+  static async removeManual(id: number): Promise<void> {
+    const row = await FinanceTransaction.findByPk(id);
+    if (!row) {
+      throw new ErrorsUtil.ResourceNotFoundError('Transaction not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    if (row.source !== 'manual') {
+      throw new ErrorsUtil.InputValidationError(
+        'Only manual transactions can be deleted.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    await row.destroy();
+  }
 }

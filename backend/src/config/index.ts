@@ -2,7 +2,6 @@ import { z } from 'zod';
 import type { CorsOptions } from 'cors';
 
 const rawEnvSchema = z.object({
-  /** When not `production`, or when `EXPOSE_ERROR_DETAILS=1`, 500 responses include message/stack for debugging. */
   NODE_ENV: z.string().optional(),
   EXPOSE_ERROR_DETAILS: z.string().optional(),
   PORT: z.preprocess((v) => {
@@ -15,16 +14,13 @@ const rawEnvSchema = z.object({
   CORS_ORIGINS: z.string().optional(),
   CORS: z.string().optional(),
   ONE_WAY_HASH_SECRET: z.string().optional(),
-  /** MySQL — primary application database */
   MYSQL_HOST: z.string().default('127.0.0.1'),
   MYSQL_PORT: z.string().optional(),
   MYSQL_USER: z.string().default('root'),
   MYSQL_PASSWORD: z.string().default(''),
   MYSQL_DATABASE: z.string().default('viva'),
   MYSQL_LOGGING: z.string().optional(),
-  /** Set to `1` to run sequelize.sync({ alter: true }) on startup (dev only). */
   DB_SYNC_ALTER: z.string().optional(),
-  /** Auto-seed when `users` is empty (initial super admin). Set to `0` to disable. */
   DB_AUTO_SEED: z.string().optional(),
   PSQL_URL: z.string().optional(),
   PSQL_PORT: z.string().optional(),
@@ -36,23 +32,17 @@ const rawEnvSchema = z.object({
   JWT_REFRESH_SECRET: z.string().optional(),
   ACCESS_TOKEN_ACTIVE_TIME: z.string().optional(),
   REFRESH_TOKEN_ACTIVE_TIME: z.string().optional(),
-  /** Browser-reachable base URL of this API (no trailing slash). Used for OAuth redirect_uri. */
   API_PUBLIC_URL: z.string().optional(),
-  /** Browser origin of the accounts panel (Vite/SPA). Used in email links and OAuth return when state omits `ro`. */
   PANEL_DEFAULT_ORIGIN: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
   OAUTH_FACEBOOK_APP_ID: z.string().optional(),
   OAUTH_FACEBOOK_APP_SECRET: z.string().optional(),
-  /** Sign in with Apple — Services ID (client id). */
   OAUTH_APPLE_CLIENT_ID: z.string().optional(),
   OAUTH_APPLE_TEAM_ID: z.string().optional(),
   OAUTH_APPLE_KEY_ID: z.string().optional(),
-  /** ES256 private key (.p8) PEM; use literal \\n in .env for newlines. */
   OAUTH_APPLE_PRIVATE_KEY: z.string().optional(),
-  /** Brevo transactional email API key (https://app.brevo.com/). */
   BREVO_API_KEY: z.string().optional(),
-  /** From address — must be a verified sender in Brevo. */
   SENDER_EMAIL: z.string().optional(),
 });
 

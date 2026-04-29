@@ -184,22 +184,6 @@ export default function AdminExamQuestions() {
   }, []);
 
   useEffect(() => {
-    if (!hasLoadedMetaRef.current) return;
-    const raw = JSON.stringify(metaDraft);
-    if (raw === lastSavedMetaRef.current) return;
-    const tmr = window.setTimeout(async () => {
-      try {
-        const saved = await updateExamQuestionMeta(metaDraft);
-        lastSavedMetaRef.current = JSON.stringify(saved);
-        setMetaDraft(saved);
-      } catch {
-        showToast(t("fillRequired"), "error");
-      }
-    }, 400);
-    return () => window.clearTimeout(tmr);
-  }, [metaDraft, showToast, t]);
-
-  useEffect(() => {
     const max = cardMode === "thematic" ? metaDraft.thematicCardTitles.length : metaDraft.examCardTitles.length;
     if (selectedCardIndex >= max) setSelectedCardIndex(0);
   }, [cardMode, metaDraft.examCardTitles.length, metaDraft.thematicCardTitles.length, selectedCardIndex]);
@@ -387,9 +371,9 @@ export default function AdminExamQuestions() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Քարտեր և հարցեր</h3>
-            <p className="text-xs text-muted-foreground">Ընտրեք քարտը, խմբագրեք վերնագիրը, հետո ավելացրեք/խմբագրեք/հեռացրեք հարցերը։</p>
+            <p className="text-xs text-muted-foreground">Ընտրեք քարտը, հետո ավելացրեք/խմբագրեք/հեռացրեք հարցերը։</p>
           </div>
-          <div className="text-xs text-muted-foreground">Փոփոխությունները պահվում են ավտոմատ</div>
+          <div className="text-xs text-muted-foreground">Քարտերի վերնագրերը ստատիկ են</div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -415,6 +399,9 @@ export default function AdminExamQuestions() {
                 selectedCardIndex === i ? "border-primary bg-primary/10" : "border-border hover:bg-muted/30",
               )}
             >
+              {cardMode === "thematic" ? (
+                <img src={`/topic-icons/theme-${i + 1}.svg`} alt="" aria-hidden="true" className="mb-2 h-7 w-7 object-contain" />
+              ) : null}
               <div className="font-medium truncate">{title}</div>
               <div className="text-xs text-muted-foreground">
                 {cardMode === "thematic"
@@ -424,27 +411,7 @@ export default function AdminExamQuestions() {
             </button>
           ))}
         </div>
-        <div className="space-y-2">
-          <Label>Քարտի վերնագիր</Label>
-          <Input
-            value={cardMode === "thematic" ? metaDraft.thematicCardTitles[selectedCardIndex] ?? "" : metaDraft.examCardTitles[selectedCardIndex] ?? ""}
-            onChange={(e) =>
-              setMetaDraft((prev) => {
-                if (cardMode === "thematic") {
-                  const next = [...prev.thematicCardTitles];
-                  next[selectedCardIndex] = e.target.value;
-                  return { ...prev, thematicCardTitles: next };
-                }
-                const next = [...prev.examCardTitles];
-                next[selectedCardIndex] = e.target.value;
-                return { ...prev, examCardTitles: next };
-              })
-            }
-          />
-          {cardMode === "thematic" ? (
-            <p className="text-xs text-muted-foreground">Թեմայի ID: {THEMATIC_TOPIC_IDS[selectedCardIndex] ?? "—"}</p>
-          ) : null}
-        </div>
+        {cardMode === "thematic" ? <p className="text-xs text-muted-foreground">Թեմայի ID: {THEMATIC_TOPIC_IDS[selectedCardIndex] ?? "—"}</p> : null}
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>Ընտրված քարտի հարցեր՝ {selectedCardQuestionIds.size}</span>
           <span>•</span>

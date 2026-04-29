@@ -101,4 +101,17 @@ export default class FinanceController {
       next(e);
     }
   }
+
+  static async remove(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return next(new InputValidationError('Invalid transaction id', HttpStatusCodesUtil.BAD_REQUEST));
+      }
+      await FinanceService.removeManual(id);
+      SuccessHandlerUtil.handleDelete(res, next);
+    } catch (e) {
+      next(e);
+    }
+  }
 }

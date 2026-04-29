@@ -1289,6 +1289,8 @@ const en = {
   adminBookingValSelectPackage: "Select a package.",
   adminBookingValPackagePracticalCount:
     "For this package, select exactly the required number of practical hours on the calendar (consecutive).",
+  adminBookingValPackageTheoryCount:
+    "For this package, select exactly the required number of theory hours on the calendar.",
   adminBookingPackagePracticalSlotsHint:
     "This package includes %n practical hour(s). Pick exactly %n consecutive hour(s) on the calendar.",
   adminBookingValPackageNoServices: "This package has no practical or theory lessons configured.",
@@ -2612,6 +2614,8 @@ const ru: typeof en = {
   adminBookingValSelectPackage: "Выберите пакет.",
   adminBookingValPackagePracticalCount:
     "Для этого пакета выберите в календаре нужное число практических часов подряд.",
+  adminBookingValPackageTheoryCount:
+    "Для этого пакета выберите в календаре ровно нужное число часов теории.",
   adminBookingPackagePracticalSlotsHint:
     "В пакете %n практическ(их) час(а). Выберите в календаре ровно %n подряд идущих час(а).",
   adminBookingValPackageNoServices: "В этом пакете не заданы практика или теория.",
@@ -3936,6 +3940,8 @@ const am: typeof en = {
   adminBookingValSelectPackage: "Ընտրեք փաթեթը։",
   adminBookingValPackagePracticalCount:
     "Այս փաթեթի համար օրացույցում ընտրեք ճիշտ քանակությամբ հաջորդական պրակտիկ ժամեր։",
+  adminBookingValPackageTheoryCount:
+    "Այս փաթեթի համար օրացույցում ընտրեք տեսական ժամերի ճիշտ քանակը։",
   adminBookingPackagePracticalSlotsHint:
     "Փաթեթում ներառված է %n պրակտիկ ժամ։ Օրացույցում ընտրեք հենց %n հաջորդական ժամ։",
   adminBookingValPackageNoServices: "Այս փաթեթում պրակտիկ կամ տեսական դասեր չեն կազմակերպված։",

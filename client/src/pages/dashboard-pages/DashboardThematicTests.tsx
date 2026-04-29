@@ -11,7 +11,6 @@ import {
   THEMATIC_TOPIC_IDS,
   THEMATIC_TOPIC_TITLE_KEYS,
 } from "src/data/thematicTopics";
-import { countThematicTopicQuestions } from "src/lib/examQuestions";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import { Reveal } from "src/lib/motion";
@@ -31,18 +30,25 @@ export default function DashboardThematicTests() {
     activeSession: null,
   });
   const [thematicCardTitles, setThematicCardTitles] = useState<string[]>(() => defaultExamQuestionMeta().thematicCardTitles);
+  const [thematicCardQuestionIds, setThematicCardQuestionIds] = useState<string[][]>(
+    () => defaultExamQuestionMeta().thematicCardQuestionIds,
+  );
 
   const pool = useExamQuestionPool();
 
   const topics = useMemo(
-    () =>
+    () => {
+      const validIds = new Set(pool.map((q) => q.id));
+      return (
       THEMATIC_TOPIC_IDS.map((topicId, i) => ({
         iconSrc: THEMATIC_TOPIC_ICON[topicId],
         title: thematicCardTitles[i] || t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
-        total: countThematicTopicQuestions(pool, topicId),
+        total: (thematicCardQuestionIds[i] ?? []).filter((id) => validIds.has(id)).length,
         topicId,
-      })),
-    [pool, t, thematicCardTitles],
+      }))
+    );
+    },
+    [pool, t, thematicCardQuestionIds, thematicCardTitles],
   );
 
   useEffect(() => {
@@ -54,7 +60,10 @@ export default function DashboardThematicTests() {
     let mounted = true;
     const sync = async () => {
       const meta = await loadExamQuestionMeta();
-      if (mounted) setThematicCardTitles(meta.thematicCardTitles);
+      if (mounted) {
+        setThematicCardTitles(meta.thematicCardTitles);
+        setThematicCardQuestionIds(meta.thematicCardQuestionIds);
+      }
     };
     void sync();
     const off = subscribeExamQuestionMetaUpdated(() => void sync());

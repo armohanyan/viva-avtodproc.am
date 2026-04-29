@@ -1171,6 +1171,7 @@ export default function AdminBookings() {
               type: "practical",
               dateIso: pick.dateIso,
               slots: pick.times,
+              ...(pick.slotEntries && pick.slotEntries.length > 0 ? { slotEntries: pick.slotEntries } : {}),
               instructorName: pick.instructor || draft.instructorName,
             },
           });
@@ -1187,6 +1188,7 @@ export default function AdminBookings() {
               type: "theory",
               dateIso: pick.dateIso,
               slots: pick.times,
+              ...(pick.slotEntries && pick.slotEntries.length > 0 ? { slotEntries: pick.slotEntries } : {}),
               theoryCohortId: Number(addPackageTheoryCohortId),
             },
           });
@@ -2105,6 +2107,8 @@ export default function AdminBookings() {
                               onBookingConfirmed={setAddPackagePracticalSlotPick}
                               onAdminSelectionCleared={() => setAddPackagePracticalSlotPick(null)}
                               calendarKey={`add-pkg-prac-${draft.instructorName}-${draft.branchId}-${addPackageId}`}
+                              maxSelectableSlots={selectedAddPackage.lessons}
+                              maxSelectableSlotsErrorKey="adminBookingValPackagePracticalCount"
                               t={t}
                             />
                           </>
@@ -2141,6 +2145,8 @@ export default function AdminBookings() {
                               onBookingConfirmed={setAddPackageTheorySlotPick}
                               onAdminSelectionCleared={() => setAddPackageTheorySlotPick(null)}
                               calendarKey={`add-pkg-th-${addPackageTheoryCohortId}-${draft.branchId}`}
+                              maxSelectableSlots={selectedAddPackage.theoryLessons}
+                              maxSelectableSlotsErrorKey="adminBookingValPackageTheoryCount"
                               t={t}
                             />
                           </>

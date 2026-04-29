@@ -39,7 +39,7 @@ export default class ExamQuestionController {
   static async getMeta(_req: Request, res: Response, next: NextFunction) {
     try {
       const data = await ExamQuestionService.getMeta();
-      SuccessHandlerUtil.handleRead(res, next, data);
+      SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);
     }

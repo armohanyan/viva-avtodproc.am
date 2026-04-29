@@ -55,8 +55,11 @@ export default function AdminLayout({ children }: Props) {
 	const { user, signOut } = useAccount();
 	const [location, setLocation] = useLocation();
 
-	/** `href`s of `collapsible` nav groups manually expanded in the sidebar. */
-	const [openCollapsibleHrefs, setOpenCollapsibleHrefs] = useState<string[]>([]);
+	/**
+	 * Manual open/close overrides for collapsible sidebar groups.
+	 * `undefined` falls back to route-driven auto-open.
+	 */
+	const [collapsibleOverrides, setCollapsibleOverrides] = useState<Record<string, boolean>>({});
 
 	const iconByPath = {
 		"/admin/dashboard": LayoutDashboard,
@@ -101,24 +104,18 @@ export default function AdminLayout({ children }: Props) {
 			const underParent = link.children.some(
 				(c) => location === c.href || location.startsWith(`${c.href}/`),
 			);
-			const isOpen = onParent || underParent || openCollapsibleHrefs.includes(link.href);
+			const routeBasedOpen = onParent || underParent;
+			const override = collapsibleOverrides[link.href];
+			const isOpen = override ?? routeBasedOpen;
 			const childOwnsParentPath = link.children.some((c) => c.href === link.href && location === link.href);
 			const parentStrong = onParent && !childOwnsParentPath;
 			const parentSoft = underParent && !onParent;
 
 			return (
 				<div key={link.href} className="space-y-0.5">
-					<button
-						type="button"
-						aria-expanded={isOpen}
-						onClick={() => {
-							setOpenCollapsibleHrefs((prev) =>
-								prev.includes(link.href) ? prev.filter((href) => href !== link.href) : [...prev, link.href],
-							);
-							closeMobileNav();
-						}}
+					<div
 						className={cn(
-							"w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+							"w-full flex items-center gap-2 px-1 py-1 rounded-lg text-sm font-medium transition-colors",
 							parentStrong
 								? "bg-primary text-primary-foreground"
 								: parentSoft
@@ -126,13 +123,37 @@ export default function AdminLayout({ children }: Props) {
 									: "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
 						)}
 					>
-						<Icon className="w-4 h-4 shrink-0" />
-						<span className="flex-1 text-left">{t(link.translationKey)}</span>
-						<ChevronDown
-							className={cn("w-4 h-4 shrink-0 transition-transform opacity-80", isOpen && "rotate-180")}
-							aria-hidden
-						/>
-					</button>
+						<Link
+							href={link.href}
+							onClick={(e) => {
+								// When already inside this section, clicking parent label acts as collapse/expand.
+								if (onParent || underParent) {
+									e.preventDefault();
+									setCollapsibleOverrides((prev) => ({ ...prev, [link.href]: !isOpen }));
+									return;
+								}
+								closeMobileNav();
+							}}
+							className="flex-1 flex items-center gap-3 px-2 py-1.5 rounded-md"
+						>
+							<Icon className="w-4 h-4 shrink-0" />
+							<span className="flex-1 text-left">{t(link.translationKey)}</span>
+						</Link>
+						<button
+							type="button"
+							aria-expanded={isOpen}
+							aria-label={t(link.translationKey)}
+							onClick={() => {
+								setCollapsibleOverrides((prev) => ({ ...prev, [link.href]: !isOpen }));
+							}}
+							className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-white/10"
+						>
+							<ChevronDown
+								className={cn("w-4 h-4 shrink-0 transition-transform opacity-80", isOpen && "rotate-180")}
+								aria-hidden
+							/>
+						</button>
+					</div>
 					{isOpen ? (
 						<div className="ml-3 pl-3 border-l border-white/15 space-y-0.5">
 							{link.children.map((child) => {

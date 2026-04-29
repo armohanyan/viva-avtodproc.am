@@ -54,6 +54,16 @@ export default function AdminFinanceOutcomes() {
   const [editPurposeChoice, setEditPurposeChoice] = useState("");
   const [editPurposeCustom, setEditPurposeCustom] = useState("");
   const [manualExpenses, setManualExpenses] = useState<FinanceTx[]>([]);
+  const [manualEditRow, setManualEditRow] = useState<FinanceTx | null>(null);
+  const [manualEditForm, setManualEditForm] = useState({
+    employeeName: "",
+    description: "",
+    branchId: "1",
+    units: "",
+    unitRateAmd: "",
+    grossAmd: "",
+    datetimeLocal: new Date().toISOString().slice(0, 16),
+  });
   const [manualExpenseForm, setManualExpenseForm] = useState({
     employeeName: "",
     description: "",
@@ -269,6 +279,68 @@ export default function AdminFinanceOutcomes() {
         datetimeLocal: new Date().toISOString().slice(0, 16),
       });
       showToast(t("adminFinanceOutcomeSavedToast"), "success");
+      await refreshManualExpenses();
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    }
+  };
+
+  const startManualEdit = (tx: FinanceTx) => {
+    setManualEditRow(tx);
+    setManualEditForm({
+      employeeName: tx.employeeName ?? "",
+      description: tx.description,
+      branchId: String(tx.branchId),
+      units: tx.units != null ? String(tx.units) : "",
+      unitRateAmd: tx.unitRateAmd != null ? String(tx.unitRateAmd) : "",
+      grossAmd: String(tx.grossAmd),
+      datetimeLocal: new Date(tx.createdAt).toISOString().slice(0, 16),
+    });
+  };
+
+  const submitManualEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualEditRow) return;
+    const units = manualEditForm.units.trim() ? Number.parseFloat(manualEditForm.units.replace(",", ".")) : NaN;
+    const unitRateAmd = manualEditForm.unitRateAmd.trim()
+      ? Number.parseFloat(manualEditForm.unitRateAmd.replace(",", "."))
+      : NaN;
+    const grossAmdInput = manualEditForm.grossAmd.trim()
+      ? Number.parseFloat(manualEditForm.grossAmd.replace(",", "."))
+      : NaN;
+    const hasRateCalc = Number.isFinite(units) && Number.isFinite(unitRateAmd) && units > 0 && unitRateAmd > 0;
+    const grossAmd = hasRateCalc ? Math.round(units * unitRateAmd) : Math.round(grossAmdInput);
+    if (!manualEditForm.description.trim() || !Number.isFinite(grossAmd) || grossAmd <= 0) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    try {
+      await vivaApiJson(`/finance/transactions/${manualEditRow.id}`, {
+        method: "PATCH",
+        body: {
+          createdAt: new Date(manualEditForm.datetimeLocal).toISOString(),
+          customer: manualEditForm.employeeName.trim() || t("financeDefaultOperatingExpenseCustomer"),
+          description: manualEditForm.description.trim(),
+          branchId: Number(manualEditForm.branchId) || 1,
+          grossAmd,
+          expenseKind: hasRateCalc ? "hourly_rate" : "other",
+          employeeName: manualEditForm.employeeName.trim() || null,
+          units: hasRateCalc ? units : null,
+          unitRateAmd: hasRateCalc ? Math.round(unitRateAmd) : null,
+        },
+      });
+      setManualEditRow(null);
+      showToast(t("fleetExpenseSavedToast"), "success");
+      await refreshManualExpenses();
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    }
+  };
+
+  const handleManualDelete = async (tx: FinanceTx) => {
+    try {
+      await vivaApiJson(`/finance/transactions/${tx.id}`, { method: "DELETE" });
+      showToast(t("fleetExpenseDeletedToast"), "success");
       await refreshManualExpenses();
     } catch (err) {
       showToast(getApiErrorMessage(err), "error");
@@ -500,27 +572,59 @@ export default function AdminFinanceOutcomes() {
                 <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeUnits")} />
                 <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeRateAmd")} />
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColAmount")} />
+                <TableColumnHeaderWithFilter title={t("actions")} />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {manualFiltered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {t("tableNoMatches")}
                   </td>
                 </tr>
               ) : (
                 manualFiltered.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 text-muted-foreground text-xs font-mono">{tx.id}</td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-foreground">{tx.employeeName || tx.customer || "—"}</td>
-                    <td className="px-4 py-3 max-w-[16rem]">{tx.description}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{branchNameById(branches, tx.branchId)}</td>
-                    <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.units ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.unitRateAmd != null ? formatAmd(tx.unitRateAmd) : "—"}</td>
-                    <td className="px-4 py-3 font-medium tabular-nums">{formatAmd(tx.grossAmd)}</td>
-                  </tr>
+                  <AdminTableRowContextMenu
+                    key={tx.id}
+                    actions={[
+                      { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => startManualEdit(tx) },
+                      {
+                        kind: "item",
+                        id: "delete",
+                        label: t("delete"),
+                        icon: Trash2,
+                        destructive: true,
+                        onClick: () => void handleManualDelete(tx),
+                      },
+                    ]}
+                  >
+                    <tr className="hover:bg-muted/30">
+                      <td className="px-4 py-3 text-muted-foreground text-xs font-mono">{tx.id}</td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-foreground">{tx.employeeName || tx.customer || "—"}</td>
+                      <td className="px-4 py-3 max-w-[16rem]">{tx.description}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{branchNameById(branches, tx.branchId)}</td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.units ?? "—"}</td>
+                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.unitRateAmd != null ? formatAmd(tx.unitRateAmd) : "—"}</td>
+                      <td className="px-4 py-3 font-medium tabular-nums">{formatAmd(tx.grossAmd)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <AdminTableRowActions
+                          toolbarOnly
+                          actions={[
+                            { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => startManualEdit(tx) },
+                            {
+                              kind: "item",
+                              id: "delete",
+                              label: t("delete"),
+                              icon: Trash2,
+                              destructive: true,
+                              onClick: () => void handleManualDelete(tx),
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  </AdminTableRowContextMenu>
                 ))
               )}
             </tbody>
@@ -641,6 +745,68 @@ export default function AdminFinanceOutcomes() {
             <p className="text-xs text-muted-foreground">{t("adminFinanceOutcomeFleetNote")}</p>
           </form>
         )}
+      </AppModal>
+
+      <AppModal
+        open={!!manualEditRow}
+        onOpenChange={(o) => !o && setManualEditRow(null)}
+        title={t("edit")}
+        contentClassName="max-w-md"
+        footer={
+          manualEditRow ? (
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setManualEditRow(null)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" form="manual-expense-edit-form" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+                {t("save")}
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        {manualEditRow ? (
+          <form id="manual-expense-edit-form" onSubmit={submitManualEdit} className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeEmployeeVendor")}</label>
+              <Input value={manualEditForm.employeeName} onChange={(e) => setManualEditForm((r) => ({ ...r, employeeName: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProduct")} *</label>
+              <Input value={manualEditForm.description} onChange={(e) => setManualEditForm((r) => ({ ...r, description: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")} *</label>
+              <Input type="datetime-local" value={manualEditForm.datetimeLocal} onChange={(e) => setManualEditForm((r) => ({ ...r, datetimeLocal: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColBranch")} *</label>
+              <select
+                value={manualEditForm.branchId}
+                onChange={(e) => setManualEditForm((r) => ({ ...r, branchId: e.target.value }))}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={String(b.id)}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeUnits")}</label>
+              <Input value={manualEditForm.units} onChange={(e) => setManualEditForm((r) => ({ ...r, units: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeRateAmd")}</label>
+              <Input value={manualEditForm.unitRateAmd} onChange={(e) => setManualEditForm((r) => ({ ...r, unitRateAmd: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
+              <Input value={manualEditForm.grossAmd} onChange={(e) => setManualEditForm((r) => ({ ...r, grossAmd: e.target.value }))} />
+            </div>
+          </form>
+        ) : null}
       </AppModal>
     </AdminLayout>
   );

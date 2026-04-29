@@ -35,6 +35,13 @@ function hasSlotPickSlots(pick: LessonBookingPayload | null): boolean {
   return pick.times.length > 0;
 }
 
+function slotCount(pick: LessonBookingPayload | null): number {
+  if (!pick) return 0;
+  const entriesCount = pick.slotEntries?.length ?? 0;
+  if (entriesCount > 0) return entriesCount;
+  return pick.times.length;
+}
+
 export function validateAdminBookingAdd(input: BookingValidationInput): BookingValidationResult {
   const keys: TranslationKey[] = [];
   if (!strTrim(input.studentId)) {
@@ -95,7 +102,7 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
     const nPrac = pkg.lessons ?? 0;
     const nTheory = pkg.theoryLessons ?? 0;
     if (nPrac > 0) {
-      const got = input.packagePracticalSlots?.times.length ?? 0;
+      const got = slotCount(input.packagePracticalSlots);
       if (got !== nPrac) {
         keys.push("adminBookingValPackagePracticalCount");
       }
@@ -113,8 +120,9 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
       if (!input.packageTheoryCalendarInstructorId) {
         keys.push("adminBookingInstructorCalendarUnavailable");
       }
-      if (!input.packageTheorySlots || input.packageTheorySlots.times.length === 0) {
-        keys.push("adminBookingValSelectSlots");
+      const gotTheory = slotCount(input.packageTheorySlots);
+      if (gotTheory !== nTheory) {
+        keys.push("adminBookingValPackageTheoryCount");
       }
     }
     if (nPrac <= 0 && nTheory <= 0) {

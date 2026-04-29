@@ -1,4 +1,4 @@
-import { useLang } from "src/lib/i18n";
+import { useLang, type TranslationKey } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import DataTableToolbar from "src/components/DataTableToolbar";
@@ -164,6 +164,10 @@ export type LessonBookingCalendarProps = {
    * as soon as the selection is valid (so a parent `CheckoutSummary` can be the only panel).
    */
   adminSuppressSummaryCard?: boolean;
+  /** Admin: optional hard cap for selected slot cells (e.g. package practical lessons). */
+  maxSelectableSlots?: number;
+  /** Localized message shown when selection cap is exceeded. */
+  maxSelectableSlotsErrorKey?: TranslationKey;
 };
 
 export default function LessonBookingCalendar({
@@ -181,6 +185,8 @@ export default function LessonBookingCalendar({
   onAdminSelectionCleared,
   ignoreBusyBookingId = "",
   adminSuppressSummaryCard = false,
+  maxSelectableSlots,
+  maxSelectableSlotsErrorKey = "adminBookingValPackagePracticalCount",
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -517,11 +523,19 @@ export default function LessonBookingCalendar({
     setBookingFlowDone(false);
     if (mode === "admin") {
       const key = slotEntryKey(dateStr, slot);
+      const slotCap =
+        typeof maxSelectableSlots === "number" && Number.isFinite(maxSelectableSlots)
+          ? Math.trunc(maxSelectableSlots)
+          : 0;
       setAdminSlotPick((prev) => {
         const i = prev.findIndex((p) => slotEntryKey(p.dateIso, p.time) === key);
         if (i >= 0) {
           const next = prev.filter((_, j) => j !== i);
           return next;
+        }
+        if (slotCap > 0 && prev.length >= slotCap) {
+          showToast(t(maxSelectableSlotsErrorKey), "error");
+          return prev;
         }
         return sortSlotEntriesChrono([...prev, { dateIso: dateStr.slice(0, 10), time: slot }]);
       });

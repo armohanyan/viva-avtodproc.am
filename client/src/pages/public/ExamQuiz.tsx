@@ -330,9 +330,11 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                         <div className="ml-7 mt-3 space-y-2">
                           {loc.options.map((opt, optionIndex) => {
                             const isSelectedOption = userAns === optionIndex;
+                            const isCorrectOption = optionIndex === question.correctIndex;
                             const explanation = loc.optionExplanations[optionIndex];
                             const explanationKey = `${question.id}-${optionIndex}`;
                             const isOpen = Boolean(openExplanations[explanationKey]);
+                            const showExplanationToggle = Boolean(explanation) && (isSelectedOption || isCorrectOption);
                             return (
                               <div
                                 key={explanationKey}
@@ -346,7 +348,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span>{opt}</span>
-                                  {explanation ? (
+                                  {showExplanationToggle ? (
                                     <button
                                       type="button"
                                       onClick={() =>
@@ -447,6 +449,11 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                     <div className="space-y-2">
                       {current?.options.map((opt, i) => {
                         const hideImmediateFeedback = timedExam;
+                        const isSelectedOption = selected === i;
+                        const isCorrectOption = i === q!.correctIndex;
+                        const explanation = current.optionExplanations[i];
+                        const showExplanationToggle =
+                          !hideImmediateFeedback && selected !== null && Boolean(explanation) && (isSelectedOption || isCorrectOption);
                         return (
                           <div key={i} className="rounded-xl border border-transparent">
                             <button
@@ -454,23 +461,23 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                               onClick={() => setSelected(i)}
                               className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
                                 hideImmediateFeedback
-                                  ? selected === i
+                                  ? isSelectedOption
                                     ? "border-primary bg-primary/10 text-foreground"
                                     : "border-border hover:border-muted-foreground/30 text-foreground"
                                   : selected === null
-                                    ? selected === i
+                                    ? isSelectedOption
                                       ? "border-primary bg-primary/10 text-foreground"
                                       : "border-border hover:border-muted-foreground/30 text-foreground"
-                                    : i === q!.correctIndex
+                                    : isCorrectOption
                                       ? "border-emerald-600 text-foreground"
-                                      : selected === i
+                                      : isSelectedOption
                                         ? "border-red-600 text-foreground"
                                         : "border-border text-foreground"
                               }`}
                             >
                               {opt}
                             </button>
-                            {!hideImmediateFeedback && selected !== null && current.optionExplanations[i] ? (
+                            {showExplanationToggle ? (
                               <div className="mt-1 ml-2">
                                 <button
                                   type="button"
@@ -487,7 +494,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                                   <span>{t("examQuizShowExplanation")}</span>
                                 </button>
                                 {openExplanations[`q-${index}-${i}`] ? (
-                                  <p className="mt-1 text-xs text-muted-foreground">{current.optionExplanations[i]}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">{explanation}</p>
                                 ) : null}
                               </div>
                             ) : null}
@@ -527,52 +534,59 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                             ) : null}
                             <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{loc.text}</h2>
                             <div className="space-y-2">
-                              {loc.options.map((opt, optIdx) => (
-                                <div key={optIdx} className="rounded-xl border border-transparent">
-                                  <button
-                                    type="button"
-                                    onClick={() => setAnswerAt(qIdx, optIdx)}
-                                    className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
-                                      hideImmediateFeedback
-                                        ? sel === optIdx
-                                          ? "border-primary bg-primary/10 text-foreground"
-                                          : "border-border hover:border-muted-foreground/30 text-foreground"
-                                        : sel === null
-                                          ? sel === optIdx
+                              {loc.options.map((opt, optIdx) => {
+                                const isSelectedOption = sel === optIdx;
+                                const isCorrectOption = optIdx === question.correctIndex;
+                                const explanation = loc.optionExplanations[optIdx];
+                                const showExplanationToggle =
+                                  !hideImmediateFeedback && sel !== null && Boolean(explanation) && (isSelectedOption || isCorrectOption);
+                                return (
+                                  <div key={optIdx} className="rounded-xl border border-transparent">
+                                    <button
+                                      type="button"
+                                      onClick={() => setAnswerAt(qIdx, optIdx)}
+                                      className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                                        hideImmediateFeedback
+                                          ? isSelectedOption
                                             ? "border-primary bg-primary/10 text-foreground"
                                             : "border-border hover:border-muted-foreground/30 text-foreground"
-                                          : optIdx === question.correctIndex
-                                            ? "border-emerald-600 text-foreground"
-                                            : sel === optIdx
-                                              ? "border-red-600 text-foreground"
-                                              : "border-border text-foreground"
-                                    }`}
-                                  >
-                                    {opt}
-                                  </button>
-                                  {!hideImmediateFeedback && sel !== null && loc.optionExplanations[optIdx] ? (
-                                    <div className="mt-1 ml-2">
-                                      <button
-                                        type="button"
-                                        className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
-                                        onClick={() =>
-                                          setOpenExplanations((prev) => ({
-                                            ...prev,
-                                            [`q-${qIdx}-${optIdx}`]: !prev[`q-${qIdx}-${optIdx}`],
-                                          }))
-                                        }
-                                        aria-label={t("examQuizShowExplanation")}
-                                      >
-                                        <CircleHelp className="w-3.5 h-3.5" />
-                                        <span>{t("examQuizShowExplanation")}</span>
-                                      </button>
-                                      {openExplanations[`q-${qIdx}-${optIdx}`] ? (
-                                        <p className="mt-1 text-xs text-muted-foreground">{loc.optionExplanations[optIdx]}</p>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ))}
+                                          : sel === null
+                                            ? isSelectedOption
+                                              ? "border-primary bg-primary/10 text-foreground"
+                                              : "border-border hover:border-muted-foreground/30 text-foreground"
+                                            : isCorrectOption
+                                              ? "border-emerald-600 text-foreground"
+                                              : isSelectedOption
+                                                ? "border-red-600 text-foreground"
+                                                : "border-border text-foreground"
+                                      }`}
+                                    >
+                                      {opt}
+                                    </button>
+                                    {showExplanationToggle ? (
+                                      <div className="mt-1 ml-2">
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                                          onClick={() =>
+                                            setOpenExplanations((prev) => ({
+                                              ...prev,
+                                              [`q-${qIdx}-${optIdx}`]: !prev[`q-${qIdx}-${optIdx}`],
+                                            }))
+                                          }
+                                          aria-label={t("examQuizShowExplanation")}
+                                        >
+                                          <CircleHelp className="w-3.5 h-3.5" />
+                                          <span>{t("examQuizShowExplanation")}</span>
+                                        </button>
+                                        {openExplanations[`q-${qIdx}-${optIdx}`] ? (
+                                          <p className="mt-1 text-xs text-muted-foreground">{explanation}</p>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </Card>
                         </Reveal>

@@ -17,6 +17,8 @@ type Props = {
   onAdminSelectionCleared?: () => void;
   calendarKey: string;
   t: (k: TranslationKey) => string;
+  maxSelectableSlots?: number;
+  maxSelectableSlotsErrorKey?: TranslationKey;
 };
 
 export default function SlotSelector({
@@ -32,6 +34,8 @@ export default function SlotSelector({
   onAdminSelectionCleared,
   calendarKey,
   t,
+  maxSelectableSlots,
+  maxSelectableSlotsErrorKey,
 }: Props) {
   return (
     <div className="space-y-2 pt-2 border-t border-border">
@@ -53,6 +57,8 @@ export default function SlotSelector({
           onAdminSelectionCleared={onAdminSelectionCleared}
           onBookingConfirmed={onBookingConfirmed}
           adminSuppressSummaryCard
+          maxSelectableSlots={maxSelectableSlots}
+          maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
         />
       )}
     </div>

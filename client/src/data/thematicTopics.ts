@@ -18,14 +18,14 @@ export const THEMATIC_TOPIC_TITLE_KEYS = [
 export type ThematicTopicId = (typeof THEMATIC_TOPIC_IDS)[number];
 
 export const THEMATIC_TOPIC_ICON: Record<string, string> = {
-  "5": "/topic-icons/varir-theme-5.svg",
-  "3": "/topic-icons/varir-theme-3.svg",
-  "2": "/topic-icons/varir-theme-2.svg",
-  "6": "/topic-icons/varir-theme-6.svg",
-  "8": "/topic-icons/varir-theme-8.svg",
-  "7": "/topic-icons/varir-theme-7.svg",
-  "10": "/topic-icons/varir-theme-10.svg",
-  "4": "/topic-icons/varir-theme-4.svg",
-  "9": "/topic-icons/varir-theme-9.svg",
-  "1": "/topic-icons/varir-theme-1.svg",
+  "5": "/topic-icons/theme-1.svg",
+  "3": "/topic-icons/theme-2.svg",
+  "2": "/topic-icons/theme-3.svg",
+  "6": "/topic-icons/theme-4.svg",
+  "8": "/topic-icons/theme-5.svg",
+  "7": "/topic-icons/theme-6.svg",
+  "10": "/topic-icons/theme-7.svg",
+  "4": "/topic-icons/theme-8.svg",
+  "9": "/topic-icons/theme-9.svg",
+  "1": "/topic-icons/theme-10.svg",
 };
