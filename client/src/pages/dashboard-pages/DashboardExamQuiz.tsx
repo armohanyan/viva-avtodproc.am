@@ -9,7 +9,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, CircleHelp, Scroll, SquareStack, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
 import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
@@ -309,9 +309,11 @@ export default function DashboardExamQuiz() {
                     <div className="ml-7 mt-3 space-y-2">
                       {loc.options.map((opt, optionIndex) => {
                         const isSelectedOption = userAns === optionIndex;
+                        const isCorrectOption = optionIndex === question.correctIndex;
                         const explanation = loc.optionExplanations[optionIndex];
                         const explanationKey = `${question.id}-${optionIndex}`;
                         const isOpen = Boolean(openExplanations[explanationKey]);
+                        const showExplanationToggle = Boolean(explanation) && isCorrectOption;
                         return (
                           <div
                             key={explanationKey}
@@ -325,7 +327,7 @@ export default function DashboardExamQuiz() {
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span>{opt}</span>
-                              {explanation ? (
+                              {showExplanationToggle ? (
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -407,6 +409,11 @@ export default function DashboardExamQuiz() {
             <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={requestExit}>
               {t("examQuizBackToList")}
             </Button>
+            <Link href={`${mode === "topics" ? "/dashboard/learn/thematic-tests/question" : `${backHref}/question`}/${q.id}`}>
+              <Button variant="outline" size="icon" aria-label={t("questionDetailOpenAction")} title={t("questionDetailOpenAction")}>
+                <ExternalLink className="w-4 h-4" />
+              </Button>
+            </Link>
             <div
               role="group"
               aria-label={t("examQuizLayoutModeLabel")}
@@ -448,6 +455,9 @@ export default function DashboardExamQuiz() {
               <div className="space-y-2">
                 {current.options.map((opt, i) => {
                   const hideImmediateFeedback = timedExam;
+                  const isCorrectOption = i === q.correctIndex;
+                  const showExplanationToggle =
+                    !hideImmediateFeedback && selected !== null && Boolean(current.optionExplanations[i]) && isCorrectOption;
                   return (
                     <div key={i} className="rounded-xl border border-transparent">
                       <button
@@ -471,7 +481,7 @@ export default function DashboardExamQuiz() {
                       >
                         {opt}
                       </button>
-                      {!hideImmediateFeedback && selected !== null && current.optionExplanations[i] ? (
+                      {showExplanationToggle ? (
                         <div className="mt-1 ml-2">
                           <button
                             type="button"
@@ -528,7 +538,11 @@ export default function DashboardExamQuiz() {
                       ) : null}
                       <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{loc.text}</h2>
                       <div className="space-y-2">
-                        {loc.options.map((opt, optIdx) => (
+                        {loc.options.map((opt, optIdx) => {
+                          const isCorrectOption = optIdx === question.correctIndex;
+                          const showExplanationToggle =
+                            !hideImmediateFeedback && sel !== null && Boolean(loc.optionExplanations[optIdx]) && isCorrectOption;
+                          return (
                           <div key={optIdx} className="rounded-xl border border-transparent">
                             <button
                               type="button"
@@ -551,7 +565,7 @@ export default function DashboardExamQuiz() {
                             >
                               {opt}
                             </button>
-                            {!hideImmediateFeedback && sel !== null && loc.optionExplanations[optIdx] ? (
+                            {showExplanationToggle ? (
                               <div className="mt-1 ml-2">
                                 <button
                                   type="button"
@@ -573,7 +587,8 @@ export default function DashboardExamQuiz() {
                               </div>
                             ) : null}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </Card>
                   </Reveal>

@@ -13,7 +13,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, CircleHelp, Scroll, SquareStack, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
@@ -334,7 +334,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                             const explanation = loc.optionExplanations[optionIndex];
                             const explanationKey = `${question.id}-${optionIndex}`;
                             const isOpen = Boolean(openExplanations[explanationKey]);
-                            const showExplanationToggle = Boolean(explanation) && (isSelectedOption || isCorrectOption);
+                            const showExplanationToggle = Boolean(explanation) && isCorrectOption;
                             return (
                               <div
                                 key={explanationKey}
@@ -409,6 +409,17 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                   <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={exitToExamTests}>
                     {t("examQuizBackToList")}
                   </Button>
+                  <MarketingLink href={`${mode === "topics" ? "/thematic-questions/question" : "/exam-tests/question"}/${q?.id ?? ""}`}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      disabled={!q}
+                      aria-label={t("questionDetailOpenAction")}
+                      title={t("questionDetailOpenAction")}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
+                  </MarketingLink>
                   <div
                     role="group"
                     aria-label={t("examQuizLayoutModeLabel")}
@@ -453,7 +464,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                         const isCorrectOption = i === q!.correctIndex;
                         const explanation = current.optionExplanations[i];
                         const showExplanationToggle =
-                          !hideImmediateFeedback && selected !== null && Boolean(explanation) && (isSelectedOption || isCorrectOption);
+                          !hideImmediateFeedback && selected !== null && Boolean(explanation) && isCorrectOption;
                         return (
                           <div key={i} className="rounded-xl border border-transparent">
                             <button
@@ -539,7 +550,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                                 const isCorrectOption = optIdx === question.correctIndex;
                                 const explanation = loc.optionExplanations[optIdx];
                                 const showExplanationToggle =
-                                  !hideImmediateFeedback && sel !== null && Boolean(explanation) && (isSelectedOption || isCorrectOption);
+                                  !hideImmediateFeedback && sel !== null && Boolean(explanation) && isCorrectOption;
                                 return (
                                   <div key={optIdx} className="rounded-xl border border-transparent">
                                     <button

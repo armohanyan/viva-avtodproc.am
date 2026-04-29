@@ -3,6 +3,8 @@ export { default as DashboardLearnPage } from "./DashboardLearn";
 export { default as DashboardExamTestsPage } from "./DashboardExamTests";
 export { default as DashboardExamQuizPage } from "./DashboardExamQuiz";
 export { default as DashboardThematicTestsPage } from "./DashboardThematicTests";
+export { default as DashboardQuestionDetailPage } from "./DashboardQuestionDetail";
+export { default as DashboardSavedQuestionsPage } from "./DashboardSavedQuestions";
 export { default as DashboardBookingsPage } from "./DashboardBookingsOutlet";
 export { DashboardBookingsListTab } from "./DashboardBookings";
 export { DashboardBookingsPackageTab } from "./DashboardBookingsPackage";

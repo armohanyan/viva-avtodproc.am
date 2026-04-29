@@ -13,13 +13,13 @@ import { useLocation } from "wouter";
 export function DashboardBookingsPackageTab() {
   const { t } = useLang();
   const { showToast } = useToast();
-  const { purchasePackage } = useStudentEntitlements();
+  const { completePackagePurchase } = useStudentEntitlements();
   const { packages, loading, error } = useActivePackages();
   const [, setLocation] = useLocation();
 
   const buyPackage = async (packageId: number) => {
     try {
-      await purchasePackage(packageId);
+      await completePackagePurchase(packageId);
       showToast(t("bookingsPackageSimulatedToast"), "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");

@@ -2,13 +2,14 @@ import { Link, useLocation } from "wouter";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
 
-type ActiveTab = "exam" | "thematic";
+type ActiveTab = "exam" | "thematic" | "saved";
 
 export default function DashboardLearnSubnav({ active }: { active: ActiveTab }) {
   const { t } = useLang();
   const [location] = useLocation();
   const examHref = location.startsWith("/dashboard/learn/") ? "/dashboard/learn/exam-tests" : "/dashboard/exam-tests";
   const thematicHref = "/dashboard/learn/thematic-tests";
+  const savedHref = "/dashboard/learn/saved-questions";
 
   const tabClass = (isActive: boolean) =>
     cn(
@@ -26,6 +27,9 @@ export default function DashboardLearnSubnav({ active }: { active: ActiveTab }) 
         <Link href={examHref} className={tabClass(active === "exam")}>
             {t("dashboardLearnExamTests")}
         </Link>
+      <Link href={savedHref} className={tabClass(active === "saved")}>
+        {t("questionSavedListTitle")}
+      </Link>
     </nav>
   );
 }

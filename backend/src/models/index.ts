@@ -9,6 +9,8 @@ import { Branch } from './branch.model';
 import { CarExpense } from './car-expense.model';
 import { City } from './city.model';
 import { ContactRequest } from './contact-request.model';
+import { ExamQuestionBookmark } from './exam-question-bookmark.model';
+import { ExamQuestionComment } from './exam-question-comment.model';
 import { ExamQuestion } from './exam-question.model';
 import { ExamQuestionMeta } from './exam-question-meta.model';
 import { FinanceTransaction } from './finance-transaction.model';
@@ -89,6 +91,10 @@ StudentInvitation.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
 
 User.hasOne(StudentExamStats, { foreignKey: 'userId', sourceKey: 'id', as: 'examStats' });
 StudentExamStats.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'studentUser' });
+User.hasMany(ExamQuestionBookmark, { foreignKey: 'userId', sourceKey: 'id' });
+ExamQuestionBookmark.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'user' });
+User.hasMany(ExamQuestionComment, { foreignKey: 'userId', sourceKey: 'id' });
+ExamQuestionComment.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'user' });
 
 User.hasMany(AdminMfaChallenge, { foreignKey: 'userId', sourceKey: 'id' });
 AdminMfaChallenge.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
@@ -109,6 +115,8 @@ export {
   CarExpense,
   City,
   ContactRequest,
+  ExamQuestionBookmark,
+  ExamQuestionComment,
   ExamQuestion,
   ExamQuestionMeta,
   FinanceTransaction,

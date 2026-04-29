@@ -67,7 +67,6 @@ export default function DashboardExamTests() {
     { href: `${basePath}/quiz/topics`, total: poolTotalForMode("topics") },
     { href: `${basePath}/quiz/signs`, total: poolTotalForMode("signs") },
   ];
-
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
@@ -142,18 +141,20 @@ export default function DashboardExamTests() {
             const testLabel = examCardTitles[index] || `${t("examTestsNumberedTitle")} ${index + 1}`;
 
             return (
-              <Link key={m.href} href={m.href} className="block">
-                <Card className="rounded-xl sm:rounded-2xl border border-neutral-200/90 dark:border-border bg-card shadow-none transition-colors hover:bg-muted/30">
-                  <div className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5 sm:py-4">
+              <Card key={m.href} className="rounded-xl sm:rounded-2xl border border-neutral-200/90 dark:border-border bg-card shadow-none transition-colors hover:bg-muted/30">
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5 sm:py-4">
+                  <Link href={m.href} className="min-w-0 flex-1">
                     <p className="text-sm sm:text-[15px] font-medium text-neutral-800 dark:text-foreground leading-snug min-w-0">
                       {testLabel}
                     </p>
-                    <p className="text-sm text-muted-foreground tabular-nums shrink-0">
+                  </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <p className="text-sm text-muted-foreground tabular-nums">
                       {answeredInMode} / {m.total}
                     </p>
                   </div>
-                </Card>
-              </Link>
+                </div>
+              </Card>
             );
           })}
         </div>

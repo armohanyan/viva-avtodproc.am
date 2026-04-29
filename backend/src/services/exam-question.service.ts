@@ -181,6 +181,13 @@ export default class ExamQuestionService {
     return store.questions;
   }
 
+  static async getById(id: string): Promise<ExamQuestionDto | null> {
+    const qid = id.trim();
+    if (!qid) return null;
+    const store = await readStore();
+    return store.questions.find((q) => q.id === qid) ?? null;
+  }
+
   static async replaceAll(questions: Omit<ExamQuestionDto, 'id'>[]): Promise<void> {
     const store = await readStore();
     const oldFiles = new Set<string>();

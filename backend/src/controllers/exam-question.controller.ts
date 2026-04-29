@@ -1,12 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
+import { parseBody, parseParams, parseQuery, verifyAccessToken } from '../helpers';
 import ExamQuestionService from '../services/exam-question.service';
+import ExamQuestionEngagementService from '../services/exam-question-engagement.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
-const { ResourceNotFoundError } = ErrorsUtil;
+const { PermissionError, ResourceNotFoundError, UnauthorizedError } = ErrorsUtil;
 
 const langRecord = z.record(z.string(), z.string());
 
@@ -35,6 +36,56 @@ const metaSchema = z.object({
   examCardQuestionIds: z.array(z.array(z.string())).length(60).optional(),
 });
 
+const setSavedSchema = z.object({
+  saved: z.boolean(),
+});
+
+const addCommentSchema = z.object({
+  text: z.string().trim().min(1).max(2000),
+});
+
+const commentIdParamsSchema = z.object({
+  commentId: z.coerce.number().int().positive(),
+});
+const commentsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+function readBearerToken(req: Request): string | undefined {
+  const raw = req.headers.authorization;
+  return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+}
+
+function readAuthenticatedUser(req: Request): { userId: number; accountType: 'super_admin' | 'admin' | 'instructor' | 'student' } {
+  const token = readBearerToken(req);
+  if (!token) {
+    throw new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED);
+  }
+  let payload: ReturnType<typeof verifyAccessToken>;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    throw new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED);
+  }
+  const userId = Number(payload.sub);
+  if (!Number.isFinite(userId) || userId <= 0) {
+    throw new UnauthorizedError('Invalid token subject', HttpStatusCodesUtil.UNAUTHORIZED);
+  }
+  if (
+    payload.accountType !== 'super_admin' &&
+    payload.accountType !== 'admin' &&
+    payload.accountType !== 'instructor' &&
+    payload.accountType !== 'student'
+  ) {
+    throw new PermissionError('Invalid account type', HttpStatusCodesUtil.FORBIDDEN);
+  }
+  return {
+    userId,
+    accountType: payload.accountType,
+  };
+}
+
 export default class ExamQuestionController {
   static async getMeta(_req: Request, res: Response, next: NextFunction) {
     try {
@@ -59,6 +110,15 @@ export default class ExamQuestionController {
     try {
       const data = await ExamQuestionService.list();
       SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async getOne(req: Request, res: Response, next: NextFunction) {
+    try {
+      const row = await ExamQuestionService.getById(String(req.params.id ?? ''));
+      SuccessHandlerUtil.handleGet(res, next, row);
     } catch (e) {
       next(e);
     }
@@ -92,6 +152,113 @@ export default class ExamQuestionController {
         return next(new ResourceNotFoundError('Question not found', HttpStatusCodesUtil.NOT_FOUND));
       }
       res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listComments(req: Request, res: Response, next: NextFunction) {
+    try {
+      const questionId = String(req.params.id ?? '').trim();
+      const { page = 1, pageSize = 10 } = parseQuery(commentsQuerySchema, req.query);
+      const exists = await ExamQuestionEngagementService.questionExists(questionId);
+      if (!exists) {
+        return next(new ResourceNotFoundError('Question not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const data = await ExamQuestionEngagementService.listComments(questionId, page, pageSize);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async addComment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const questionId = String(req.params.id ?? '').trim();
+      const exists = await ExamQuestionEngagementService.questionExists(questionId);
+      if (!exists) {
+        return next(new ResourceNotFoundError('Question not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const user = readAuthenticatedUser(req);
+      if (user.accountType !== 'student' && user.accountType !== 'instructor' && user.accountType !== 'admin' && user.accountType !== 'super_admin') {
+        return next(new PermissionError('Insufficient permissions', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const body = parseBody(addCommentSchema, req.body);
+      const data = await ExamQuestionEngagementService.addComment(questionId, user.userId, body.text);
+      SuccessHandlerUtil.handleAdd(res, next, data ?? undefined);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async removeComment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = readAuthenticatedUser(req);
+      if (user.accountType !== 'admin' && user.accountType !== 'super_admin') {
+        return next(new PermissionError('Admin access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const { commentId } = parseParams(commentIdParamsSchema, req.params);
+      const ok = await ExamQuestionEngagementService.removeComment(commentId);
+      if (!ok) {
+        return next(new ResourceNotFoundError('Comment not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async getSavedState(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = readAuthenticatedUser(req);
+      if (user.accountType !== 'student') {
+        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const questionId = String(req.params.id ?? '').trim();
+      const exists = await ExamQuestionEngagementService.questionExists(questionId);
+      if (!exists) {
+        return next(new ResourceNotFoundError('Question not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const saved = await ExamQuestionEngagementService.isSaved(questionId, user.userId);
+      SuccessHandlerUtil.handleGet(res, next, { saved });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async setSavedState(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = readAuthenticatedUser(req);
+      if (user.accountType !== 'student') {
+        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const questionId = String(req.params.id ?? '').trim();
+      const exists = await ExamQuestionEngagementService.questionExists(questionId);
+      if (!exists) {
+        return next(new ResourceNotFoundError('Question not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const body = parseBody(setSavedSchema, req.body);
+      const saved = await ExamQuestionEngagementService.setSaved(questionId, user.userId, body.saved);
+      SuccessHandlerUtil.handleUpdate(res, next, { saved });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listSavedQuestions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = readAuthenticatedUser(req);
+      if (user.accountType !== 'student') {
+        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const savedIds = await ExamQuestionEngagementService.listSavedQuestionIds(user.userId);
+      if (savedIds.length === 0) {
+        return SuccessHandlerUtil.handleList(res, next, []);
+      }
+      const all = await ExamQuestionService.list();
+      const byId = new Map(all.map((q) => [q.id, q]));
+      const rows = savedIds.map((id) => byId.get(id)).filter((v): v is NonNullable<typeof v> => Boolean(v));
+      SuccessHandlerUtil.handleList(res, next, rows);
     } catch (e) {
       next(e);
     }

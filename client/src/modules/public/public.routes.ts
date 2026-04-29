@@ -8,6 +8,7 @@ import {
   ContactPage,
   ExamTestsPage,
   ExamQuizPage,
+  QuestionDetailPage,
   BlogsPage,
   BlogPostPage,
 } from "src/pages/public";
@@ -22,7 +23,9 @@ export const publicRoutes: readonly AppRoute[] = [
   { path: "/blogs/:slug", component: BlogPostPage },
   { path: "/contact", component: ContactPage },
   { path: "/thematic-questions", component: ExamTestsPage },
+  { path: "/thematic-questions/question/:id", component: QuestionDetailPage },
   { path: "/thematic-questions/quiz/:mode", component: ExamQuizPage },
   { path: "/exam-tests", component: ExamTestsPage },
+  { path: "/exam-tests/question/:id", component: QuestionDetailPage },
   { path: "/exam-tests/quiz/:mode", component: ExamQuizPage },
 ];
