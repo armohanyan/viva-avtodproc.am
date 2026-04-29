@@ -925,15 +925,19 @@ export default class BookingService {
   private static async createAdminWithArbitrarySlotEntries(input: {
     studentId: number;
     instructorName: string;
+    instructorUserId?: number;
     entries: AdminSlotEntry[];
     lessonType: 'practical' | 'theory_personal';
     status: string;
     branchId: number;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
-    const instructor = await User.findOne({
-      where: { name: input.instructorName.trim(), accountType: 'instructor' },
-    });
+    const instructor =
+      input.instructorUserId != null && Number.isFinite(input.instructorUserId)
+        ? await User.findOne({ where: { id: input.instructorUserId, accountType: 'instructor' } })
+        : await User.findOne({
+            where: { name: input.instructorName.trim(), accountType: 'instructor' },
+          });
     if (!instructor) return null;
     const instructorUserId = instructor.id;
     const branchOk = await InstructorBranch.findOne({
@@ -1002,6 +1006,7 @@ export default class BookingService {
   static async createAdmin(input: {
     studentId: number;
     instructorName: string;
+    instructorUserId?: number;
     dateIso: string;
     time: string;
     type: 'practical' | 'theory' | 'theory_personal';
@@ -1022,6 +1027,7 @@ export default class BookingService {
       return BookingService.createAdminWithArbitrarySlotEntries({
         studentId: input.studentId,
         instructorName: input.instructorName,
+        instructorUserId: input.instructorUserId,
         entries: entriesNorm,
         lessonType: input.type,
         status: input.status,
@@ -1046,13 +1052,17 @@ export default class BookingService {
         status: input.status,
         branchId: input.branchId,
         instructorName: input.instructorName,
+        instructorUserId: input.instructorUserId,
         theoryCohortId: input.theoryCohortId,
       });
     }
 
-    const instructor = await User.findOne({
-      where: { name: input.instructorName, accountType: 'instructor' },
-    });
+    const instructor =
+      input.instructorUserId != null && Number.isFinite(input.instructorUserId)
+        ? await User.findOne({ where: { id: input.instructorUserId, accountType: 'instructor' } })
+        : await User.findOne({
+            where: { name: input.instructorName, accountType: 'instructor' },
+          });
     if (!instructor) return null;
     const sorted = normalizeAndSortSlots([input.time]);
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
@@ -1124,6 +1134,7 @@ export default class BookingService {
     status: string;
     branchId: number;
     instructorName: string;
+    instructorUserId?: number;
     theoryCohortId?: number;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
@@ -1153,8 +1164,14 @@ export default class BookingService {
         );
       }
       branchId = cohort.branchId;
+      const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
+      const instructorIdsServingBranch = links.map((l) => l.instructorUserId);
       const instructor = await User.findOne({
-        where: { name: cohort.instructorName, accountType: 'instructor' },
+        where: {
+          name: cohort.instructorName.trim(),
+          accountType: 'instructor',
+          ...(instructorIdsServingBranch.length > 0 ? { id: { [Op.in]: instructorIdsServingBranch } } : {}),
+        },
       });
       if (!instructor) {
         throw new InputValidationError(
@@ -1172,9 +1189,12 @@ export default class BookingService {
         }
       }
     } else {
-      const instructor = await User.findOne({
-        where: { name: input.instructorName, accountType: 'instructor' },
-      });
+      const instructor =
+        input.instructorUserId != null && Number.isFinite(input.instructorUserId)
+          ? await User.findOne({ where: { id: input.instructorUserId, accountType: 'instructor' } })
+          : await User.findOne({
+              where: { name: input.instructorName, accountType: 'instructor' },
+            });
       if (!instructor) return null;
       instructorUserId = instructor.id;
     }
@@ -1317,8 +1337,14 @@ export default class BookingService {
         );
       }
       branchId = cohort.branchId;
+      const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
+      const instructorIdsServingBranch = links.map((l) => l.instructorUserId);
       const instructor = await User.findOne({
-        where: { name: cohort.instructorName, accountType: 'instructor' },
+        where: {
+          name: cohort.instructorName.trim(),
+          accountType: 'instructor',
+          ...(instructorIdsServingBranch.length > 0 ? { id: { [Op.in]: instructorIdsServingBranch } } : {}),
+        },
       });
       if (!instructor) {
         throw new InputValidationError(

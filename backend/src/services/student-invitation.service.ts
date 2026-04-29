@@ -6,6 +6,7 @@ import MailService from './mail.service';
 import bcrypt from 'bcryptjs';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const INTERNAL_NO_LOGIN_EMAIL_DOMAIN = 'no-login.local';
 
 function sha256Hex(s: string): string {
   return crypto.createHash('sha256').update(s, 'utf8').digest('hex');
@@ -61,6 +62,13 @@ export default class StudentInvitationService {
     if (oauthCount > 0) {
       return { ok: false, message: 'This account uses social sign-in; invitation is not available' };
     }
+    const email = typeof user.email === 'string' ? user.email.trim() : '';
+    if (!email || email.endsWith(`@${INTERNAL_NO_LOGIN_EMAIL_DOMAIN}`)) {
+      if (role === 'student') return { ok: false, message: 'Student email is required to send invitation' };
+      if (role === 'instructor') return { ok: false, message: 'Instructor email is required to send invitation' };
+      if (role === 'admin') return { ok: false, message: 'Admin email is required to send invitation' };
+      return { ok: false, message: 'Super admin email is required to send invitation' };
+    }
 
     const plainToken = randomUrlToken();
     const tokenHash = sha256Hex(plainToken);
@@ -86,10 +94,10 @@ export default class StudentInvitationService {
     const setupUrl = `${base}/setup-password?token=${encodeURIComponent(plainToken)}`;
 
     try {
-      if (role === 'student') await MailService.sendStudentInvitation(user.email, user.name, setupUrl);
-      if (role === 'instructor') await MailService.sendInstructorInvitation(user.email, user.name, setupUrl);
-      if (role === 'admin') await MailService.sendAdminInvitation(user.email, user.name, setupUrl);
-      if (role === 'super_admin') await MailService.sendSuperAdminInvitation(user.email, user.name, setupUrl);
+      if (role === 'student') await MailService.sendStudentInvitation(email, user.name, setupUrl);
+      if (role === 'instructor') await MailService.sendInstructorInvitation(email, user.name, setupUrl);
+      if (role === 'admin') await MailService.sendAdminInvitation(email, user.name, setupUrl);
+      if (role === 'super_admin') await MailService.sendSuperAdminInvitation(email, user.name, setupUrl);
     } catch (e) {
       await StudentInvitation.destroy({ where: { tokenHash } });
       const msg = e instanceof Error ? e.message : 'Failed to send email';

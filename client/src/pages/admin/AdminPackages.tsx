@@ -83,8 +83,8 @@ export default function AdminPackages() {
             }))
           : [],
       );
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   }, [showToast, t]);
 
@@ -119,8 +119,8 @@ export default function AdminPackages() {
       setDeleteId(null);
       await refresh();
       showToast(t("packageDeleted"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -143,8 +143,8 @@ export default function AdminPackages() {
       setEditPkg(null);
       await refresh();
       showToast(t("packageUpdatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -171,8 +171,8 @@ export default function AdminPackages() {
       setNewPkg({ name: "", price: "", lessons: 10, theoryLessons: 0, featuresText: "", imageUrl: "", status: "active" });
       await refresh();
       showToast(t("packageCreatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 

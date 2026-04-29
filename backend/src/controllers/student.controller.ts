@@ -16,9 +16,10 @@ function readBearerToken(req: Request): string | undefined {
   return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
 }
 
-const createSchema = z.object({
+const studentPayloadBaseSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
+  email: z.string().email().optional(),
+  inviteToSystem: z.boolean().optional(),
   phone: z.string().optional(),
   branchId: z.coerce.number().int().positive(),
   packageId: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
@@ -33,7 +34,19 @@ const createSchema = z.object({
   joinedIso: z.string().optional(),
 });
 
-const updateSchema = createSchema.partial().extend({
+const createSchema = studentPayloadBaseSchema
+  .superRefine((data, ctx) => {
+    const inviteToSystem = data.inviteToSystem ?? true;
+    if (inviteToSystem && !data.email?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['email'],
+        message: 'Email is required when inviteToSystem is true',
+      });
+    }
+  });
+
+const updateSchema = studentPayloadBaseSchema.partial().extend({
   packageId: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
 });
 

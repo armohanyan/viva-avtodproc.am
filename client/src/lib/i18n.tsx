@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type Lang = "en" | "ru" | "am";
 
@@ -978,6 +978,14 @@ const en = {
   upgradeSuccess: "Package upgraded!",
   invalidEmail: "Please enter a valid email.",
   fillRequired: "Please fill in all required fields.",
+  errorEmailAlreadyInUse: "This email is already in use.",
+  errorAuthRequired: "Authentication is required.",
+  errorUnauthorized: "Your session expired or is invalid. Please sign in again.",
+  errorForbidden: "You do not have permission to perform this action.",
+  errorNotFound: "The requested resource was not found.",
+  errorConflict: "This action conflicts with existing data.",
+  errorBadRequest: "The request data is invalid. Please review and try again.",
+  errorServerGeneric: "Server error. Please try again later.",
 
   // Public CTA / testimonials
   testimonialsEyebrow: "Testimonials",
@@ -1325,6 +1333,9 @@ const en = {
   inviteStudent: "Invite student",
   inviteStudentSent: "Invitation email sent.",
   inviteStudentFailed: "Could not send invitation.",
+  inviteStudentEmailRequired: "Student email is required before sending an invitation.",
+  studentInviteToSystem: "Invite student to the system",
+  studentEmailOptionalWhenNoInvite: "Email is optional if invite is off",
   inviteInstructor: "Invite instructor",
   inviteInstructorSent: "Invitation email sent.",
   inviteInstructorFailed: "Could not send invitation.",
@@ -2305,6 +2316,14 @@ const ru: typeof en = {
   upgradeSuccess: "Пакет обновлён!",
   invalidEmail: "Введите корректный email.",
   fillRequired: "Заполните все обязательные поля.",
+  errorEmailAlreadyInUse: "Этот email уже используется.",
+  errorAuthRequired: "Требуется авторизация.",
+  errorUnauthorized: "Сессия истекла или недействительна. Войдите снова.",
+  errorForbidden: "У вас нет прав для этого действия.",
+  errorNotFound: "Запрошенный ресурс не найден.",
+  errorConflict: "Действие конфликтует с существующими данными.",
+  errorBadRequest: "Некорректные данные запроса. Проверьте и попробуйте снова.",
+  errorServerGeneric: "Ошибка сервера. Попробуйте позже.",
 
   // Public CTA / testimonials
   testimonialsEyebrow: "Отзывы",
@@ -2650,6 +2669,9 @@ const ru: typeof en = {
   inviteStudent: "Пригласить ученика",
   inviteStudentSent: "Приглашение отправлено на email.",
   inviteStudentFailed: "Не удалось отправить приглашение.",
+  inviteStudentEmailRequired: "Для отправки приглашения у ученика должен быть email.",
+  studentInviteToSystem: "Пригласить ученика в систему",
+  studentEmailOptionalWhenNoInvite: "Email необязателен, если приглашение выключено",
   inviteInstructor: "Пригласить инструктора",
   inviteInstructorSent: "Приглашение отправлено на email.",
   inviteInstructorFailed: "Не удалось отправить приглашение.",
@@ -3631,6 +3653,14 @@ const am: typeof en = {
   upgradeSuccess: "Փաթեթը հաջողությամբ թարմացվել է։",
   invalidEmail: "Խնդրում ենք մուտքագրել վավեր էլ. հասցե։",
   fillRequired: "Խնդրում ենք լրացնել բոլոր պարտադիր դաշտերը։",
+  errorEmailAlreadyInUse: "Այս էլ. հասցեն արդեն օգտագործվում է։",
+  errorAuthRequired: "Պահանջվում է նույնականացում։",
+  errorUnauthorized: "Սեսիան ավարտվել է կամ անվավեր է։ Խնդրում ենք նորից մուտք գործել։",
+  errorForbidden: "Դուք իրավունք չունեք այս գործողությունը կատարելու։",
+  errorNotFound: "Պահանջված տվյալը չի գտնվել։",
+  errorConflict: "Գործողությունը հակասում է առկա տվյալներին։",
+  errorBadRequest: "Հարցման տվյալները անվավեր են։ Ստուգեք և փորձեք կրկին։",
+  errorServerGeneric: "Սերվերի սխալ։ Խնդրում ենք փորձել ավելի ուշ։",
 
   // Public CTA / testimonials
   testimonialsEyebrow: "Վկայություններ",
@@ -3976,6 +4006,9 @@ const am: typeof en = {
   inviteStudent: "Հրավիրել ուսանողին",
   inviteStudentSent: "Հրավերը ուղարկվել է էլ. փոստով։",
   inviteStudentFailed: "Հրավերը ուղարկել չհաջողվեց։",
+  inviteStudentEmailRequired: "Ուսանողի էլ. հասցեն պարտադիր է հրավեր ուղարկելու համար։",
+  studentInviteToSystem: "Հրավիրել ուսանողին համակարգ",
+  studentEmailOptionalWhenNoInvite: "Էլ. հասցեն պարտադիր չէ, եթե հրավերը անջատված է",
   inviteInstructor: "Հրավիրել դասավանդողին",
   inviteInstructorSent: "Հրավերը ուղարկվել է էլ. փոստով։",
   inviteInstructorFailed: "Հրավերը ուղարկել չհաջողվեց։",
@@ -4010,9 +4043,22 @@ const LangContext = createContext<LangContext>({
 });
 
 const translations: Record<Lang, typeof en> = { en, ru, am };
+const LANG_STORAGE_KEY = "viva_lang";
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLang] = useState<Lang>("am");
+  const [lang, setLang] = useState<Lang>(() => {
+    if (typeof window === "undefined") return "am";
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    return saved === "en" || saved === "ru" || saved === "am" ? saved : "am";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+    }
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = lang;
+    }
+  }, [lang]);
   const t = (key: TranslationKey): string => {
     if (lang === "am") {
       return translations.am[key] ?? key;

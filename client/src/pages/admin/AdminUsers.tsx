@@ -22,6 +22,14 @@ import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 type PackageRow = { id: string; name: string; lessons: number; theoryLessons: number };
+const INTERNAL_NO_LOGIN_EMAIL_DOMAIN = "no-login.local";
+
+type NewUserDraft = Partial<User> & { inviteToSystem: boolean };
+
+function displayStudentEmail(email: string): string {
+  const value = (email ?? "").trim();
+  return value.toLowerCase().endsWith(`@${INTERNAL_NO_LOGIN_EMAIL_DOMAIN}`) ? "" : value;
+}
 
 function parseLessons(lessons: string): { completed: number; total: number } | null {
   const m = /^(\d+)\s*\/\s*(\d+)$/.exec(lessons.trim());
@@ -74,8 +82,12 @@ export default function AdminUsers() {
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const inviteStudent = useCallback(
-    async (studentId: string) => {
+    async (studentId: string, email?: string) => {
       if (invitingId) {
+        return;
+      }
+      if (!displayStudentEmail(email ?? "").trim()) {
+        showToast(t("inviteStudentEmailRequired"), "error");
         return;
       }
       setInvitingId(studentId);
@@ -100,7 +112,14 @@ export default function AdminUsers() {
         vivaApiJson<User[]>("/students"),
         vivaApiJson<PackageRow[]>("/packages"),
       ]);
-      setUsers(Array.isArray(stu) ? stu : []);
+      setUsers(
+        Array.isArray(stu)
+          ? stu.map((u) => ({
+              ...u,
+              email: displayStudentEmail(u.email),
+            }))
+          : [],
+      );
       setPackages(
         Array.isArray(pkg)
           ? pkg.map((p) => ({
@@ -111,8 +130,8 @@ export default function AdminUsers() {
             }))
           : [],
       );
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   }, [showToast, t]);
 
@@ -125,9 +144,10 @@ export default function AdminUsers() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [newUser, setNewUser] = useState<Partial<User>>({
+  const [newUser, setNewUser] = useState<NewUserDraft>({
     name: "",
     email: "",
+    inviteToSystem: true,
     phone: "",
     status: "active",
     branchId: "",
@@ -161,8 +181,8 @@ export default function AdminUsers() {
       setDeleteId(null);
       await refresh();
       showToast(t("userDeleted"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -194,14 +214,14 @@ export default function AdminUsers() {
       setEditUser(null);
       await refresh();
       showToast(t("profileSaved"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUser.name || !newUser.email) {
+    if (!newUser.name || (newUser.inviteToSystem && !newUser.email?.trim())) {
       showToast(t("fillRequired"), "error");
       return;
     }
@@ -210,7 +230,8 @@ export default function AdminUsers() {
         method: "POST",
         body: {
           name: newUser.name,
-          email: newUser.email,
+          email: newUser.email?.trim() || undefined,
+          inviteToSystem: newUser.inviteToSystem,
           phone: newUser.phone || "",
           branchId: newUser.branchId || branches[0]?.id || "",
           packageId: null,
@@ -229,6 +250,7 @@ export default function AdminUsers() {
       setNewUser({
         name: "",
         email: "",
+        inviteToSystem: true,
         phone: "",
         status: "active",
         branchId: branches[0]?.id ?? "",
@@ -237,8 +259,8 @@ export default function AdminUsers() {
       });
       await refresh();
       showToast(t("userAddedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -363,7 +385,7 @@ export default function AdminUsers() {
                       id: "invite",
                       label: invitingId === u.id ? t("loading") : t("inviteStudent"),
                       icon: Mail,
-                      onClick: () => void inviteStudent(u.id),
+                      onClick: () => void inviteStudent(u.id, u.email),
                     },
                     {
                       kind: "item",
@@ -422,7 +444,7 @@ export default function AdminUsers() {
                             id: "invite",
                             label: invitingId === u.id ? t("loading") : t("inviteStudent"),
                             icon: Mail,
-                            onClick: () => void inviteStudent(u.id),
+                            onClick: () => void inviteStudent(u.id, u.email),
                           },
                           {
                             kind: "item",
@@ -549,8 +571,25 @@ export default function AdminUsers() {
         <form id={addUserFormId} onSubmit={handleAdd} className="space-y-3">
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")} *</label>
               <Input value={newUser.name} onChange={e => setNewUser({ ...newUser, name: e.target.value })} placeholder={t("placeholderFullName")} className="h-10" /></div>
-            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")} *</label>
-              <Input type="email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} placeholder={t("placeholderEmailExample")} className="h-10" /></div>
+            <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={newUser.inviteToSystem}
+                onChange={e => setNewUser({ ...newUser, inviteToSystem: e.target.checked })}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              {t("studentInviteToSystem")}
+            </label>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">
+              {t("emailAddress")} {newUser.inviteToSystem ? "*" : ""}
+            </label>
+              <Input
+                type="email"
+                value={newUser.email}
+                onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+                placeholder={newUser.inviteToSystem ? t("placeholderEmailExample") : t("studentEmailOptionalWhenNoInvite")}
+                className="h-10"
+              /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
               <Input value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>

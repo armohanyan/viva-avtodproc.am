@@ -13,6 +13,7 @@ const bookingStatusSchema = z.enum(['confirmed', 'pending', 'cancelled', 'refund
 const createBodySchema = z.object({
   studentId: z.coerce.number().int().positive(),
   instructorName: z.string().optional(),
+  instructorUserId: z.coerce.number().int().positive().optional(),
   dateIso: z.string().min(1),
   time: z.string().optional(),
   type: z.enum(['practical', 'theory', 'theory_personal']),
@@ -225,6 +226,7 @@ export default class BookingController {
           const row = await BookingService.createAdmin({
             studentId: body.studentId,
             instructorName: body.instructorName?.trim() ?? '',
+            instructorUserId: body.instructorUserId,
             dateIso: body.dateIso,
             time: body.time?.trim() ?? (body.slots?.[0] ?? ''),
             type: body.type,
@@ -269,6 +271,7 @@ export default class BookingController {
       const row = await BookingService.createAdmin({
         studentId: body.studentId,
         instructorName: body.instructorName?.trim() ?? '',
+        instructorUserId: body.instructorUserId,
         dateIso: body.dateIso,
         time: body.time?.trim() ?? '',
         type: body.type,

@@ -67,9 +67,9 @@ export default function AdminBlogs() {
     try {
       const data = await vivaApiJson<Blog[]>("/blogs/admin/all");
       setBlogs(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (e) {
       setBlogs([]);
-      showToast(t("couldNotLoadData"), "error");
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   }, [showToast, t]);
 
@@ -80,10 +80,10 @@ export default function AdminBlogs() {
       try {
         const data = await vivaApiJson<Blog[]>("/blogs/admin/all");
         if (!cancelled) setBlogs(Array.isArray(data) ? data : []);
-      } catch {
+      } catch (e) {
         if (!cancelled) {
           setBlogs([]);
-          showToast(t("couldNotLoadData"), "error");
+          showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
         }
       } finally {
         if (!cancelled) setListLoading(false);
@@ -120,8 +120,8 @@ export default function AdminBlogs() {
       await refresh();
       setDeleteId(null);
       showToast(t("blogDeletedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 
@@ -149,8 +149,8 @@ export default function AdminBlogs() {
       await refresh();
       setEditBlog(null);
       showToast(t("blogUpdatedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 
@@ -183,8 +183,8 @@ export default function AdminBlogs() {
         published: true,
       });
       showToast(t("blogCreatedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 

@@ -16,6 +16,7 @@ import type { Branch } from "src/modules/branches";
 import { useBranches } from "src/modules/branches";
 import type { City } from "src/modules/cities";
 import { cityNameById, DEFAULT_PRIMARY_CITY_ID, useCities } from "src/modules/cities";
+import { getApiErrorMessage } from "src/lib/vivaApi";
 
 export default function AdminBranches() {
   const editCityFormId = useId();
@@ -85,8 +86,8 @@ export default function AdminBranches() {
       await removeBranch(deleteBranchId);
       setDeleteBranchId(null);
       showToast(t("branchDeletedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -106,8 +107,8 @@ export default function AdminBranches() {
       await removeCity(deleteCityId);
       setDeleteCityId(null);
       showToast(t("cityDeletedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -138,8 +139,8 @@ export default function AdminBranches() {
 
       setEditBranch(null);
       showToast(t("branchUpdatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -173,8 +174,8 @@ export default function AdminBranches() {
         workHours: "",
       });
       showToast(t("branchCreatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -189,8 +190,8 @@ export default function AdminBranches() {
       await updateCity(editCity.id, { name: editCity.name.trim() });
       setEditCity(null);
       showToast(t("cityUpdatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -205,8 +206,8 @@ export default function AdminBranches() {
       setCityListAddOpen(false);
       setNewCityName("");
       showToast(t("cityCreatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 
@@ -227,8 +228,8 @@ export default function AdminBranches() {
       setCityQuickAddOpen(false);
       setCityQuickAddName("");
       showToast(t("cityCreatedToast"), "success");
-    } catch {
-      showToast(t("fillRequired"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
   };
 

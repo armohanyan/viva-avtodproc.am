@@ -47,8 +47,106 @@ export class ApiRequestError extends Error {
 	}
 }
 
+type UiLang = "en" | "ru" | "am";
+
+function getUiLang(): UiLang {
+	if (typeof window === "undefined") return "am";
+	const raw = window.localStorage.getItem("viva_lang");
+	return raw === "en" || raw === "ru" || raw === "am" ? raw : "am";
+}
+
+function tr(key: string): string {
+	const lang = getUiLang();
+	const m: Record<UiLang, Record<string, string>> = {
+		en: {
+			errorEmailAlreadyInUse: "This email is already in use.",
+			errorAuthRequired: "Authentication is required.",
+			errorUnauthorized: "Your session expired or is invalid. Please sign in again.",
+			errorForbidden: "You do not have permission to perform this action.",
+			errorNotFound: "The requested resource was not found.",
+			errorConflict: "This action conflicts with existing data.",
+			errorBadRequest: "The request data is invalid. Please review and try again.",
+			errorServerGeneric: "Server error. Please try again later.",
+			errorInviteEmailRequired: "Email is required before sending an invitation.",
+			invalidEmail: "Please enter a valid email.",
+		},
+		ru: {
+			errorEmailAlreadyInUse: "Этот email уже используется.",
+			errorAuthRequired: "Требуется авторизация.",
+			errorUnauthorized: "Сессия истекла или недействительна. Войдите снова.",
+			errorForbidden: "У вас нет прав для этого действия.",
+			errorNotFound: "Запрошенный ресурс не найден.",
+			errorConflict: "Действие конфликтует с существующими данными.",
+			errorBadRequest: "Некорректные данные запроса. Проверьте и попробуйте снова.",
+			errorServerGeneric: "Ошибка сервера. Попробуйте позже.",
+			errorInviteEmailRequired: "Перед отправкой приглашения требуется email.",
+			invalidEmail: "Введите корректный email.",
+		},
+		am: {
+			errorEmailAlreadyInUse: "Այս էլ. հասցեն արդեն օգտագործվում է։",
+			errorAuthRequired: "Պահանջվում է նույնականացում։",
+			errorUnauthorized: "Սեսիան ավարտվել է կամ անվավեր է։ Խնդրում ենք նորից մուտք գործել։",
+			errorForbidden: "Դուք իրավունք չունեք այս գործողությունը կատարելու։",
+			errorNotFound: "Պահանջված տվյալը չի գտնվել։",
+			errorConflict: "Գործողությունը հակասում է առկա տվյալներին։",
+			errorBadRequest: "Հարցման տվյալները անվավեր են։ Ստուգեք և փորձեք կրկին։",
+			errorServerGeneric: "Սերվերի սխալ։ Խնդրում ենք փորձել ավելի ուշ։",
+			errorInviteEmailRequired: "Հրավեր ուղարկելուց առաջ պարտադիր է էլ. հասցեն։",
+			invalidEmail: "Խնդրում ենք մուտքագրել վավեր էլ. հասցե։",
+		},
+	};
+	return m[lang][key] ?? m.en[key] ?? key;
+}
+
 export function getApiErrorMessage(err: unknown): string {
-	if (err instanceof ApiRequestError) return err.message;
+	if (err instanceof ApiRequestError) {
+		const status = err.status;
+		const raw = (err.message || "").trim();
+		const m = raw.toLowerCase();
+
+		if (
+			m.includes("email already in use") ||
+			m.includes("email already registered") ||
+			m.includes("this email is already registered") ||
+			m.includes("this email is already in use")
+		) {
+			return tr("errorEmailAlreadyInUse");
+		}
+		if (
+			m.includes("student email is required to send invitation") ||
+			m.includes("instructor email is required to send invitation") ||
+			m.includes("admin email is required to send invitation") ||
+			m.includes("super admin email is required to send invitation") ||
+			m.includes("email is required when invitetosystem is true")
+		) {
+			return tr("errorInviteEmailRequired");
+		}
+		if (m.includes("authentication required")) return tr("errorAuthRequired");
+		if (m.includes("invalid or expired token")) return tr("errorUnauthorized");
+		if (m.includes("invalid email")) return tr("invalidEmail");
+
+		if (status === 401) return tr("errorUnauthorized");
+		if (status === 403) return tr("errorForbidden");
+		if (status === 404) return tr("errorNotFound");
+		if (status === 409) return tr("errorConflict");
+		if (status >= 500) return tr("errorServerGeneric");
+
+		// For known validation-like 400 responses, prefer localized user-friendly text.
+		if (
+			status === 400 &&
+			(m.includes("invalid request") ||
+				m.includes("required") ||
+				m.includes("must be") ||
+				m.includes("invalid route parameters") ||
+				m.includes("invalid query") ||
+				m.includes("invalid request body"))
+		) {
+			return tr("errorBadRequest");
+		}
+
+		// Keep explicit backend business messages when they are already understandable.
+		return raw || tr("errorBadRequest");
+	}
 	if (err instanceof Error) return err.message;
 	return String(err);
 }

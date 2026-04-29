@@ -5,7 +5,7 @@ import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
-import { vivaApiJson } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import type { MarketingAdminBundle, MarketingTestimonialAdmin } from "src/modules/marketing/types";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
@@ -78,8 +78,8 @@ export default function AdminMarketing() {
       setLoading(true);
       const b = await vivaApiJson<MarketingAdminBundle>("/marketing/admin");
       applyBundle(b);
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     } finally {
       setLoading(false);
     }
@@ -105,8 +105,8 @@ export default function AdminMarketing() {
       });
       setStats(Array.isArray(next) ? next : stats);
       showToast(t("blogUpdatedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 
@@ -149,8 +149,8 @@ export default function AdminMarketing() {
       setPhonesText(data.contact.phones.join("\n"));
       setEmailsText(data.contact.emails.join("\n"));
       showToast(t("blogUpdatedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 
@@ -199,8 +199,8 @@ export default function AdminMarketing() {
       }
       await load();
       showToast(t("blogUpdatedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 
@@ -211,8 +211,8 @@ export default function AdminMarketing() {
       setDeleteId(null);
       await load();
       showToast(t("blogDeletedToast"), "success");
-    } catch {
-      showToast(t("couldNotLoadData"), "error");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
   };
 

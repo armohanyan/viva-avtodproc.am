@@ -41,6 +41,7 @@ import {
   getLessonTypeLabel,
   type PracticalLessonType,
 } from "src/modules/instructors/instructor-booking";
+import { cn } from "src/lib/utils";
 import { defaultExamQuestionMeta, loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 import {
   type FinanceTx,
@@ -782,6 +783,23 @@ export default function AdminBookings() {
       addTheoryThemeTitles,
     ],
   );
+  const addValidationKeySet = useMemo(
+    () => new Set<TranslationKey>(addValidation.messageKeys),
+    [addValidation.messageKeys],
+  );
+  const addFieldInvalid = useMemo(
+    () => ({
+      student: addValidationKeySet.has("adminBookingValSelectStudent"),
+      practicalLessonType: addFlowKind === "practical" && addValidationKeySet.has("fillRequired"),
+      theoryThemes: addFlowKind === "theory_personal" && addValidationKeySet.has("fillRequired"),
+      theoryGroup: addValidationKeySet.has("adminBookingValSelectTheoryGroup"),
+      slots:
+        addValidationKeySet.has("adminBookingValSelectSlots") ||
+        addValidationKeySet.has("adminBookingValPackagePracticalCount") ||
+        addValidationKeySet.has("adminBookingValPackageTheoryCount"),
+    }),
+    [addFlowKind, addValidationKeySet],
+  );
 
   const addCheckoutLines: CheckoutSummaryLines | null = useMemo(() => {
     if (!draft) return null;
@@ -1137,6 +1155,7 @@ export default function AdminBookings() {
     if (!draft) return;
     const v = addValidation;
     if (!v.ok) {
+      setBookingModalTab("booking");
       showToast(t(v.messageKeys[0]), "error");
       return;
     }
@@ -1172,6 +1191,9 @@ export default function AdminBookings() {
               dateIso: pick.dateIso,
               slots: pick.times,
               ...(pick.slotEntries && pick.slotEntries.length > 0 ? { slotEntries: pick.slotEntries } : {}),
+              ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
+                ? { instructorUserId: Number(pick.instructorUserId) }
+                : {}),
               instructorName: pick.instructor || draft.instructorName,
             },
           });
@@ -1219,6 +1241,9 @@ export default function AdminBookings() {
           addFlowKind === "theory_personal"
             ? {
                 studentId: Number(draft.studentId),
+                ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
+                  ? { instructorUserId: Number(pick.instructorUserId) }
+                  : {}),
                 instructorName: pick.instructor || draft.instructorName,
                 dateIso: pick.dateIso,
                 type: "theory_personal" as const,
@@ -1235,7 +1260,12 @@ export default function AdminBookings() {
                 dateIso: theoryPlan ? theoryPlan.dateIso : pick.dateIso,
                 slots: theoryPlan ? theoryPlan.times : pick.times,
                 ...(draft.type === "practical"
-                  ? { instructorName: pick.instructor || draft.instructorName }
+                  ? {
+                      instructorName: pick.instructor || draft.instructorName,
+                      ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
+                        ? { instructorUserId: Number(pick.instructorUserId) }
+                        : {}),
+                    }
                   : { theoryCohortId: Number(theoryCohortId) }),
                 ...(!theoryPlan ? arbitrary : {}),
               };
@@ -1918,7 +1948,10 @@ export default function AdminBookings() {
                       <select
                         value={draft.studentId}
                         onChange={(e) => setDraft({ ...draft, studentId: e.target.value })}
-                        className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        className={cn(
+                          "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring",
+                          addFieldInvalid.student && "border-red-500 focus:ring-red-500",
+                        )}
                       >
                         {studentsMini.map((s) => (
                           <option key={s.id} value={s.id}>
@@ -1926,6 +1959,9 @@ export default function AdminBookings() {
                           </option>
                         ))}
                       </select>
+                      {addFieldInvalid.student ? (
+                        <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectStudent")}</p>
+                      ) : null}
                     </div>
                     <BookingTypeSelector
                       value={addFlowKind}
@@ -1971,34 +2007,39 @@ export default function AdminBookings() {
                     </div>
 
                     {addFlowKind === "theory_group" ? (
-                      <GroupLessonSelector
-                        label={t("adminBookingTheoryCohortLabel")}
-                        placeholderKey="adminBookingTheoryCohortPlaceholder"
-                        cohorts={bookableTheoryCohorts}
-                        valueId={theoryCohortId}
-                        onChangeId={(id) => {
-                          setTheoryCohortId(id);
-                          setSlotPick(null);
-                          const c = bookableTheoryCohorts.find((x) => x.id === id);
-                          if (c) {
-                            const plan = theoryGroupSlotPlanFromCohort(c);
-                            setDraft((d) =>
-                              d
-                                ? {
-                                    ...d,
-                                    branchId: c.branchId,
-                                    instructorName: c.instructorName,
-                                    ...(plan
-                                      ? { dateIso: plan.dateIso, time: plan.times[0] ?? d.time }
-                                      : {}),
-                                  }
-                                : d,
-                            );
-                          }
-                        }}
-                        formatOptionSuffix={(c) => theoryCohortSelectSuffix(c)}
-                        t={t}
-                      />
+                      <div>
+                        <GroupLessonSelector
+                          label={t("adminBookingTheoryCohortLabel")}
+                          placeholderKey="adminBookingTheoryCohortPlaceholder"
+                          cohorts={bookableTheoryCohorts}
+                          valueId={theoryCohortId}
+                          onChangeId={(id) => {
+                            setTheoryCohortId(id);
+                            setSlotPick(null);
+                            const c = bookableTheoryCohorts.find((x) => x.id === id);
+                            if (c) {
+                              const plan = theoryGroupSlotPlanFromCohort(c);
+                              setDraft((d) =>
+                                d
+                                  ? {
+                                      ...d,
+                                      branchId: c.branchId,
+                                      instructorName: c.instructorName,
+                                      ...(plan
+                                        ? { dateIso: plan.dateIso, time: plan.times[0] ?? d.time }
+                                        : {}),
+                                    }
+                                  : d,
+                              );
+                            }
+                          }}
+                          formatOptionSuffix={(c) => theoryCohortSelectSuffix(c)}
+                          t={t}
+                        />
+                        {addFieldInvalid.theoryGroup ? (
+                          <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectTheoryGroup")}</p>
+                        ) : null}
+                      </div>
                     ) : null}
 
                     {addFlowKind === "practical" ? (
@@ -2009,7 +2050,10 @@ export default function AdminBookings() {
                         <select
                           value={addPracticalLessonType}
                           onChange={(e) => setAddPracticalLessonType(e.target.value as PracticalLessonType | "")}
-                          className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                          className={cn(
+                            "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring",
+                            addFieldInvalid.practicalLessonType && "border-red-500 focus:ring-red-500",
+                          )}
                         >
                           <option value="">{t("bookingSelectLessonTypePlaceholder")}</option>
                           {PRACTICAL_LESSON_TYPES.map((value) => (
@@ -2018,6 +2062,9 @@ export default function AdminBookings() {
                             </option>
                           ))}
                         </select>
+                        {addFieldInvalid.practicalLessonType ? (
+                          <p className="mt-1 text-xs text-red-600">{t("fillRequired")}</p>
+                        ) : null}
                       </div>
                     ) : null}
                     {addFlowKind === "practical" ? (
@@ -2044,6 +2091,9 @@ export default function AdminBookings() {
                           placeholder={t("examTestsTopicsHeading")}
                           ariaLabel={t("examTestsTopicsHeading")}
                         />
+                        {addFieldInvalid.theoryThemes ? (
+                          <p className="mt-1 text-xs text-red-600">{t("fillRequired")}</p>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -2155,71 +2205,81 @@ export default function AdminBookings() {
                     ) : null}
 
                     {addFlowKind === "practical" ? (
-                      <SlotSelector
-                        hint={t("adminBookingSlotCalendarHint")}
-                        selectedInstructorId={calendarInstructorId}
-                        instructors={practicalInstructorsForCalendar}
-                        onInstructorChange={(id) => {
-                          const ins = instructors.find((i) => i.id === id);
-                          if (ins) {
-                            setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                            setSlotPick(null);
-                          }
-                        }}
-                        branchId={draft.branchId}
-                        studentName={studentLabel(draft.studentId)}
-                        showInstructorPicker
-                        onBookingConfirmed={(payload) => {
-                          setSlotPick(payload);
-                          setDraft((d) => {
-                            if (!d) return d;
-                            const next: Booking = {
-                              ...d,
-                              dateIso: payload.dateIso,
-                              time: payload.time,
-                              instructorName: payload.instructor || d.instructorName,
-                            };
-                            return next;
-                          });
-                        }}
-                        onAdminSelectionCleared={() => setSlotPick(null)}
-                        calendarKey={`add-practical-${draft.instructorName}-${draft.branchId}`}
-                        t={t}
-                      />
+                      <div>
+                        <SlotSelector
+                          hint={t("adminBookingSlotCalendarHint")}
+                          selectedInstructorId={calendarInstructorId}
+                          instructors={practicalInstructorsForCalendar}
+                          onInstructorChange={(id) => {
+                            const ins = instructors.find((i) => i.id === id);
+                            if (ins) {
+                              setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
+                              setSlotPick(null);
+                            }
+                          }}
+                          branchId={draft.branchId}
+                          studentName={studentLabel(draft.studentId)}
+                          showInstructorPicker
+                          onBookingConfirmed={(payload) => {
+                            setSlotPick(payload);
+                            setDraft((d) => {
+                              if (!d) return d;
+                              const next: Booking = {
+                                ...d,
+                                dateIso: payload.dateIso,
+                                time: payload.time,
+                                instructorName: payload.instructor || d.instructorName,
+                              };
+                              return next;
+                            });
+                          }}
+                          onAdminSelectionCleared={() => setSlotPick(null)}
+                          calendarKey={`add-practical-${draft.instructorName}-${draft.branchId}`}
+                          t={t}
+                        />
+                        {addFieldInvalid.slots ? (
+                          <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectSlots")}</p>
+                        ) : null}
+                      </div>
                     ) : null}
 
                     {addFlowKind === "theory_personal" ? (
-                      <SlotSelector
-                        hint={t("adminBookingSlotCalendarHint")}
-                        selectedInstructorId={theoryPersonalCalendarInstructorId}
-                        instructors={theoryPersonalCalendarInstructors}
-                        onInstructorChange={(id) => {
-                          const ins = instructors.find((i) => i.id === id);
-                          if (ins) {
-                            setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                            setSlotPick(null);
-                          }
-                        }}
-                        branchId={draft.branchId}
-                        studentName={studentLabel(draft.studentId)}
-                        showInstructorPicker
-                        onBookingConfirmed={(payload) => {
-                          setSlotPick(payload);
-                          setDraft((d) => {
-                            if (!d) return d;
-                            const next: Booking = {
-                              ...d,
-                              dateIso: payload.dateIso,
-                              time: payload.time,
-                              instructorName: payload.instructor || d.instructorName,
-                            };
-                            return next;
-                          });
-                        }}
-                        onAdminSelectionCleared={() => setSlotPick(null)}
-                        calendarKey={`add-personal-${draft.instructorName}-${draft.branchId}`}
-                        t={t}
-                      />
+                      <div>
+                        <SlotSelector
+                          hint={t("adminBookingSlotCalendarHint")}
+                          selectedInstructorId={theoryPersonalCalendarInstructorId}
+                          instructors={theoryPersonalCalendarInstructors}
+                          onInstructorChange={(id) => {
+                            const ins = instructors.find((i) => i.id === id);
+                            if (ins) {
+                              setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
+                              setSlotPick(null);
+                            }
+                          }}
+                          branchId={draft.branchId}
+                          studentName={studentLabel(draft.studentId)}
+                          showInstructorPicker
+                          onBookingConfirmed={(payload) => {
+                            setSlotPick(payload);
+                            setDraft((d) => {
+                              if (!d) return d;
+                              const next: Booking = {
+                                ...d,
+                                dateIso: payload.dateIso,
+                                time: payload.time,
+                                instructorName: payload.instructor || d.instructorName,
+                              };
+                              return next;
+                            });
+                          }}
+                          onAdminSelectionCleared={() => setSlotPick(null)}
+                          calendarKey={`add-personal-${draft.instructorName}-${draft.branchId}`}
+                          t={t}
+                        />
+                        {addFieldInvalid.slots ? (
+                          <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectSlots")}</p>
+                        ) : null}
+                      </div>
                     ) : null}
 
                   </div>

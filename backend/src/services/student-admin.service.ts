@@ -1,5 +1,23 @@
+import { Op } from 'sequelize';
 import { Package, StudentProfile, User } from '../models';
+import ErrorsUtil from '../utils/errors.util';
+import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import InstructorStudentRatingService from './instructor-student-rating.service';
+
+const { ConflictError } = ErrorsUtil;
+const { InputValidationError } = ErrorsUtil;
+const INTERNAL_NO_LOGIN_EMAIL_DOMAIN = 'no-login.local';
+
+function isInternalNoLoginEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(`@${INTERNAL_NO_LOGIN_EMAIL_DOMAIN}`);
+}
+
+function generateInternalNoLoginEmail(seed?: number): string {
+  const rand = Math.random().toString(36).slice(2, 8);
+  const ts = Date.now().toString(36);
+  const prefix = seed ? `student-${seed}` : 'student';
+  return `${prefix}-${ts}-${rand}@${INTERNAL_NO_LOGIN_EMAIL_DOMAIN}`;
+}
 
 type ProfileJoined = StudentProfile & {
   studentAccount: User;
@@ -116,7 +134,8 @@ export default class StudentAdminService {
 
   static async create(input: {
     name: string;
-    email: string;
+    email?: string;
+    inviteToSystem?: boolean;
     phone?: string;
     branchId: number;
     packageId?: number | null;
@@ -130,7 +149,16 @@ export default class StudentAdminService {
     licenseAchieved?: boolean;
     joinedIso?: string;
   }): Promise<AdminStudentRow | null> {
-    const email = input.email.trim().toLowerCase();
+    const inviteToSystem = input.inviteToSystem ?? true;
+    const rawEmail = (input.email ?? '').trim().toLowerCase();
+    if (inviteToSystem && !rawEmail) {
+      throw new InputValidationError('Email is required when inviteToSystem is true', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const email = !inviteToSystem && !rawEmail ? generateInternalNoLoginEmail() : rawEmail;
+    const existing = await User.findOne({ where: { email } });
+    if (existing) {
+      throw new ConflictError('Email already in use', HttpStatusCodesUtil.CONFLICT);
+    }
     const user = await User.create({
       email,
       name: input.name.trim(),
@@ -169,6 +197,7 @@ export default class StudentAdminService {
     patch: Partial<{
       name: string;
       email: string;
+      inviteToSystem: boolean;
       phone: string | null;
       branchId: number;
       packageId: number | null;
@@ -186,10 +215,23 @@ export default class StudentAdminService {
     const user = await User.findByPk(userId);
     const profile = await StudentProfile.findOne({ where: { userId } });
     if (!user || !profile) return null;
-    if (patch.name !== undefined || patch.email !== undefined || patch.phone !== undefined) {
+    let nextEmail: string | undefined;
+    if (patch.email !== undefined || patch.inviteToSystem !== undefined) {
+      const inviteToSystem = patch.inviteToSystem ?? !isInternalNoLoginEmail(user.email);
+      const candidate = (patch.email ?? user.email ?? '').trim().toLowerCase();
+      if (inviteToSystem && (!candidate || isInternalNoLoginEmail(candidate))) {
+        throw new InputValidationError('Email is required when inviteToSystem is true', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      nextEmail = !inviteToSystem && !candidate ? generateInternalNoLoginEmail(userId) : candidate;
+      const other = await User.findOne({ where: { email: nextEmail, id: { [Op.ne]: userId } } });
+      if (other) {
+        throw new ConflictError('Email already in use', HttpStatusCodesUtil.CONFLICT);
+      }
+    }
+    if (patch.name !== undefined || patch.email !== undefined || patch.phone !== undefined || nextEmail !== undefined) {
       await user.update({
         ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.email !== undefined ? { email: patch.email.trim().toLowerCase() } : {}),
+        ...(nextEmail !== undefined ? { email: nextEmail } : {}),
         ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
       });
     }
