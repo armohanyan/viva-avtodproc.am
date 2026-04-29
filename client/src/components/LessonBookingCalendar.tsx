@@ -168,6 +168,8 @@ export type LessonBookingCalendarProps = {
   maxSelectableSlots?: number;
   /** Localized message shown when selection cap is exceeded. */
   maxSelectableSlotsErrorKey?: TranslationKey;
+  /** Student flow booking type; default practical. */
+  studentBookingType?: "practical" | "theory_personal";
 };
 
 export default function LessonBookingCalendar({
@@ -187,6 +189,7 @@ export default function LessonBookingCalendar({
   adminSuppressSummaryCard = false,
   maxSelectableSlots,
   maxSelectableSlotsErrorKey = "adminBookingValPackagePracticalCount",
+  studentBookingType = "practical",
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -580,8 +583,9 @@ export default function LessonBookingCalendar({
           date: selected.date,
           slots: sorted,
           branchId: Number(branchId),
+          ...(studentBookingType === "theory_personal" ? { bookingType: "theory_personal" } : {}),
         };
-        if (!inHorizon) {
+        if (studentBookingType === "practical" && !inHorizon) {
           body.payNow = payNowAtBooking;
         }
         const res = await vivaApiJson<StudentPracticalBookingCreateResponse>("/bookings", {
@@ -1133,7 +1137,7 @@ export default function LessonBookingCalendar({
                     </>
                   ) : null}
                 </div>
-                {mode === "student" && selected && !selectedInPayHorizon ? (
+                {mode === "student" && studentBookingType === "practical" && selected && !selectedInPayHorizon ? (
                   <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
                     <input
                       type="checkbox"
@@ -1175,7 +1179,7 @@ export default function LessonBookingCalendar({
         </Reveal>
         {mode === "student" ? (
           <Reveal delay={0.22} className="mt-4">
-            <BookingCancellationPolicyCallout />
+            <BookingCancellationPolicyCallout bookingType={studentBookingType} />
           </Reveal>
         ) : null}
       </div>

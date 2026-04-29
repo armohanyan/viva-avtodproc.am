@@ -8,12 +8,14 @@ import { Badge } from "src/components/ui/badge";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { useActivePackages } from "src/modules/packages/useActivePackages";
+import { useLocation } from "wouter";
 
 export function DashboardBookingsPackageTab() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { purchasePackage } = useStudentEntitlements();
   const { packages, loading, error } = useActivePackages();
+  const [, setLocation] = useLocation();
 
   const buyPackage = async (packageId: number) => {
     try {
@@ -62,6 +64,15 @@ export function DashboardBookingsPackageTab() {
               </ul>
               <Button type="button" className="w-full mt-4" size="sm" onClick={() => buyPackage(pkg.id)}>
                 {t("bookingsBuyPackageCta")} · {pkg.name}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full mt-2"
+                size="sm"
+                onClick={() => setLocation("/dashboard/bookings/practical")}
+              >
+                {t("dashboardLessonsBookPractical")}
               </Button>
             </Card>
           ))}

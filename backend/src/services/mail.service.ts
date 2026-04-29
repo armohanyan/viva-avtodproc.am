@@ -107,8 +107,17 @@ function ctaButton(href: string, label: string): string {
 
 export type BookingConfirmationData = {
   bookingId: number;
+  studentName: string;
+  bookingType: string;
+  instructorName?: string | null;
+  slots: string[];
+  packageName?: string | null;
+  theoryGroupName?: string | null;
   dateIso: string;
   priceAmd: number | null;
+  paymentStatus: string;
+  bookingStatus: string;
+  supportEmail?: string | null;
   /** Absolute URL to the student booking dashboard. */
   dashboardUrl: string;
 };
@@ -226,14 +235,28 @@ export default class MailService {
         ? `${Number(bookingData.priceAmd).toLocaleString('hy-AM')} ֏`
         : '—';
     const dateHy = formatBookingDateHy(bookingData.dateIso);
+    const slots = bookingData.slots.length > 0 ? bookingData.slots.join(', ') : '—';
+    const nextStep =
+      bookingData.bookingStatus === 'pending'
+        ? 'Խնդրում ենք ավարտել քարտային վճարումը, որպեսզի ամրագրումը հաստատվի։'
+        : 'Դասից առաջ ստուգեք Ձեր «Bookings» էջը՝ թարմացումները տեսնելու համար։';
     const inner = `
-        <p style="margin:0 0 16px;">Հիանալի նորություն է 🎉</p>
-        <p style="margin:0 0 20px;">Ձեր դասը հաստատված է։ Սպասում ենք Ձեզ՝ պատրաստվեք հարմարավետ մթնոլորտում և կենտրոնացված դասին։</p>
+        <p style="margin:0 0 16px;">Բարև, ${escapeHtml(bookingData.studentName || 'Student')} 🎉</p>
+        <p style="margin:0 0 20px;">Ձեր ամրագրման տեղեկությունները պատրաստ են։</p>
         <ul style="margin:0 0 20px;padding-left:20px;color:${BRAND.muted};">
           <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Գրանցման համար՝</strong> ${escapeHtml(String(bookingData.bookingId))}</li>
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Ամրագրման տեսակ՝</strong> ${escapeHtml(bookingData.bookingType)}</li>
+          ${bookingData.instructorName ? `<li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Դասավանդող՝</strong> ${escapeHtml(bookingData.instructorName)}</li>` : ''}
+          ${bookingData.packageName ? `<li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Փաթեթ՝</strong> ${escapeHtml(bookingData.packageName)}</li>` : ''}
+          ${bookingData.theoryGroupName ? `<li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Խմբային տեսություն՝</strong> ${escapeHtml(bookingData.theoryGroupName)}</li>` : ''}
           <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Ամսաթիվ և ժամ՝</strong> ${escapeHtml(dateHy)}</li>
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Սլոթեր՝</strong> ${escapeHtml(slots)}</li>
           <li><strong style="color:${BRAND.text};">Գին՝</strong> ${escapeHtml(price)}</li>
+          <li><strong style="color:${BRAND.text};">Վճարման կարգավիճակ՝</strong> ${escapeHtml(bookingData.paymentStatus)}</li>
+          <li><strong style="color:${BRAND.text};">Ամրագրման կարգավիճակ՝</strong> ${escapeHtml(bookingData.bookingStatus)}</li>
         </ul>
+        <p style="margin:0 0 12px;color:${BRAND.muted};">${escapeHtml(nextStep)}</p>
+        <p style="margin:0 0 12px;color:${BRAND.muted};">Աջակցություն՝ ${escapeHtml(bookingData.supportEmail || 'support@viva.am')}</p>
         <p style="margin:0 0 12px;">${ctaButton(bookingData.dashboardUrl, 'Բացել Ձեր գրանցումների էջը')}</p>
         <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(bookingData.dashboardUrl)}</p>
     `;

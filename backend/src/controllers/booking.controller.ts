@@ -96,6 +96,7 @@ const studentMultiSlotSchema = z
     branchId: z.coerce.number().int().positive(),
     /** When the lesson is more than one calendar month away: start the 10-minute payment hold immediately. */
     payNow: z.boolean().optional(),
+    bookingType: z.enum(['practical', 'theory_personal']).optional(),
   })
   .refine((v) => v.instructorId != null || v.instructor_id != null, {
     message: 'instructorId or instructor_id is required',
@@ -254,16 +255,25 @@ export default class BookingController {
         const studentUserId = requireStudentUserId(req, next);
         if (studentUserId === undefined) return;
 
-        const row = await BookingService.createFromStudentSlotSelection({
-          studentUserId,
-          instructorUserId,
-          dateIso: body.date,
-          slots: body.slots,
-          branchId: body.branchId,
-          /** Omitted = no preference (horizon rules apply); only explicit `false` means “defer if allowed”. */
-          payNow: typeof body.payNow === 'boolean' ? body.payNow : undefined,
-        });
-        SuccessHandlerUtil.handleAdd(res, next, row);
+        const rowResult =
+          body.bookingType === 'theory_personal'
+            ? await BookingService.createTheoryPersonalFromStudentSlotSelection({
+                studentUserId,
+                instructorUserId,
+                dateIso: body.date,
+                slots: body.slots,
+                branchId: body.branchId,
+              })
+            : await BookingService.createFromStudentSlotSelection({
+                studentUserId,
+                instructorUserId,
+                dateIso: body.date,
+                slots: body.slots,
+                branchId: body.branchId,
+                /** Omitted = no preference (horizon rules apply); only explicit `false` means “defer if allowed”. */
+                payNow: typeof body.payNow === 'boolean' ? body.payNow : undefined,
+              });
+        SuccessHandlerUtil.handleAdd(res, next, rowResult);
         return;
       }
 
@@ -284,6 +294,21 @@ export default class BookingController {
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+      SuccessHandlerUtil.handleAdd(res, next, row);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async createTheoryGroupStudentBooking(req: Request, res: Response, next: NextFunction) {
+    try {
+      const cohortId = Number(req.params.cohortId);
+      if (!Number.isFinite(cohortId) || cohortId <= 0) {
+        return next(new InputValidationError('Invalid cohort id', HttpStatusCodesUtil.BAD_REQUEST));
+      }
+      const studentUserId = requireStudentUserId(req, next);
+      if (studentUserId === undefined) return;
+      const row = await BookingService.createTheoryGroupFromStudentSelection({ studentUserId, cohortId });
       SuccessHandlerUtil.handleAdd(res, next, row);
     } catch (e) {
       next(e);

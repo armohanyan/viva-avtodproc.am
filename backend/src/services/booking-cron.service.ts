@@ -3,7 +3,7 @@ import { Booking } from '../models';
 import LoggerUtil from '../utils/logger.util';
 
 /**
- * Deletes unpaid practical bookings whose server-side payment hold has expired.
+ * Deletes unpaid bookings whose server-side payment hold has expired.
  * Slot rows cascade on `booking_slots.booking_id` FK.
  *
  * Does **not** auto-start holds for “pay later” rows (`hold_expires_at` null).
@@ -23,7 +23,6 @@ export default class BookingCronService {
     const deletedExpiredHolds = await Booking.destroy({
       where: {
         status: 'pending',
-        lessonType: 'practical',
         paidAt: { [Op.is]: null },
         holdExpiresAt: { [Op.and]: [{ [Op.ne]: null }, { [Op.lt]: new Date() }] },
       },

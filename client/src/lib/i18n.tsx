@@ -429,7 +429,12 @@ const en = {
   bookingsNoCreditsWarning: "You have no practical credits. Buy a package or an extra block to book driving lessons.",
   bookingsSubnavPackage: "Package",
   bookingsSubnavPractical: "Practical lesson",
+  bookingsSubnavTheoryPersonal: "1:1 theory lesson",
+  bookingsSubnavTheoryGroup: "Group theory lesson",
+  bookingTheoryThemesTitle: "Themes you want to learn",
   bookingsPracticalPageSubtitle: "Choose lesson type and area, select an instructor, then pick an available time.",
+  bookingsTheoryPersonalPageSubtitle: "Choose a theory instructor, topics, and an available slot. Card payment is required.",
+  bookingsTheoryGroupPageSubtitle: "Choose an available group and pay by card to secure your seat.",
   bookingsOverviewSubtitle:
     "Below you’ll find all your lesson bookings. Use the quick links or tabs to book a new practical lesson or buy credits.",
   bookingsSubnavOverview: "Overview",
@@ -1056,6 +1061,9 @@ const en = {
   bookingCancellationPolicyTitle: "Cancelling practical lessons",
   bookingCancellationPolicyBody:
     "If you cancel at least 24 hours before the scheduled start, we send a request to the office. After staff confirm, your slot is released and any lesson fee you already paid is refunded. If you cancel less than 24 hours before the lesson, the booking ends immediately and no refund is given.",
+  bookingTheoryPolicyTitle: "1:1 theory booking policy",
+  bookingTheoryPolicyBody:
+    "1:1 theory lessons are confirmed only after successful card payment. No pay-later reservation window is available for this lesson type. If payment fails or is cancelled, the booking is not confirmed and the slot remains available.",
   bookingStatusCancellationPendingLabel: "Cancellation pending",
   bookingStatusExplainCancellationPending:
     "We notified the office. They will confirm and process your refund; your slot stays reserved until then.",
@@ -1768,7 +1776,12 @@ const ru: typeof en = {
   bookingsNoCreditsWarning: "Нет практических кредитов. Купите пакет или доп. блок, чтобы записаться на вождение.",
   bookingsSubnavPackage: "Пакет",
   bookingsSubnavPractical: "Практическое занятие",
+  bookingsSubnavTheoryPersonal: "Теория 1:1",
+  bookingsSubnavTheoryGroup: "Групповая теория",
+  bookingTheoryThemesTitle: "Темы, которые хотите изучить",
   bookingsPracticalPageSubtitle: "Выберите тип урока и район, инструктора и свободное время.",
+  bookingsTheoryPersonalPageSubtitle: "Выберите преподавателя теории, темы и свободный слот. Подтверждение только после оплаты картой.",
+  bookingsTheoryGroupPageSubtitle: "Выберите доступную группу и оплатите картой для подтверждения места.",
   bookingsOverviewSubtitle:
     "Ниже — все ваши записи на уроки. Быстрые ссылки и вкладки: новая практика или покупка кредитов.",
   bookingsSubnavOverview: "Обзор",
@@ -2393,6 +2406,9 @@ const ru: typeof en = {
   bookingCancellationPolicyTitle: "Отмена практических уроков",
   bookingCancellationPolicyBody:
     "Если вы отменяете не менее чем за 24 часа до начала, мы отправляем заявку в офис. После подтверждения слот освобождается и оплаченный урок возвращается. Если отмена менее чем за 24 часа, запись закрывается сразу, возврата нет.",
+  bookingTheoryPolicyTitle: "Правила записи на теорию 1:1",
+  bookingTheoryPolicyBody:
+    "Индивидуальный урок теории подтверждается только после успешной оплаты картой. Для этого типа урока нет режима брони с отложенной оплатой. Если оплата неуспешна или отменена, запись не подтверждается, а слот остается доступным.",
   bookingStatusCancellationPendingLabel: "Ожидает отмены",
   bookingStatusExplainCancellationPending:
     "Офис уведомлён. После подтверждения оформят возврат; слот остаётся занятым до этого момента.",
@@ -3105,7 +3121,12 @@ const am: typeof en = {
   bookingsNoCreditsWarning: "Գործնական կրեդիտ չկա։ Գնեք փաթեթ կամ լրացուցիչ բլոկ՝ վարորդական դաս ամրագրելու համար։",
   bookingsSubnavPackage: "Փաթեթ",
   bookingsSubnavPractical: "Գործնական դաս",
+  bookingsSubnavTheoryPersonal: "1:1 տեսական դաս",
+  bookingsSubnavTheoryGroup: "Խմբային տեսական դաս",
+  bookingTheoryThemesTitle: "Ընտրեք թեմաները, որ ուզում եք սովորել",
   bookingsPracticalPageSubtitle: "Ընտրեք դասի տեսակը և տարածքը, դասավանդողին, ապա ազատ ժամը։",
+  bookingsTheoryPersonalPageSubtitle: "Ընտրեք տեսական դասավանդող, թեմաներ և ազատ սլոթ։ Հաստատումը՝ միայն քարտային վճարումից հետո։",
+  bookingsTheoryGroupPageSubtitle: "Ընտրեք հասանելի խումբը և վճարեք քարտով՝ տեղը ամրագրելու համար։",
   bookingsOverviewSubtitle:
     "Ստորև՝ ձեր բոլոր դասերի ամրագրումները։ Նոր գործնական դաս կամ կրեդիտների գնում՝ արագ հղումներով կամ ներդիրներով։",
   bookingsSubnavOverview: "Ընդհանուր",
@@ -3730,6 +3751,9 @@ const am: typeof en = {
   bookingCancellationPolicyTitle: "Գործնական դասերի չեղարկում",
   bookingCancellationPolicyBody:
     "Եթե չեղարկում եք դասի մեկնարկից առնվազն 24 ժամ առաջ, հայտնում ենք ադմինիստրացիային։ Նրանք հաստատելուց հետո ազատվում է ժամը, և վճարված գումարը վերադարձվում է։ Եթե չեղարկում եք 24 ժամից քիչ ժամանակ առաջ, ամրագրումն անմիջապես փակվում է, վերադարձ չկա։",
+  bookingTheoryPolicyTitle: "1:1 տեսական դասի կանոններ",
+  bookingTheoryPolicyBody:
+    "1:1 տեսական դասը հաստատվում է միայն քարտային հաջող վճարումից հետո։ Այս դասի տեսակի համար վճարումը հետաձգելու ամրագրման ռեժիմ չկա։ Եթե վճարումը չստացվի կամ չեղարկվի, ամրագրումը չի հաստատվում, և սլոթը մնում է հասանելի։",
   bookingStatusCancellationPendingLabel: "Չեղարկման հայտ",
   bookingStatusExplainCancellationPending:
     "Ադմինիստրացիան տեղեկացված է։ Նրանք կհաստատեն և կվերադարձնեն գումարը՝ մինչ այդ ժամը պահվում է։",

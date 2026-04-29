@@ -12,6 +12,8 @@ export const DASHBOARD_NAV_LINKS: readonly DashboardNavigationLink[] = [
     children: [
       { href: "/dashboard/bookings/package", translationKey: "bookingsSubnavPackage" },
       { href: "/dashboard/bookings/practical", translationKey: "bookingsSubnavPractical" },
+      { href: "/dashboard/bookings/theory-personal", translationKey: "bookingsSubnavTheoryPersonal" },
+      { href: "/dashboard/bookings/theory-group", translationKey: "bookingsSubnavTheoryGroup" },
     ],
   },
   { href: "/dashboard/payments", translationKey: "payments" },

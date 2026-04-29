@@ -163,6 +163,16 @@ export type StudentMultiSlotBookingDto = {
   coveredByPrepaidCredits: boolean;
 };
 
+export type StudentPaidBookingCreateDto = {
+  id: number;
+  totalPriceAmd: number;
+  status: BookingStatus;
+  holdExpiresAt: string;
+  holdExtensionCount: number;
+  maxHoldExtensions: number;
+  paymentRequiredNow: true;
+};
+
 function dateIsoString(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
   if (v instanceof Date) return v.toISOString().slice(0, 10);
@@ -456,6 +466,71 @@ async function finalizePracticalCancellationInTx(opts: {
 }
 
 export default class BookingService {
+  private static async createPendingStudentPaidBooking(input: {
+    studentUserId: number;
+    instructorUserId: number;
+    branchId: number;
+    lessonType: 'theory' | 'theory_personal';
+    dateIso: string;
+    sortedSlots: string[];
+    totalPriceAmd: number;
+    prepaidMeta?: Record<string, unknown> | null;
+    createSlotRows?: boolean;
+  }): Promise<StudentPaidBookingCreateDto> {
+    const dateIso = input.dateIso.slice(0, 10);
+    const holdExp = new Date(Date.now() + PAYMENT_HOLD_MS);
+    const exclusiveEnd = exclusiveEndFromSortedStarts(input.sortedSlots);
+    let createdId = 0;
+    try {
+      await sequelize.transaction(async (transaction) => {
+        const created = await Booking.create(
+          {
+            studentUserId: input.studentUserId,
+            instructorUserId: input.instructorUserId,
+            branchId: input.branchId,
+            dateIso,
+            time: input.sortedSlots[0],
+            endTime: exclusiveEnd,
+            totalPriceAmd: input.totalPriceAmd,
+            lessonType: input.lessonType,
+            status: 'pending',
+            paidAt: null,
+            holdExpiresAt: holdExp,
+            holdExtensionCount: 0,
+            prepaidMeta: input.prepaidMeta ?? null,
+          },
+          { transaction },
+        );
+        createdId = created.id;
+        if (input.createSlotRows !== false) {
+          await BookingSlot.bulkCreate(
+            input.sortedSlots.map((slotTime) => ({
+              bookingId: created.id,
+              instructorUserId: input.instructorUserId,
+              dateIso,
+              slotTime,
+            })),
+            { transaction },
+          );
+        }
+      });
+    } catch (e) {
+      if (isDuplicateSlotClaimError(e)) {
+        throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
+      }
+      throw e;
+    }
+    return {
+      id: createdId,
+      totalPriceAmd: input.totalPriceAmd,
+      status: 'pending',
+      holdExpiresAt: holdExp.toISOString(),
+      holdExtensionCount: 0,
+      maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+      paymentRequiredNow: true,
+    };
+  }
+
   private static mapRowToAdminDto(b: BookingWithUsers): BookingAdminDto {
     const row = b as BookingWithUsers;
     const inst = row.instructor;
@@ -919,6 +994,146 @@ export default class BookingService {
       }
       throw e;
     }
+  }
+
+  static async createTheoryPersonalFromStudentSlotSelection(input: {
+    studentUserId: number;
+    instructorUserId: number;
+    dateIso: string;
+    slots: readonly string[];
+    branchId: number;
+  }): Promise<StudentPaidBookingCreateDto> {
+    const dateIso = input.dateIso.slice(0, 10);
+    const sorted = normalizeAndSortSlots(input.slots);
+    assertConsecutiveHourly(sorted);
+    if (sorted.length === 0) {
+      throw new InputValidationError('At least one slot is required.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const student = await User.findOne({
+      where: { id: input.studentUserId, accountType: 'student' },
+      attributes: ['id'],
+    });
+    if (!student) {
+      throw new InputValidationError('Student account required.', HttpStatusCodesUtil.FORBIDDEN);
+    }
+    const instructor = await User.findOne({
+      where: { id: input.instructorUserId, accountType: 'instructor' },
+      attributes: ['id'],
+    });
+    if (!instructor) {
+      throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    const branchOk = await InstructorBranch.findOne({
+      where: { instructorUserId: input.instructorUserId, branchId: input.branchId },
+    });
+    if (!branchOk) {
+      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const profile = await InstructorProfile.findOne({ where: { userId: input.instructorUserId } });
+    assertInstructorTeachesLessonType(profile, 'theory_personal');
+    const hourly = Number(profile.hourlyPrice);
+    if (!Number.isFinite(hourly) || hourly < 0) {
+      throw new InputValidationError('Instructor hourly rate is not configured.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const totalPriceAmd = Math.round(hourly * sorted.length);
+    for (const slot of sorted) {
+      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+        input.instructorUserId,
+        dateIso,
+        slot,
+      );
+      if (unavailable) {
+        throw new InputValidationError(
+          'Instructor is not available at this time (day off, break, or outside work hours).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+    }
+    return BookingService.createPendingStudentPaidBooking({
+      studentUserId: input.studentUserId,
+      instructorUserId: input.instructorUserId,
+      branchId: input.branchId,
+      lessonType: 'theory_personal',
+      dateIso,
+      sortedSlots: sorted,
+      totalPriceAmd,
+      prepaidMeta: null,
+    });
+  }
+
+  static async createTheoryGroupFromStudentSelection(input: {
+    studentUserId: number;
+    cohortId: number;
+  }): Promise<StudentPaidBookingCreateDto> {
+    const student = await User.findOne({
+      where: { id: input.studentUserId, accountType: 'student' },
+      attributes: ['id'],
+    });
+    if (!student) {
+      throw new InputValidationError('Student account required.', HttpStatusCodesUtil.FORBIDDEN);
+    }
+    const cohort = await TheoryCohort.findByPk(input.cohortId);
+    if (!cohort) {
+      throw new InputValidationError('Theory cohort not found.', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    if (!theoryCohortAllowsNewBookings(cohort.status)) {
+      throw new InputValidationError('This theory group is not open for new bookings.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const currentEnrollmentCount = await TheoryCohortService.listEnrollments(cohort.id);
+    if (currentEnrollmentCount && currentEnrollmentCount.length >= cohort.seats) {
+      throw new ConflictError('Cohort is full', HttpStatusCodesUtil.CONFLICT);
+    }
+    const existingGroupBookings = await Booking.findAll({
+      where: {
+        studentUserId: input.studentUserId,
+        lessonType: 'theory',
+        status: { [Op.in]: ['pending', 'confirmed'] },
+      },
+      attributes: ['prepaidMeta'],
+    });
+    const duplicate = existingGroupBookings.some((row) => {
+      const meta = row.prepaidMeta as Record<string, unknown> | null;
+      return Number(meta?.theoryCohortId) === cohort.id;
+    });
+    if (duplicate) {
+      throw new ConflictError('Student already has an active booking for this theory group.', HttpStatusCodesUtil.CONFLICT);
+    }
+    const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
+    const instructorIdsServingBranch = links.map((l) => l.instructorUserId);
+    const instructor = await User.findOne({
+      where: {
+        name: cohort.instructorName.trim(),
+        accountType: 'instructor',
+        ...(instructorIdsServingBranch.length > 0 ? { id: { [Op.in]: instructorIdsServingBranch } } : {}),
+      },
+    });
+    if (!instructor) {
+      throw new InputValidationError(
+        `No instructor user matches cohort instructor "${cohort.instructorName}".`,
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
+    assertInstructorTeachesLessonType(profile, 'theory');
+    const sessionStart = normalizeTimeHHMM(String(cohort.sessionStartTime ?? '').trim() || '09:00') ?? '09:00';
+    const startMins = parseTimeToMinutes(sessionStart);
+    const endCandidate = normalizeTimeHHMM(String(cohort.sessionEndTime ?? '').trim());
+    const endMins = endCandidate ? parseTimeToMinutes(endCandidate) : startMins + 60;
+    const durationHours = Math.max(1, Math.ceil((endMins - startMins) / 60));
+    const slots = Array.from({ length: durationHours }, (_, i) => minutesToHHMM(startMins + i * 60));
+    const hourly = Number(profile.hourlyPrice);
+    const totalPriceAmd = totalPriceAmdForTheoryCohortBooking(cohort, hourly, slots.length);
+    return BookingService.createPendingStudentPaidBooking({
+      studentUserId: input.studentUserId,
+      instructorUserId: instructor.id,
+      branchId: cohort.branchId,
+      lessonType: 'theory',
+      dateIso: dateIsoString(cohort.startDateIso),
+      sortedSlots: slots,
+      totalPriceAmd,
+      prepaidMeta: { theoryCohortId: cohort.id },
+      createSlotRows: false,
+    });
   }
 
   /** Admin practical / personal theory: any set of on-the-hour slots across multiple calendar days. */
@@ -1758,7 +1973,7 @@ export default class BookingService {
     let updatedId = bookingId;
     await sequelize.transaction(async (transaction) => {
       const row = await Booking.findOne({
-        where: { id: bookingId, studentUserId, lessonType: 'practical' },
+        where: { id: bookingId, studentUserId, lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] } },
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
@@ -1774,6 +1989,13 @@ export default class BookingService {
           'Payment window is not active or has expired. Start payment again if your booking is still reserved.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
+      }
+      if (row.lessonType === 'theory') {
+        const cohortId = Number((row.prepaidMeta as Record<string, unknown> | null)?.theoryCohortId);
+        if (!Number.isFinite(cohortId) || cohortId <= 0) {
+          throw new InputValidationError('Theory cohort reference is missing for this booking.', HttpStatusCodesUtil.BAD_REQUEST);
+        }
+        await TheoryCohortService.enroll(cohortId, studentUserId);
       }
       const paidAt = new Date();
       await row.update(
@@ -1797,7 +2019,7 @@ export default class BookingService {
         await FinanceService.create({
           customer: stu.name.trim() || 'Student',
           email: stu.email ?? '',
-          description: `Practical lesson #${row.id} — AcBa Bank POS (simulated)`,
+          description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — AcBa Bank POS (simulated)`,
           branchId: row.branchId,
           channel: 'pos',
           method: 'card',

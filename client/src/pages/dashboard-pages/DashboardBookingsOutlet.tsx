@@ -4,11 +4,15 @@ import type { BookingsShellActive } from "src/components/dashboard/DashboardBook
 import { DashboardBookingsListTab } from "./DashboardBookings";
 import { DashboardBookingsPackageTab } from "./DashboardBookingsPackage";
 import { DashboardBookingsPracticalTab } from "./DashboardBookingsPractical";
+import { DashboardBookingsTheoryPersonalTab } from "./DashboardBookingsTheoryPersonal";
+import { DashboardBookingsTheoryGroupTab } from "./DashboardBookingsTheoryGroup";
 
 function bookingsActiveFromNestedPath(path: string): BookingsShellActive {
   const p = path.split("?")[0] || "/";
   if (p === "/package") return "package";
   if (p === "/practical") return "practical";
+  if (p === "/theory-personal") return "theory-personal";
+  if (p === "/theory-group") return "theory-group";
   return "home";
 }
 
@@ -28,6 +32,12 @@ export default function DashboardBookingsOutlet() {
         </Route>
         <Route path="/practical">
           <DashboardBookingsPracticalTab />
+        </Route>
+        <Route path="/theory-personal">
+          <DashboardBookingsTheoryPersonalTab />
+        </Route>
+        <Route path="/theory-group">
+          <DashboardBookingsTheoryGroupTab />
         </Route>
         <Route path="/">
           <DashboardBookingsListTab />

@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/', BookingController.list);
 router.post('/', BookingController.create);
+router.post('/theory-groups/:cohortId/book', BookingController.createTheoryGroupStudentBooking);
 router.post('/:id/extend-payment-hold', BookingController.extendPaymentHold);
 router.post('/:id/start-payment-window', BookingController.startPaymentWindow);
 router.post('/:id/complete-payment', BookingController.completeStudentPayment);

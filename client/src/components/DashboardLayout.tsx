@@ -54,6 +54,8 @@ export default function DashboardLayout({ children }: Props) {
 		"/dashboard/bookings": Calendar,
 		"/dashboard/bookings/package": ShoppingBag,
 		"/dashboard/bookings/practical": CalendarClock,
+		"/dashboard/bookings/theory-personal": BookOpen,
+		"/dashboard/bookings/theory-group": CalendarDays,
 		"/dashboard/payments": CreditCard,
 		"/dashboard/profile": User,
 	} as const;
@@ -79,11 +81,11 @@ export default function DashboardLayout({ children }: Props) {
 				children: link.children.map((c) => ({
 					href: c.href,
 					label: t(c.translationKey),
-					icon: iconByPath[c.href as keyof typeof iconByPath],
+					icon: iconByPath[c.href as keyof typeof iconByPath] ?? Calendar,
 				})),
 			};
 		}
-		return { type: "single" as const, href: link.href, label: t(link.translationKey), icon };
+		return { type: "single" as const, href: link.href, label: t(link.translationKey), icon: icon ?? Calendar };
 	});
 
 	const headerTitle = useMemo(() => {
