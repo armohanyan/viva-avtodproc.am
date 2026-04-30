@@ -14,3 +14,4 @@ export { default as DashboardProfilePage } from "./DashboardProfile";
 export { default as DashboardServicesPage } from "./DashboardServices";
 export { default as DashboardLessonsPage } from "./DashboardLessons";
 export { default as DashboardProgressPage } from "./DashboardProgress";
+export { default as DashboardNotificationsPage } from "./DashboardNotifications";

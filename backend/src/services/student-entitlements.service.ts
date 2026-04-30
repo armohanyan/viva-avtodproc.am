@@ -57,21 +57,27 @@ export type StudentEntitlementsDto = {
 export default class StudentEntitlementsService {
   static async get(userId: number): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
+
     if (!user || user.accountType !== 'student') return null;
     const profile = await StudentProfile.findOne({ where: { userId } });
+
     if (!profile) {
       return { packages: [], extras: await this.listExtras(userId) };
     }
+
     if (profile.packageId == null) {
       return { packages: [], extras: await this.listExtras(userId) };
     }
+
     const pkg = await Package.findByPk(profile.packageId);
     if (!pkg) {
       return { packages: [], extras: await this.listExtras(userId) };
     }
+
     const joined = typeof profile.joinedAt === 'string' ? profile.joinedAt.slice(0, 10) : String(profile.joinedAt).slice(0, 10);
     const theoryTotal = effectiveTheoryTotal(pkg, profile);
     const theoryUsed = Math.min(theoryTotal, Number(profile.theoryLessonsCompleted ?? 0));
+
     return {
       packages: [
         {
@@ -150,7 +156,7 @@ export default class StudentEntitlementsService {
     return { branchId: profile.branchId };
   }
 
-  /** Simulated online checkout: records POS-style payment then enrolls the student in the package. */
+  /** vPOS checkout: records package payment then enrolls the student in the package. */
   static async purchasePackageAfterOnlinePayment(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
     if (!user || user.accountType !== 'student') return null;
@@ -172,14 +178,14 @@ export default class StudentEntitlementsService {
       await FinanceService.create({
         customer: user.name.trim() || 'Student',
         email: user.email ?? '',
-        description: `Driving package: ${pkg.name}`,
+        description: `Driving package: ${pkg.name} — vPOS`,
         branchId: applied.branchId,
-        channel: 'online',
+        channel: 'pos',
         method: 'card',
         grossAmd: gross,
         feeAmd: 0,
         status: 'completed',
-        providerRef: `package-pos:${userId}:${packageId}:${Date.now()}`,
+        providerRef: `package-vpos:${userId}:${packageId}:${Date.now()}`,
         source: 'system',
         bookingId: null,
         transaction,
@@ -199,15 +205,40 @@ export default class StudentEntitlementsService {
 
   static async addExtraPractical(userId: number, practicalTotal = 3): Promise<StudentEntitlementsDto | null> {
     const user = await User.findByPk(userId);
+
     if (!user || user.accountType !== 'student') return null;
+
     const profile = await StudentProfile.findOne({ where: { userId } });
     if (!profile) return null;
-    const purchasedAt = new Date().toISOString().slice(0, 10);
-    await StudentExtraPractical.create({
-      userId,
-      practicalTotal,
-      practicalUsed: 0,
-      purchasedAt,
+
+    await sequelize.transaction(async (transaction) => {
+      const purchasedAt = new Date().toISOString().slice(0, 10);
+      const extra = await StudentExtraPractical.create(
+        {
+          userId,
+          practicalTotal,
+          practicalUsed: 0,
+          purchasedAt,
+        },
+        { transaction },
+      );
+
+      const gross = parseAmdFromPriceDisplay('12,000 ֏');
+      await FinanceService.create({
+        customer: user.name.trim() || 'Student',
+        email: user.email ?? '',
+        description: `Extra practical lessons (${practicalTotal}) — vPOS`,
+        branchId: profile.branchId,
+        channel: 'pos',
+        method: 'card',
+        grossAmd: gross,
+        feeAmd: 0,
+        status: 'completed',
+        providerRef: `extra-vpos:${userId}:${extra.id}:${Date.now()}`,
+        source: 'system',
+        bookingId: null,
+        transaction,
+      });
     });
     return this.get(userId);
   }

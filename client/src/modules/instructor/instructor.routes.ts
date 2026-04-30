@@ -6,6 +6,7 @@ import {
   InstructorMyLessonsPage,
   InstructorCarsPage,
   InstructorProfilePage,
+  InstructorNotificationsPage,
 } from "src/pages/instructor";
 
 const INSTRUCTOR: readonly AccountType[] = ["instructor"];
@@ -16,4 +17,5 @@ export const instructorRoutes: readonly AppRoute[] = [
   { path: "/instructor/my-lessons", component: InstructorMyLessonsPage, allowedAccountTypes: INSTRUCTOR },
   { path: "/instructor/cars", component: InstructorCarsPage, allowedAccountTypes: INSTRUCTOR },
   { path: "/instructor/profile", component: InstructorProfilePage, allowedAccountTypes: INSTRUCTOR },
+  { path: "/instructor/notifications", component: InstructorNotificationsPage, allowedAccountTypes: INSTRUCTOR },
 ];

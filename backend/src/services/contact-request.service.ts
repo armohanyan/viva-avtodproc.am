@@ -1,4 +1,5 @@
 import { ContactRequest, type ContactRequestStatus } from '../models/contact-request.model';
+import NotificationService from './notification.service';
 
 export type ContactRequestDto = {
   id: number;
@@ -53,6 +54,15 @@ export default class ContactRequestService {
       message: input.message.trim(),
       status: 'active',
     });
+    void NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: 'CONTACT_REQUEST_CREATED',
+      title: 'Նոր կապի հարցում',
+      message: `${input.firstName.trim()} ${input.lastName?.trim() ?? ''}`.trim() || input.email.trim(),
+      entityType: 'contact_request',
+      entityId: String(row.id),
+      metadata: { email: input.email.trim(), phone: input.phone?.trim() ?? null },
+      dedupeKey: `contact-request-created:${row.id}`,
+    }).catch(() => {});
     return toDto(row);
   }
 

@@ -13,7 +13,10 @@ import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import FinanceService from './finance.service';
 import BookingConfirmationNotifier from './booking-confirmation-notifier.service';
+import NotificationService from './notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
+import MailService from './mail.service';
+import config from '../config';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
@@ -122,7 +125,7 @@ export type StudentBookingDto = {
   maxHoldExtensions?: number;
 };
 
-/** Result of POST /bookings/:id/cancel-student for practical lessons. */
+/** Result of POST /bookings/:id/cancel-student for student bookings. */
 export type StudentPracticalCancelOutcome =
   | { outcome: 'immediate'; status: BookingStatus; refundIssued: boolean }
   | { outcome: 'pending_admin'; cancellationRequestedAt: string };
@@ -406,7 +409,7 @@ function coercePrepaidMetaFromRow(raw: unknown): PrepaidMeta | null {
   return StudentPracticalCreditsService.isNonEmptyMeta(m) ? m : null;
 }
 
-/** Ends a practical booking, frees slots, optionally records a refund line when the student had paid. */
+/** Ends a student booking, frees slots, optionally records a refund line when the student had paid. */
 async function finalizePracticalCancellationInTx(opts: {
   row: Booking;
   studentUserId: number;
@@ -441,10 +444,16 @@ async function finalizePracticalCancellationInTx(opts: {
     const stu = await User.findByPk(studentUserId, { attributes: ['name', 'email'], transaction });
     if (stu) {
       try {
+        const lessonLabel =
+          row.lessonType === 'theory'
+            ? 'Group theory lesson'
+            : row.lessonType === 'theory_personal'
+              ? '1:1 theory lesson'
+              : 'Practical lesson';
         await FinanceService.create({
           customer: stu.name.trim() || 'Student',
           email: stu.email ?? '',
-          description: `Practical lesson booking #${row.id} (cancellation refund)`,
+          description: `${lessonLabel} booking #${row.id} (cancellation refund)`,
           branchId: row.branchId,
           channel: 'online',
           method: 'card',
@@ -466,6 +475,229 @@ async function finalizePracticalCancellationInTx(opts: {
 }
 
 export default class BookingService {
+  private static bookingTypeLabel(lessonType: Booking['lessonType']): string {
+    return lessonType === 'theory' ? 'Group theory lesson' : lessonType === 'theory_personal' ? '1:1 theory lesson' : 'Practical lesson';
+  }
+
+  private static async sendStudentBookingLifecycleEmail(
+    row: Booking,
+    student: Pick<User, 'name' | 'email'>,
+    eventKey: 'created' | 'updated' | 'cancel_request' | 'cancelled' | 'refunded' | 'payment_received',
+    statusLabel: string,
+    summary: string,
+  ): Promise<void> {
+    if (!student.email) return;
+    const base = config.PANEL_DEFAULT_ORIGIN.replace(/\/+$/, '');
+    await MailService.sendBookingLifecycleUpdate(student.email, {
+      bookingId: row.id,
+      studentName: student.name,
+      bookingType: this.bookingTypeLabel(row.lessonType),
+      dateIso: dateIsoString(row.dateIso),
+      time: row.time,
+      eventKey,
+      statusLabel,
+      summary,
+      dashboardUrl: `${base}/dashboard/bookings`,
+    });
+  }
+
+  private static async emitBookingCreatedNotification(bookingId: number): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [
+        { model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] },
+        { model: User, as: 'instructor', attributes: ['id', 'name', 'accountType'] },
+      ],
+    });
+    if (!row) return;
+    const student = (row as unknown as { student?: User }).student;
+    const instructor = (row as unknown as { instructor?: User }).instructor;
+    if (!student || !instructor) return;
+    const title = 'Նոր ամրագրում է ստեղծվել';
+    const message = `${dateIsoString(row.dateIso)} ${row.time}`;
+    await NotificationService.createMany([
+      {
+        recipientUserId: student.id,
+        recipientRole: student.accountType,
+        type: 'BOOKING_CREATED',
+        title,
+        message,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-created:${row.id}:student:${student.id}`,
+      },
+      {
+        recipientUserId: instructor.id,
+        recipientRole: instructor.accountType,
+        type: 'BOOKING_CREATED',
+        title,
+        message,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-created:${row.id}:instructor:${instructor.id}`,
+      },
+    ]);
+    await NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: 'BOOKING_CREATED',
+      title,
+      message: `${message} · #${row.id}`,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-created:${row.id}:staff`,
+    });
+    await this.sendStudentBookingLifecycleEmail(
+      row,
+      student,
+      'created',
+      'Ստեղծված է',
+      'Ձեր ամրագրումը գրանցվել է։ Թարմացումներից յուրաքանչյուրի մասին կտեղեկացնենք email-ով։',
+    );
+  }
+
+  private static async emitBookingUpdatedNotification(bookingId: number): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [
+        { model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] },
+        { model: User, as: 'instructor', attributes: ['id', 'accountType'] },
+      ],
+    });
+    if (!row) return;
+    const student = (row as unknown as { student?: User }).student;
+    const instructor = (row as unknown as { instructor?: User }).instructor;
+    if (!student || !instructor) return;
+    const title = 'Ամրագրումը թարմացվել է';
+    const message = `${dateIsoString(row.dateIso)} ${row.time}`;
+    await NotificationService.createMany([
+      {
+        recipientUserId: student.id,
+        recipientRole: student.accountType,
+        type: 'BOOKING_UPDATED',
+        title,
+        message,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-updated:${row.id}:student:${student.id}:${Date.now()}`,
+      },
+      {
+        recipientUserId: instructor.id,
+        recipientRole: instructor.accountType,
+        type: 'BOOKING_UPDATED',
+        title,
+        message,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-updated:${row.id}:instructor:${instructor.id}:${Date.now()}`,
+      },
+    ]);
+    await this.sendStudentBookingLifecycleEmail(
+      row,
+      student,
+      'updated',
+      'Թարմացված է',
+      'Ձեր ամրագրման տվյալները թարմացվել են։ Խնդրում ենք ստուգել նոր ամսաթիվը/ժամը Bookings էջում։',
+    );
+  }
+
+  private static async emitBookingCancelledNotification(
+    bookingId: number,
+    kind: 'cancelled' | 'refunded' | 'request_created',
+  ): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [
+        { model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] },
+        { model: User, as: 'instructor', attributes: ['id', 'accountType'] },
+      ],
+    });
+    if (!row) return;
+    const student = (row as unknown as { student?: User }).student;
+    const instructor = (row as unknown as { instructor?: User }).instructor;
+    if (!student || !instructor) return;
+    if (kind === 'request_created') {
+      await NotificationService.createForRoles(['admin', 'super_admin'], {
+        type: 'BOOKING_REQUEST_CREATED',
+        title: 'Չեղարկման նոր հայտ',
+        message: `#${row.id}`,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-cancel-request:${row.id}`,
+      });
+      await this.sendStudentBookingLifecycleEmail(
+        row,
+        student,
+        'cancel_request',
+        'Չեղարկումը սպասման մեջ է',
+        'Ձեր չեղարկման հայտը ընդունվել է և սպասում է հաստատման։',
+      );
+      return;
+    }
+    const title = kind === 'refunded' ? 'Ամրագրումը չեղարկվել է (վերադարձով)' : 'Ամրագրումը չեղարկվել է';
+    const type: 'BOOKING_CANCELLED' = 'BOOKING_CANCELLED';
+    await NotificationService.createMany([
+      {
+        recipientUserId: student.id,
+        recipientRole: student.accountType,
+        type,
+        title,
+        message: `#${row.id}`,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-cancelled:${kind}:${row.id}:student:${student.id}`,
+      },
+      {
+        recipientUserId: instructor.id,
+        recipientRole: instructor.accountType,
+        type,
+        title,
+        message: `#${row.id}`,
+        entityType: 'booking',
+        entityId: String(row.id),
+        dedupeKey: `booking-cancelled:${kind}:${row.id}:instructor:${instructor.id}`,
+      },
+    ]);
+    await this.sendStudentBookingLifecycleEmail(
+      row,
+      student,
+      kind === 'refunded' ? 'refunded' : 'cancelled',
+      kind === 'refunded' ? 'Չեղարկված է (վերադարձով)' : 'Չեղարկված է',
+      kind === 'refunded'
+        ? 'Ձեր ամրագրումը չեղարկվել է, և վերադարձը մշակվում է։'
+        : 'Ձեր ամրագրումը հաջողությամբ չեղարկվել է։',
+    );
+  }
+
+  private static async emitPaymentReceivedNotification(bookingId: number): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] }],
+    });
+    if (!row) return;
+    const student = (row as unknown as { student?: User }).student;
+    if (!student) return;
+    await NotificationService.createOne({
+      recipientUserId: student.id,
+      recipientRole: student.accountType,
+      type: 'PAYMENT_RECEIVED',
+      title: 'Վճարումը հաջողությամբ կատարվել է',
+      message: `#${row.id}`,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `payment-received:${row.id}:student:${student.id}`,
+    });
+    await NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: 'PAYMENT_RECEIVED',
+      title: 'Ստացվել է վճարում',
+      message: `#${row.id}`,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `payment-received:${row.id}:staff`,
+    });
+    await this.sendStudentBookingLifecycleEmail(
+      row,
+      student,
+      'payment_received',
+      'Վճարումն ընդունվել է',
+      'Վճարումը հաջողությամբ ստացվել է, և ամրագրման կարգավիճակը թարմացվել է։',
+    );
+  }
+
   private static async createPendingStudentPaidBooking(input: {
     studentUserId: number;
     instructorUserId: number;
@@ -520,6 +752,15 @@ export default class BookingService {
       }
       throw e;
     }
+    void BookingService.emitBookingCreatedNotification(createdId).catch(() => {});
+    void NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: 'BOOKING_REQUEST_CREATED',
+      title: 'Նոր ամրագրման հարցում',
+      message: `#${createdId}`,
+      entityType: 'booking',
+      entityId: String(createdId),
+      dedupeKey: `booking-request-created:${createdId}`,
+    }).catch(() => {});
     return {
       id: createdId,
       totalPriceAmd: input.totalPriceAmd,
@@ -714,7 +955,7 @@ export default class BookingService {
       const pendingCancel = b.cancellationRequestedAt != null;
       const hoursLeft = hoursUntilLessonStart(dIso, b.time);
       const eligible =
-        b.lessonType === 'practical' &&
+        b.paidAt != null &&
         (st === 'pending' || st === 'confirmed') &&
         dIso >= today &&
         !pendingCancel &&
@@ -734,18 +975,12 @@ export default class BookingService {
               ? 'lessonTypeTheoryPersonal'
               : 'lessonTypePractical',
         status: st,
-        ...(b.lessonType === 'practical'
-          ? {
-              holdExpiresAt: b.holdExpiresAt ? new Date(b.holdExpiresAt).toISOString() : null,
-              holdExtensionCount: Number(b.holdExtensionCount ?? 0),
-              maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
-              cancelRefundEligible: eligible,
-              hoursUntilLesson: Math.round(hoursLeft * 10) / 10,
-              cancellationRequestedAt: b.cancellationRequestedAt
-                ? new Date(b.cancellationRequestedAt).toISOString()
-                : null,
-            }
-          : {}),
+        holdExpiresAt: b.holdExpiresAt ? new Date(b.holdExpiresAt).toISOString() : null,
+        holdExtensionCount: Number(b.holdExtensionCount ?? 0),
+        maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+        cancelRefundEligible: eligible,
+        hoursUntilLesson: Math.round(hoursLeft * 10) / 10,
+        cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
       };
     });
   }
@@ -970,6 +1205,7 @@ export default class BookingService {
       if (coveredByPrepaidCredits) {
         void BookingConfirmationNotifier.trySendForBookingId(row.id).catch(() => {});
       }
+      void BookingService.emitBookingCreatedNotification(row.id).catch(() => {});
 
       return {
         id: row.id,
@@ -1213,6 +1449,7 @@ export default class BookingService {
     }
 
     void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
+    void BookingService.emitBookingCreatedNotification(newId).catch(() => {});
 
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
@@ -1335,6 +1572,7 @@ export default class BookingService {
     }
 
     void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
+    void BookingService.emitBookingCreatedNotification(newId).catch(() => {});
 
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
@@ -1498,6 +1736,7 @@ export default class BookingService {
     }
 
     void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
+    void BookingService.emitBookingCreatedNotification(newId).catch(() => {});
 
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
@@ -1657,6 +1896,7 @@ export default class BookingService {
     }
 
     void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
+    void BookingService.emitBookingUpdatedNotification(id).catch(() => {});
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -1746,6 +1986,7 @@ export default class BookingService {
     }
 
     void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
+    void BookingService.emitBookingUpdatedNotification(id).catch(() => {});
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -2019,14 +2260,14 @@ export default class BookingService {
         await FinanceService.create({
           customer: stu.name.trim() || 'Student',
           email: stu.email ?? '',
-          description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — AcBa Bank POS (simulated)`,
+          description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — vPOS`,
           branchId: row.branchId,
           channel: 'pos',
           method: 'card',
           grossAmd: gross,
           feeAmd: 0,
           status: 'completed',
-          providerRef: `booking-pos:${row.id}`,
+          providerRef: `booking-vpos:${row.id}`,
           source: 'system',
           bookingId: row.id,
         });
@@ -2036,20 +2277,22 @@ export default class BookingService {
     }
 
     void BookingConfirmationNotifier.trySendForBookingId(updatedId).catch(() => {});
+    void BookingService.emitPaymentReceivedNotification(updatedId).catch(() => {});
+    void BookingService.emitBookingUpdatedNotification(updatedId).catch(() => {});
 
     return dto;
   }
 
   /**
-   * Student: cancel a practical booking.
-   * ≥24h before lesson → sets {@link Booking.cancellationRequestedAt}; staff completes refund/cancel.
-   * &lt;24h → immediate `cancelled`, no refund.
+   * Student: cancel a booking.
+   * Paid + ≥24h before lesson → sets {@link Booking.cancellationRequestedAt}; staff completes refund/cancel.
+   * Otherwise → immediate `cancelled`, no refund.
    */
   static async cancelPracticalStudentBooking(bookingId: number, studentUserId: number): Promise<StudentPracticalCancelOutcome> {
     let outcome: StudentPracticalCancelOutcome | undefined;
     await sequelize.transaction(async (transaction) => {
       const row = await Booking.findOne({
-        where: { id: bookingId, studentUserId, lessonType: 'practical' },
+        where: { id: bookingId, studentUserId, lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] } },
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
@@ -2074,7 +2317,7 @@ export default class BookingService {
         return;
       }
 
-      if (isRefundWindowForCancellation(dateIso, row.time)) {
+      if (row.paidAt != null && isRefundWindowForCancellation(dateIso, row.time)) {
         const requestedAt = new Date();
         await row.update({ cancellationRequestedAt: requestedAt }, { transaction });
         outcome = { outcome: 'pending_admin', cancellationRequestedAt: requestedAt.toISOString() };
@@ -2092,14 +2335,19 @@ export default class BookingService {
     if (!outcome) {
       throw new InputValidationError('Cancellation could not be completed.', HttpStatusCodesUtil.BAD_REQUEST);
     }
+    if (outcome.outcome === 'pending_admin') {
+      void BookingService.emitBookingCancelledNotification(bookingId, 'request_created').catch(() => {});
+    } else {
+      void BookingService.emitBookingCancelledNotification(bookingId, outcome.refundIssued ? 'refunded' : 'cancelled').catch(() => {});
+    }
     return outcome;
   }
 
-  /** Staff: complete a student-initiated cancellation (free slots, refund ledger if the lesson was paid). */
+  /** Staff: complete a student-initiated cancellation (free slots, refund ledger if the booking was paid). */
   static async staffApprovePracticalCancellation(bookingId: number): Promise<{ status: BookingStatus; refundIssued: boolean }> {
-    return sequelize.transaction(async (transaction) => {
+    const result = await sequelize.transaction(async (transaction) => {
       const row = await Booking.findOne({
-        where: { id: bookingId, lessonType: 'practical' },
+        where: { id: bookingId, lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] } },
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
@@ -2123,13 +2371,15 @@ export default class BookingService {
         refundIfPaid: true,
       });
     });
+    void BookingService.emitBookingCancelledNotification(bookingId, result.refundIssued ? 'refunded' : 'cancelled').catch(() => {});
+    return result;
   }
 
   /** Staff: decline a student cancellation request; booking stays active. */
   static async staffRejectPracticalCancellation(bookingId: number): Promise<{ ok: true }> {
     await sequelize.transaction(async (transaction) => {
       const row = await Booking.findOne({
-        where: { id: bookingId, lessonType: 'practical' },
+        where: { id: bookingId, lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] } },
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
@@ -2144,6 +2394,7 @@ export default class BookingService {
       }
       await row.update({ cancellationRequestedAt: null }, { transaction });
     });
+    void BookingService.emitBookingUpdatedNotification(bookingId).catch(() => {});
     return { ok: true as const };
   }
 

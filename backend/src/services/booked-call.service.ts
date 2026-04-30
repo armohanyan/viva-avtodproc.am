@@ -1,4 +1,5 @@
 import { BookedCall, type BookedCallStatus } from '../models/booked-call.model';
+import NotificationService from './notification.service';
 
 export type BookedCallDto = {
   id: number;
@@ -45,6 +46,15 @@ export default class BookedCallService {
       notes: input.notes?.trim() ? input.notes.trim() : null,
       status: 'pending',
     });
+    void NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: 'CALL_REQUEST_CREATED',
+      title: 'Նոր զանգի հարցում',
+      message: input.name?.trim() || input.phone.trim(),
+      entityType: 'booked_call',
+      entityId: String(row.id),
+      metadata: { phone: input.phone.trim(), preferredTimeSlot: input.preferredTimeSlot.trim() },
+      dedupeKey: `booked-call-created:${row.id}`,
+    }).catch(() => {});
     return toDto(row);
   }
 

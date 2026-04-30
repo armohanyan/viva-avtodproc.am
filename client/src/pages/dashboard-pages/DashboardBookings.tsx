@@ -254,11 +254,11 @@ export function DashboardBookingsListTab() {
               </div>
             </DialogDescription>
           </div>
-          <div className="flex flex-col gap-2 px-4 py-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6 sm:py-4">
+          <div className="flex flex-col gap-2 px-4 py-4 sm:px-6 sm:py-4">
             <Button
               type="button"
               variant="outline"
-              className="h-10 w-full border-border bg-background/80 sm:h-9 sm:w-auto sm:min-w-[9rem]"
+              className="min-h-10 h-auto w-full border-border bg-background/80 py-2 whitespace-normal break-words text-center"
               onClick={() => setCancelTarget(null)}
             >
               {t("bookingsCancelDialogDismiss")}
@@ -267,7 +267,7 @@ export function DashboardBookingsListTab() {
               type="button"
               variant={cancelTarget?.cancelRefundEligible ? "default" : "destructive"}
               className={cn(
-                "h-10 w-full shadow-sm sm:h-9 sm:w-auto sm:min-w-[9rem]",
+                "min-h-10 h-auto w-full py-2 shadow-sm whitespace-normal break-words text-center",
                 !cancelTarget?.cancelRefundEligible &&
                   "dark:bg-destructive dark:text-white dark:hover:bg-destructive/90 dark:focus-visible:ring-destructive/30",
               )}
@@ -415,7 +415,7 @@ export function DashboardBookingsListTab() {
                                 </Button>
                               ) : null}
                               {b.cancellationRequestedAt ? (
-                                <span className="text-[11px] text-amber-800 dark:text-amber-400 text-right max-w-[11rem] leading-snug">
+                                <span className="text-[11px] text-amber-800 dark:text-amber-400 text-right max-w-[11rem] leading-snug whitespace-normal break-words inline-block">
                                   {t("bookingsAwaitingOfficeCancellation")}
                                 </span>
                               ) : (

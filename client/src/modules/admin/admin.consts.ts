@@ -3,6 +3,7 @@ import type { AdminNavigationLink } from "./admin.types";
 /** Sidebar order: overview → day-to-day ops → people & programs → catalog → locations → money → content → access control */
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
+  { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/bookings", translationKey: "bookings" },
   {
     href: "/admin/students",

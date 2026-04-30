@@ -12,6 +12,7 @@ export { default as AdminCarsPage } from "./AdminCars";
 export { default as AdminBlogsPage } from "./AdminBlogs";
 export { default as AdminAccountsPage } from "./AdminAccounts";
 export { default as AdminMarketingPage } from "./AdminMarketing";
+export { default as AdminNotificationsPage } from "./AdminNotifications";
 export { default as AdminFinanceOverviewPage } from "./finance/AdminFinanceOverview";
 export { default as AdminFinanceIncomePage } from "./finance/AdminFinanceIncome";
 export { default as AdminFinanceOutcomesPage } from "./finance/AdminFinanceOutcomes";

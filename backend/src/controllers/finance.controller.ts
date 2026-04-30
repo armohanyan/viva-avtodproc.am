@@ -1,12 +1,12 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
+import { parseBody, verifyAccessToken } from '../helpers';
 import FinanceService from '../services/finance.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import { SuccessHandlerUtil } from '../utils';
 
-const { InputValidationError } = ErrorsUtil;
+const { InputValidationError, UnauthorizedError, PermissionError } = ErrorsUtil;
 
 const financeTxBodySchema = z.object({
   customer: z.string().min(1),
@@ -53,6 +53,32 @@ const updateSchema = financeTxBodySchema
   });
 
 export default class FinanceController {
+  private static readBearerToken(req: Request): string | undefined {
+    const raw = req.headers.authorization;
+    return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+  }
+
+  private static requireStudentUserId(req: Request): number {
+    const token = FinanceController.readBearerToken(req);
+    if (!token) {
+      throw new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+    let payload: ReturnType<typeof verifyAccessToken>;
+    try {
+      payload = verifyAccessToken(token);
+    } catch {
+      throw new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+    if (payload.accountType !== 'student') {
+      throw new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN);
+    }
+    const userId = Number(payload.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      throw new UnauthorizedError('Invalid token subject', HttpStatusCodesUtil.UNAUTHORIZED);
+    }
+    return userId;
+  }
+
   static async listStudent(req: Request, res: Response, next: NextFunction) {
     try {
       const raw = req.query.studentUserId;
@@ -109,7 +135,47 @@ export default class FinanceController {
         return next(new InputValidationError('Invalid transaction id', HttpStatusCodesUtil.BAD_REQUEST));
       }
       await FinanceService.removeManual(id);
-      SuccessHandlerUtil.handleDelete(res, next);
+      res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async requestRefund(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return next(new InputValidationError('Invalid transaction id', HttpStatusCodesUtil.BAD_REQUEST));
+      }
+      const studentUserId = FinanceController.requireStudentUserId(req);
+      const row = await FinanceService.requestRefundForStudentUser(id, studentUserId);
+      SuccessHandlerUtil.handleUpdate(res, next, row);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async approveRefund(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return next(new InputValidationError('Invalid transaction id', HttpStatusCodesUtil.BAD_REQUEST));
+      }
+      const row = await FinanceService.approveRefundRequest(id);
+      SuccessHandlerUtil.handleUpdate(res, next, row);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async rejectRefund(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return next(new InputValidationError('Invalid transaction id', HttpStatusCodesUtil.BAD_REQUEST));
+      }
+      const row = await FinanceService.rejectRefundRequest(id);
+      SuccessHandlerUtil.handleUpdate(res, next, row);
     } catch (e) {
       next(e);
     }

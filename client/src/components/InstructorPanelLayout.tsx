@@ -25,6 +25,7 @@ import {
 } from "./ui/dropdown-menu";
 import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
+import NotificationBell from "src/components/NotificationBell";
 
 interface Props {
 	children: ReactNode;
@@ -56,7 +57,9 @@ export default function InstructorPanelLayout({ children }: Props) {
 		signOut();
 	};
 
-	const headerTitle = nav.find((n) => n.href === location)?.label || t("instructorDashboardTitle");
+	const headerTitle = location.startsWith("/instructor/notifications")
+		? t("notifications")
+		: nav.find((n) => n.href === location)?.label || t("instructorDashboardTitle");
 
 	return (
 		<PanelShell
@@ -65,6 +68,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 			headerTrailing={({ closeMobileNav }) => (
 				<>
 					<ThemeToggle />
+					<NotificationBell listHref="/instructor/notifications" panel="instructor" onNavigate={closeMobileNav} />
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<button

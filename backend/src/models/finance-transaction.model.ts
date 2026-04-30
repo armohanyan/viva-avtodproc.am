@@ -37,6 +37,10 @@ export class FinanceTransaction extends Model<
   declare employeeName: CreationOptional<string | null>;
   declare units: CreationOptional<number | null>;
   declare unitRateAmd: CreationOptional<number | null>;
+  /** Student requested a refund for this payment; staff reviews asynchronously. */
+  declare refundRequestedAt: CreationOptional<Date | null>;
+  /** Staff decision timestamp for refund request processing. */
+  declare refundReviewedAt: CreationOptional<Date | null>;
   /** When set, this payment line is tied to a scheduled lesson (e.g. single lesson or extra hour). Package / exam fees typically stay null. */
   declare bookingId: CreationOptional<number | null>;
 }
@@ -81,6 +85,8 @@ FinanceTransaction.init(
     employeeName: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
     units: { type: DataTypes.DECIMAL(10, 2), allowNull: true, defaultValue: null },
     unitRateAmd: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, defaultValue: null },
+    refundRequestedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
+    refundReviewedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
     bookingId: {
       ...fkUnsignedIntNullable(),
       references: { model: 'bookings', key: 'id' },

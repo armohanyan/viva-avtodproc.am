@@ -23,6 +23,7 @@ import { InstructorStudentRating } from './instructor-student-rating.model';
 import { MarketingSetting } from './marketing-setting.model';
 import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
+import { Notification } from './notification.model';
 import { Package } from './package.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
@@ -98,6 +99,8 @@ ExamQuestionComment.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as:
 
 User.hasMany(AdminMfaChallenge, { foreignKey: 'userId', sourceKey: 'id' });
 AdminMfaChallenge.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
+User.hasMany(Notification, { foreignKey: 'recipientUserId', sourceKey: 'id' });
+Notification.belongsTo(User, { foreignKey: 'recipientUserId', targetKey: 'id', as: 'recipient' });
 
 InstructorStudentRating.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'ratingStudent' });
 InstructorStudentRating.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'ratedInstructor' });
@@ -129,6 +132,7 @@ export {
   MarketingSetting,
   MarketingStat,
   MarketingTestimonial,
+  Notification,
   AdminMfaChallenge,
   OAuthAccount,
   Package,
@@ -354,6 +358,34 @@ async function ensureFinanceTransactionsEntryColumns(): Promise<void> {
     await sequelize.query(
       'ALTER TABLE `finance_transactions` ADD COLUMN `unit_rate_amd` INT UNSIGNED NULL AFTER `units`',
     );
+  }
+}
+
+/** Adds refund-request review timestamps on `finance_transactions` when missing. */
+async function ensureFinanceTransactionsRefundColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'
+       AND COLUMN_NAME IN ('refund_requested_at', 'refund_reviewed_at')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(cols.map((c) => c.COLUMN_NAME));
+  if (!have.has('refund_requested_at')) {
+    await sequelize.query('ALTER TABLE `finance_transactions` ADD COLUMN `refund_requested_at` DATETIME NULL');
+  }
+  if (!have.has('refund_reviewed_at')) {
+    await sequelize.query('ALTER TABLE `finance_transactions` ADD COLUMN `refund_reviewed_at` DATETIME NULL');
   }
 }
 
@@ -824,6 +856,39 @@ async function ensureBookingsPrepaidMetaColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `prepaid_meta` JSON NULL');
 }
 
+/** In-app notifications table with read/unread indexes and optional dedupe key. */
+async function ensureNotificationsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length === 0) {
+    return;
+  }
+  const ensureIdx = async (name: string, ddl: string) => {
+    const idx = await sequelize.query<{ INDEX_NAME: string }>(
+      `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND INDEX_NAME = ?`,
+      { replacements: [name], type: QueryTypes.SELECT },
+    );
+    if (idx.length > 0) return;
+    await sequelize.query(ddl);
+  };
+  await ensureIdx(
+    'notifications_recipient_read_created_idx',
+    'CREATE INDEX `notifications_recipient_read_created_idx` ON `notifications` (`recipient_user_id`, `is_read`, `created_at`)',
+  );
+  await ensureIdx(
+    'notifications_recipient_created_idx',
+    'CREATE INDEX `notifications_recipient_created_idx` ON `notifications` (`recipient_user_id`, `created_at`)',
+  );
+  await ensureIdx('notifications_type_idx', 'CREATE INDEX `notifications_type_idx` ON `notifications` (`type`)');
+}
+
 async function ensureAuthTables(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -1284,6 +1349,7 @@ export async function syncModels(): Promise<void> {
   await ensureUsersIsActiveColumn();
   await ensureFinanceTransactionsBookingIdColumn();
   await ensureFinanceTransactionsEntryColumns();
+  await ensureFinanceTransactionsRefundColumns();
   await ensureCarExpensesDropPaymentColumns();
   await ensureBookingsPaymentColumns();
   await ensureBookingsHoldExtensionCountColumn();
@@ -1297,6 +1363,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsCancellationRequestedAtColumn();
   await ensureBookingsLessonPassedSuccessfullyColumn();
   await ensureBookingsPrepaidMetaColumn();
+  await ensureNotificationsTable();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
   await ensureStudentExamStatsTable();
 }

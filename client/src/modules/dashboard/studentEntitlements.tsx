@@ -120,17 +120,21 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
     let pkgRem = 0;
     let pkgTotal = 0;
     let pkgUsed = 0;
+
     for (const p of ownedPackages) {
       pkgRem += Math.max(0, p.practicalTotal - p.practicalUsed);
       pkgTotal += p.practicalTotal;
       pkgUsed += p.practicalUsed;
     }
+
     let exRem = 0;
     for (const e of extraPracticalBlocks) {
       exRem += Math.max(0, e.practicalTotal - e.practicalUsed);
     }
+
     const primary = ownedPackages[0];
     const theoryRem = primary ? Math.max(0, primary.theoryTotal - primary.theoryUsed) : 0;
+
     return {
       packagePracticalRemaining: pkgRem,
       extraPracticalRemaining: exRem,
@@ -142,6 +146,7 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
       completedPracticalLessons: pkgUsed + extraPracticalBlocks.reduce((a, e) => a + e.practicalUsed, 0),
       upcomingBookingsCount: countUpcomingStudentBookings(bookings),
     };
+
   }, [ownedPackages, extraPracticalBlocks, bookings]);
 
   const completePackagePurchase = useCallback(

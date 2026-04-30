@@ -23,6 +23,7 @@ import {
 	Users,
 	PhoneCall,
   Mail,
+  Bell,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import {
@@ -40,6 +41,7 @@ import { useAccount } from "src/modules/accounts";
 import type { TranslationKey } from "src/lib/i18n";
 import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
+import NotificationBell from "src/components/NotificationBell";
 
 function panelRoleLabelKey(accountType: AccountType): TranslationKey {
 	return accountType === "super_admin" ? "roleLabelSuperAdmin" : "roleAdmin";
@@ -66,6 +68,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
 		"/admin/bookings": Calendar,
+		"/admin/notifications": Bell,
 		"/admin/contact-requests": Mail,
 		"/admin/booked-calls": PhoneCall,
 		"/admin/learn": School,
@@ -267,6 +270,7 @@ export default function AdminLayout({ children }: Props) {
 			headerTrailing={({ closeMobileNav }) => (
 				<>
 					<ThemeToggle />
+					<NotificationBell listHref="/admin/notifications" panel="admin" onNavigate={closeMobileNav} />
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<button

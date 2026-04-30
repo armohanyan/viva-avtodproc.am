@@ -122,6 +122,83 @@ export type BookingConfirmationData = {
   dashboardUrl: string;
 };
 
+export type BookingLifecycleEmailData = {
+  bookingId: number;
+  studentName: string;
+  bookingType: string;
+  dateIso: string;
+  time: string;
+  eventKey: 'created' | 'updated' | 'cancel_request' | 'cancelled' | 'refunded' | 'payment_received';
+  statusLabel: string;
+  summary: string;
+  dashboardUrl: string;
+};
+
+export type TransactionLifecycleEmailData = {
+  studentName: string;
+  transactionId: number;
+  description: string;
+  grossAmd: number;
+  flowLabel: 'package' | 'group' | 'practical' | 'one_on_one' | 'other';
+  eventKey: 'created' | 'refund_requested' | 'refund_approved' | 'refund_rejected';
+  statusLabel: string;
+  actionLabel: string;
+  dashboardUrl: string;
+};
+
+function bookingTypeLabelHy(bookingType: string): string {
+  const t = bookingType.trim().toLowerCase();
+  if (t.includes('group') || t.includes('theory')) return 'Խմբային տեսություն';
+  if (t.includes('1:1') || t.includes('personal')) return '1:1 տեսություն';
+  if (t.includes('practical')) return 'Պրակտիկ դաս';
+  return bookingType || 'Դաս';
+}
+
+function bookingEventSubject(data: BookingLifecycleEmailData): string {
+  const typeHy = bookingTypeLabelHy(data.bookingType);
+  const idPart = `#${data.bookingId}`;
+  switch (data.eventKey) {
+    case 'created':
+      return `Նոր ամրագրում (${typeHy}) ${idPart}`;
+    case 'updated':
+      return `Ամրագրման թարմացում (${typeHy}) ${idPart}`;
+    case 'cancel_request':
+      return `Չեղարկման հայտը ստացվել է (${typeHy}) ${idPart}`;
+    case 'cancelled':
+      return `Ամրագրումը չեղարկվել է (${typeHy}) ${idPart}`;
+    case 'refunded':
+      return `Վերադարձով չեղարկում (${typeHy}) ${idPart}`;
+    case 'payment_received':
+      return `Վճարումը ստացվել է (${typeHy}) ${idPart}`;
+    default:
+      return `Ամրագրման թարմացում ${idPart}`;
+  }
+}
+
+function txFlowLabelHy(flow: TransactionLifecycleEmailData['flowLabel']): string {
+  if (flow === 'package') return 'Փաթեթ';
+  if (flow === 'group') return 'Խմբային տեսություն';
+  if (flow === 'practical') return 'Պրակտիկ';
+  if (flow === 'one_on_one') return '1:1';
+  return 'Գործարք';
+}
+
+function transactionEventSubject(data: TransactionLifecycleEmailData): string {
+  const flowHy = txFlowLabelHy(data.flowLabel);
+  switch (data.eventKey) {
+    case 'created':
+      return `${flowHy} վճարման թարմացում #${data.transactionId}`;
+    case 'refund_requested':
+      return `${flowHy} վճարման վերադարձի հարցում #${data.transactionId}`;
+    case 'refund_approved':
+      return `${flowHy} վճարման վերադարձը հաստատվեց #${data.transactionId}`;
+    case 'refund_rejected':
+      return `${flowHy} վճարման վերադարձը մերժվեց #${data.transactionId}`;
+    default:
+      return `Գործարքի թարմացում #${data.transactionId}`;
+  }
+}
+
 export default class MailService {
   static async sendStudentInvitation(toEmail: string, studentName: string, setupPasswordUrl: string): Promise<void> {
     const safeName = studentName.trim() || 'Ուսանող';
@@ -265,6 +342,53 @@ export default class MailService {
       subject: `Ձեր դասը հաստատված է (#${bookingData.bookingId})`,
       htmlContent: emailShell(inner),
       textContent: `Ձեր դասը հաստատված է (#${bookingData.bookingId}).\nԱմսաթիվ՝ ${dateHy}\nԳին՝ ${price}\nՀարթակ՝ ${bookingData.dashboardUrl}\n`,
+    });
+  }
+
+  static async sendBookingLifecycleUpdate(userEmail: string, bookingData: BookingLifecycleEmailData): Promise<void> {
+    const amount = Number.isFinite(Number(bookingData.bookingId)) ? `#${bookingData.bookingId}` : '—';
+    const priceDate = formatBookingDateHy(`${bookingData.dateIso}T${bookingData.time}:00+04:00`);
+    const inner = `
+        <p style="margin:0 0 16px;">Բարև, ${escapeHtml(bookingData.studentName || 'Student')} 👋</p>
+        <p style="margin:0 0 16px;">Ձեր ամրագրման մեջ կա նոր թարմացում։</p>
+        <ul style="margin:0 0 20px;padding-left:20px;color:${BRAND.muted};">
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Ամրագրում՝</strong> ${escapeHtml(amount)}</li>
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Տեսակ՝</strong> ${escapeHtml(bookingData.bookingType)}</li>
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Ժամանակ՝</strong> ${escapeHtml(priceDate)}</li>
+          <li><strong style="color:${BRAND.text};">Կարգավիճակ՝</strong> ${escapeHtml(bookingData.statusLabel)}</li>
+        </ul>
+        <p style="margin:0 0 12px;color:${BRAND.muted};">${escapeHtml(bookingData.summary)}</p>
+        <p style="margin:0 0 12px;">${ctaButton(bookingData.dashboardUrl, 'Բացել Bookings էջը')}</p>
+        <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(bookingData.dashboardUrl)}</p>
+    `;
+    await sendTransactionalEmail({
+      to: [{ email: userEmail }],
+      subject: bookingEventSubject(bookingData),
+      htmlContent: emailShell(inner),
+      textContent: `Ամրագրման թարմացում ${amount}\nՏեսակ՝ ${bookingData.bookingType}\nԿարգավիճակ՝ ${bookingData.statusLabel}\n${bookingData.summary}\n${bookingData.dashboardUrl}\n`,
+    });
+  }
+
+  static async sendTransactionLifecycleUpdate(userEmail: string, txData: TransactionLifecycleEmailData): Promise<void> {
+    const amount = Number(txData.grossAmd).toLocaleString('hy-AM');
+    const inner = `
+        <p style="margin:0 0 16px;">Բարև, ${escapeHtml(txData.studentName || 'Student')} 👋</p>
+        <p style="margin:0 0 16px;">Ձեր գործարքի կարգավիճակը թարմացվել է։</p>
+        <ul style="margin:0 0 20px;padding-left:20px;color:${BRAND.muted};">
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Գործարք՝</strong> #${txData.transactionId}</li>
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Նկարագրություն՝</strong> ${escapeHtml(txData.description)}</li>
+          <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Գումար՝</strong> ${escapeHtml(amount)} ֏</li>
+          <li><strong style="color:${BRAND.text};">Կարգավիճակ՝</strong> ${escapeHtml(txData.statusLabel)}</li>
+        </ul>
+        <p style="margin:0 0 12px;color:${BRAND.muted};">${escapeHtml(txData.actionLabel)}</p>
+        <p style="margin:0 0 12px;">${ctaButton(txData.dashboardUrl, 'Բացել Transactions էջը')}</p>
+        <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(txData.dashboardUrl)}</p>
+    `;
+    await sendTransactionalEmail({
+      to: [{ email: userEmail }],
+      subject: transactionEventSubject(txData),
+      htmlContent: emailShell(inner),
+      textContent: `Գործարքի թարմացում #${txData.transactionId}\nՆկարագրություն՝ ${txData.description}\nԳումար՝ ${amount} ֏\nԿարգավիճակ՝ ${txData.statusLabel}\n${txData.actionLabel}\n${txData.dashboardUrl}\n`,
     });
   }
 }

@@ -32,6 +32,7 @@ import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
 import { cn } from "src/lib/utils";
 import { absWouterHref, fullBrowserPathFromRouter } from "src/lib/wouterFullPath";
+import NotificationBell from "src/components/NotificationBell";
 
 interface Props {
 	children: ReactNode;
@@ -113,6 +114,9 @@ export default function DashboardLayout({ children }: Props) {
 			if (child) return t(child.translationKey);
 			return t("bookings");
 		}
+		if (location.startsWith("/dashboard/notifications")) {
+			return t("notifications");
+		}
 		const hit = DASHBOARD_NAV_LINKS.find((l) => l.href === location);
 		return hit ? t(hit.translationKey) : t("dashboard");
 	}, [location, t]);
@@ -139,6 +143,7 @@ export default function DashboardLayout({ children }: Props) {
 				<>
 					<LangToggle />
 					<ThemeToggle />
+					<NotificationBell listHref={absWouterHref("/dashboard/notifications")} panel="student" onNavigate={closeMobileNav} />
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<button

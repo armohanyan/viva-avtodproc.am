@@ -1,4 +1,5 @@
 import { col, fn, where as sqlWhere, type Transaction } from 'sequelize';
+import { sequelize } from '../database/sequelize';
 import type {
   FinanceTxChannel,
   FinanceTxEntryType,
@@ -8,6 +9,8 @@ import type {
   FinanceTxStatus,
 } from '../models/finance-transaction.model';
 import { Booking, FinanceTransaction, User } from '../models';
+import MailService from './mail.service';
+import config from '../config';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 
@@ -41,6 +44,17 @@ function financeStatusFromBooking(booking: Booking): FinanceTxStatus {
   return 'pending';
 }
 
+const BOOKING_SLOT_TZ_OFFSET = '+04:00';
+const CANCELLATION_REFUND_MIN_HOURS = 24;
+
+function lessonStartDateUtcMs(dateIso: string, timeHHMM: string): number {
+  return Date.parse(`${dateIso.slice(0, 10)}T${timeHHMM.trim()}:00${BOOKING_SLOT_TZ_OFFSET}`);
+}
+
+function isRefundWindowForCancellation(dateIso: string, timeHHMM: string): boolean {
+  return (lessonStartDateUtcMs(dateIso, timeHHMM) - Date.now()) / 3600_000 >= CANCELLATION_REFUND_MIN_HOURS;
+}
+
 export type FinanceTxDto = {
   id: number;
   createdAt: string;
@@ -61,6 +75,8 @@ export type FinanceTxDto = {
   units: number | null;
   unitRateAmd: number | null;
   bookingId: number | null;
+  refundRequestedAt: string | null;
+  refundReviewedAt: string | null;
 };
 
 function toDto(row: FinanceTransaction): FinanceTxDto {
@@ -87,10 +103,42 @@ function toDto(row: FinanceTransaction): FinanceTxDto {
     units: row.units == null ? null : Number(row.units),
     unitRateAmd: row.unitRateAmd ?? null,
     bookingId: row.bookingId ?? null,
+    refundRequestedAt: row.refundRequestedAt ? new Date(row.refundRequestedAt).toISOString() : null,
+    refundReviewedAt: row.refundReviewedAt ? new Date(row.refundReviewedAt).toISOString() : null,
   };
 }
 
 export default class FinanceService {
+  private static inferTransactionFlow(row: FinanceTransaction): 'package' | 'group' | 'practical' | 'one_on_one' | 'other' {
+    const d = row.description.trim().toLowerCase();
+    if (d.includes('package')) return 'package';
+    if (d.includes('group theory') || d.includes('theory group') || d.includes('group')) return 'group';
+    if (d.includes('1:1') || d.includes('personal theory')) return 'one_on_one';
+    if (d.includes('practical')) return 'practical';
+    return 'other';
+  }
+
+  private static async sendTransactionEmail(
+    row: FinanceTransaction,
+    eventKey: 'created' | 'refund_requested' | 'refund_approved' | 'refund_rejected',
+    actionLabel: string,
+  ): Promise<void> {
+    const email = row.email.trim();
+    if (!email) return;
+    const base = config.PANEL_DEFAULT_ORIGIN.replace(/\/+$/, '');
+    await MailService.sendTransactionLifecycleUpdate(email, {
+      studentName: row.customer,
+      transactionId: row.id,
+      description: row.description,
+      grossAmd: Number(row.grossAmd),
+      flowLabel: this.inferTransactionFlow(row),
+      eventKey,
+      statusLabel: row.status,
+      actionLabel,
+      dashboardUrl: `${base}/dashboard/finance`,
+    });
+  }
+
   static async list(): Promise<FinanceTxDto[]> {
     const rows = await FinanceTransaction.findAll({ order: [['createdAt', 'DESC']] });
     return rows.map(toDto);
@@ -209,6 +257,11 @@ export default class FinanceService {
       } as never,
       { transaction: input.transaction },
     );
+    void this.sendTransactionEmail(
+      row,
+      'created',
+      'Ձեր գործարքը գրանցվել է։ Նոր կարգավիճակի դեպքում կուղարկենք հաջորդ թարմացումը։',
+    ).catch(() => {});
     return toDto(row);
   }
 
@@ -337,5 +390,94 @@ export default class FinanceService {
       );
     }
     await row.destroy();
+  }
+
+  /** Student requests staff-reviewed refund for a payment row. */
+  static async requestRefundForStudentUser(id: number, studentUserId: number): Promise<FinanceTxDto> {
+    return sequelize.transaction(async (transaction) => {
+      const student = await User.findByPk(studentUserId, { transaction });
+      if (!student || student.accountType !== 'student') {
+        throw new ErrorsUtil.PermissionError('Student access required.', HttpStatusCodesUtil.FORBIDDEN);
+      }
+      const tx = await FinanceTransaction.findByPk(id, { transaction });
+      if (!tx) {
+        throw new ErrorsUtil.ResourceNotFoundError('Transaction not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      if (tx.status !== 'completed') {
+        throw new ErrorsUtil.InputValidationError('Only completed payments can be refunded.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (tx.refundRequestedAt != null) {
+        throw new ErrorsUtil.ConflictError('Refund request already submitted.', HttpStatusCodesUtil.CONFLICT);
+      }
+      const sameOwner = tx.email.trim().toLowerCase() === student.email.trim().toLowerCase();
+      if (!sameOwner) {
+        throw new ErrorsUtil.PermissionError('You can only request refunds for your own payments.', HttpStatusCodesUtil.FORBIDDEN);
+      }
+
+      if (tx.bookingId != null) {
+        const booking = await Booking.findByPk(tx.bookingId, { transaction });
+        if (!booking || booking.studentUserId !== studentUserId) {
+          throw new ErrorsUtil.PermissionError('You can only request refunds for your own bookings.', HttpStatusCodesUtil.FORBIDDEN);
+        }
+        const dateIso = typeof booking.dateIso === 'string' ? booking.dateIso.slice(0, 10) : new Date(booking.dateIso).toISOString().slice(0, 10);
+        if (!isRefundWindowForCancellation(dateIso, booking.time)) {
+          throw new ErrorsUtil.InputValidationError(
+            'Refund request is only allowed at least 24 hours before lesson start.',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
+        }
+      } else {
+        const createdRaw = (tx as unknown as { createdAt?: Date | string }).createdAt;
+        const createdAt = createdRaw instanceof Date ? createdRaw : createdRaw ? new Date(createdRaw) : new Date();
+        const ageMs = Date.now() - createdAt.getTime();
+        if (ageMs > 24 * 3600_000) {
+          throw new ErrorsUtil.InputValidationError(
+            'Refund request window has passed for this payment.',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
+        }
+      }
+
+      await tx.update({ status: 'pending', refundRequestedAt: new Date(), refundReviewedAt: null }, { transaction });
+      await tx.reload({ transaction });
+      void this.sendTransactionEmail(
+        tx,
+        'refund_requested',
+        'Վերադարձի հարցումը ընդունվել է և գտնվում է ստուգման փուլում։',
+      ).catch(() => {});
+      return toDto(tx);
+    });
+  }
+
+  static async approveRefundRequest(id: number): Promise<FinanceTxDto> {
+    const tx = await FinanceTransaction.findByPk(id);
+    if (!tx) {
+      throw new ErrorsUtil.ResourceNotFoundError('Transaction not found.', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    if (tx.refundRequestedAt == null || tx.status !== 'pending') {
+      throw new ErrorsUtil.InputValidationError('No pending refund request for this payment.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    await tx.update({ status: 'refunded', refundReviewedAt: new Date() });
+    await tx.reload();
+    void this.sendTransactionEmail(tx, 'refund_approved', 'Վերադարձի հարցումը հաստատվել է։').catch(() => {});
+    return toDto(tx);
+  }
+
+  static async rejectRefundRequest(id: number): Promise<FinanceTxDto> {
+    const tx = await FinanceTransaction.findByPk(id);
+    if (!tx) {
+      throw new ErrorsUtil.ResourceNotFoundError('Transaction not found.', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    if (tx.refundRequestedAt == null || tx.status !== 'pending') {
+      throw new ErrorsUtil.InputValidationError('No pending refund request for this payment.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    await tx.update({ status: 'completed', refundReviewedAt: new Date(), refundRequestedAt: null });
+    await tx.reload();
+    void this.sendTransactionEmail(
+      tx,
+      'refund_rejected',
+      'Վերադարձի հարցումը մերժվել է, և վճարումը մնում է կատարված։',
+    ).catch(() => {});
+    return toDto(tx);
   }
 }
