@@ -38,7 +38,7 @@ function formatTimeRange(time: string, endTime: string | null | undefined) {
 function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => string) {
   if (
     booking.cancellationRequestedAt &&
-    (booking.status === "confirmed" || booking.status === "pending")
+    (booking.status === "confirmed" || booking.status === "pending" || booking.status === "pending_payment")
   ) {
     return t("bookingStatusCancellationPendingLabel");
   }
@@ -47,6 +47,8 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
       return t("confirmed");
     case "pending":
       return t("pending");
+    case "pending_payment":
+      return t("pending_payment");
     case "cancelled":
       return t("cancelled");
     case "refunded":
@@ -57,7 +59,7 @@ function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => stri
 function statusExplainKey(booking: StudentDemoBooking): TranslationKey {
   if (
     booking.cancellationRequestedAt &&
-    (booking.status === "confirmed" || booking.status === "pending")
+    (booking.status === "confirmed" || booking.status === "pending" || booking.status === "pending_payment")
   ) {
     return "bookingStatusExplainCancellationPending";
   }
@@ -66,6 +68,8 @@ function statusExplainKey(booking: StudentDemoBooking): TranslationKey {
       return "bookingStatusExplainConfirmed";
     case "pending":
       return "bookingStatusExplainPending";
+    case "pending_payment":
+      return booking.paymentRequiredNow ? "bookingStatusExplainPendingPaymentDue" : "bookingStatusExplainPendingPaymentReserved";
     case "cancelled":
       return "bookingStatusExplainCancelled";
     case "refunded":
@@ -76,13 +80,13 @@ function statusExplainKey(booking: StudentDemoBooking): TranslationKey {
 function statusBadgeClass(booking: StudentDemoBooking) {
   if (
     booking.cancellationRequestedAt &&
-    (booking.status === "confirmed" || booking.status === "pending")
+    (booking.status === "confirmed" || booking.status === "pending" || booking.status === "pending_payment")
   ) {
     return "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100";
   }
   const status = booking.status;
   if (status === "confirmed") return "bg-primary/10 text-primary";
-  if (status === "pending") return "bg-accent text-muted-foreground";
+  if (status === "pending" || status === "pending_payment") return "bg-accent text-muted-foreground";
   if (status === "cancelled") return "bg-destructive/10 text-destructive";
   if (status === "refunded") return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200";
   return "bg-accent text-muted-foreground";
@@ -90,7 +94,7 @@ function statusBadgeClass(booking: StudentDemoBooking) {
 
 /** Upcoming rows where the student may cancel or (if applicable) complete payment — matches backend `cancelPracticalStudentBooking` lesson types. */
 function studentUpcomingRowShowsActions(b: StudentDemoBooking, todayIso: string): boolean {
-  return (b.status === "pending" || b.status === "confirmed") && b.dateIso >= todayIso;
+  return (b.status === "pending" || b.status === "pending_payment" || b.status === "confirmed") && b.dateIso >= todayIso;
 }
 
 function isPracticalLesson(b: StudentDemoBooking): boolean {
@@ -360,7 +364,7 @@ export function DashboardBookingsListTab() {
                               {statusLabel(b, t)}
                             </Badge>
                             <p className="text-[11px] text-muted-foreground leading-snug">{t(statusExplainKey(b))}</p>
-                            {b.status === "pending" && holdActive(b) ? (
+                            {(b.status === "pending" || b.status === "pending_payment") && holdActive(b) ? (
                               <p className="text-[11px] text-amber-700 dark:text-amber-500 tabular-nums">
                                 {t("bookingPaymentRemainingLabel")}:{" "}
                                 {new Date(b.holdExpiresAt!).toLocaleString(locale, {
@@ -381,7 +385,7 @@ export function DashboardBookingsListTab() {
                         <td className="py-3 px-4 text-right align-top whitespace-nowrap">
                           {studentUpcomingRowShowsActions(b, todayIso) ? (
                             <div className="flex flex-col items-end gap-1.5">
-                              {b.status === "pending" && holdActive(b) ? (
+                              {(b.status === "pending" || b.status === "pending_payment") && holdActive(b) ? (
                                 <Button
                                   size="sm"
                                   variant="default"
@@ -393,7 +397,7 @@ export function DashboardBookingsListTab() {
                                 </Button>
                               ) : null}
                               {isPracticalLesson(b) &&
-                              b.status === "pending" &&
+                              (b.status === "pending" || b.status === "pending_payment") &&
                               holdActive(b) &&
                               typeof b.holdExpiresAt === "string" &&
                               new Date(b.holdExpiresAt).getTime() - Date.now() > 0 &&
@@ -409,10 +413,12 @@ export function DashboardBookingsListTab() {
                                   {busyId === b.id ? t("loading") : t("bookingAddFiveMinutesCta")}
                                 </Button>
                               ) : null}
-                              {isPracticalLesson(b) && b.status === "pending" && !holdActive(b) ? (
+                              {isPracticalLesson(b) &&
+                              (b.status === "pending" || b.status === "pending_payment") &&
+                              !holdActive(b) ? (
                                 <Button
                                   size="sm"
-                                  variant="outline"
+                                  variant={b.paymentRequiredNow ? "default" : "outline"}
                                   className="h-8 text-xs max-w-[11rem]"
                                   disabled={busyId === b.id}
                                   title={t("bookingStartPaymentWindowHint")}

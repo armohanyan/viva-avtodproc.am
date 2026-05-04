@@ -34,6 +34,18 @@ export function addOneCalendarMonth(isoDate: string): string {
   return `${String(nextY).padStart(4, '0')}-${String(nextM).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/** Subtract one calendar month from a DATEONLY string (inverse of {@link addOneCalendarMonth} rules). */
+export function subtractOneCalendarMonth(isoDate: string): string {
+  const parts = parseIsoDateParts(isoDate);
+  if (!parts) throw new Error(`Invalid ISO date: ${isoDate}`);
+  const { y, m, d } = parts;
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevY = m === 1 ? y - 1 : y;
+  const dim = lastDayOfMonth(prevY, prevM);
+  const day = Math.min(d, dim);
+  return `${String(prevY).padStart(4, '0')}-${String(prevM).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /** Today as UTC YYYY-MM-DD (matches `Date.toISOString().slice(0, 10)` for server-local “today” in UTC). */
 export function todayIsoUtc(): string {
   return new Date().toISOString().slice(0, 10);

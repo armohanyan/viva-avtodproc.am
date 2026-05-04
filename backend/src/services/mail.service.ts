@@ -125,7 +125,16 @@ export type BookingLifecycleEmailData = {
   bookingType: string;
   dateIso: string;
   time: string;
-  eventKey: 'created' | 'updated' | 'cancel_request' | 'confirmed' | 'cancelled' | 'refunded' | 'payment_received';
+  eventKey:
+    | 'created'
+    | 'updated'
+    | 'cancel_request'
+    | 'confirmed'
+    | 'cancelled'
+    | 'refunded'
+    | 'payment_received'
+    | 'payment_reminder'
+    | 'auto_cancelled_payment';
   statusLabel: string;
   summary: string;
 };
@@ -167,6 +176,10 @@ function bookingEventSubject(data: BookingLifecycleEmailData): string {
       return `Վերադարձով չեղարկում (${typeHy}) ${idPart}`;
     case 'payment_received':
       return `Վճարումը ստացվել է (${typeHy}) ${idPart}`;
+    case 'payment_reminder':
+      return `Վճարման հիշեցում (${typeHy}) ${idPart}`;
+    case 'auto_cancelled_payment':
+      return `Ամրագրումը չեղարկվել է — վճարում չկատարվեց (${typeHy}) ${idPart}`;
     default:
       return `Ամրագրման թարմացում ${idPart}`;
   }
@@ -336,7 +349,11 @@ export default class MailService {
     const intro =
       bookingData.eventKey === 'confirmed'
         ? 'Ձեր ամրագրումը հաստատվել է։'
-        : 'Ձեր ամրագրման հետ կապված առկա է նոր թարմացում։';
+        : bookingData.eventKey === 'payment_reminder'
+          ? 'Ձեր ամրագրման համար շուտով պարտադիր կլինի վճարումը։'
+          : bookingData.eventKey === 'auto_cancelled_payment'
+            ? 'Ձեր ամրագրումը չեղարկվել է վճարումը ժամանակին չավարտելու պատճառով։'
+            : 'Ձեր ամրագրման հետ կապված առկա է նոր թարմացում։';
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(bookingData.studentName || 'Student')} 👋</p>
         <p style="margin:0 0 16px;">${escapeHtml(intro)}</p>

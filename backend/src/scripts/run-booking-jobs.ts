@@ -10,7 +10,12 @@ async function main() {
 
   const result = await BookingCronService.runDueJobs();
 
-  LoggerUtil.info(`run-booking-jobs: ${JSON.stringify(result)}`);
+  LoggerUtil.info(
+    `run-booking-jobs: ${JSON.stringify({
+      ...result,
+      lessonReminders: result.upcomingLessonRemindersCreated,
+    })}`,
+  );
   process.exit(0);
 }
 

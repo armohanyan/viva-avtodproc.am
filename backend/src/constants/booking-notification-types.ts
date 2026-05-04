@@ -9,6 +9,8 @@ export const BookingNotificationPersistedType = {
   BOOKING_CANCELLED: 'BOOKING_CANCELLED',
   BOOKING_REFUNDED: 'BOOKING_REFUNDED',
   BOOKING_REFUND_INVITATION: 'BOOKING_REFUND_INVITATION',
+  BOOKING_PAYMENT_REMINDER: 'BOOKING_PAYMENT_REMINDER',
+  BOOKING_AUTO_CANCELLED_PAYMENT: 'BOOKING_AUTO_CANCELLED_PAYMENT',
 } as const satisfies Record<string, NotificationType>;
 
 export type BookingNotificationPersistedTypeValue =

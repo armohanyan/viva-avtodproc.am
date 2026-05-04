@@ -124,6 +124,7 @@ type StudentPracticalBookingCreateResponse = {
   holdExtensionCount: number;
   maxHoldExtensions: number;
   paymentRequiredNow: boolean;
+  paymentRequiredAt?: string | null;
 };
 
 function formatCountdownMmSs(isoDeadline: string): string {
@@ -1023,7 +1024,7 @@ export default function LessonBookingCalendar({
                     const sess = studentPaySession!;
                     const hold = sess.holdExpiresAt;
                     const remainingMs = hold ? new Date(hold).getTime() - Date.now() : 0;
-                    if (hold && sess.status === "pending") {
+                    if (hold && (sess.status === "pending" || sess.status === "pending_payment")) {
                       const canExtend =
                         remainingMs > 0 &&
                         remainingMs <= 60_000 &&
@@ -1182,6 +1183,11 @@ export default function LessonBookingCalendar({
                     </>
                   ) : null}
                 </div>
+                {mode === "student" && studentBookingType === "practical" && selected && !selectedInPayHorizon ? (
+                  <p className="text-xs text-muted-foreground leading-relaxed rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                    {t("bookingReserveSlotPayLaterCallout")}
+                  </p>
+                ) : null}
                 {mode === "student" && studentBookingType === "practical" && selected && !selectedInPayHorizon ? (
                   <label className="flex items-start gap-2 text-xs text-muted-foreground cursor-pointer">
                     <input

@@ -65,18 +65,24 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
       }
     })();
 
+    const applySessionFromBrowser = () => {
+      setUser(loadAccountSession());
+    };
     const onStorage = (e: StorageEvent) => {
       if (e.key === ACCOUNT_SESSION_STORAGE_KEY && e.newValue === null) {
         setAccessTokenInMemory(null);
       }
-      setUser(loadAccountSession());
+      applySessionFromBrowser();
+    };
+    const onCustomSession = () => {
+      applySessionFromBrowser();
     };
     window.addEventListener("storage", onStorage);
-    window.addEventListener("viva-account-session-updated", onStorage);
+    window.addEventListener("viva-account-session-updated", onCustomSession);
     return () => {
       cancelled = true;
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener("viva-account-session-updated", onStorage);
+      window.removeEventListener("viva-account-session-updated", onCustomSession);
     };
   }, []);
 

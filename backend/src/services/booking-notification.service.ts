@@ -2,6 +2,8 @@ import { Booking, User } from '../models';
 import { BookingNotificationPersistedType as Bnt } from '../constants/booking-notification-types';
 import MailService from './mail.service';
 import NotificationService from './notification.service';
+import { todayIsoUtc } from '../utils/calendar-month.util';
+import { shouldSendPaymentReminderToday } from '../utils/booking-payment-schedule.util';
 
 function dateIsoString(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
@@ -162,6 +164,99 @@ export default class BookingNotificationService {
       entityType: 'booking',
       entityId: String(bookingId),
       dedupeKey: `booking-refund-invite:student-cancel-req:${bookingId}`,
+    });
+  }
+
+  /**
+   * Student: card payment will become mandatory when the lesson enters the 1-month window; sent once
+   * (see `bookings.payment_reminder_sent_at`).
+   */
+  static async emitReservedPaymentReminderOnce(bookingId: number): Promise<boolean> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] }],
+    });
+    if (!row) return false;
+    if (row.paidAt != null || String(row.status) !== 'pending_payment' || row.paymentReminderSentAt) {
+      return false;
+    }
+    if (!row.paymentRequiredAt) return false;
+    const pr = String(row.paymentRequiredAt).slice(0, 10);
+    if (!shouldSendPaymentReminderToday(todayIsoUtc(), pr, false)) return false;
+    const student = (row as unknown as { student?: User }).student;
+    if (!student) return false;
+    const dateLine = `${dateIsoString(row.dateIso)} ${row.time}`.trim();
+
+    const n = await NotificationService.createOne({
+      recipientUserId: student.id,
+      recipientRole: student.accountType,
+      type: Bnt.BOOKING_PAYMENT_REMINDER,
+      title: 'Payment coming due',
+      message: dateLine
+        ? `Payment for your reserved lesson will be required soon (deadline date ${pr}). ${dateLine}`
+        : `Payment for your reserved lesson will be required soon (deadline date ${pr}).`,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-payment-reminder:${row.id}`,
+      metadata: { paymentRequiredAt: pr },
+    });
+
+    const email = student.email?.trim();
+    if (email && n) {
+      await MailService.sendBookingLifecycleUpdate(email, {
+        bookingId: row.id,
+        studentName: student.name,
+        bookingType: bookingLessonTypeLabel(row.lessonType),
+        dateIso: dateIsoString(row.dateIso),
+        time: row.time,
+        eventKey: 'payment_reminder',
+        statusLabel: 'Payment required soon',
+        summary: `Your reserved lesson is approaching the payment date. Please complete card payment in your student panel by ${pr} (Armenia / business calendar). After that date unpaid bookings are released.`,
+      });
+    }
+
+    const fresh = await Booking.findByPk(bookingId);
+    if (fresh && !fresh.paymentReminderSentAt) {
+      await fresh.update({ paymentReminderSentAt: new Date() });
+    }
+    return true;
+  }
+
+  /** After auto-cancel for missed payment (booking row is `cancelled` with reason set). */
+  static async onBookingAutoCancelledForMissedPayment(bookingId: number): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] }],
+    });
+    if (!row) return;
+    const student = (row as unknown as { student?: User }).student;
+    if (!student) return;
+    const dateLine = `${dateIsoString(row.dateIso)} ${row.time}`.trim();
+
+    await NotificationService.createOne({
+      recipientUserId: student.id,
+      recipientRole: student.accountType,
+      type: Bnt.BOOKING_AUTO_CANCELLED_PAYMENT,
+      title: 'Booking cancelled — payment not received',
+      message: dateLine
+        ? `Your booking was cancelled because payment was not completed before the required date. ${dateLine}`
+        : 'Your booking was cancelled because payment was not completed before the required date.',
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-auto-cancel-pay:${row.id}`,
+    });
+
+    const email = student.email?.trim();
+    if (!email) return;
+
+    await MailService.sendBookingLifecycleUpdate(email, {
+      bookingId: row.id,
+      studentName: student.name,
+      bookingType: bookingLessonTypeLabel(row.lessonType),
+      dateIso: dateIsoString(row.dateIso),
+      time: row.time,
+      eventKey: 'auto_cancelled_payment',
+      statusLabel: 'Cancelled (payment missed)',
+      summary:
+        'Your booking was cancelled because payment was not completed before the required date. The slot has been released for other students.',
     });
   }
 }

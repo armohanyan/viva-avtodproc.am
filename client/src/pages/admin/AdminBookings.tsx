@@ -872,12 +872,15 @@ export default function AdminBookings() {
       const timeLabel = formatBookingSlotRangeLabel(b.time, b.endTime);
       const hay = [b.id, stu, b.instructorName, dateLabel, timeLabel, b.time, b.type, b.status, branchLabel].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
+      const canon = toCanonicalBookingStatus(b.status);
       const matchStatus =
         statusFilter === "all"
           ? true
           : statusFilter === "pending_student_cancel"
             ? Boolean(b.cancellationRequestedAt)
-            : toCanonicalBookingStatus(b.status) === statusFilter;
+            : statusFilter === "pending"
+              ? canon === "pending" || canon === "pending_payment"
+              : canon === statusFilter;
       const matchBranch = branchFilter === "all" || b.branchId === branchFilter;
       const matchLessonType = lessonTypeFilter === "all" || b.type === lessonTypeFilter;
       return matchSearch && matchStatus && matchBranch && matchLessonType;

@@ -57,6 +57,11 @@ export type StudentDemoBooking = {
   /** From API (practical): hours until lesson (+04 policy); negative if started. */
   hoursUntilLesson?: number;
   cancellationRequestedAt?: string | null;
+  /** From API: explicit payment lifecycle. */
+  paymentStatus?: string | null;
+  paymentRequiredAt?: string | null;
+  /** From API: lesson is within the “pay within one month” window but not yet paid. */
+  paymentRequiredNow?: boolean;
 };
 
 function isUpcomingBooking(b: StudentDemoBooking, todayIso: string): boolean {

@@ -1032,6 +1032,7 @@ const en = {
   active: "Active",
   inactive: "Inactive",
   pending: "Pending",
+  pending_payment: "Reserved (unpaid)",
   confirmed: "Confirmed",
   cancelled: "Cancelled",
   refunded: "Refunded",
@@ -1169,6 +1170,8 @@ const en = {
   bookingsAwaitingOfficeCancellation: "Office is processing your cancellation request.",
   bookingsCancelDialogConfirmRequest: "Send cancellation request",
   bookingsCancelDialogConfirmLate: "Yes, cancel — no refund",
+  bookingReserveSlotPayLaterCallout:
+    "You can reserve this slot now and pay later. Payment will be required when the lesson date gets closer.",
   bookingReservePayLaterHint:
     "Reserved — pay when you like. When you start payment, you’ll have 10 minutes on the server to finish.",
   bookingStartPaymentWindowCta: "Complete payment (start 10-minute timer)",
@@ -1184,6 +1187,9 @@ const en = {
   bookingPaymentWindowStartedToast: "10-minute payment window started.",
   bookingStatusExplainConfirmed: "Paid — your lesson is confirmed.",
   bookingStatusExplainPending: "Reserved — payment not completed yet (or pay later).",
+  bookingStatusExplainPendingPaymentReserved:
+    "You reserved this slot. Card payment is not required until the lesson is within one month (see your email reminders).",
+  bookingStatusExplainPendingPaymentDue: "Payment is now required to keep this reservation — use Pay now to start the 10-minute window.",
   bookingStatusExplainCancelled: "Cancelled less than 24h before the lesson — no refund.",
   bookingStatusExplainRefunded: "Office confirmed cancellation — refund issued if you had paid.",
   bookingsCancelCta: "Cancel booking",
@@ -2474,6 +2480,7 @@ const ru: typeof en = {
   active: "Активен",
   inactive: "Неактивен",
   pending: "Ожидает",
+  pending_payment: "Бронь без оплаты",
   confirmed: "Подтверждён",
   cancelled: "Отменён",
   refunded: "Возврат",
@@ -2607,6 +2614,8 @@ const ru: typeof en = {
   bookingsAwaitingOfficeCancellation: "Офис обрабатывает вашу заявку на отмену.",
   bookingsCancelDialogConfirmRequest: "Отправить заявку",
   bookingsCancelDialogConfirmLate: "Да, отменить без возврата",
+  bookingReserveSlotPayLaterCallout:
+    "Вы можете забронировать этот слот сейчас и оплатить позже. Оплата понадобится, когда дата урока станет ближе.",
   bookingReservePayLaterHint:
     "Бронь без срочной оплаты. Когда запустите оплату, на сервере откроется окно 10 минут.",
   bookingStartPaymentWindowCta: "Оплатить (запустить 10-минутный таймер)",
@@ -2622,6 +2631,10 @@ const ru: typeof en = {
   bookingPaymentWindowStartedToast: "Запущено 10-минутное окно оплаты.",
   bookingStatusExplainConfirmed: "Оплачено — урок подтверждён.",
   bookingStatusExplainPending: "Забронировано — оплата ещё не завершена (или оплата позже).",
+  bookingStatusExplainPendingPaymentReserved:
+    "Слот забронирован без оплаты. Карта понадобится, когда до урока останется не больше месяца (напомним по почте).",
+  bookingStatusExplainPendingPaymentDue:
+    "Оплата обязательна, чтобы сохранить бронь — нажмите «Оплатить» и завершите оплату за 10 минут.",
   bookingStatusExplainCancelled: "Отмена менее чем за 24 ч до урока — без возврата.",
   bookingStatusExplainRefunded: "Офис подтвердил отмену — возврат при оплате.",
   bookingsCancelCta: "Отменить бронирование",
@@ -3912,6 +3925,7 @@ const am: typeof en = {
   active: "Ակտիվ",
   inactive: "Ոչ ակտիվ",
   pending: "Սպասման մեջ",
+  pending_payment: "Ամրագրված (չվճարված)",
   confirmed: "Հաստատված",
   cancelled: "Չեղարկված",
   refunded: "Վերադարձ",
@@ -4045,6 +4059,8 @@ const am: typeof en = {
   bookingsAwaitingOfficeCancellation: "Ադմինիստրացիան մշակում է չեղարկման հայտը։",
   bookingsCancelDialogConfirmRequest: "Ուղարկել չեղարկման հայտ",
   bookingsCancelDialogConfirmLate: "Այո, չեղարկել առանց վերադարձի",
+  bookingReserveSlotPayLaterCallout:
+    "Կարող եք հիմա ամրագրել սլոթը և վճարել ավելի ուշ։ Վճարումը պարտադիր կդառնա, երբ դասի ամսաթիվը մոտենա։",
   bookingReservePayLaterHint:
     "Ամրագրումը պահվում է։ Վճարումը սկսելիս սերվերը տալիս է 10 րոպե ավարտելու համար։",
   bookingStartPaymentWindowCta: "Վճարել (սկսել 10 րոպեի վճարման պատուհանը)",
@@ -4060,6 +4076,10 @@ const am: typeof en = {
   bookingPaymentWindowStartedToast: "Սկսվել է 10 րոպե վճարման պատուհանը։",
   bookingStatusExplainConfirmed: "Վճարված է — դասը հաստատված է։",
   bookingStatusExplainPending: "Ամրագրված է — վճարումը դեռ ավարտված չէ (կամ վճարում ավելի ուշ)։",
+  bookingStatusExplainPendingPaymentReserved:
+    "Սլոթը ամրագրված է առանց վճարման։ Քարտային վճարումը պարտադիր կդառնա, երբ դասը լինի մինչև մեկ ամիս հեռավորության մեջ։",
+  bookingStatusExplainPendingPaymentDue:
+    "Այս ամրագրումը պահելու համար վճարումը պարտադիր է հիմա — սեղմեք «Վճարել» և ավարտեք 10 րոպեի ընթացքում։",
   bookingStatusExplainCancelled: "Չեղարկում դասից <24 ժ առաջ՝ առանց վերադարձի։",
   bookingStatusExplainRefunded: "Ադմինիստրացիան հաստատեց չեղարկումը՝ վերադարձ եթե վճարված էր։",
   bookingsCancelCta: "Չեղարկել ամրագրումը",

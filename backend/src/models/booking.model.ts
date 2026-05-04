@@ -37,6 +37,18 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare lessonPassedSuccessfully: CreationOptional<boolean | null>;
   /** Package / extra practical credits used for this booking; restored on cancellation. */
   declare prepaidMeta: CreationOptional<Record<string, unknown> | null>;
+  /**
+   * Payment lifecycle for student bookings (`paid` after capture). Nullable on legacy/admin rows.
+   */
+  declare paymentStatus: CreationOptional<'paid' | 'unpaid' | 'pending' | 'failed' | null>;
+  /** First calendar day when pay-at-booking-time applies (student must complete payment). */
+  declare paymentRequiredAt: CreationOptional<string | null>;
+  /** When the “payment due soon” email + notification were sent (dedupe). */
+  declare paymentReminderSentAt: CreationOptional<Date | null>;
+  /** When the system cancelled the booking for missed payment (auto-cancel path). */
+  declare autoCancelledAt: CreationOptional<Date | null>;
+  /** Structured reason for cancellation when applicable (e.g. missed payment deadline). */
+  declare cancellationReason: CreationOptional<string | null>;
 }
 
 Booking.init(
@@ -58,6 +70,11 @@ Booking.init(
     cancellationRequestedAt: { type: DataTypes.DATE, allowNull: true },
     lessonPassedSuccessfully: { type: DataTypes.BOOLEAN, allowNull: true },
     prepaidMeta: { type: DataTypes.JSON, allowNull: true },
+    paymentStatus: { type: DataTypes.STRING(16), allowNull: true },
+    paymentRequiredAt: { type: DataTypes.DATEONLY, allowNull: true },
+    paymentReminderSentAt: { type: DataTypes.DATE, allowNull: true },
+    autoCancelledAt: { type: DataTypes.DATE, allowNull: true },
+    cancellationReason: { type: DataTypes.STRING(64), allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

@@ -15,6 +15,7 @@
     "db:seed": "tsx src/scripts/run-seed.ts",
     "jobs:bookings": "tsx src/scripts/run-booking-jobs.ts",
     "selftest:booking": "tsx src/scripts/booking-rules-selftest.ts",
+    "selftest:payment-schedule": "tsx src/scripts/booking-payment-schedule-selftest.ts",
     "selftest:admin-mfa": "tsx src/scripts/admin-mfa-selftest.ts"
   },
   "dependencies": {

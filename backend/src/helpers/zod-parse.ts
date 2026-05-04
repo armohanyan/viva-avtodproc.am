@@ -13,7 +13,7 @@ export function parseBody<T>(schema: ZodSchema<T>, body: unknown): T {
   return r.data;
 }
 
-export function parseQuery<T>(schema: ZodSchema<T>, query: unknown): T {
+export function parseQuery<T>(schema: ZodType<T, ZodTypeDef, unknown>, query: unknown): T {
   const r = schema.safeParse(query);
   if (!r.success) {
     const msg = r.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');

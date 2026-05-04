@@ -3,8 +3,7 @@ function trimTrailingSlashes(s: string): string {
 }
 
 function viteApiBaseUrl(): string | undefined {
-	const meta = import.meta as ImportMeta & { env?: { VITE_API_BASE_URL?: string } };
-	return meta.env?.VITE_API_BASE_URL?.trim();
+	return import.meta.env.VITE_API_BASE_URL?.trim();
 }
 
 /**

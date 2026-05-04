@@ -8,7 +8,7 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { ResourceNotFoundError, UnauthorizedError, PermissionError, InputValidationError } = ErrorsUtil;
 
-const bookingStatusSchema = z.enum(['confirmed', 'pending', 'cancelled', 'refunded']);
+const bookingStatusSchema = z.enum(['confirmed', 'pending', 'pending_payment', 'cancelled', 'refunded']);
 
 const createBodySchema = z.object({
   studentId: z.coerce.number().int().positive(),

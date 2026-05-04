@@ -11,6 +11,7 @@ import {
   TheoryCohortEnrollment,
   User,
 } from '../models';
+import { BOOKING_CANCELLATION_REASON } from '../constants/booking-cancellation-reasons';
 import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import FinanceService from './finance.service';
@@ -18,7 +19,12 @@ import BookingNotificationService from './booking-notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil, LoggerUtil } from '../utils';
-import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
+import { todayIsoUtc } from '../utils/calendar-month.util';
+import {
+  getPaymentRequiredCalendarIso,
+  isImmediatePaymentRequired,
+  shouldAutoCancelUnpaidAfterPaymentDeadline,
+} from '../utils/booking-payment-schedule.util';
 
 const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
 
@@ -100,10 +106,13 @@ export type BookingAdminDto = {
   lessonPassedSuccessfully: boolean | null;
   /** From `booking_slots` when loaded (admin calendar / multi-day edits). */
   slotEntries?: { dateIso: string; time: string }[];
+  paymentStatus?: string | null;
+  paymentRequiredAt?: string | null;
+  cancellationReason?: string | null;
 };
 
 /** Canonical booking row statuses (DB + API). */
-export type BookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'refunded';
+export type BookingStatus = 'confirmed' | 'pending' | 'pending_payment' | 'cancelled' | 'refunded';
 
 /** Response for POST /bookings/:id/approve-student-cancellation (staff). */
 export type StaffApproveStudentCancellationResponse = {
@@ -134,6 +143,11 @@ export type StudentBookingDto = {
   /** ISO time when a refund cancellation was submitted; staff must approve. */
   cancellationRequestedAt?: string | null;
   maxHoldExtensions?: number;
+  paymentStatus?: 'paid' | 'unpaid' | 'pending' | 'failed' | null;
+  /** First calendar day when card payment becomes mandatory (reserved-unpaid flow). */
+  paymentRequiredAt?: string | null;
+  /** True when the lesson is within the pay-horizon and payment has not been captured yet. */
+  paymentRequiredNow?: boolean;
 };
 
 /** Result of POST /bookings/:id/cancel-student for student bookings. */
@@ -175,6 +189,8 @@ export type StudentMultiSlotBookingDto = {
   paymentRequiredNow: boolean;
   /** True when the booking is fully covered by package / extra practical credits (no card payment). */
   coveredByPrepaidCredits: boolean;
+  /** First calendar day when payment becomes mandatory (reserved-unpaid practical bookings). */
+  paymentRequiredAt?: string | null;
 };
 
 export type StudentPaidBookingCreateDto = {
@@ -199,7 +215,7 @@ function lessonPassedSuccessfullyFromRow(b: Booking): boolean | null {
   return Boolean(v);
 }
 
-const BOOKING_STATUSES = new Set<string>(['confirmed', 'pending', 'cancelled', 'refunded']);
+const BOOKING_STATUSES = new Set<string>(['confirmed', 'pending', 'pending_payment', 'cancelled', 'refunded']);
 
 /** Legacy rows from older builds — coerce for API / UI. */
 export function normalizeBookingStatus(raw: string): BookingStatus {
@@ -209,7 +225,7 @@ export function normalizeBookingStatus(raw: string): BookingStatus {
   if (raw === 'completed') {
     return 'confirmed';
   }
-  if (raw === 'pending_prebook' || raw === 'pending_payment') {
+  if (raw === 'pending_prebook') {
     return 'pending';
   }
   return 'pending';
@@ -438,8 +454,10 @@ async function finalizePracticalCancellationInTx(opts: {
   studentUserId: number;
   transaction: Transaction;
   refundIfPaid: boolean;
+  cancellationReason?: string | null;
+  recordAutoCancelledAt?: boolean;
 }): Promise<{ status: BookingStatus; refundIssued: boolean }> {
-  const { row, studentUserId, transaction, refundIfPaid } = opts;
+  const { row, studentUserId, transaction, refundIfPaid, cancellationReason, recordAutoCancelledAt } = opts;
   const st = normalizeBookingStatus(row.status);
   const wasPaid = row.paidAt != null && st === 'confirmed';
   const gross = row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
@@ -468,6 +486,8 @@ async function finalizePracticalCancellationInTx(opts: {
       holdExtensionCount: 0,
       cancellationRequestedAt: null,
       prepaidMeta: null,
+      ...(cancellationReason != null && cancellationReason.length > 0 ? { cancellationReason } : {}),
+      ...(recordAutoCancelledAt ? { autoCancelledAt: new Date() } : {}),
     },
     { transaction },
   );
@@ -631,6 +651,8 @@ export default class BookingService {
             holdExpiresAt: holdExp,
             holdExtensionCount: 0,
             prepaidMeta: input.prepaidMeta ?? null,
+            paymentStatus: 'unpaid',
+            paymentRequiredAt: null,
           },
           { transaction },
         );
@@ -681,6 +703,9 @@ export default class BookingService {
       branchId: b.branchId,
       cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
+      paymentStatus: b.paymentStatus ?? null,
+      paymentRequiredAt: b.paymentRequiredAt ? String(b.paymentRequiredAt).slice(0, 10) : null,
+      cancellationReason: b.cancellationReason ?? null,
     };
   }
 
@@ -855,6 +880,12 @@ export default class BookingService {
         dIso >= today &&
         !pendingCancel &&
         isRefundWindowForCancellation(dIso, b.time);
+      const paymentReqRaw = b.paymentRequiredAt != null ? String(b.paymentRequiredAt).slice(0, 10) : null;
+      const paymentRequiredNow =
+        b.paidAt == null &&
+        (st === 'pending' || st === 'pending_payment') &&
+        isImmediatePaymentRequired(dIso, today);
+      const ps = b.paymentStatus as StudentBookingDto['paymentStatus'];
       return {
         id: b.id,
         dateIso: dateIsoString(b.dateIso),
@@ -876,6 +907,9 @@ export default class BookingService {
         cancelRefundEligible: eligible,
         hoursUntilLesson: Math.round(hoursLeft * 10) / 10,
         cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
+        paymentStatus: ps ?? undefined,
+        paymentRequiredAt: paymentReqRaw,
+        paymentRequiredNow,
       };
     });
   }
@@ -1028,6 +1062,8 @@ export default class BookingService {
                 holdExpiresAt: null,
                 holdExtensionCount: 0,
                 prepaidMeta: meta as unknown as Record<string, unknown>,
+                paymentStatus: 'paid',
+                paymentRequiredAt: null,
               },
               { transaction },
             );
@@ -1050,7 +1086,7 @@ export default class BookingService {
             };
           }
 
-          const paymentRequiredNow = isLessonOnOrBeforePayHorizon(dateIso, today);
+          const paymentRequiredNow = isImmediatePaymentRequired(dateIso, today);
           if (paymentRequiredNow && input.payNow === false) {
             throw new InputValidationError(
               'Payment is required for this lesson date; you cannot defer payment.',
@@ -1060,6 +1096,8 @@ export default class BookingService {
 
           const startPaymentHold = paymentRequiredNow || input.payNow === true;
           const holdExp = startPaymentHold ? new Date(Date.now() + PAYMENT_HOLD_MS) : null;
+          const reserveUnpaid = !startPaymentHold;
+          const paymentReqCal = getPaymentRequiredCalendarIso(dateIso);
 
           const booking = await Booking.create(
             {
@@ -1071,11 +1109,13 @@ export default class BookingService {
               endTime: exclusiveEnd,
               totalPriceAmd,
               lessonType: 'practical',
-              status: 'pending',
+              status: reserveUnpaid ? 'pending_payment' : 'pending',
               paidAt: null,
               holdExpiresAt: holdExp,
               holdExtensionCount: 0,
               prepaidMeta: null,
+              paymentStatus: 'unpaid',
+              paymentRequiredAt: reserveUnpaid ? paymentReqCal : null,
             },
             { transaction },
           );
@@ -1112,13 +1152,14 @@ export default class BookingService {
         endTimeExclusive: exclusiveEnd,
         totalPriceAmd: coveredByPrepaidCredits ? 0 : totalPriceAmd,
         hourlyRateAmd: hourly,
-        status: coveredByPrepaidCredits ? 'confirmed' : 'pending',
+        status: coveredByPrepaidCredits ? 'confirmed' : normalizeBookingStatus(String(row.status)),
         branchId: input.branchId,
         holdExpiresAt: holdExpiresAt ? holdExpiresAt.toISOString() : null,
         holdExtensionCount: 0,
         maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
         paymentRequiredNow,
         coveredByPrepaidCredits,
+        paymentRequiredAt: row.paymentRequiredAt ? String(row.paymentRequiredAt).slice(0, 10) : null,
       };
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -2077,7 +2118,7 @@ export default class BookingService {
         throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
       const st = normalizeBookingStatus(row.status);
-      if (st !== 'pending' || row.paidAt != null) {
+      if ((st !== 'pending' && st !== 'pending_payment') || row.paidAt != null) {
         throw new InputValidationError('This booking cannot be extended.', HttpStatusCodesUtil.BAD_REQUEST);
       }
       if (row.holdExpiresAt == null) {
@@ -2130,16 +2171,26 @@ export default class BookingService {
         throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
       const st = normalizeBookingStatus(row.status);
-      if (st !== 'pending' || row.paidAt != null) {
+      if ((st !== 'pending' && st !== 'pending_payment') || row.paidAt != null) {
         throw new InputValidationError('This booking is not awaiting payment.', HttpStatusCodesUtil.BAD_REQUEST);
       }
       const today = todayIsoUtc();
       const dateIso = dateIsoString(row.dateIso);
-      if (isLessonOnOrBeforePayHorizon(dateIso, today)) {
+      const inHorizon = isImmediatePaymentRequired(dateIso, today);
+      if (inHorizon && st !== 'pending_payment') {
         throw new InputValidationError(
           'This lesson date uses the standard payment flow at booking time.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
+      }
+      if (inHorizon && st === 'pending_payment') {
+        const holdUntil = new Date(Date.now() + PAYMENT_HOLD_MS);
+        await row.update({ holdExpiresAt: holdUntil, holdExtensionCount: 0 }, { transaction });
+        return {
+          holdExpiresAt: holdUntil.toISOString(),
+          holdExtensionCount: 0,
+          maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
+        };
       }
       if (row.holdExpiresAt != null && new Date(row.holdExpiresAt).getTime() > Date.now()) {
         return {
@@ -2171,7 +2222,7 @@ export default class BookingService {
         throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
       const st = normalizeBookingStatus(row.status);
-      if (st !== 'pending' || row.paidAt != null) {
+      if ((st !== 'pending' && st !== 'pending_payment') || row.paidAt != null) {
         throw new InputValidationError('This booking is not awaiting payment.', HttpStatusCodesUtil.BAD_REQUEST);
       }
       if (row.holdExpiresAt == null || new Date(row.holdExpiresAt).getTime() <= Date.now()) {
@@ -2189,7 +2240,13 @@ export default class BookingService {
       }
       const paidAt = new Date();
       await row.update(
-        { status: 'confirmed', paidAt, holdExpiresAt: null, holdExtensionCount: 0 },
+        {
+          status: 'confirmed',
+          paidAt,
+          holdExpiresAt: null,
+          holdExtensionCount: 0,
+          paymentStatus: 'paid',
+        },
         { transaction },
       );
       updatedId = row.id;
@@ -2250,7 +2307,7 @@ export default class BookingService {
       if (st === 'cancelled' || st === 'refunded') {
         throw new InputValidationError('This booking is already closed.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      if (st !== 'pending' && st !== 'confirmed') {
+      if (st !== 'pending' && st !== 'pending_payment' && st !== 'confirmed') {
         throw new InputValidationError('This booking cannot be cancelled here.', HttpStatusCodesUtil.BAD_REQUEST);
       }
 
@@ -2324,7 +2381,7 @@ export default class BookingService {
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
-      if (st !== 'pending' && st !== 'confirmed') {
+      if (st !== 'pending' && st !== 'pending_payment' && st !== 'confirmed') {
         throw new InputValidationError('This booking cannot be resolved here.', HttpStatusCodesUtil.BAD_REQUEST);
       }
       const requestedAt = new Date(row.cancellationRequestedAt as Date);
@@ -2396,6 +2453,40 @@ export default class BookingService {
       await row.update({ cancellationRequestedAt: null }, { transaction });
     });
     return { ok: true as const };
+  }
+
+  /**
+   * Daily job: after the payment deadline day, cancel reserved-unpaid practical rows and free slots.
+   * Idempotent and safe for concurrent cron runners (row lock + status guard).
+   */
+  static async autoCancelReservedUnpaidAfterPaymentDeadlineFromCron(bookingId: number): Promise<boolean> {
+    let did = false;
+    await sequelize.transaction(async (transaction) => {
+      const row = await Booking.findByPk(bookingId, { transaction, lock: Transaction.LOCK.UPDATE });
+      if (!row) return;
+      if (row.paidAt != null) return;
+      const st = normalizeBookingStatus(String(row.status));
+      if (st !== 'pending_payment') return;
+      if (!row.paymentRequiredAt) return;
+      const today = todayIsoUtc();
+      const pr = String(row.paymentRequiredAt).slice(0, 10);
+      if (!shouldAutoCancelUnpaidAfterPaymentDeadline(today, pr, false)) return;
+      await finalizePracticalCancellationInTx({
+        row,
+        studentUserId: row.studentUserId,
+        transaction,
+        refundIfPaid: false,
+        cancellationReason: BOOKING_CANCELLATION_REASON.PAYMENT_NOT_COMPLETED_BEFORE_REQUIRED_DATE,
+        recordAutoCancelledAt: true,
+      });
+      did = true;
+    });
+    if (did) {
+      setImmediate(() => {
+        void BookingNotificationService.onBookingAutoCancelledForMissedPayment(bookingId).catch(() => {});
+      });
+    }
+    return did;
   }
 
   /**
