@@ -1,4 +1,4 @@
-import { API_V1_PREFIX } from "src/constants/api";
+import { API_V1_PREFIX } from "src/constants/api.constants";
 import { getApiBaseUrl } from "src/lib/apiBaseUrl";
 import { memoryAccessTokenLooksValid } from "src/lib/accessTokenMemory";
 import { saveAccountSession } from "src/modules/accounts/account.session";
@@ -61,7 +61,13 @@ export async function tryRefreshAccessToken(): Promise<RefreshAttempt> {
 
 			const data = JSON.parse(text) as {
 				accessToken?: string;
-				user?: { id: string | number; email: string; name: string; accountType: string };
+				user?: {
+					id: string | number;
+					email: string;
+					name: string;
+					accountType: string;
+					hasPassword?: boolean;
+				};
 			};
 
 			if (!data.accessToken || !data.user || !isAccountType(data.user.accountType)) {
@@ -74,6 +80,7 @@ export async function tryRefreshAccessToken(): Promise<RefreshAttempt> {
 				name: data.user.name,
 				accountType: data.user.accountType,
 				accessToken: data.accessToken,
+				...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
 			};
 			saveAccountSession(next);
 			return "ok";

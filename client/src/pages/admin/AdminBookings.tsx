@@ -52,6 +52,8 @@ import {
   parseAmdInput,
   toDatetimeLocalValue,
 } from "./finance/adminFinanceShared";
+import { BOOKING_STATUS_BADGE_CLASS } from "src/constants/booking.constants";
+import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 
 type StudentRow = { id: string; name: string; email?: string };
 
@@ -71,22 +73,6 @@ type Booking = {
   cancellationRequestedAt?: string | null;
 };
 
-/** Canonical booking statuses; coerce legacy API/DB values for labels and filters. */
-type CanonicalBookingStatus = "confirmed" | "pending" | "cancelled" | "refunded";
-
-function toCanonicalBookingStatus(raw: string): CanonicalBookingStatus {
-  if (raw === "confirmed" || raw === "pending" || raw === "cancelled" || raw === "refunded") return raw;
-  if (raw === "completed") return "confirmed";
-  if (raw === "pending_prebook" || raw === "pending_payment") return "pending";
-  return "pending";
-}
-
-const statusColor: Record<CanonicalBookingStatus, string> = {
-  confirmed: "bg-emerald-100 text-emerald-700",
-  pending: "bg-amber-100 text-amber-700",
-  cancelled: "bg-red-100 text-red-600",
-  refunded: "bg-slate-200 text-slate-700",
-};
 const typeColor: Record<string, string> = {
   practical: "bg-blue-100 text-blue-700",
   theory: "bg-purple-100 text-purple-700",
@@ -956,8 +942,14 @@ export default function AdminBookings() {
     setCancellationStaffBusyId(id);
     try {
       if (d.kind === "approve") {
-        await vivaApiJson(`/bookings/${encodeURIComponent(id)}/approve-student-cancellation`, { method: "POST" });
-        showToast(t("adminBookingApproveCancellationToast"), "success");
+        const res = await vivaApiJson<{
+          success?: boolean;
+          message?: string;
+          status?: string;
+        }>(`/bookings/${encodeURIComponent(id)}/approve-student-cancellation`, { method: "POST" });
+        const msg =
+          typeof res?.message === "string" && res.message.trim() ? res.message.trim() : t("adminBookingApproveCancellationToast");
+        showToast(msg, "success");
       } else {
         await vivaApiJson(`/bookings/${encodeURIComponent(id)}/reject-student-cancellation`, { method: "POST" });
         showToast(t("adminBookingRejectCancellationToast"), "success");
@@ -965,6 +957,7 @@ export default function AdminBookings() {
       await refresh();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+      throw e; // keep ConfirmDialog open on failure
     } finally {
       setCancellationStaffBusyId(null);
     }
@@ -1460,7 +1453,7 @@ export default function AdminBookings() {
                         setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) });
                       },
                     },
-                    ...(b.cancellationRequestedAt && b.type === "practical"
+                    ...(b.cancellationRequestedAt
                       ? [
                           {
                             kind: "item" as const,
@@ -1509,11 +1502,11 @@ export default function AdminBookings() {
                     <td className="px-4 py-3.5">
                       <div className="flex flex-col gap-1.5 items-start">
                         <Badge
-                          className={`text-xs ${statusColor[toCanonicalBookingStatus(b.status)] ?? statusColor.pending}`}
+                          className={`text-xs ${BOOKING_STATUS_BADGE_CLASS[toCanonicalBookingStatus(b.status)] ?? BOOKING_STATUS_BADGE_CLASS.pending}`}
                         >
                           {t(toCanonicalBookingStatus(b.status) as TranslationKey)}
                         </Badge>
-                        {b.cancellationRequestedAt && b.type === "practical" ? (
+                        {b.cancellationRequestedAt ? (
                           <Badge className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
                             {t("adminBookingCancellationBadge")}
                           </Badge>
@@ -1522,7 +1515,7 @@ export default function AdminBookings() {
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex flex-col items-end gap-2">
-                        {b.cancellationRequestedAt && b.type === "practical" ? (
+                        {b.cancellationRequestedAt ? (
                           <div className="flex flex-wrap justify-end gap-1.5">
                             <Button
                               type="button"
@@ -1558,7 +1551,7 @@ export default function AdminBookings() {
                                 setEditBooking({ ...b, status: toCanonicalBookingStatus(b.status) });
                               },
                             },
-                            ...(b.cancellationRequestedAt && b.type === "practical"
+                            ...(b.cancellationRequestedAt
                               ? ([
                                   {
                                     kind: "item" as const,

@@ -27,6 +27,7 @@ export function loadAccountSession(): AccountSessionUser | null {
     const name = typeof o.name === "string" ? o.name : "";
     const accountType = o.accountType;
     if (!id || !email || !isAccountType(accountType)) return null;
+    const hasPassword = typeof o.hasPassword === "boolean" ? o.hasPassword : undefined;
     const legacyStored =
       typeof o.accessToken === "string" && o.accessToken.length > 0 ? o.accessToken : undefined;
     if (legacyStored && !mem) {
@@ -42,7 +43,14 @@ export function loadAccountSession(): AccountSessionUser | null {
       );
     }
     const accessToken = getAccessTokenInMemory() ?? undefined;
-    return { id, email, name: name || email.split("@")[0] || "User", accountType, ...(accessToken ? { accessToken } : {}) };
+    return {
+      id,
+      email,
+      name: name || email.split("@")[0] || "User",
+      accountType,
+      ...(accessToken ? { accessToken } : {}),
+      ...(hasPassword !== undefined ? { hasPassword } : {}),
+    };
   } catch {
     return null;
   }
@@ -58,6 +66,7 @@ export function saveAccountSession(user: AccountSessionUser) {
     email: user.email,
     name: user.name,
     accountType: user.accountType,
+    ...(typeof user.hasPassword === "boolean" ? { hasPassword: user.hasPassword } : {}),
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
   window.dispatchEvent(new CustomEvent("viva-account-session-updated"));

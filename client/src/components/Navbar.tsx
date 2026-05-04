@@ -9,7 +9,8 @@ import ThemeToggle from "./ThemeToggle";
 import LangToggle from "./LangToggle";
 import { PUBLIC_NAV_LINKS } from "src/modules/public/public.consts";
 import { DASHBOARD_NAV_LINKS } from "src/modules/dashboard/dashboard.consts";
-import { ADMIN_NAV_LINKS } from "src/modules/admin/admin.consts";
+import { ADMIN_NAV_LINKS, adminNavAllowedForUser } from "src/modules/admin/admin.consts";
+import { useAccount } from "src/modules/accounts";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { cn } from "src/lib/utils";
 
@@ -19,6 +20,7 @@ type AdminNavEntry =
 
 export default function Navbar() {
   const { t } = useLang();
+  const { user } = useAccount();
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
 
@@ -39,6 +41,11 @@ export default function Navbar() {
   const adminNavEntries = useMemo((): AdminNavEntry[] => {
     const out: AdminNavEntry[] = [];
     for (const link of ADMIN_NAV_LINKS) {
+      if (!adminNavAllowedForUser(user, link.allowedAccountTypes)) continue;
+      const visibleChildren =
+        link.children?.filter((c) => adminNavAllowedForUser(user, c.allowedAccountTypes)) ?? [];
+      if (link.children?.length && !visibleChildren.length) continue;
+
       if (!link.children?.length) {
         out.push({
           kind: "link",
@@ -48,7 +55,7 @@ export default function Navbar() {
         });
         continue;
       }
-      const duplicateParentHref = link.children.some((c) => c.href === link.href);
+      const duplicateParentHref = visibleChildren.some((c) => c.href === link.href);
       if (link.collapsible && duplicateParentHref) {
         out.push({ kind: "header", label: t(link.translationKey), entryKey: link.translationKey });
       } else {
@@ -59,7 +66,7 @@ export default function Navbar() {
           entryKey: link.translationKey,
         });
       }
-      for (const c of link.children) {
+      for (const c of visibleChildren) {
         out.push({
           kind: "link",
           href: c.href,
@@ -70,7 +77,7 @@ export default function Navbar() {
       }
     }
     return out;
-  }, [t]);
+  }, [t, user]);
   const isPublic = !isDashboard && !isAdmin;
   const panelLinkActive = (href: string) =>
     isAdmin && href === "/admin/learn"

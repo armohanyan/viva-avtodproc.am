@@ -7,6 +7,7 @@ import { Button } from "src/components/ui/button";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useAccount } from "src/modules/accounts";
 
 type LearnHubStats = {
   groupsTotal: number;
@@ -28,12 +29,14 @@ const initialStats: LearnHubStats = {
 export default function AdminLearnHub() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const { user } = useAccount();
+  const canManageGroups = user?.accountType === "super_admin";
   const [stats, setStats] = useState<LearnHubStats>(initialStats);
 
   const loadStats = useCallback(async () => {
     try {
       const [cohorts, packages, questions] = await Promise.all([
-        vivaApiJson<Array<{ status?: string }>>("/theory-cohorts"),
+        canManageGroups ? vivaApiJson<Array<{ status?: string }>>("/theory-cohorts") : Promise.resolve([]),
         vivaApiJson<Array<{ status?: string }>>("/packages"),
         vivaApiJson<Array<{ id: string }>>("/exam-questions"),
       ]);
@@ -50,14 +53,14 @@ export default function AdminLearnHub() {
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
-  }, [showToast]);
+  }, [canManageGroups, showToast]);
 
   useEffect(() => {
     void loadStats();
   }, [loadStats]);
 
-  const cards = useMemo(
-    () => [
+  const cards = useMemo(() => {
+    const all = [
       {
         key: "groups",
         icon: UsersRound,
@@ -65,6 +68,7 @@ export default function AdminLearnHub() {
         value: stats.groupsTotal,
         note: `${t("active")}: ${stats.groupsActive}`,
         href: "/admin/learn/groups",
+        superAdminOnly: true as const,
       },
       {
         key: "packages",
@@ -82,9 +86,17 @@ export default function AdminLearnHub() {
         note: t("adminLearnOpenExamTests"),
         href: "/admin/learn/exam-questions",
       },
-    ],
-    [stats.groupsActive, stats.groupsTotal, stats.packagesActive, stats.packagesTotal, stats.questionsTotal, t],
-  );
+    ];
+    return canManageGroups ? all : all.filter((c) => !("superAdminOnly" in c));
+  }, [
+    canManageGroups,
+    stats.groupsActive,
+    stats.groupsTotal,
+    stats.packagesActive,
+    stats.packagesTotal,
+    stats.questionsTotal,
+    t,
+  ]);
 
   return (
     <AdminLayout>

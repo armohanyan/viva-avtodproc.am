@@ -8,7 +8,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Shield, UserCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
-import { useAccount } from "src/modules/accounts";
+import { loadAccountSession, saveAccountSession, useAccount, useAuthPasswordSectionState } from "src/modules/accounts";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
 import { useBranches } from "src/modules/branches";
@@ -20,6 +20,7 @@ export default function InstructorProfile() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
+  const passwordSection = useAuthPasswordSectionState();
   const { instructors, loading } = useInstructors();
   const { branches } = useBranches();
   const { cities } = useCities();
@@ -60,6 +61,10 @@ export default function InstructorProfile() {
         body: { currentPassword: pass.current, newPassword: pass.next },
       });
       setPass({ current: "", next: "", confirm: "" });
+      const prev = loadAccountSession();
+      if (prev) {
+        saveAccountSession({ ...prev, hasPassword: true });
+      }
       showToast(t("passwordUpdated"), "success");
     } catch (err) {
       showToast(getApiErrorMessage(err), "error");
@@ -133,31 +138,44 @@ export default function InstructorProfile() {
             </Card>
           </Reveal>
 
-          <Reveal delay={0.12}>
-            <Card className="p-6 border-border gap-3">
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-muted-foreground" />
-                <h3 className="font-semibold text-foreground">{t("changePasswordTitle")}</h3>
-              </div>
-              <form onSubmit={handlePassword} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("currentPassword")}</label>
-                  <Input type="password" value={pass.current} onChange={(e) => setPass((p) => ({ ...p, current: e.target.value }))} className="h-10" />
+          {passwordSection === "social_only" ? (
+            <Reveal delay={0.12}>
+              <Card className="p-6 border-border gap-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-muted-foreground" />
+                  <h3 className="font-semibold text-foreground">{t("changePasswordTitle")}</h3>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("newPassword")}</label>
-                  <Input type="password" value={pass.next} onChange={(e) => setPass((p) => ({ ...p, next: e.target.value }))} className="h-10" />
+                <p className="text-sm text-muted-foreground leading-relaxed">{t("profileSocialSignInNoPasswordHint")}</p>
+              </Card>
+            </Reveal>
+          ) : null}
+          {passwordSection === "change_password" ? (
+            <Reveal delay={0.12}>
+              <Card className="p-6 border-border gap-3">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-muted-foreground" />
+                  <h3 className="font-semibold text-foreground">{t("changePasswordTitle")}</h3>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("confirmNewPassword")}</label>
-                  <Input type="password" value={pass.confirm} onChange={(e) => setPass((p) => ({ ...p, confirm: e.target.value }))} className="h-10" />
-                </div>
-                <Button type="submit" disabled={savingPass} variant="outline">
-                  {savingPass ? t("updating") : t("updatePassword")}
-                </Button>
-              </form>
-            </Card>
-          </Reveal>
+                <form onSubmit={handlePassword} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("currentPassword")}</label>
+                    <Input type="password" value={pass.current} onChange={(e) => setPass((p) => ({ ...p, current: e.target.value }))} className="h-10" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("newPassword")}</label>
+                    <Input type="password" value={pass.next} onChange={(e) => setPass((p) => ({ ...p, next: e.target.value }))} className="h-10" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("confirmNewPassword")}</label>
+                    <Input type="password" value={pass.confirm} onChange={(e) => setPass((p) => ({ ...p, confirm: e.target.value }))} className="h-10" />
+                  </div>
+                  <Button type="submit" disabled={savingPass} variant="outline">
+                    {savingPass ? t("updating") : t("updatePassword")}
+                  </Button>
+                </form>
+              </Card>
+            </Reveal>
+          ) : null}
         </div>
       </div>
     </InstructorPanelLayout>

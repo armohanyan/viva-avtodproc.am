@@ -1,7 +1,8 @@
-import { API_V1_PREFIX } from "src/constants/api";
+import { API_V1_PREFIX } from "src/constants/api.constants";
 import { getApiBaseUrl } from "src/lib/apiBaseUrl";
 import { tryRefreshAccessToken } from "src/lib/authSession";
 import { revokeClientSessionAfterAuthorizationFailure } from "src/lib/authUnauthorizedRecovery";
+import { beginGlobalApiRequest, endGlobalApiRequest } from "src/lib/globalApiRequestLoading";
 import { loadAccountSession } from "src/modules/accounts/account.session";
 
 export { getApiBaseUrl } from "src/lib/apiBaseUrl";
@@ -180,41 +181,47 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 		hdrs.set("Content-Type", "application/json");
 	}
 
-	const res = await fetch(resolveApiFetchUrl(path), {
-		...rest,
-		credentials: "include",
-		headers: hdrs,
-		body:
-			body === undefined || body === null
-				? undefined
-				: body instanceof FormData || typeof body === "string"
-					? (body as BodyInit)
-					: JSON.stringify(body),
-	});
+	const track = typeof window !== "undefined";
+	if (track) beginGlobalApiRequest();
+	try {
+		const res = await fetch(resolveApiFetchUrl(path), {
+			...rest,
+			credentials: "include",
+			headers: hdrs,
+			body:
+				body === undefined || body === null
+					? undefined
+					: body instanceof FormData || typeof body === "string"
+						? (body as BodyInit)
+						: JSON.stringify(body),
+		});
 
-	if (res.status === 401 && typeof window !== "undefined" && shouldAttemptAuthRefreshRetry(path)) {
-		if (!_authRetry) {
-			const refreshed = await tryRefreshAccessToken();
-			if (refreshed === "rate_limited") {
-				return res;
-			}
-			if (refreshed === "ok") {
-				const retryHeaders = new Headers(headers);
-				const token = loadAccountSession()?.accessToken;
-
-				if (token) {
-					retryHeaders.set("Authorization", `Bearer ${token}`);
-				} else {
-					retryHeaders.delete("Authorization");
+		if (res.status === 401 && typeof window !== "undefined" && shouldAttemptAuthRefreshRetry(path)) {
+			if (!_authRetry) {
+				const refreshed = await tryRefreshAccessToken();
+				if (refreshed === "rate_limited") {
+					return res;
 				}
+				if (refreshed === "ok") {
+					const retryHeaders = new Headers(headers);
+					const token = loadAccountSession()?.accessToken;
 
-				return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
+					if (token) {
+						retryHeaders.set("Authorization", `Bearer ${token}`);
+					} else {
+						retryHeaders.delete("Authorization");
+					}
+
+					return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
+				}
 			}
+			revokeClientSessionAfterAuthorizationFailure();
 		}
-		revokeClientSessionAfterAuthorizationFailure();
-	}
 
-	return res;
+		return res;
+	} finally {
+		if (track) endGlobalApiRequest();
+	}
 }
 
 /** Coalesce identical in-flight GET+JSON reads (e.g. React Strict Mode double-mount). */

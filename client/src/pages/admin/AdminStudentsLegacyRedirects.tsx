@@ -5,9 +5,14 @@ export function AdminRedirectUsersToStudents() {
   return <Redirect to="/admin/students" replace />;
 }
 
-/** Old `/admin/users/analytics` — use Students analytics URL. */
+/** Old `/admin/users/analytics` — Students list opens analytics modal. */
 export function AdminRedirectUsersAnalyticsToStudents() {
-  return <Redirect to="/admin/students/analytics" replace />;
+  return <Redirect to="/admin/students?analytics=1" replace />;
+}
+
+/** Old `/admin/students/analytics` bookmark — same as opening analytics from Students. */
+export function AdminRedirectLegacyStudentsAnalytics() {
+  return <Redirect to="/admin/students?analytics=1" replace />;
 }
 
 /** Old `/admin/learn/practical` — bookings flow; preserve student/branch query. */

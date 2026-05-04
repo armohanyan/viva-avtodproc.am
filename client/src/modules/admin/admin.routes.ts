@@ -1,9 +1,8 @@
 import type { AccountType } from "src/modules/accounts";
-import type { AppRoute } from "src/shared/types/router.types";
+import type { AppRoute } from "src/types/router.types";
 import {
   AdminDashboardPage,
   AdminUsersPage,
-  AdminUsersAnalyticsPage,
   AdminInstructorsPage,
   AdminBookingsPage,
   AdminBookedCallsPage,
@@ -17,6 +16,7 @@ import {
   AdminFinanceOverviewPage,
   AdminFinanceIncomePage,
   AdminFinanceOutcomesPage,
+  AdminFinanceTransactionsPage,
   AdminProfilePage,
   AdminNotificationsPage,
   AdminLearnHubPage,
@@ -26,18 +26,19 @@ import {
   AdminRedirectPackagesToLearn,
   AdminRedirectUsersToStudents,
   AdminRedirectUsersAnalyticsToStudents,
+  AdminRedirectLegacyStudentsAnalytics,
   AdminRedirectLearnPracticalToStudents,
   AdminRedirectLearnTheoryToStudents,
 } from "src/pages/admin";
+import { SUPER_ADMIN_ONLY_ACCOUNT_TYPES } from "./admin.consts";
 
 const STAFF: readonly AccountType[] = ["super_admin", "admin"];
-const SUPER_ADMIN_ONLY: readonly AccountType[] = ["super_admin"];
 
 export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/dashboard", component: AdminDashboardPage, allowedAccountTypes: STAFF },
   { path: "/admin/branches", component: AdminBranchesPage, allowedAccountTypes: STAFF },
-  { path: "/admin/cars", component: AdminCarsPage, allowedAccountTypes: STAFF },
-  { path: "/admin/students/analytics", component: AdminUsersAnalyticsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/cars", component: AdminCarsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/students/analytics", component: AdminRedirectLegacyStudentsAnalytics, allowedAccountTypes: STAFF },
   { path: "/admin/students", component: AdminUsersPage, allowedAccountTypes: STAFF },
   { path: "/admin/users/analytics", component: AdminRedirectUsersAnalyticsToStudents, allowedAccountTypes: STAFF },
   { path: "/admin/users", component: AdminRedirectUsersToStudents, allowedAccountTypes: STAFF },
@@ -49,16 +50,17 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/contact-requests", component: AdminContactRequestsPage, allowedAccountTypes: STAFF },
   { path: "/admin/booked-calls", component: AdminBookedCallsPage, allowedAccountTypes: STAFF },
   { path: "/admin/learn/exam-questions", component: AdminExamQuestionsPage, allowedAccountTypes: STAFF },
-  { path: "/admin/learn/groups", component: AdminCohortsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/learn/groups", component: AdminCohortsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/learn/packages", component: AdminPackagesPage, allowedAccountTypes: STAFF },
   { path: "/admin/learn", component: AdminLearnHubPage, allowedAccountTypes: STAFF },
   { path: "/admin/packages", component: AdminRedirectPackagesToLearn, allowedAccountTypes: STAFF },
   { path: "/admin/cohorts", component: AdminRedirectCohortsToLearn, allowedAccountTypes: STAFF },
-  { path: "/admin/blogs", component: AdminBlogsPage, allowedAccountTypes: STAFF },
-  { path: "/admin/marketing-content", component: AdminMarketingPage, allowedAccountTypes: SUPER_ADMIN_ONLY },
-  { path: "/admin/finance/income", component: AdminFinanceIncomePage, allowedAccountTypes: STAFF },
-  { path: "/admin/finance/outcomes", component: AdminFinanceOutcomesPage, allowedAccountTypes: STAFF },
-  { path: "/admin/finance", component: AdminFinanceOverviewPage, allowedAccountTypes: STAFF },
-  { path: "/admin/accounts", component: AdminAccountsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/blogs", component: AdminBlogsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/marketing-content", component: AdminMarketingPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/finance/income", component: AdminFinanceIncomePage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/finance/outcomes", component: AdminFinanceOutcomesPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/finance/transactions", component: AdminFinanceTransactionsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/finance", component: AdminFinanceOverviewPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/accounts", component: AdminAccountsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/profile", component: AdminProfilePage, allowedAccountTypes: STAFF },
 ];

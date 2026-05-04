@@ -8,9 +8,10 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "./notifications.api";
+import { DEFAULT_NOTIFICATION_PAGE_SIZE } from "src/constants/dashboard.constants";
 import type { NotificationItem } from "./notifications.types";
 
-export function useNotifications(pageSize = 20) {
+export function useNotifications(pageSize = DEFAULT_NOTIFICATION_PAGE_SIZE) {
   const { showToast } = useToast();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [page, setPage] = useState(1);

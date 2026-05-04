@@ -15,7 +15,15 @@ import RefreshTokenService from './refresh-token.service';
 
 const { UnauthorizedError, ConflictError } = ErrorsUtil;
 
-export type AuthUserDto = { id: number; email: string; name: string; accountType: AccountType; phone: string | null };
+export type AuthUserDto = {
+  id: number;
+  email: string;
+  name: string;
+  accountType: AccountType;
+  phone: string | null;
+  /** False for OAuth-only accounts (`passwordHash` unset). */
+  hasPassword: boolean;
+};
 
 export type AuthTokensDto = {
   accessToken: string;
@@ -45,6 +53,7 @@ function toDto(user: User): AuthUserDto {
     name: user.name,
     accountType: user.accountType,
     phone: user.phone ?? null,
+    hasPassword: Boolean(user.passwordHash),
   };
 }
 
@@ -83,7 +92,7 @@ export default class AuthService {
 
     if (!user.passwordHash) {
       throw new UnauthorizedError(
-        'This account uses social sign-in. Use Google, Facebook, or Apple to sign in.',
+        'This account uses social sign-in. Use Google or Facebook to sign in.',
         HttpStatusCodesUtil.UNAUTHORIZED,
       );
     }

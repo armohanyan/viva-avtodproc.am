@@ -1,4 +1,6 @@
 import type { ExamQuestion } from "src/data/examSampleQuestions";
+import type { AccountType } from "src/types/auth.types";
+import type { PaginatedList } from "src/types/pagination.types";
 import { vivaApiJson } from "src/lib/vivaApi";
 
 export type ExamQuestionComment = {
@@ -9,16 +11,11 @@ export type ExamQuestionComment = {
   commenter: {
     id: number;
     name: string;
-    role: "super_admin" | "admin" | "instructor" | "student";
+    role: AccountType;
   };
 };
 
-export type PaginatedQuestionComments = {
-  items: ExamQuestionComment[];
-  total: number;
-  page: number;
-  pageSize: number;
-};
+export type PaginatedQuestionComments = PaginatedList<ExamQuestionComment>;
 
 type ExamQuestionDto = {
   id: string;

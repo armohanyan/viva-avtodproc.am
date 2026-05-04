@@ -1,3 +1,4 @@
+import { setImmediate } from 'node:timers';
 import { Op, Transaction, UniqueConstraintError, literal } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import {
@@ -7,18 +8,16 @@ import {
   InstructorBranch,
   InstructorProfile,
   TheoryCohort,
+  TheoryCohortEnrollment,
   User,
 } from '../models';
 import TheoryCohortService from './theory-cohort.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import FinanceService from './finance.service';
-import BookingConfirmationNotifier from './booking-confirmation-notifier.service';
-import NotificationService from './notification.service';
+import BookingNotificationService from './booking-notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
-import MailService from './mail.service';
-import config from '../config';
 import ErrorsUtil from '../utils/errors.util';
-import { HttpStatusCodesUtil } from '../utils';
+import { HttpStatusCodesUtil, LoggerUtil } from '../utils';
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from '../utils/calendar-month.util';
 
 const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
@@ -56,6 +55,9 @@ function assertInstructorTeachesLessonType(
 
 const SLOT_NO_LONGER_AVAILABLE = 'Selected slot(s) are no longer available';
 
+/** DB values that represent an unpaid / awaiting-payment booking row. */
+const PENDING_BOOKING_DB_STATUSES = ['pending', 'pending_prebook', 'pending_payment'] as const;
+
 function isDuplicateSlotClaimError(e: unknown): boolean {
   if (e instanceof UniqueConstraintError) return true;
   if (typeof e === 'object' && e !== null) {
@@ -77,8 +79,8 @@ export const MAX_PAYMENT_HOLD_EXTENSIONS = 2;
 const BOOKING_SLOT_TZ_OFFSET = '+04:00';
 const CANCELLATION_REFUND_MIN_HOURS = 24;
 
-type BookingWithUsers = Booking & { instructor: User; student: User };
-type BookingWithInstructor = Booking & { instructor: User };
+type BookingWithUsers = Booking & { instructor: User | null; student: User };
+type BookingWithInstructor = Booking & { instructor: User | null };
 type BookingWithStudent = Booking & { student: User };
 
 export type BookingAdminDto = {
@@ -103,13 +105,22 @@ export type BookingAdminDto = {
 /** Canonical booking row statuses (DB + API). */
 export type BookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'refunded';
 
+/** Response for POST /bookings/:id/approve-student-cancellation (staff). */
+export type StaffApproveStudentCancellationResponse = {
+  success: true;
+  message: string;
+  /** `refund_pending` reserved for an async payment-gateway refund path (not used while refunds are ledger-only). */
+  status: 'refunded' | 'cancelled' | 'refund_pending';
+};
+
 export type StudentBookingDto = {
   id: number;
   dateIso: string;
   time: string;
   endTime: string | null;
   totalPriceAmd: number | null;
-  instructorUserId: number;
+  instructorUserId: number | null;
+  /** Empty when the instructor account was removed but the booking is kept. */
   instructor: string;
   lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory' | 'lessonTypeTheoryPersonal';
   status: BookingStatus;
@@ -263,6 +274,18 @@ export function hoursUntilLessonStart(dateIso: string, timeHHMM: string): number
 
 export function isRefundWindowForCancellation(dateIso: string, timeHHMM: string): boolean {
   return hoursUntilLessonStart(dateIso, timeHHMM) >= CANCELLATION_REFUND_MIN_HOURS;
+}
+
+/** Hours from `instant` until lesson start; negative if the instant is after the lesson start. */
+export function hoursFromInstantUntilLessonStart(dateIso: string, timeHHMM: string, instant: Date): number {
+  const t = instant.getTime();
+  if (Number.isNaN(t)) return Number.NEGATIVE_INFINITY;
+  return (lessonStartDateUtcMs(dateIsoString(dateIso), timeHHMM) - t) / 3600_000;
+}
+
+/** True when the student’s cancellation request was submitted at least 24h before the booked slot. */
+function studentRefundEligibleAtRequestTime(requestedAt: Date, dateIso: string, timeHHMM: string): boolean {
+  return hoursFromInstantUntilLessonStart(dateIso, timeHHMM, requestedAt) >= CANCELLATION_REFUND_MIN_HOURS;
 }
 
 /** Sort unique HH:MM slot starts; throws if invalid. */
@@ -427,6 +450,17 @@ async function finalizePracticalCancellationInTx(opts: {
     await StudentPracticalCreditsService.restoreSlots(studentUserId, prepaidMeta, transaction);
   }
 
+  const rawPrepaid = row.prepaidMeta as Record<string, unknown> | null;
+  if (row.lessonType === 'theory' && rawPrepaid) {
+    const cohortId = Math.floor(Number(rawPrepaid.theoryCohortId));
+    if (Number.isFinite(cohortId) && cohortId > 0) {
+      await TheoryCohortEnrollment.destroy({
+        where: { cohortId, studentUserId },
+        transaction,
+      });
+    }
+  }
+
   await row.update(
     {
       status: nextStatus,
@@ -442,260 +476,126 @@ async function finalizePracticalCancellationInTx(opts: {
   let refundIssued = false;
   if (nextStatus === 'refunded' && wasPaid && gross > 0) {
     const stu = await User.findByPk(studentUserId, { attributes: ['name', 'email'], transaction });
-    if (stu) {
-      try {
-        const lessonLabel =
-          row.lessonType === 'theory'
-            ? 'Group theory lesson'
-            : row.lessonType === 'theory_personal'
-              ? '1:1 theory lesson'
-              : 'Practical lesson';
-        await FinanceService.create({
-          customer: stu.name.trim() || 'Student',
-          email: stu.email ?? '',
-          description: `${lessonLabel} booking #${row.id} (cancellation refund)`,
-          branchId: row.branchId,
-          channel: 'online',
-          method: 'card',
-          grossAmd: gross,
-          feeAmd: 0,
-          status: 'refunded',
-          providerRef: `booking-refund:${row.id}`,
-          source: 'system',
-          bookingId: row.id,
-        });
-        refundIssued = true;
-      } catch {
-        refundIssued = false;
-      }
+    if (!stu) {
+      throw new InputValidationError('Student account not found for refund.', HttpStatusCodesUtil.BAD_REQUEST);
     }
+    const lessonLabel =
+      row.lessonType === 'theory'
+        ? 'Group theory lesson'
+        : row.lessonType === 'theory_personal'
+          ? '1:1 theory lesson'
+          : 'Practical lesson';
+    refundIssued = await FinanceService.applyBookingCancellationRefundLedgerInTx({
+      booking: row,
+      customer: stu.name.trim() || 'Student',
+      email: stu.email ?? '',
+      grossAmd: gross,
+      lessonDescriptionLine: lessonLabel,
+      transaction,
+    });
   }
 
   return { status: nextStatus, refundIssued };
 }
 
+/** When admin explicitly sets status to `refunded`, record a `booking_refund` finance row (same as cancellation refund). */
+async function recordRefundLedgerWhenAdminMarksRefundedInTx(opts: {
+  bookingId: number;
+  prevStatusNorm: BookingStatus;
+  nextStatusRaw: string | undefined;
+  transaction: Transaction;
+}): Promise<void> {
+  if (opts.nextStatusRaw === undefined) return;
+  const nextNorm = normalizeBookingStatus(String(opts.nextStatusRaw));
+  if (nextNorm !== 'refunded') return;
+  if (opts.prevStatusNorm === 'refunded' || opts.prevStatusNorm === 'cancelled') return;
+
+  const row = await Booking.findByPk(opts.bookingId, {
+    transaction: opts.transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+  if (!row) {
+    throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+  }
+  if (row.paidAt == null) {
+    throw new InputValidationError('Cannot refund a booking that was not paid.', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  const gross = row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
+  if (gross <= 0) {
+    throw new InputValidationError(
+      'Cannot mark booking as refunded without a positive lesson price.',
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+  const stu = await User.findByPk(row.studentUserId, {
+    attributes: ['name', 'email'],
+    transaction: opts.transaction,
+  });
+  if (!stu) {
+    throw new InputValidationError('Student account not found for refund.', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  const lessonLabel =
+    row.lessonType === 'theory'
+      ? 'Group theory lesson'
+      : row.lessonType === 'theory_personal'
+        ? '1:1 theory lesson'
+        : 'Practical lesson';
+  await FinanceService.applyBookingCancellationRefundLedgerInTx({
+    booking: row,
+    customer: stu.name.trim() || 'Student',
+    email: stu.email ?? '',
+    grossAmd: gross,
+    lessonDescriptionLine: lessonLabel,
+    transaction: opts.transaction,
+  });
+}
+
 export default class BookingService {
-  private static bookingTypeLabel(lessonType: Booking['lessonType']): string {
-    return lessonType === 'theory' ? 'Group theory lesson' : lessonType === 'theory_personal' ? '1:1 theory lesson' : 'Practical lesson';
-  }
-
-  private static async sendStudentBookingLifecycleEmail(
-    row: Booking,
-    student: Pick<User, 'name' | 'email'>,
-    eventKey: 'created' | 'updated' | 'cancel_request' | 'cancelled' | 'refunded' | 'payment_received',
-    statusLabel: string,
-    summary: string,
-  ): Promise<void> {
-    if (!student.email) return;
-    const base = config.PANEL_DEFAULT_ORIGIN.replace(/\/+$/, '');
-    await MailService.sendBookingLifecycleUpdate(student.email, {
-      bookingId: row.id,
-      studentName: student.name,
-      bookingType: this.bookingTypeLabel(row.lessonType),
-      dateIso: dateIsoString(row.dateIso),
-      time: row.time,
-      eventKey,
-      statusLabel,
-      summary,
-      dashboardUrl: `${base}/dashboard/bookings`,
-    });
-  }
-
-  private static async emitBookingCreatedNotification(bookingId: number): Promise<void> {
-    const row = await Booking.findByPk(bookingId, {
-      include: [
-        { model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] },
-        { model: User, as: 'instructor', attributes: ['id', 'name', 'accountType'] },
-      ],
-    });
-    if (!row) return;
-    const student = (row as unknown as { student?: User }).student;
-    const instructor = (row as unknown as { instructor?: User }).instructor;
-    if (!student || !instructor) return;
-    const title = 'Նոր ամրագրում է ստեղծվել';
-    const message = `${dateIsoString(row.dateIso)} ${row.time}`;
-    await NotificationService.createMany([
-      {
-        recipientUserId: student.id,
-        recipientRole: student.accountType,
-        type: 'BOOKING_CREATED',
-        title,
-        message,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-created:${row.id}:student:${student.id}`,
+  /** Blocks creating another booking while the student already has one awaiting payment. */
+  private static async assertStudentHasNoPendingBooking(studentUserId: number): Promise<void> {
+    const existing = await Booking.findOne({
+      where: {
+        studentUserId,
+        status: { [Op.in]: [...PENDING_BOOKING_DB_STATUSES] },
       },
-      {
-        recipientUserId: instructor.id,
-        recipientRole: instructor.accountType,
-        type: 'BOOKING_CREATED',
-        title,
-        message,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-created:${row.id}:instructor:${instructor.id}`,
-      },
-    ]);
-    await NotificationService.createForRoles(['admin', 'super_admin'], {
-      type: 'BOOKING_CREATED',
-      title,
-      message: `${message} · #${row.id}`,
-      entityType: 'booking',
-      entityId: String(row.id),
-      dedupeKey: `booking-created:${row.id}:staff`,
+      attributes: ['id'],
     });
-    await this.sendStudentBookingLifecycleEmail(
-      row,
-      student,
-      'created',
-      'Ստեղծված է',
-      'Ձեր ամրագրումը գրանցվել է։ Թարմացումներից յուրաքանչյուրի մասին կտեղեկացնենք email-ով։',
-    );
-  }
-
-  private static async emitBookingUpdatedNotification(bookingId: number): Promise<void> {
-    const row = await Booking.findByPk(bookingId, {
-      include: [
-        { model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] },
-        { model: User, as: 'instructor', attributes: ['id', 'accountType'] },
-      ],
-    });
-    if (!row) return;
-    const student = (row as unknown as { student?: User }).student;
-    const instructor = (row as unknown as { instructor?: User }).instructor;
-    if (!student || !instructor) return;
-    const title = 'Ամրագրումը թարմացվել է';
-    const message = `${dateIsoString(row.dateIso)} ${row.time}`;
-    await NotificationService.createMany([
-      {
-        recipientUserId: student.id,
-        recipientRole: student.accountType,
-        type: 'BOOKING_UPDATED',
-        title,
-        message,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-updated:${row.id}:student:${student.id}:${Date.now()}`,
-      },
-      {
-        recipientUserId: instructor.id,
-        recipientRole: instructor.accountType,
-        type: 'BOOKING_UPDATED',
-        title,
-        message,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-updated:${row.id}:instructor:${instructor.id}:${Date.now()}`,
-      },
-    ]);
-    await this.sendStudentBookingLifecycleEmail(
-      row,
-      student,
-      'updated',
-      'Թարմացված է',
-      'Ձեր ամրագրման տվյալները թարմացվել են։ Խնդրում ենք ստուգել նոր ամսաթիվը/ժամը Bookings էջում։',
-    );
-  }
-
-  private static async emitBookingCancelledNotification(
-    bookingId: number,
-    kind: 'cancelled' | 'refunded' | 'request_created',
-  ): Promise<void> {
-    const row = await Booking.findByPk(bookingId, {
-      include: [
-        { model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] },
-        { model: User, as: 'instructor', attributes: ['id', 'accountType'] },
-      ],
-    });
-    if (!row) return;
-    const student = (row as unknown as { student?: User }).student;
-    const instructor = (row as unknown as { instructor?: User }).instructor;
-    if (!student || !instructor) return;
-    if (kind === 'request_created') {
-      await NotificationService.createForRoles(['admin', 'super_admin'], {
-        type: 'BOOKING_REQUEST_CREATED',
-        title: 'Չեղարկման նոր հայտ',
-        message: `#${row.id}`,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-cancel-request:${row.id}`,
-      });
-      await this.sendStudentBookingLifecycleEmail(
-        row,
-        student,
-        'cancel_request',
-        'Չեղարկումը սպասման մեջ է',
-        'Ձեր չեղարկման հայտը ընդունվել է և սպասում է հաստատման։',
+    if (existing) {
+      throw new InputValidationError(
+        'You already have a pending booking. Complete payment or cancel it before booking again.',
+        HttpStatusCodesUtil.BAD_REQUEST,
       );
-      return;
     }
-    const title = kind === 'refunded' ? 'Ամրագրումը չեղարկվել է (վերադարձով)' : 'Ամրագրումը չեղարկվել է';
-    const type: 'BOOKING_CANCELLED' = 'BOOKING_CANCELLED';
-    await NotificationService.createMany([
-      {
-        recipientUserId: student.id,
-        recipientRole: student.accountType,
-        type,
-        title,
-        message: `#${row.id}`,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-cancelled:${kind}:${row.id}:student:${student.id}`,
-      },
-      {
-        recipientUserId: instructor.id,
-        recipientRole: instructor.accountType,
-        type,
-        title,
-        message: `#${row.id}`,
-        entityType: 'booking',
-        entityId: String(row.id),
-        dedupeKey: `booking-cancelled:${kind}:${row.id}:instructor:${instructor.id}`,
-      },
-    ]);
-    await this.sendStudentBookingLifecycleEmail(
-      row,
-      student,
-      kind === 'refunded' ? 'refunded' : 'cancelled',
-      kind === 'refunded' ? 'Չեղարկված է (վերադարձով)' : 'Չեղարկված է',
-      kind === 'refunded'
-        ? 'Ձեր ամրագրումը չեղարկվել է, և վերադարձը մշակվում է։'
-        : 'Ձեր ամրագրումը հաջողությամբ չեղարկվել է։',
-    );
   }
 
-  private static async emitPaymentReceivedNotification(bookingId: number): Promise<void> {
-    const row = await Booking.findByPk(bookingId, {
-      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] }],
-    });
-    if (!row) return;
-    const student = (row as unknown as { student?: User }).student;
-    if (!student) return;
-    await NotificationService.createOne({
-      recipientUserId: student.id,
-      recipientRole: student.accountType,
-      type: 'PAYMENT_RECEIVED',
-      title: 'Վճարումը հաջողությամբ կատարվել է',
-      message: `#${row.id}`,
-      entityType: 'booking',
-      entityId: String(row.id),
-      dedupeKey: `payment-received:${row.id}:student:${student.id}`,
-    });
-    await NotificationService.createForRoles(['admin', 'super_admin'], {
-      type: 'PAYMENT_RECEIVED',
-      title: 'Ստացվել է վճարում',
-      message: `#${row.id}`,
-      entityType: 'booking',
-      entityId: String(row.id),
-      dedupeKey: `payment-received:${row.id}:staff`,
-    });
-    await this.sendStudentBookingLifecycleEmail(
-      row,
-      student,
-      'payment_received',
-      'Վճարումն ընդունվել է',
-      'Վճարումը հաջողությամբ ստացվել է, և ամրագրման կարգավիճակը թարմացվել է։',
-    );
+  private static maybeEmitBookingConfirmedAfterAdminPatch(
+    bookingId: number,
+    prevStatusNorm: ReturnType<typeof normalizeBookingStatus>,
+    patchStatus: string | undefined,
+  ): void {
+    const nextNorm =
+      patchStatus !== undefined ? normalizeBookingStatus(String(patchStatus)) : prevStatusNorm;
+    if (nextNorm === 'confirmed' && prevStatusNorm !== 'confirmed') {
+      void BookingNotificationService.onBookingConfirmed(bookingId).catch(() => {});
+    }
+  }
+
+  /** When staff sets booking to `cancelled` or `refunded` from the admin panel. */
+  private static maybeEmitBookingClosedAfterAdminPatch(
+    bookingId: number,
+    prevStatusNorm: ReturnType<typeof normalizeBookingStatus>,
+    patchStatus: string | undefined,
+  ): void {
+    if (patchStatus === undefined) return;
+    const nextNorm = normalizeBookingStatus(String(patchStatus));
+    const wasClosed = prevStatusNorm === 'cancelled' || prevStatusNorm === 'refunded';
+    const isClosed = nextNorm === 'cancelled' || nextNorm === 'refunded';
+    if (isClosed && !wasClosed) {
+      void BookingNotificationService.onBookingClosed(
+        bookingId,
+        nextNorm === 'refunded' ? 'refunded' : 'cancelled',
+      ).catch(() => {});
+    }
   }
 
   private static async createPendingStudentPaidBooking(input: {
@@ -709,6 +609,7 @@ export default class BookingService {
     prepaidMeta?: Record<string, unknown> | null;
     createSlotRows?: boolean;
   }): Promise<StudentPaidBookingCreateDto> {
+    await BookingService.assertStudentHasNoPendingBooking(input.studentUserId);
     const dateIso = input.dateIso.slice(0, 10);
     const holdExp = new Date(Date.now() + PAYMENT_HOLD_MS);
     const exclusiveEnd = exclusiveEndFromSortedStarts(input.sortedSlots);
@@ -752,15 +653,6 @@ export default class BookingService {
       }
       throw e;
     }
-    void BookingService.emitBookingCreatedNotification(createdId).catch(() => {});
-    void NotificationService.createForRoles(['admin', 'super_admin'], {
-      type: 'BOOKING_REQUEST_CREATED',
-      title: 'Նոր ամրագրման հարցում',
-      message: `#${createdId}`,
-      entityType: 'booking',
-      entityId: String(createdId),
-      dedupeKey: `booking-request-created:${createdId}`,
-    }).catch(() => {});
     return {
       id: createdId,
       totalPriceAmd: input.totalPriceAmd,
@@ -779,7 +671,7 @@ export default class BookingService {
     return {
       id: b.id,
       studentId: stu.id,
-      instructorName: inst.name,
+      instructorName: inst?.name ?? '',
       dateIso: dateIsoString(b.dateIso),
       time: b.time,
       endTime: b.endTime ?? null,
@@ -795,7 +687,7 @@ export default class BookingService {
   static async listAdmin(): Promise<BookingAdminDto[]> {
     const rows = await Booking.findAll({
       include: [
-        { model: User, as: 'instructor', required: true, attributes: ['name'] },
+        { model: User, as: 'instructor', required: false, attributes: ['name'] },
         { model: User, as: 'student', required: true, attributes: ['id'] },
       ],
       order: [
@@ -837,13 +729,16 @@ export default class BookingService {
   ): Promise<BookingAdminDto | InstructorBookingDto | null> {
     const row = await Booking.findByPk(bookingId, {
       include: [
-        { model: User, as: 'instructor', required: true, attributes: ['name'] },
+        { model: User, as: 'instructor', required: false, attributes: ['name'] },
         { model: User, as: 'student', required: true, attributes: ['id', 'name'] },
       ],
     });
     if (!row) return null;
 
     if (actor.kind === 'instructor') {
+      if (row.instructorUserId == null) {
+        throw new PermissionError('This booking has no instructor assigned.', HttpStatusCodesUtil.FORBIDDEN);
+      }
       if (row.instructorUserId !== actor.instructorUserId) {
         throw new PermissionError('You can only update your own bookings.', HttpStatusCodesUtil.FORBIDDEN);
       }
@@ -861,7 +756,7 @@ export default class BookingService {
 
     const refreshed = await Booking.findByPk(bookingId, {
       include: [
-        { model: User, as: 'instructor', required: true, attributes: ['name'] },
+        { model: User, as: 'instructor', required: false, attributes: ['name'] },
         { model: User, as: 'student', required: true, attributes: ['id', 'name'] },
       ],
     });
@@ -940,7 +835,7 @@ export default class BookingService {
   static async listForStudent(studentUserId: number): Promise<StudentBookingDto[]> {
     const rows = await Booking.findAll({
       where: { studentUserId },
-      include: [{ model: User, as: 'instructor', required: true, attributes: ['name'] }],
+      include: [{ model: User, as: 'instructor', required: false, attributes: ['name'] }],
       order: [
         ['dateIso', 'DESC'],
         ['time', 'DESC'],
@@ -966,8 +861,8 @@ export default class BookingService {
         time: b.time,
         endTime: b.endTime ?? null,
         totalPriceAmd: b.totalPriceAmd ?? null,
-        instructorUserId: b.instructorUserId,
-        instructor: inst.name,
+        instructorUserId: b.instructorUserId ?? null,
+        instructor: inst?.name ?? '',
         lessonTypeKey:
           b.lessonType === 'theory'
             ? 'lessonTypeTheory'
@@ -1044,6 +939,8 @@ export default class BookingService {
     if (!student) {
       throw new InputValidationError('Student account required.', HttpStatusCodesUtil.FORBIDDEN);
     }
+
+    await BookingService.assertStudentHasNoPendingBooking(input.studentUserId);
 
     const instructor = await User.findOne({
       where: { id: input.instructorUserId, accountType: 'instructor' },
@@ -1202,10 +1099,9 @@ export default class BookingService {
         },
       );
 
-      if (coveredByPrepaidCredits) {
-        void BookingConfirmationNotifier.trySendForBookingId(row.id).catch(() => {});
+      if (normalizeBookingStatus(String(row.status)) === 'confirmed') {
+        void BookingNotificationService.onBookingConfirmed(row.id).catch(() => {});
       }
-      void BookingService.emitBookingCreatedNotification(row.id).catch(() => {});
 
       return {
         id: row.id,
@@ -1448,8 +1344,9 @@ export default class BookingService {
       throw e;
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
-    void BookingService.emitBookingCreatedNotification(newId).catch(() => {});
+    if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
+      void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
+    }
 
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
@@ -1571,8 +1468,9 @@ export default class BookingService {
       throw e;
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
-    void BookingService.emitBookingCreatedNotification(newId).catch(() => {});
+    if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
+      void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
+    }
 
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
@@ -1735,8 +1633,9 @@ export default class BookingService {
       throw e;
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(newId).catch(() => {});
-    void BookingService.emitBookingCreatedNotification(newId).catch(() => {});
+    if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
+      void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
+    }
 
     const rows = await this.listAdmin();
     return rows.find((x) => x.id === newId) ?? null;
@@ -1818,8 +1717,12 @@ export default class BookingService {
     } else {
       let instructorName = patch.instructorName?.trim();
       if (!instructorName) {
-        const prev = await User.findByPk(row.instructorUserId, { attributes: ['name'] });
-        instructorName = prev?.name?.trim() ?? '';
+        if (row.instructorUserId != null) {
+          const prev = await User.findByPk(row.instructorUserId, { attributes: ['name'] });
+          instructorName = prev?.name?.trim() ?? '';
+        } else {
+          instructorName = '';
+        }
       }
       if (!instructorName) {
         throw new InputValidationError(
@@ -1866,6 +1769,7 @@ export default class BookingService {
     }
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -1887,6 +1791,12 @@ export default class BookingService {
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
         }
+        await recordRefundLedgerWhenAdminMarksRefundedInTx({
+          bookingId: id,
+          prevStatusNorm: prevBookingStatusNorm,
+          nextStatusRaw: patch.status,
+          transaction,
+        });
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -1895,8 +1805,8 @@ export default class BookingService {
       throw e;
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
-    void BookingService.emitBookingUpdatedNotification(id).catch(() => {});
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -1919,13 +1829,20 @@ export default class BookingService {
     const { id, row, patch, lessonType, entries } = opts;
     const nextStudentId = patch.studentId !== undefined ? patch.studentId : row.studentUserId;
 
-    let instructorUserId = row.instructorUserId;
+    let instructorUserId: number;
     if (patch.instructorName !== undefined) {
       const instructor = await User.findOne({
         where: { name: patch.instructorName.trim(), accountType: 'instructor' },
       });
       if (!instructor) return null;
       instructorUserId = instructor.id;
+    } else if (row.instructorUserId != null) {
+      instructorUserId = row.instructorUserId;
+    } else {
+      throw new InputValidationError(
+        'instructorName is required — this booking has no instructor (for example after instructor removal).',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
     }
 
     const branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
@@ -1956,6 +1873,7 @@ export default class BookingService {
     const first = entries[0];
     const endTime = endTimeExclusiveForSlotEntries(entries);
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -1977,6 +1895,12 @@ export default class BookingService {
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
         }
+        await recordRefundLedgerWhenAdminMarksRefundedInTx({
+          bookingId: id,
+          prevStatusNorm: prevBookingStatusNorm,
+          nextStatusRaw: patch.status,
+          transaction,
+        });
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -1985,8 +1909,8 @@ export default class BookingService {
       throw e;
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
-    void BookingService.emitBookingUpdatedNotification(id).catch(() => {});
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -2052,28 +1976,46 @@ export default class BookingService {
       if (!instructor) return null;
       instructorUserId = instructor.id;
     }
+
+    const touchesSchedule =
+      patch.dateIso !== undefined || patch.time !== undefined || patch.instructorName !== undefined;
+
+    if (touchesSchedule && instructorUserId == null) {
+      throw new InputValidationError(
+        'Set instructorName to change date, time, or assign an instructor to this booking.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+
     const nextDateIso = patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
     const nextTime = patch.time !== undefined ? patch.time : row.time;
     const sorted = normalizeAndSortSlots([nextTime]);
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
-    const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-      instructorUserId,
-      nextDateIso,
-      sorted[0],
-    );
-    if (unavailable) {
-      throw new InputValidationError(
-        'Instructor is not available at this time (day off, break, or outside work hours).',
-        HttpStatusCodesUtil.BAD_REQUEST,
+    if (touchesSchedule && instructorUserId != null) {
+      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+        instructorUserId,
+        nextDateIso,
+        sorted[0],
       );
+      if (unavailable) {
+        throw new InputValidationError(
+          'Instructor is not available at this time (day off, break, or outside work hours).',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
     }
 
-    const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
+    const profile =
+      touchesSchedule && instructorUserId != null
+        ? await InstructorProfile.findOne({ where: { userId: instructorUserId } })
+        : null;
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
+    const totalPriceAmd =
+      touchesSchedule && Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -2093,12 +2035,18 @@ export default class BookingService {
           { transaction },
         );
 
-        if (patch.dateIso !== undefined || patch.time !== undefined || patch.instructorName !== undefined) {
-          await replaceBookingSlotRows(row.id, instructorUserId, nextDateIso, sorted, transaction);
+        if (touchesSchedule) {
+          await replaceBookingSlotRows(row.id, instructorUserId!, nextDateIso, sorted, transaction);
         }
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
         }
+        await recordRefundLedgerWhenAdminMarksRefundedInTx({
+          bookingId: row.id,
+          prevStatusNorm: prevBookingStatusNorm,
+          nextStatusRaw: patch.status,
+          transaction,
+        });
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -2107,7 +2055,8 @@ export default class BookingService {
       throw e;
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(id).catch(() => {});
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -2276,9 +2225,7 @@ export default class BookingService {
       }
     }
 
-    void BookingConfirmationNotifier.trySendForBookingId(updatedId).catch(() => {});
-    void BookingService.emitPaymentReceivedNotification(updatedId).catch(() => {});
-    void BookingService.emitBookingUpdatedNotification(updatedId).catch(() => {});
+    void BookingNotificationService.onBookingConfirmed(updatedId).catch(() => {});
 
     return dto;
   }
@@ -2336,43 +2283,95 @@ export default class BookingService {
       throw new InputValidationError('Cancellation could not be completed.', HttpStatusCodesUtil.BAD_REQUEST);
     }
     if (outcome.outcome === 'pending_admin') {
-      void BookingService.emitBookingCancelledNotification(bookingId, 'request_created').catch(() => {});
+      void BookingNotificationService.notifyAdminStudentCancellationRefundRequest(bookingId).catch(() => {});
     } else {
-      void BookingService.emitBookingCancelledNotification(bookingId, outcome.refundIssued ? 'refunded' : 'cancelled').catch(() => {});
+      void BookingNotificationService.onBookingClosed(
+        bookingId,
+        outcome.refundIssued ? 'refunded' : 'cancelled',
+      ).catch(() => {});
     }
     return outcome;
   }
 
   /** Staff: complete a student-initiated cancellation (free slots, refund ledger if the booking was paid). */
-  static async staffApprovePracticalCancellation(bookingId: number): Promise<{ status: BookingStatus; refundIssued: boolean }> {
+  static async staffApprovePracticalCancellation(bookingId: number): Promise<StaffApproveStudentCancellationResponse> {
+    const t0 = Date.now();
+    const step = (label: string) => {
+      LoggerUtil.info(`[approve-student-cancellation] bookingId=${bookingId} step=${label} +${Date.now() - t0}ms`);
+    };
+    step('start');
+
     const result = await sequelize.transaction(async (transaction) => {
+      step('tx_begin');
       const row = await Booking.findOne({
         where: { id: bookingId, lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] } },
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
+      step('after_load_booking');
       if (!row) {
         throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
+      const st = normalizeBookingStatus(row.status);
       if (row.cancellationRequestedAt == null) {
+        if (st === 'refunded' || st === 'cancelled') {
+          step('idempotent_already_closed');
+          return { kind: 'already_closed' as const, status: st };
+        }
         throw new InputValidationError(
-          'No pending student cancellation request for this booking.',
+          `No pending student cancellation request for this booking (status: ${st}). ` +
+            'This applies only after a student cancels a paid booking at least 24 hours before the lesson; otherwise the booking cancels immediately without staff approval.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
-      const st = normalizeBookingStatus(row.status);
       if (st !== 'pending' && st !== 'confirmed') {
         throw new InputValidationError('This booking cannot be resolved here.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      return finalizePracticalCancellationInTx({
+      const requestedAt = new Date(row.cancellationRequestedAt as Date);
+      const dateIso = dateIsoString(row.dateIso);
+      const refundAllowedByPolicy =
+        row.paidAt != null && studentRefundEligibleAtRequestTime(requestedAt, dateIso, row.time);
+      step('before_finalize');
+      const fin = await finalizePracticalCancellationInTx({
         row,
         studentUserId: row.studentUserId,
         transaction,
-        refundIfPaid: true,
+        refundIfPaid: refundAllowedByPolicy,
       });
+      step('after_finalize');
+      return { kind: 'completed' as const, status: fin.status };
     });
-    void BookingService.emitBookingCancelledNotification(bookingId, result.refundIssued ? 'refunded' : 'cancelled').catch(() => {});
-    return result;
+
+    step('after_transaction_commit');
+
+    if (result.kind === 'already_closed') {
+      const st = result.status;
+      return {
+        success: true,
+        message:
+          st === 'refunded'
+            ? 'This booking was already closed with a refund.'
+            : 'This booking was already cancelled.',
+        status: st === 'refunded' ? 'refunded' : 'cancelled',
+      };
+    }
+
+    const finalStatus = result.status;
+
+    setImmediate(() => {
+      void BookingNotificationService.onBookingClosed(
+        bookingId,
+        finalStatus === 'refunded' ? 'refunded' : 'cancelled',
+      ).catch(() => {});
+    });
+
+    const apiStatus: StaffApproveStudentCancellationResponse['status'] =
+      finalStatus === 'refunded' ? 'refunded' : 'cancelled';
+    const message =
+      apiStatus === 'refunded' ? 'Cancellation approved and refunded' : 'Cancellation approved';
+
+    step(`done status=${apiStatus}`);
+    return { success: true, message, status: apiStatus };
   }
 
   /** Staff: decline a student cancellation request; booking stays active. */
@@ -2387,14 +2386,15 @@ export default class BookingService {
         throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
       if (row.cancellationRequestedAt == null) {
+        const st = normalizeBookingStatus(row.status);
         throw new InputValidationError(
-          'No pending student cancellation request for this booking.',
+          `No pending student cancellation request for this booking (status: ${st}). ` +
+            'Reject only applies when a student has requested cancellation of a paid booking in the refund window.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
       await row.update({ cancellationRequestedAt: null }, { transaction });
     });
-    void BookingService.emitBookingUpdatedNotification(bookingId).catch(() => {});
     return { ok: true as const };
   }
 

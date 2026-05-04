@@ -1,7 +1,7 @@
 # Viva Driving School — Design Guide
 
 ## Brand
-- Name: Viva Driving School / Վիվա Վարելու Դպրոց
+- Name: Viva Driving School / ՎԻՎԱ Վարելու Դպրոց
 - Vibe: Professional SaaS, dark hero sections, clean white content areas, trustworthy
 
 ## Colors

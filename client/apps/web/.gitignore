@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+# Symlink/junction to ../../public — created by `predev` / `prebuild` (see scripts/ensure-next-web-public.mjs).
+/public
 
 # production
 /build

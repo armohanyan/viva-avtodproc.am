@@ -1,4 +1,4 @@
-import type { AppRoute } from "src/shared/types/router.types";
+import type { AppRoute } from "src/types/router.types";
 import {
   HomePage,
   AboutPage,

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node ../../scripts/ensure-next-web-public.mjs",
+    "prebuild": "node ../../scripts/ensure-next-web-public.mjs",
+    "prestart": "node ../../scripts/ensure-next-web-public.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

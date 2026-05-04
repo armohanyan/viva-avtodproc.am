@@ -1,4 +1,4 @@
-import { col, fn, where as sqlWhere, type Transaction } from 'sequelize';
+import { Transaction, col, fn, where as sqlWhere, type Transaction as SequelizeTransaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import type {
   FinanceTxChannel,
@@ -9,8 +9,8 @@ import type {
   FinanceTxStatus,
 } from '../models/finance-transaction.model';
 import { Booking, FinanceTransaction, User } from '../models';
+import BookingNotificationService from './booking-notification.service';
 import MailService from './mail.service';
-import config from '../config';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 
@@ -75,6 +75,7 @@ export type FinanceTxDto = {
   units: number | null;
   unitRateAmd: number | null;
   bookingId: number | null;
+  relatedPaymentTransactionId: number | null;
   refundRequestedAt: string | null;
   refundReviewedAt: string | null;
 };
@@ -103,6 +104,7 @@ function toDto(row: FinanceTransaction): FinanceTxDto {
     units: row.units == null ? null : Number(row.units),
     unitRateAmd: row.unitRateAmd ?? null,
     bookingId: row.bookingId ?? null,
+    relatedPaymentTransactionId: row.relatedPaymentTransactionId ?? null,
     refundRequestedAt: row.refundRequestedAt ? new Date(row.refundRequestedAt).toISOString() : null,
     refundReviewedAt: row.refundReviewedAt ? new Date(row.refundReviewedAt).toISOString() : null,
   };
@@ -125,7 +127,6 @@ export default class FinanceService {
   ): Promise<void> {
     const email = row.email.trim();
     if (!email) return;
-    const base = config.PANEL_DEFAULT_ORIGIN.replace(/\/+$/, '');
     await MailService.sendTransactionLifecycleUpdate(email, {
       studentName: row.customer,
       transactionId: row.id,
@@ -135,7 +136,6 @@ export default class FinanceService {
       eventKey,
       statusLabel: row.status,
       actionLabel,
-      dashboardUrl: `${base}/dashboard/finance`,
     });
   }
 
@@ -177,7 +177,8 @@ export default class FinanceService {
     unitRateAmd?: number | null;
     createdAt?: string;
     bookingId?: number | null;
-    transaction?: Transaction;
+    relatedPaymentTransactionId?: number | null;
+    transaction?: SequelizeTransaction;
   }): Promise<FinanceTxDto> {
     const bookingIdNorm =
       input.bookingId === undefined || input.bookingId === null ? null : Number(input.bookingId);
@@ -215,8 +216,17 @@ export default class FinanceService {
     const units = entryType === 'expense' ? (input.units ?? null) : null;
     const unitRateAmd = entryType === 'expense' ? (input.unitRateAmd ?? null) : null;
     const feeAmd = input.feeAmd ?? 0;
-    const status: FinanceTxStatus = linkedBooking ? financeStatusFromBooking(linkedBooking) : (input.status ?? 'completed');
+    const status: FinanceTxStatus =
+      linkedBooking && entryType === 'income'
+        ? financeStatusFromBooking(linkedBooking)
+        : (input.status ?? 'completed');
     const providerRef = (input.providerRef ?? '').trim() || '—';
+
+    const relatedPaymentTxIdRaw = input.relatedPaymentTransactionId;
+    const relatedPaymentTransactionId =
+      relatedPaymentTxIdRaw != null && Number.isFinite(Number(relatedPaymentTxIdRaw)) && Number(relatedPaymentTxIdRaw) > 0
+        ? Number(relatedPaymentTxIdRaw)
+        : null;
 
     let grossAmd = input.grossAmd;
     if (entryType === 'expense' && units != null && unitRateAmd != null) {
@@ -254,14 +264,18 @@ export default class FinanceService {
         unitRateAmd,
         createdAt,
         bookingId: bookingIdNorm,
+        relatedPaymentTransactionId,
       } as never,
       { transaction: input.transaction },
     );
-    void this.sendTransactionEmail(
-      row,
-      'created',
-      'Ձեր գործարքը գրանցվել է։ Նոր կարգավիճակի դեպքում կուղարկենք հաջորդ թարմացումը։',
-    ).catch(() => {});
+    // Booking-linked ledger rows are notified via booking confirmation / cancellation mail only.
+    if (bookingIdNorm == null) {
+      void this.sendTransactionEmail(
+        row,
+        'created',
+        'Ձեր գործարքը գրանցվել է։ Նոր կարգավիճակի դեպքում կուղարկենք հաջորդ թարմացումը։',
+      ).catch(() => {});
+    }
     return toDto(row);
   }
 
@@ -348,7 +362,11 @@ export default class FinanceService {
       ...(input.method !== undefined ? { method: input.method } : {}),
       ...(input.grossAmd !== undefined ? { grossAmd: input.grossAmd } : {}),
       ...(input.feeAmd !== undefined ? { feeAmd: input.feeAmd } : {}),
-      ...(linkedBooking ? { status: financeStatusFromBooking(linkedBooking) } : input.status !== undefined ? { status: input.status } : {}),
+      ...(linkedBooking && (input.entryType ?? row.entryType) === 'income'
+        ? { status: financeStatusFromBooking(linkedBooking) }
+        : input.status !== undefined
+          ? { status: input.status }
+          : {}),
       ...(input.providerRef !== undefined
         ? { providerRef: input.providerRef.trim() || '—' }
         : {}),
@@ -392,9 +410,172 @@ export default class FinanceService {
     await row.destroy();
   }
 
-  /** Student requests staff-reviewed refund for a payment row. */
+  /**
+   * Legacy rows used `income` + `refunded` status. Normalize to `completed` income so gross intake KPIs stay correct;
+   * refund is represented only by `booking_refund` expense lines.
+   */
+  private static async normalizeLegacyRefundedIncomeRowsForBooking(
+    bookingId: number,
+    transaction: SequelizeTransaction,
+  ): Promise<void> {
+    const existingRefundExpense = await FinanceTransaction.count({
+      where: {
+        bookingId,
+        entryType: 'expense',
+        expenseKind: 'booking_refund',
+        status: 'completed',
+      },
+      transaction,
+    });
+    if (existingRefundExpense > 0) return;
+
+    const legacy = await FinanceTransaction.findAll({
+      where: { bookingId, entryType: 'income', status: 'refunded' },
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    const suffix = ' · cancellation refund';
+    for (const fin of legacy) {
+      const desc = String(fin.description ?? '').trim();
+      const restored = desc.endsWith(suffix) ? desc.slice(0, -suffix.length).trim() : desc;
+      await fin.update(
+        {
+          status: 'completed',
+          description: restored || desc,
+          refundReviewedAt: fin.refundReviewedAt ?? new Date(),
+        },
+        { transaction },
+      );
+    }
+  }
+
+  private static async sumCompletedIncomeForBooking(
+    bookingId: number,
+    transaction: SequelizeTransaction,
+  ): Promise<number> {
+    const row = await FinanceTransaction.findOne({
+      attributes: [[fn('COALESCE', fn('SUM', col('gross_amd')), 0), 'total']],
+      where: { bookingId, entryType: 'income', status: 'completed' },
+      transaction,
+      raw: true,
+    }) as { total?: unknown } | null;
+    const v = row?.total;
+    if (v == null) return 0;
+    const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private static async sumBookingRefundExpensesForBooking(
+    bookingId: number,
+    transaction: SequelizeTransaction,
+  ): Promise<number> {
+    const row = await FinanceTransaction.findOne({
+      attributes: [[fn('COALESCE', fn('SUM', col('gross_amd')), 0), 'total']],
+      where: {
+        bookingId,
+        entryType: 'expense',
+        expenseKind: 'booking_refund',
+        status: 'completed',
+      },
+      transaction,
+      raw: true,
+    }) as { total?: unknown } | null;
+    const v = row?.total;
+    if (v == null) return 0;
+    const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * When a booking is closed with a refund: adds a `booking_refund` **expense** row (money out). Original payment
+   * income rows stay `completed`. Idempotent per booking money cap (no duplicate full refunds).
+   *
+   * @returns `true` when the ledger already contained or now contains the refund line for this approval.
+   */
+  static async applyBookingCancellationRefundLedgerInTx(opts: {
+    booking: Booking;
+    customer: string;
+    email: string;
+    grossAmd: number;
+    lessonDescriptionLine: string;
+    transaction: SequelizeTransaction;
+  }): Promise<boolean> {
+    const { booking, customer, email, grossAmd, lessonDescriptionLine, transaction } = opts;
+    if (grossAmd <= 0) return false;
+
+    const canonicalBookingRef = `booking-refund:booking:${booking.id}`;
+    const syntheticRef = `booking-refund:booking:${booking.id}:synthetic`;
+
+    const existingCanonical = await FinanceTransaction.findOne({
+      where: { bookingId: booking.id, providerRef: canonicalBookingRef },
+      transaction,
+    });
+    if (existingCanonical) return true;
+
+    await FinanceService.normalizeLegacyRefundedIncomeRowsForBooking(booking.id, transaction);
+
+    const incomeSum = await FinanceService.sumCompletedIncomeForBooking(booking.id, transaction);
+    const refundOut = await FinanceService.sumBookingRefundExpensesForBooking(booking.id, transaction);
+    const capFromLedger = Math.max(0, incomeSum - refundOut);
+
+    const hasSynthetic = await FinanceTransaction.findOne({
+      where: { bookingId: booking.id, providerRef: syntheticRef },
+      transaction,
+    });
+
+    let want = Math.min(Math.floor(grossAmd), capFromLedger);
+    if (want <= 0 && incomeSum === 0 && refundOut === 0 && !hasSynthetic) {
+      want = Math.floor(grossAmd);
+    }
+    if (want <= 0) return false;
+
+    const template = await FinanceTransaction.findOne({
+      where: { bookingId: booking.id, entryType: 'income', status: 'completed' },
+      order: [['id', 'ASC']],
+      transaction,
+    });
+    const primaryIncomeId = template?.id ?? null;
+    const channel: FinanceTxChannel = (template?.channel as FinanceTxChannel) ?? 'online';
+    const method: FinanceTxMethod = (template?.method as FinanceTxMethod) ?? 'card';
+
+    const isSyntheticNoLedger = incomeSum === 0 && refundOut === 0 && template == null;
+    const providerRef = isSyntheticNoLedger
+      ? syntheticRef
+      : want >= capFromLedger && capFromLedger > 0
+        ? canonicalBookingRef
+        : `${canonicalBookingRef}:p:${Date.now()}`;
+
+    const dup = await FinanceTransaction.findOne({
+      where: { bookingId: booking.id, providerRef },
+      transaction,
+    });
+    if (dup) return true;
+
+    await FinanceService.create({
+      customer: customer.trim() || 'Student',
+      email: email.trim(),
+      description: `Refund · ${lessonDescriptionLine} · booking #${booking.id}`,
+      branchId: booking.branchId,
+      channel,
+      method,
+      grossAmd: want,
+      feeAmd: 0,
+      status: 'completed',
+      providerRef,
+      source: 'system',
+      entryType: 'expense',
+      expenseKind: 'booking_refund',
+      bookingId: booking.id,
+      relatedPaymentTransactionId: primaryIncomeId,
+      transaction,
+    });
+    return true;
+  }
+
   static async requestRefundForStudentUser(id: number, studentUserId: number): Promise<FinanceTxDto> {
-    return sequelize.transaction(async (transaction) => {
+    let financeTxId = 0;
+    let bookingIdForAdminNotify: number | null = null;
+    const dto = await sequelize.transaction(async (transaction) => {
       const student = await User.findByPk(studentUserId, { transaction });
       if (!student || student.accountType !== 'student') {
         throw new ErrorsUtil.PermissionError('Student access required.', HttpStatusCodesUtil.FORBIDDEN);
@@ -440,6 +621,8 @@ export default class FinanceService {
 
       await tx.update({ status: 'pending', refundRequestedAt: new Date(), refundReviewedAt: null }, { transaction });
       await tx.reload({ transaction });
+      financeTxId = tx.id;
+      bookingIdForAdminNotify = tx.bookingId;
       void this.sendTransactionEmail(
         tx,
         'refund_requested',
@@ -447,20 +630,90 @@ export default class FinanceService {
       ).catch(() => {});
       return toDto(tx);
     });
+    if (bookingIdForAdminNotify != null && financeTxId > 0) {
+      void BookingNotificationService.notifyAdminFinanceRefundRequestForBooking(
+        financeTxId,
+        bookingIdForAdminNotify,
+      ).catch(() => {});
+    }
+    return dto;
   }
 
-  static async approveRefundRequest(id: number): Promise<FinanceTxDto> {
-    const tx = await FinanceTransaction.findByPk(id);
-    if (!tx) {
-      throw new ErrorsUtil.ResourceNotFoundError('Transaction not found.', HttpStatusCodesUtil.NOT_FOUND);
-    }
-    if (tx.refundRequestedAt == null || tx.status !== 'pending') {
-      throw new ErrorsUtil.InputValidationError('No pending refund request for this payment.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
-    await tx.update({ status: 'refunded', refundReviewedAt: new Date() });
-    await tx.reload();
-    void this.sendTransactionEmail(tx, 'refund_approved', 'Վերադարձի հարցումը հաստատվել է։').catch(() => {});
-    return toDto(tx);
+  static async approveRefundRequest(id: number, refundAmountAmd?: number): Promise<FinanceTxDto> {
+    return sequelize.transaction(async (transaction) => {
+      const tx = await FinanceTransaction.findByPk(id, { transaction, lock: Transaction.LOCK.UPDATE });
+      if (!tx) {
+        throw new ErrorsUtil.ResourceNotFoundError('Transaction not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      if (tx.refundRequestedAt == null || tx.status !== 'pending') {
+        throw new ErrorsUtil.InputValidationError('No pending refund request for this payment.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if ((tx.entryType ?? 'income') !== 'income') {
+        throw new ErrorsUtil.InputValidationError('Only payment (income) rows can be refunded here.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+
+      const dup = await FinanceTransaction.findOne({
+        where: { providerRef: `booking-refund:payment:${tx.id}` },
+        transaction,
+      });
+      if (dup) {
+        throw new ErrorsUtil.ConflictError('This payment has already been refunded in the ledger.', HttpStatusCodesUtil.CONFLICT);
+      }
+
+      const paidCap = Number(tx.grossAmd);
+      const requested =
+        refundAmountAmd !== undefined && refundAmountAmd !== null
+          ? Math.floor(Number(refundAmountAmd))
+          : paidCap;
+      if (!Number.isFinite(requested) || requested <= 0) {
+        throw new ErrorsUtil.InputValidationError('Refund amount must be a positive integer (AMD).', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (requested > paidCap) {
+        throw new ErrorsUtil.InputValidationError(
+          'Refund amount cannot exceed the original payment amount.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
+      }
+
+      const bookingIdNorm = tx.bookingId ?? null;
+      if (bookingIdNorm != null) {
+        await FinanceService.normalizeLegacyRefundedIncomeRowsForBooking(bookingIdNorm, transaction);
+      }
+
+      const channel = tx.channel as FinanceTxChannel;
+      const method = tx.method as FinanceTxMethod;
+
+      await FinanceService.create({
+        customer: tx.customer.trim() || 'Student',
+        email: (tx.email ?? '').trim(),
+        description: `Refund · approved request · payment #${tx.id}`,
+        branchId: tx.branchId,
+        channel,
+        method,
+        grossAmd: requested,
+        feeAmd: 0,
+        status: 'completed',
+        providerRef: `booking-refund:payment:${tx.id}`,
+        source: 'system',
+        entryType: 'expense',
+        expenseKind: 'booking_refund',
+        bookingId: bookingIdNorm,
+        relatedPaymentTransactionId: tx.id,
+        transaction,
+      });
+
+      await tx.update(
+        {
+          status: 'completed',
+          refundReviewedAt: new Date(),
+          refundRequestedAt: null,
+        },
+        { transaction },
+      );
+      await tx.reload({ transaction });
+      void this.sendTransactionEmail(tx, 'refund_approved', 'Վերադարձի հարցումը հաստատվել է։').catch(() => {});
+      return toDto(tx);
+    });
   }
 
   static async rejectRefundRequest(id: number): Promise<FinanceTxDto> {

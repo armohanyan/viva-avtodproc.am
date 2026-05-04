@@ -10,10 +10,11 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import type { AccountType } from "src/modules/accounts";
-import { buildSocialAuthUrl, type SocialProvider } from "src/lib/socialAuth";
-import { Tabs, TabsList, TabsTrigger } from "src/components/ui/tabs";
+import { buildSocialAuthUrl } from "src/lib/socialAuth";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
+import { Card, CardContent, CardFooter } from "src/components/ui/card";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { joinAppPath } from "src/lib/navigation/crossApp";
@@ -43,24 +44,20 @@ function GoogleIcon() {
   );
 }
 
-function FacebookIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4 fill-[#1877F2]">
-      <path d="M24 12.1C24 5.4 18.6 0 12 0S0 5.4 0 12.1c0 6 4.4 11 10.1 11.9v-8.4H7.1V12h3V9.3c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 1-2 2v2.2h3.4l-.5 3.6h-2.9V24C19.6 23.1 24 18.1 24 12.1z" />
-    </svg>
-  );
-}
-
-function AppleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5 shrink-0 fill-current">
-      <path d="M16.37 1.43c0 1.14-.43 2.26-1.27 3.36-.99 1.3-2.2 2.05-3.5 1.94-.04-1.1.35-2.26 1.13-3.3.8-1.06 2.08-1.87 3.64-2z" />
-      <path d="M20.78 17.53c-.39.9-.85 1.73-1.39 2.49-.73 1.04-1.34 1.75-1.8 2.14-.72.64-1.49.97-2.31.97-.59 0-1.3-.17-2.13-.51-.84-.34-1.6-.51-2.3-.51-.73 0-1.52.17-2.36.51-.84.34-1.52.52-2.04.53-.78.03-1.57-.3-2.35-1-.5-.43-1.13-1.17-1.86-2.22-.8-1.12-1.45-2.43-1.96-3.91-.55-1.61-.82-3.16-.82-4.66 0-1.71.37-3.19 1.11-4.43.58-1 1.36-1.79 2.33-2.37.97-.58 2.02-.88 3.14-.9.62 0 1.43.19 2.43.57 1 .38 1.64.57 1.93.57.21 0 .93-.22 2.15-.67 1.16-.42 2.13-.59 2.92-.52 2.14.17 3.75 1.02 4.83 2.55-1.91 1.16-2.86 2.78-2.84 4.86.02 1.62.61 2.97 1.76 4.04.52.49 1.11.88 1.76 1.15-.14.41-.29.8-.45 1.2z" />
-    </svg>
-  );
-}
-
 type AuthTabKey = "login" | "register";
+
+function AuthDivider({ label }: { label: string }) {
+  return (
+    <div className="relative my-6" role="separator" aria-hidden>
+      <div className="absolute inset-0 flex items-center">
+        <span className="w-full border-t border-border" />
+      </div>
+      <div className="relative flex justify-center text-xs uppercase tracking-wide">
+        <span className="bg-card px-3 text-muted-foreground">{label}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   const { t, lang } = useLang();
@@ -121,7 +118,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [loginSocialLoading, setLoginSocialLoading] = useState<SocialProvider | null>(null);
+  const [loginGoogleRedirecting, setLoginGoogleRedirecting] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,11 +141,17 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         | { requiresMfa: true; mfaToken: string }
         | {
             accessToken: string;
-            user: { id: string | number; email: string; name: string; accountType: AccountType };
+            user: {
+              id: string | number;
+              email: string;
+              name: string;
+              accountType: AccountType;
+              hasPassword?: boolean;
+            };
           }
       >("/auth/login", { method: "POST", body: { email: trimmedEmail, password: loginPassword } });
 
-      if ("requiresMfa" in data && data.requiresMfa) {
+      if ("requiresMfa" in data) {
         storePendingAdminMfaToken(data.mfaToken);
         setLocation(absWouterHref("/auth/verify-2fa"));
         return;
@@ -162,6 +165,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         accountType,
         accessToken: data.accessToken,
         id: data.user.id,
+        ...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
       });
 
       showToast(t("loginSuccess"), "success");
@@ -173,10 +177,9 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     }
   };
 
-  const handleSocialAuthLogin = (provider: SocialProvider) => {
-    const authUrl = buildSocialAuthUrl(provider, "/auth/callback");
-    setLoginSocialLoading(provider);
-    window.location.assign(authUrl);
+  const startGoogleLogin = () => {
+    setLoginGoogleRedirecting(true);
+    window.location.assign(buildSocialAuthUrl("google", "/auth/callback"));
   };
 
   // --- Register state/handlers ---
@@ -189,7 +192,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   });
   const [agreed, setAgreed] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
-  const [registerSocialLoading, setRegisterSocialLoading] = useState<SocialProvider | null>(null);
+  const [registerGoogleRedirecting, setRegisterGoogleRedirecting] = useState(false);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -217,7 +220,13 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     try {
       const data = await vivaApiJson<{
         accessToken: string;
-        user: { id: string | number; email: string; name: string; accountType: AccountType };
+        user: {
+          id: string | number;
+          email: string;
+          name: string;
+          accountType: AccountType;
+          hasPassword?: boolean;
+        };
       }>("/auth/register", {
         method: "POST",
         body: {
@@ -234,6 +243,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         accountType,
         accessToken: data.accessToken,
         id: data.user.id,
+        ...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
       });
       showToast(t("registerSuccess"), "success");
       setLocation(absWouterHref(resolvePostAuthPanelPath(accountType, window.location.search)));
@@ -244,10 +254,9 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     }
   };
 
-  const handleSocialAuthRegister = (provider: SocialProvider) => {
-    const authUrl = buildSocialAuthUrl(provider, "/auth/callback");
-    setRegisterSocialLoading(provider);
-    window.location.assign(authUrl);
+  const startGoogleRegister = () => {
+    setRegisterGoogleRedirecting(true);
+    window.location.assign(buildSocialAuthUrl("google", "/auth/callback"));
   };
 
   return (
@@ -343,273 +352,258 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         <div className="relative text-hero-foreground/70 text-sm">© 2026 {t("brandName")}</div>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center items-center px-6 py-12">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center justify-center gap-2 mb-8">
-            <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center">
-              <img src="/logo.jpg" alt={t("brandName")} className="w-6 h-6 object-contain" />
+      <div className="flex-1 flex flex-col justify-center px-4 py-10 sm:px-6 sm:py-12">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AuthTabKey)} className="mx-auto w-full max-w-[440px]">
+          <Card className="gap-0 overflow-hidden border-border/80 py-0 shadow-md">
+            <div className="border-b border-border/60 bg-muted/30 px-5 pt-5 pb-4 sm:px-8 sm:pt-6">
+              <div className="flex lg:hidden items-center justify-center gap-2 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+                  <img src="/logo.jpg" alt={t("brandName")} className="h-7 w-7 object-contain" />
+                </div>
+                <span className="font-semibold text-lg text-foreground">{t("brandName")}</span>
+              </div>
+              <TabsList className="grid h-11 w-full grid-cols-2 rounded-lg bg-muted/80 p-1">
+                <TabsTrigger value="login" className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                  {t("login")}
+                </TabsTrigger>
+                <TabsTrigger value="register" className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">
+                  {t("register")}
+                </TabsTrigger>
+              </TabsList>
             </div>
-            <span className="font-bold text-lg text-foreground">{t("brandName")}</span>
-          </div>
 
-          <Tabs
-            value={activeTab}
-            onValueChange={(v) => setActiveTab(v as AuthTabKey)}
-          >
-            <TabsList className="w-full mb-8">
-              <TabsTrigger
-                value="login"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                {t("login")}
-              </TabsTrigger>
-              <TabsTrigger
-                value="register"
-                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                {t("register")}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+            <CardContent className="space-y-0 px-0 pb-0 pt-0">
+              <TabsContent value="login" className="mt-0 outline-none">
+                <div className="space-y-6 px-5 py-6 sm:px-8 sm:py-8">
+                  <header className="space-y-1">
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("welcomeBack")}</h1>
+                    <p className="text-sm text-muted-foreground">{t("signInContinue")}</p>
+                  </header>
 
-          {activeTab === "login" ? (
-            <>
-              <div className="flex justify-between items-center mb-8">
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground">{t("welcomeBack")}</h1>
-                  <p className="text-muted-foreground text-sm mt-1">{t("signInContinue")}</p>
-                </div>
-              </div>
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground" htmlFor="auth-login-email">
+                        {t("emailAddress")}
+                      </label>
+                      <Input
+                        id="auth-login-email"
+                        type="email"
+                        autoComplete="email"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder={t("emailAddress")}
+                        className="h-11 bg-background"
+                      />
+                    </div>
 
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("emailAddress")}</label>
-                  <Input
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder={t("emailAddress")}
-                    className="h-11"
-                  />
-                </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-sm font-medium text-foreground" htmlFor="auth-login-password">
+                          {t("password")}
+                        </label>
+                        <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                          {t("forgotPassword")}
+                        </Link>
+                      </div>
+                      <div className="relative">
+                        <Input
+                          id="auth-login-password"
+                          type={showPass ? "text" : "password"}
+                          autoComplete="current-password"
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="h-11 bg-background pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPass(!showPass)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                          aria-label={showPass ? t("authPasswordVisibilityHide") : t("authPasswordVisibilityShow")}
+                        >
+                          {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
 
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-sm font-medium text-muted-foreground">{t("password")}</label>
-                    <Link href="/forgot-password" className="text-xs text-primary hover:underline">
-                      {t("forgotPassword")}
-                    </Link>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      type={showPass ? "text" : "password"}
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="h-11 pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass(!showPass)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    <Button
+                      type="submit"
+                      disabled={loginLoading || loginGoogleRedirecting}
+                      className="h-11 w-full font-semibold disabled:opacity-70"
                     >
-                      {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
+                      {loginLoading ? t("authSubmittingLogin") : t("signIn")}
+                    </Button>
+                  </form>
+
+                  <AuthDivider label={t("orContinueWith")} />
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full gap-2 border-border bg-background font-medium"
+                    disabled={loginLoading || loginGoogleRedirecting}
+                    onClick={startGoogleLogin}
+                  >
+                    <GoogleIcon />
+                    {loginGoogleRedirecting ? t("redirecting") : t("continueWithGoogle")}
+                  </Button>
                 </div>
+              </TabsContent>
 
-                <Button
-                  type="submit"
-                  disabled={loginLoading}
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-11 mt-2 disabled:opacity-70"
-                >
-                  {loginLoading ? "Signing in..." : t("signIn")}
-                </Button>
-              </form>
+              <TabsContent value="register" className="mt-0 outline-none">
+                <div className="space-y-6 px-5 py-6 sm:px-8 sm:py-8">
+                  <header className="space-y-1">
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("createAccount")}</h1>
+                    {t("joinViva") ? <p className="text-sm text-muted-foreground">{t("joinViva")}</p> : null}
+                  </header>
 
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted-foreground">{t("orContinueWith")}</span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
+                  <form onSubmit={handleRegister} className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground" htmlFor="auth-reg-first">
+                          {t("firstName")} <span className="text-destructive">*</span>
+                        </label>
+                        <Input
+                          id="auth-reg-first"
+                          value={form.firstName}
+                          onChange={set("firstName")}
+                          placeholder={t("firstName")}
+                          autoComplete="given-name"
+                          className="h-11 bg-background"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium text-foreground" htmlFor="auth-reg-last">
+                          {t("lastName")}
+                        </label>
+                        <Input
+                          id="auth-reg-last"
+                          value={form.lastName}
+                          onChange={set("lastName")}
+                          placeholder={t("lastName")}
+                          autoComplete="family-name"
+                          className="h-11 bg-background"
+                        />
+                      </div>
+                    </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  disabled={loginSocialLoading !== null}
-                  onClick={() => handleSocialAuthLogin("google")}
-                >
-                  <GoogleIcon />
-                  {loginSocialLoading === "google" ? t("redirecting") : t("continueWithGoogle")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  disabled={loginSocialLoading !== null}
-                  onClick={() => handleSocialAuthLogin("facebook")}
-                >
-                  <FacebookIcon />
-                  {loginSocialLoading === "facebook" ? t("redirecting") : t("continueWithFacebook")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  disabled={loginSocialLoading !== null}
-                  onClick={() => handleSocialAuthLogin("apple")}
-                >
-                  <AppleIcon />
-                  {loginSocialLoading === "apple" ? t("redirecting") : t("continueWithAppleCloud")}
-                </Button>
-              </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground" htmlFor="auth-reg-email">
+                        {t("emailAddress")} <span className="text-destructive">*</span>
+                      </label>
+                      <Input
+                        id="auth-reg-email"
+                        type="email"
+                        value={form.email}
+                        onChange={set("email")}
+                        placeholder={t("emailAddress")}
+                        autoComplete="email"
+                        className="h-11 bg-background"
+                      />
+                    </div>
 
-              <p className="text-center text-sm text-muted-foreground mt-4">
-                {t("noAccount")}{" "}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("register")}
-                  className="text-primary font-medium hover:underline bg-transparent border-0 p-0"
-                >
-                  {t("signUp")}
-                </button>
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="flex justify-between items-center mb-8">
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground">{t("createAccount")}</h1>
-                  {t("joinViva") && <p className="text-muted-foreground text-sm mt-1">{t("joinViva")}</p>}
-                </div>
-              </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground" htmlFor="auth-reg-phone">
+                        {t("phoneNumber")}
+                      </label>
+                      <Input
+                        id="auth-reg-phone"
+                        type="tel"
+                        value={form.phone}
+                        onChange={set("phone")}
+                        placeholder="+374 99 123 456"
+                        autoComplete="tel"
+                        className="h-11 bg-background"
+                      />
+                    </div>
 
-              <form onSubmit={handleRegister} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("firstName")} *</label>
-                    <Input value={form.firstName} onChange={set("firstName")} placeholder={t("firstName")} className="h-11" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("lastName")}</label>
-                    <Input value={form.lastName} onChange={set("lastName")} placeholder={t("lastName")} className="h-11" />
-                  </div>
-                </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground" htmlFor="auth-reg-password">
+                        {t("password")} <span className="text-destructive">*</span>
+                      </label>
+                      <Input
+                        id="auth-reg-password"
+                        type="password"
+                        value={form.password}
+                        onChange={set("password")}
+                        placeholder={t("passwordPlaceholderMinChars")}
+                        autoComplete="new-password"
+                        className="h-11 bg-background"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("emailAddress")} *</label>
-                  <Input type="email" value={form.email} onChange={set("email")} placeholder={t("emailAddress")} className="h-11" />
-                </div>
+                    <div className="flex gap-2.5 rounded-lg border border-border/80 bg-muted/20 p-3">
+                      <input
+                        type="checkbox"
+                        id="terms"
+                        checked={agreed}
+                        onChange={(e) => setAgreed(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-border text-primary"
+                      />
+                      <label htmlFor="terms" className="text-xs leading-relaxed text-muted-foreground">
+                        {t("registerLegalAgreePrefix")}{" "}
+                        <a href={termsHref} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+                          {termsDoc.pageTitle}
+                        </a>{" "}
+                        {t("registerLegalAgreeConj")}{" "}
+                        <a href={privacyHref} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+                          {privacyDoc.pageTitle}
+                        </a>
+                      </label>
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("phoneNumber")}</label>
-                  <Input type="tel" value={form.phone} onChange={set("phone")} placeholder="+374 99 123 456" className="h-11" />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("password")} *</label>
-                  <Input
-                    type="password"
-                    value={form.password}
-                    onChange={set("password")}
-                    placeholder="Min. 8 characters"
-                    className="h-11"
-                  />
-                </div>
-
-                <div className="flex items-start gap-2 mt-2">
-                  <input
-                    type="checkbox"
-                    id="terms"
-                    checked={agreed}
-                    onChange={(e) => setAgreed(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 text-primary rounded border-border"
-                  />
-                  <label htmlFor="terms" className="text-xs text-muted-foreground leading-relaxed">
-                    {t("registerLegalAgreePrefix")}{" "}
-                    <a
-                      href={termsHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
+                    <Button
+                      type="submit"
+                      disabled={registerLoading || registerGoogleRedirecting}
+                      className="h-11 w-full font-semibold disabled:opacity-70"
                     >
-                      {termsDoc.pageTitle}
-                    </a>{" "}
-                    {t("registerLegalAgreeConj")}{" "}
-                    <a
-                      href={privacyHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      {privacyDoc.pageTitle}
-                    </a>
-                  </label>
+                      {registerLoading ? t("authSubmittingRegister") : t("createAccount")}
+                    </Button>
+                  </form>
+
+                  <AuthDivider label={t("orContinueWith")} />
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full gap-2 border-border bg-background font-medium"
+                    disabled={registerLoading || registerGoogleRedirecting}
+                    onClick={startGoogleRegister}
+                  >
+                    <GoogleIcon />
+                    {registerGoogleRedirecting ? t("redirecting") : t("continueWithGoogle")}
+                  </Button>
                 </div>
+              </TabsContent>
+            </CardContent>
 
-                <Button
-                  type="submit"
-                  disabled={registerLoading}
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-11 mt-2 disabled:opacity-70"
-                >
-                  {registerLoading ? "Creating account..." : t("createAccount")}
-                </Button>
-              </form>
-
-              <div className="my-5 flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted-foreground">{t("orContinueWith")}</span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  disabled={registerSocialLoading !== null}
-                  onClick={() => handleSocialAuthRegister("google")}
-                >
-                  <GoogleIcon />
-                  {registerSocialLoading === "google" ? t("redirecting") : t("continueWithGoogle")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  disabled={registerSocialLoading !== null}
-                  onClick={() => handleSocialAuthRegister("facebook")}
-                >
-                  <FacebookIcon />
-                  {registerSocialLoading === "facebook" ? t("redirecting") : t("continueWithFacebook")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-10"
-                  disabled={registerSocialLoading !== null}
-                  onClick={() => handleSocialAuthRegister("apple")}
-                >
-                  <AppleIcon />
-                  {registerSocialLoading === "apple" ? t("redirecting") : t("continueWithAppleCloud")}
-                </Button>
-              </div>
-
-              <p className="text-center text-sm text-muted-foreground mt-5">
-                {t("alreadyAccount")}{" "}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("login")}
-                  className="text-primary font-medium hover:underline bg-transparent border-0 p-0"
-                >
-                  {t("signIn")}
-                </button>
-              </p>
-            </>
-          )}
-        </div>
+            <CardFooter className="flex flex-col gap-3 border-t border-border/60 bg-muted/15 px-5 py-4 sm:px-8">
+              {activeTab === "login" ? (
+                <p className="text-center text-sm text-muted-foreground">
+                  {t("noAccount")}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("register")}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {t("signUp")}
+                  </button>
+                </p>
+              ) : (
+                <p className="text-center text-sm text-muted-foreground">
+                  {t("alreadyAccount")}{" "}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("login")}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {t("signIn")}
+                  </button>
+                </p>
+              )}
+            </CardFooter>
+          </Card>
+        </Tabs>
       </div>
     </div>
   );

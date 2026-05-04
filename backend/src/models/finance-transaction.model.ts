@@ -14,6 +14,7 @@ export type FinanceTxExpenseKind =
   | 'utilities'
   | 'maintenance'
   | 'marketing'
+  | 'booking_refund'
   | 'other';
 
 export class FinanceTransaction extends Model<
@@ -43,6 +44,8 @@ export class FinanceTransaction extends Model<
   declare refundReviewedAt: CreationOptional<Date | null>;
   /** When set, this payment line is tied to a scheduled lesson (e.g. single lesson or extra hour). Package / exam fees typically stay null. */
   declare bookingId: CreationOptional<number | null>;
+  /** For `booking_refund` expense rows: original income transaction that was refunded (partial/full). */
+  declare relatedPaymentTransactionId: CreationOptional<number | null>;
 }
 
 FinanceTransaction.init(
@@ -78,7 +81,16 @@ FinanceTransaction.init(
       defaultValue: 'income',
     },
     expenseKind: {
-      type: DataTypes.ENUM('salary', 'hourly_rate', 'rent', 'utilities', 'maintenance', 'marketing', 'other'),
+      type: DataTypes.ENUM(
+        'salary',
+        'hourly_rate',
+        'rent',
+        'utilities',
+        'maintenance',
+        'marketing',
+        'booking_refund',
+        'other',
+      ),
       allowNull: true,
       defaultValue: null,
     },
@@ -93,6 +105,17 @@ FinanceTransaction.init(
       onUpdate: 'CASCADE',
       onDelete: 'RESTRICT',
     },
+    relatedPaymentTransactionId: fkUnsignedIntNullable(),
   },
-  { sequelize, tableName: 'finance_transactions', modelName: 'FinanceTransaction' },
+  {
+    sequelize,
+    tableName: 'finance_transactions',
+    modelName: 'FinanceTransaction',
+    indexes: [
+      { fields: ['booking_id'] },
+      { fields: ['provider_ref'] },
+      { fields: ['booking_id', 'entry_type', 'status'] },
+      { fields: ['booking_id', 'provider_ref'] },
+    ],
+  },
 );

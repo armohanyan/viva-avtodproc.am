@@ -17,6 +17,7 @@ import {
   normalizeAvailabilityBlocksFromApi,
 } from "src/modules/instructors/instructorAvailability";
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
+import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
 
@@ -209,6 +210,8 @@ export default function LessonBookingCalendar({
   const [bookingFlowDone, setBookingFlowDone] = useState(false);
   const [countdownTick, setCountdownTick] = useState(0);
   const [busySlotsRefreshKey, setBusySlotsRefreshKey] = useState(0);
+  /** True when the student has any booking with status `pending` (awaiting payment). */
+  const [pendingBookingBlocksNew, setPendingBookingBlocksNew] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [posDialogOpen, setPosDialogOpen] = useState(false);
   const [slotSearch, setSlotSearch] = useState("");
@@ -275,6 +278,29 @@ export default function LessonBookingCalendar({
       cancelled = true;
     };
   }, [selectedInstructorId, weekOffset, busySlotsRefreshKey, ignoreBusyBookingId]);
+
+  useEffect(() => {
+    if (mode !== "student" || !studentUserId) {
+      setPendingBookingBlocksNew(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await vivaApiJson<{ status: string }[]>(
+          `/bookings?${new URLSearchParams({ studentUserId }).toString()}`,
+        );
+        if (cancelled) return;
+        const has = Array.isArray(list) && list.some((b) => toCanonicalBookingStatus(b.status) === "pending");
+        setPendingBookingBlocksNew(has);
+      } catch {
+        if (!cancelled) setPendingBookingBlocksNew(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, studentUserId, busySlotsRefreshKey]);
 
   useEffect(() => {
     if (!adminSuppressSummaryCard || mode !== "admin") return;
@@ -477,9 +503,10 @@ export default function LessonBookingCalendar({
       if (mode === "student" && studentUserId && mySlotKeys.has(key)) return "mine";
       if (busyOccupiedKeys.has(key)) return "unavailable";
       if (isSlotBlockedByAvailabilityRules(dateIso, time, availabilityBlocks)) return "unavailable";
+      if (mode === "student" && studentUserId && pendingBookingBlocksNew) return "unavailable";
       return "available";
     },
-    [blocksLoading, mode, studentUserId, mySlotKeys, busyOccupiedKeys, availabilityBlocks],
+    [blocksLoading, mode, studentUserId, mySlotKeys, busyOccupiedKeys, availabilityBlocks, pendingBookingBlocksNew],
   );
 
   const slotStyle = (status: SlotStatus, isSelected: boolean) => {
@@ -562,6 +589,10 @@ export default function LessonBookingCalendar({
 
     if (mode === "student") {
       if (!selected) return;
+      if (pendingBookingBlocksNew) {
+        showToast(t("bookingPendingBlocksNew"), "error");
+        return;
+      }
       const sorted = sortTimesUnique(selected.times);
       if (!isConsecutiveHourlySlots(sorted)) {
         showToast(t("bookingSlotsMustBeConsecutive"), "error");
@@ -677,6 +708,9 @@ export default function LessonBookingCalendar({
 
   const studentPaymentStepActive =
     mode === "student" && confirmed && studentPaySession && !serverPaidConfirmed && !bookingFlowDone;
+
+  const showPendingBookingCallout =
+    mode === "student" && pendingBookingBlocksNew && !studentPaymentStepActive;
 
   const onCompletePayment = async (): Promise<boolean> => {
     if (!studentPaySession) return false;
@@ -953,6 +987,17 @@ export default function LessonBookingCalendar({
           </Reveal>
         ) : null}
 
+        {showPendingBookingCallout ? (
+          <Reveal delay={0.08}>
+            <div
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+              role="status"
+            >
+              {t("bookingPendingBlocksNew")}
+            </div>
+          </Reveal>
+        ) : null}
+
         {mode === "admin" ? slotCalendarCard : <Reveal delay={0.12}>{slotCalendarCard}</Reveal>}
         {adminSuppressSummaryCard && mode === "admin" ? (
           <div className="flex justify-end">
@@ -1153,7 +1198,8 @@ export default function LessonBookingCalendar({
                   disabled={
                     submitting ||
                     (mode === "admin" && (!adminReady || !adminHasSlotSelection)) ||
-                    (mode === "student" && !selected)
+                    (mode === "student" && !selected) ||
+                    (mode === "student" && pendingBookingBlocksNew)
                   }
                   onClick={() => void handleConfirm()}
                 >

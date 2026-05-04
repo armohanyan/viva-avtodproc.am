@@ -1,4 +1,4 @@
-import { API_V1_PREFIX } from "src/constants/api";
+import { API_V1_PREFIX } from "src/constants/api.constants";
 import { apiFetch, apiJson, getApiErrorMessage, type ApiJsonInit } from "src/lib/api";
 import { loadAccountSession } from "src/modules/accounts/account.session";
 

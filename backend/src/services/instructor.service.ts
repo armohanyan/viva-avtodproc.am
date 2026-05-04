@@ -1,10 +1,13 @@
 import {
+  Booking,
+  BookingSlot,
   FleetCar,
   FleetCarInstructor,
   InstructorBranch,
   InstructorProfile,
   InstructorScheduleRule,
   OAuthAccount,
+  StudentProfile,
   User,
 } from '../models';
 import { Op } from 'sequelize';
@@ -270,6 +273,9 @@ export default class InstructorService {
 
   static async remove(id: number): Promise<boolean> {
     await InstructorStudentRatingService.removeAllForInstructor(id);
+    await BookingSlot.update({ instructorUserId: null }, { where: { instructorUserId: id } });
+    await Booking.update({ instructorUserId: null }, { where: { instructorUserId: id } });
+    await StudentProfile.update({ instructorUserId: null }, { where: { instructorUserId: id } });
     await InstructorScheduleRule.destroy({ where: { instructorUserId: id } });
     await FleetCarInstructor.destroy({ where: { instructorUserId: id } });
     await InstructorBranch.destroy({ where: { instructorUserId: id } });

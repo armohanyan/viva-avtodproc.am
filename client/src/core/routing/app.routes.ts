@@ -1,5 +1,5 @@
-import type { AppRoute } from "src/shared/types/router.types";
-import { combineRoutes } from "src/shared/helpers/route.helper";
+import type { AppRoute } from "src/types/router.types";
+import { combineRoutes } from "src/utils/route.utils";
 import { authRoutes } from "src/modules/auth/auth.routes";
 import { dashboardRoutes } from "src/modules/dashboard/dashboard.routes";
 import { adminRoutes } from "src/modules/admin/admin.routes";

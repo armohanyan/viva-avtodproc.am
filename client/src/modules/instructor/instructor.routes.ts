@@ -1,5 +1,5 @@
 import type { AccountType } from "src/modules/accounts";
-import type { AppRoute } from "src/shared/types/router.types";
+import type { AppRoute } from "src/types/router.types";
 import {
   InstructorDashboardPage,
   InstructorStudentsPage,

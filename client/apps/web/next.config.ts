@@ -1,8 +1,16 @@
 import type { NextConfig } from "next";
+import { loadEnvConfig } from "@next/env";
 import path from "path";
 
-/** Where the Next server can reach Express (Docker: `http://backend:3001`; local: unset → 127.0.0.1:3001). */
-function uploadProxyOrigin(): string {
+/** Monorepo client root (`client/`) — same as `outputFileTracingRoot`. Next only auto-loads `.env*` from `apps/web`. */
+const clientRoot = path.join(__dirname, "../..");
+loadEnvConfig(clientRoot);
+
+/**
+ * Where the Next server can reach Express for rewrites (Docker: `http://backend:3001`).
+ * Order matches `vite.config.ts` intent: internal URL first, then public API base, then Vite proxy target from `client/.env`.
+ */
+function backendProxyOrigin(): string {
 	const internal = process.env.INTERNAL_API_BASE_URL?.trim();
 	if (internal) {
 		return internal.replace(/\/+$/, "");
@@ -10,6 +18,10 @@ function uploadProxyOrigin(): string {
 	const publicBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 	if (publicBase) {
 		return publicBase.replace(/\/+$/, "");
+	}
+	const viteProxy = process.env.VITE_API_PROXY_TARGET?.trim();
+	if (viteProxy) {
+		return viteProxy.replace(/\/+$/, "");
 	}
 	return "http://127.0.0.1:3001";
 }
@@ -50,12 +62,16 @@ const nextConfig: NextConfig = {
     },
   },
   /**
-   * Staff uploads return `{API_PUBLIC_URL}/upload/…` (often the marketing origin in dev).
-   * The Vite panel proxies `/upload` to the API; Next must do the same or image URLs 404.
+   * Mirror `client/vite.config.ts` server proxy so production `next start` works like Vite dev:
+   * - `/api/*` → Express (`/api/v1/...`, `/api/admin/...`)
+   * - `/upload/*` → staff static files (same-origin `/upload/…` in the UI)
    */
   async rewrites() {
-    const api = uploadProxyOrigin();
-    return [{ source: "/upload/:path*", destination: `${api}/upload/:path*` }];
+    const api = backendProxyOrigin();
+    return [
+      { source: "/api/:path*", destination: `${api}/api/:path*` },
+      { source: "/upload/:path*", destination: `${api}/upload/:path*` },
+    ];
   },
 };
 

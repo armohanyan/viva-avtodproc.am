@@ -177,18 +177,17 @@ export default function DashboardLayout({ children }: Props) {
 			)}
 			renderSidebar={({ closeMobileNav }) => (
 				<div className="flex flex-col h-full min-h-0 bg-card">
-					<div className="p-5 border-b border-border shrink-0">
-						<Link href={absWouterHref("/dashboard")} className="flex items-center gap-2">
-							<div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
-								<img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
-							</div>
-							<div className="min-w-0">
-								<span className="font-bold text-foreground block truncate">{t("brandName")}</span>
-								<p className="text-xs text-primary font-medium truncate">{t("roleStudent")}</p>
-							</div>
+					<div className="px-3 pt-4 pb-2 shrink-0">
+						<Link
+							href={absWouterHref("/dashboard")}
+							onClick={() => closeMobileNav()}
+							className="flex items-center gap-2 min-w-0"
+						>
+							<img src="/logo.jpg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
+							<span className="font-bold text-foreground text-sm truncate">{t("brandName")}</span>
 						</Link>
 					</div>
-					<nav className="px-3 py-4 flex-1 min-h-0 overflow-y-auto space-y-1">
+					<nav className="px-3 pb-4 flex-1 min-h-0 overflow-y-auto space-y-1">
 						{nav.map((item) => {
 							if (item.type === "single") {
 								return (

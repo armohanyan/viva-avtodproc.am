@@ -1,95 +1,37 @@
 import type { TranslationKey } from "src/lib/i18n";
+import type {
+  ExpenseBreakdownRow,
+  FinanceTx,
+  TxChannel,
+  TxMethod,
+  TxStatus,
+} from "src/types/finance.types";
+import { expenseDateInRange } from "src/utils/date.utils";
 
-export type TxStatus = "completed" | "pending" | "failed" | "refunded";
-export type TxChannel = "online" | "pos" | "office" | "bank";
-export type TxMethod = "card" | "idram" | "cash" | "transfer";
-export type TxSource = "system" | "manual";
-export type TxEntryType = "income" | "expense";
-export type TxExpenseKind = "salary" | "hourly_rate" | "rent" | "utilities" | "maintenance" | "marketing" | "other";
+export type {
+  ExpenseBreakdownRow,
+  FinanceLedgerPeriod,
+  FinanceOverviewPeriod,
+  FinanceTx,
+  ManualFormShape,
+  TxChannel,
+  TxEntryType,
+  TxExpenseKind,
+  TxMethod,
+  TxSource,
+  TxStatus,
+} from "src/types/finance.types";
 
-export type ManualFormShape = {
-  studentDirectoryId: string;
-  customer: string;
-  email: string;
-  description: string;
-  branchId: string;
-  channel: TxChannel;
-  method: TxMethod;
-  grossStr: string;
-  feeStr: string;
-  status: TxStatus;
-  ref: string;
-  datetimeLocal: string;
-  bookingIdStr: string;
-};
-
-export type FinanceTx = {
-  id: number;
-  createdAt: string;
-  customer: string;
-  email: string;
-  description: string;
-  branchId: string;
-  channel: TxChannel;
-  method: TxMethod;
-  grossAmd: number;
-  feeAmd: number;
-  status: TxStatus;
-  providerRef: string;
-  source: TxSource;
-  entryType?: TxEntryType;
-  expenseKind?: TxExpenseKind | null;
-  employeeName?: string | null;
-  units?: number | null;
-  unitRateAmd?: number | null;
-  bookingId: string | null;
-};
-
-export function monthRange(reference = new Date()): { start: Date; end: Date } {
-  const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
-  const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0, 23, 59, 59, 999);
-  return { start, end };
-}
-
-/** Last N calendar months through the current month (inclusive). */
-export type FinanceOverviewPeriod = "1m" | "3m" | "6m" | "12m";
-
-export function financePeriodMonthCount(p: FinanceOverviewPeriod): number {
-  switch (p) {
-    case "1m":
-      return 1;
-    case "3m":
-      return 3;
-    case "6m":
-      return 6;
-    case "12m":
-      return 12;
-  }
-}
-
-export function rollingCalendarMonthsRange(monthCount: number, reference = new Date()): { start: Date; end: Date } {
-  const { end } = monthRange(reference);
-  const start = new Date(reference.getFullYear(), reference.getMonth() - (monthCount - 1), 1);
-  return { start, end };
-}
-
-/** First day of each month from `rangeStart` through `rangeEnd` (same month granularity as `rangeEnd`). */
-export function monthStartsInRange(rangeStart: Date, rangeEnd: Date): Date[] {
-  const out: Date[] = [];
-  let y = rangeStart.getFullYear();
-  let m = rangeStart.getMonth();
-  const yEnd = rangeEnd.getFullYear();
-  const mEnd = rangeEnd.getMonth();
-  while (y < yEnd || (y === yEnd && m <= mEnd)) {
-    out.push(new Date(y, m, 1));
-    m += 1;
-    if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-  }
-  return out;
-}
+export { formatAmd, parseAmdInput } from "src/utils/currency.utils";
+export {
+  expenseDateInRange,
+  financePeriodMonthCount,
+  ledgerPeriodRange,
+  monthRange,
+  monthStartsInRange,
+  rollingCalendarMonthsRange,
+  toDatetimeLocalValue,
+} from "src/utils/date.utils";
 
 export function grossCompletedInRange(
   transactions: readonly FinanceTx[],
@@ -121,6 +63,59 @@ export function financeOutcomeTotalInRange(
   return sum;
 }
 
+/** Completed `booking_refund` expense rows in range (money returned to customers). */
+export function bookingRefundExpenseCompletedInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  let sum = 0;
+  for (const tx of transactions) {
+    if ((tx.entryType ?? "income") !== "expense" || tx.status !== "completed") continue;
+    if (tx.expenseKind !== "booking_refund") continue;
+    const d = new Date(tx.createdAt);
+    if (d < rangeStart || d > rangeEnd) continue;
+    sum += tx.grossAmd;
+  }
+  return sum;
+}
+
+/** Legacy ledger: income rows marked `refunded` (before separate refund expense lines). */
+export function legacyRefundedIncomeGrossInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  let sum = 0;
+  for (const tx of transactions) {
+    if ((tx.entryType ?? "income") !== "income" || tx.status !== "refunded") continue;
+    const d = new Date(tx.createdAt);
+    if (d < rangeStart || d > rangeEnd) continue;
+    sum += tx.grossAmd;
+  }
+  return sum;
+}
+
+export function totalRefundMoneyInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  return bookingRefundExpenseCompletedInRange(transactions, rangeStart, rangeEnd) +
+    legacyRefundedIncomeGrossInRange(transactions, rangeStart, rangeEnd);
+}
+
+/** Net intake: completed lesson payments minus refunds (new expense rows + legacy refunded income). */
+export function netRevenueAfterRefundsInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  const gross = grossCompletedInRange(transactions, rangeStart, rangeEnd);
+  return gross - bookingRefundExpenseCompletedInRange(transactions, rangeStart, rangeEnd) -
+    legacyRefundedIncomeGrossInRange(transactions, rangeStart, rangeEnd);
+}
+
 export function expensesTotalInRange(
   rows: readonly { date: string; amount: number }[],
   rangeStart: Date,
@@ -132,16 +127,6 @@ export function expensesTotalInRange(
     sum += Math.abs(row.amount);
   }
   return sum;
-}
-
-export function formatAmd(n: number): string {
-  return `${n.toLocaleString("en-US")} ֏`;
-}
-
-export function parseAmdInput(raw: string): number {
-  const n = Number.parseFloat(String(raw).replace(/[\s,]/g, ""));
-  if (!Number.isFinite(n) || n < 0) return NaN;
-  return Math.round(n);
 }
 
 export function netOf(tx: FinanceTx): number {
@@ -194,11 +179,6 @@ export function methodTKey(m: TxMethod): TranslationKey {
   }
 }
 
-export function toDatetimeLocalValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 /** Completed income in [monthStart, monthEnd] grouped by channel + method. */
 export function incomeBreakdownCompletedInRange(
   transactions: readonly FinanceTx[],
@@ -217,19 +197,17 @@ export function incomeBreakdownCompletedInRange(
     prev.count += 1;
     map.set(key, prev);
   }
-  return [...map.values()].sort((a, b) => b.gross - a.gross);
+  return [...map.entries()]
+    .map(([key, prev]) => ({
+      key,
+      channel: prev.channel,
+      method: prev.method,
+      gross: prev.gross,
+      net: prev.net,
+      count: prev.count,
+    }))
+    .sort((a, b) => b.gross - a.gross);
 }
-
-export function expenseDateInRange(dateIso: string, monthStart: Date, monthEnd: Date): boolean {
-  const d = new Date(`${dateIso.slice(0, 10)}T12:00:00`);
-  return d >= monthStart && d <= monthEnd;
-}
-
-export type ExpenseBreakdownRow = {
-  key: string;
-  total: number;
-  count: number;
-};
 
 export function outcomesBreakdownInRange(
   rows: readonly { date: string; amount: number }[],

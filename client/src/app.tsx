@@ -4,7 +4,7 @@ import { AppProviders } from "src/core/providers/AppProviders";
 import { ProtectedRoute } from "src/core/routing/ProtectedRoute";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { appRoutes } from "src/core/routing/app.routes";
-import type { AppRoute } from "src/shared/types/router.types";
+import type { AppRoute } from "src/types/router.types";
 
 const guardedByPath = new Map<string, ComponentType>();
 

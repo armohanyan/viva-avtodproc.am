@@ -1,4 +1,4 @@
-import { API_V1_PREFIX } from "src/constants/api";
+import { API_V1_PREFIX } from "src/constants/api.constants";
 import { apiJson } from "src/lib/api";
 import type { MarketingPublicDto } from "./types";
 

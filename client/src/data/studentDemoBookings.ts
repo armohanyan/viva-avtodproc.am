@@ -1,6 +1,7 @@
 import type { TranslationKey } from "src/lib/i18n";
+import type { CanonicalBookingStatus } from "src/types/booking.types";
 
-export type StudentDemoBookingStatus = "confirmed" | "pending" | "cancelled" | "refunded";
+export type StudentDemoBookingStatus = CanonicalBookingStatus;
 
 /** Human-readable range for hourly bookings (`endTime` is exclusive end from the API). */
 export function formatBookingSlotRangeLabel(time: string, endTime?: string | null): string {

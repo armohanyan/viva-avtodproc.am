@@ -1,5 +1,5 @@
 import { useLang, type TranslationKey } from "src/lib/i18n";
-import { partitionStudentBookings, type StudentDemoBooking, type StudentDemoBookingStatus } from "src/data/studentDemoBookings";
+import { partitionStudentBookings, type StudentDemoBooking } from "src/data/studentDemoBookings";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
@@ -88,8 +88,13 @@ function statusBadgeClass(booking: StudentDemoBooking) {
   return "bg-accent text-muted-foreground";
 }
 
-function practicalUpcomingActions(b: StudentDemoBooking): boolean {
-  return b.lessonTypeKey === "lessonTypePractical" && (b.status === "pending" || b.status === "confirmed");
+/** Upcoming rows where the student may cancel or (if applicable) complete payment — matches backend `cancelPracticalStudentBooking` lesson types. */
+function studentUpcomingRowShowsActions(b: StudentDemoBooking, todayIso: string): boolean {
+  return (b.status === "pending" || b.status === "confirmed") && b.dateIso >= todayIso;
+}
+
+function isPracticalLesson(b: StudentDemoBooking): boolean {
+  return b.lessonTypeKey === "lessonTypePractical";
 }
 
 export function DashboardBookingsListTab() {
@@ -355,7 +360,7 @@ export function DashboardBookingsListTab() {
                               {statusLabel(b, t)}
                             </Badge>
                             <p className="text-[11px] text-muted-foreground leading-snug">{t(statusExplainKey(b))}</p>
-                            {b.status === "pending" && b.lessonTypeKey === "lessonTypePractical" && holdActive(b) ? (
+                            {b.status === "pending" && holdActive(b) ? (
                               <p className="text-[11px] text-amber-700 dark:text-amber-500 tabular-nums">
                                 {t("bookingPaymentRemainingLabel")}:{" "}
                                 {new Date(b.holdExpiresAt!).toLocaleString(locale, {
@@ -374,7 +379,7 @@ export function DashboardBookingsListTab() {
                             : "—"}
                         </td>
                         <td className="py-3 px-4 text-right align-top whitespace-nowrap">
-                          {practicalUpcomingActions(b) && b.dateIso >= todayIso ? (
+                          {studentUpcomingRowShowsActions(b, todayIso) ? (
                             <div className="flex flex-col items-end gap-1.5">
                               {b.status === "pending" && holdActive(b) ? (
                                 <Button
@@ -387,7 +392,9 @@ export function DashboardBookingsListTab() {
                                   {t("bookingCompletePaymentCta")}
                                 </Button>
                               ) : null}
-                              {b.status === "pending" && holdActive(b) &&
+                              {isPracticalLesson(b) &&
+                              b.status === "pending" &&
+                              holdActive(b) &&
                               typeof b.holdExpiresAt === "string" &&
                               new Date(b.holdExpiresAt).getTime() - Date.now() > 0 &&
                               new Date(b.holdExpiresAt).getTime() - Date.now() <= 60_000 &&
@@ -402,7 +409,7 @@ export function DashboardBookingsListTab() {
                                   {busyId === b.id ? t("loading") : t("bookingAddFiveMinutesCta")}
                                 </Button>
                               ) : null}
-                              {b.status === "pending" && !holdActive(b) ? (
+                              {isPracticalLesson(b) && b.status === "pending" && !holdActive(b) ? (
                                 <Button
                                   size="sm"
                                   variant="outline"

@@ -14,8 +14,9 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, Edit2, Trash2, GraduationCap, CalendarPlus, Mail } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Plus, Edit2, Trash2, GraduationCap, CalendarPlus, Mail, BarChart3 } from "lucide-react";
+import { useLocation, useSearch } from "wouter";
+import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { branchNameById, useBranches } from "src/modules/branches";
@@ -52,6 +53,8 @@ type User = {
   /** 0-10, where 0 means complete beginner */
   skillRating: number;
   licenseAchieved: boolean;
+  /** From GET /students: show "Invite student" only when true (no password / OAuth yet, real email). */
+  inviteEligible?: boolean;
 };
 
 const statusColor: Record<string, string> = {
@@ -71,6 +74,7 @@ export default function AdminUsers() {
   const editUserFormId = useId();
   const addUserFormId = useId();
   const [, setLocation] = useLocation();
+  const urlSearch = (useSearch() ?? "").replace(/^\?/, "");
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -116,6 +120,7 @@ export default function AdminUsers() {
         Array.isArray(stu)
           ? stu.map((u) => ({
               ...u,
+              id: String(u.id),
               email: displayStudentEmail(u.email),
             }))
           : [],
@@ -138,12 +143,20 @@ export default function AdminUsers() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const p = new URLSearchParams(urlSearch);
+    if (p.get("analytics") !== "1") return;
+    setAnalyticsOpen(true);
+    setLocation("/admin/students", { replace: true });
+  }, [urlSearch, setLocation]);
   const [search, setSearch] = useState("");
   const [instructorFilter, setInstructorFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [newUser, setNewUser] = useState<NewUserDraft>({
     name: "",
     email: "",
@@ -272,11 +285,15 @@ export default function AdminUsers() {
         subtitle={t("adminStudentsPageSubtitle")}
         actions={
           <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-2">
-            <Link href="/admin/students/analytics" className="block w-full min-w-0 sm:w-auto">
-              <Button variant="outline" className="w-full sm:w-auto">
-                {t("adminStudentsAnalytics")}
-              </Button>
-            </Link>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full gap-2 sm:w-auto"
+              onClick={() => setAnalyticsOpen(true)}
+            >
+              <BarChart3 className="w-4 h-4 shrink-0" />
+              {t("adminStudentsAnalytics")}
+            </Button>
             <Button
               className="w-full gap-2 sm:w-auto"
               onClick={() => {
@@ -380,13 +397,17 @@ export default function AdminUsers() {
                       href: adminBookingHref({ studentId: u.id, branchId: u.branchId }),
                       icon: CalendarPlus,
                     },
-                    {
-                      kind: "item",
-                      id: "invite",
-                      label: invitingId === u.id ? t("loading") : t("inviteStudent"),
-                      icon: Mail,
-                      onClick: () => void inviteStudent(u.id, u.email),
-                    },
+                    ...(u.inviteEligible
+                      ? [
+                          {
+                            kind: "item" as const,
+                            id: "invite",
+                            label: invitingId === u.id ? t("loading") : t("inviteStudent"),
+                            icon: Mail,
+                            onClick: () => void inviteStudent(u.id, u.email),
+                          },
+                        ]
+                      : []),
                     {
                       kind: "item",
                       id: "edit",
@@ -439,13 +460,17 @@ export default function AdminUsers() {
                             href: adminBookingHref({ studentId: u.id, branchId: u.branchId }),
                             icon: CalendarPlus,
                           },
-                          {
-                            kind: "item",
-                            id: "invite",
-                            label: invitingId === u.id ? t("loading") : t("inviteStudent"),
-                            icon: Mail,
-                            onClick: () => void inviteStudent(u.id, u.email),
-                          },
+                          ...(u.inviteEligible
+                            ? [
+                                {
+                                  kind: "item" as const,
+                                  id: "invite",
+                                  label: invitingId === u.id ? t("loading") : t("inviteStudent"),
+                                  icon: Mail,
+                                  onClick: () => void inviteStudent(u.id, u.email),
+                                },
+                              ]
+                            : []),
                           {
                             kind: "item",
                             id: "edit",
@@ -611,6 +636,16 @@ export default function AdminUsers() {
               {t("studentLicenseAchieved")}
             </label>
         </form>
+      </AppModal>
+
+      <AppModal
+        open={analyticsOpen}
+        onOpenChange={setAnalyticsOpen}
+        title={t("adminStudentsAnalytics")}
+        description={t("studentRatingStatsSubtitle")}
+        contentClassName="w-full max-w-[calc(100%-2rem)] sm:max-w-[min(96vw,1200px)] max-h-[min(92vh,900px)]"
+      >
+        <AdminUsersAnalyticsPanel />
       </AppModal>
 
       <ConfirmDialog

@@ -79,7 +79,6 @@ const BRAND = {
   onPrimary: '#0d0b0b',
   border: '#e2ded5',
   soft: '#efece6',
-  link: '#c26a22',
   shadow: 'rgba(13, 11, 11, 0.08)',
 } as const;
 
@@ -93,7 +92,7 @@ function emailShell(innerHtml: string): string {
         ${innerHtml}
       </td></tr>
       <tr><td style="padding:12px 28px 28px;font-size:14px;color:${muted};background:${soft};border-radius:0 0 16px 16px;">
-        <p style="margin:0;">Հարգանքներով,<br/><strong style="color:${text};">Viva</strong> թիմը ✨</p>
+        <p style="margin:0;">Հարգանքներով,<br/><strong style="color:${text};">Viva</strong>✨</p>
       </td></tr>
     </table>
   </td></tr>
@@ -118,8 +117,6 @@ export type BookingConfirmationData = {
   paymentStatus: string;
   bookingStatus: string;
   supportEmail?: string | null;
-  /** Absolute URL to the student booking dashboard. */
-  dashboardUrl: string;
 };
 
 export type BookingLifecycleEmailData = {
@@ -128,10 +125,9 @@ export type BookingLifecycleEmailData = {
   bookingType: string;
   dateIso: string;
   time: string;
-  eventKey: 'created' | 'updated' | 'cancel_request' | 'cancelled' | 'refunded' | 'payment_received';
+  eventKey: 'created' | 'updated' | 'cancel_request' | 'confirmed' | 'cancelled' | 'refunded' | 'payment_received';
   statusLabel: string;
   summary: string;
-  dashboardUrl: string;
 };
 
 export type TransactionLifecycleEmailData = {
@@ -143,7 +139,6 @@ export type TransactionLifecycleEmailData = {
   eventKey: 'created' | 'refund_requested' | 'refund_approved' | 'refund_rejected';
   statusLabel: string;
   actionLabel: string;
-  dashboardUrl: string;
 };
 
 function bookingTypeLabelHy(bookingType: string): string {
@@ -164,6 +159,8 @@ function bookingEventSubject(data: BookingLifecycleEmailData): string {
       return `Ամրագրման թարմացում (${typeHy}) ${idPart}`;
     case 'cancel_request':
       return `Չեղարկման հայտը ստացվել է (${typeHy}) ${idPart}`;
+    case 'confirmed':
+      return `Ամրագրումը հաստատվել է (${typeHy}) ${idPart}`;
     case 'cancelled':
       return `Ամրագրումը չեղարկվել է (${typeHy}) ${idPart}`;
     case 'refunded':
@@ -205,9 +202,7 @@ export default class MailService {
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
         <p style="margin:0 0 16px;">Ուրախ ենք, որ մեզ հետ եք։ Հրավիրում ենք Ձեզ <strong style="color:${BRAND.text};">Viva</strong> ուսանողական հարթակ — մնում է միայն սահմանել Ձեր գաղտնաբառը, և կարող եք սկսել։</p>
-        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
-        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
-        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0 0 16px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
     `;
     await sendTransactionalEmail({
@@ -223,9 +218,7 @@ export default class MailService {
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
         <p style="margin:0 0 16px;">Ձեզ հրավիրում ենք <strong style="color:${BRAND.text};">Viva</strong> դասավանդողի հարթակ — մնում է սահմանել Ձեր գաղտնաբառը, և կարող եք մուտք գործել։</p>
-        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
-        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
-        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0 0 16px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
     `;
     await sendTransactionalEmail({
@@ -241,9 +234,7 @@ export default class MailService {
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
         <p style="margin:0 0 16px;">Ձեզ հրավիրում ենք <strong style="color:${BRAND.text};">Viva</strong> ադմին վահանակ։ Մուտք գործելու համար նախ սահմանեք Ձեր գաղտնաբառը։</p>
-        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
-        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
-        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0 0 16px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
     `;
     await sendTransactionalEmail({
@@ -259,9 +250,7 @@ export default class MailService {
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 👋</p>
         <p style="margin:0 0 16px;">Ձեզ հրավիրում ենք <strong style="color:${BRAND.text};">Viva</strong> գլխավոր ադմին վահանակ։ Մուտք գործելու համար նախ սահմանեք Ձեր գաղտնաբառը։</p>
-        <p style="margin:0 0 20px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
-        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
-        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(setupPasswordUrl)}</p>
+        <p style="margin:0 0 16px;">${ctaButton(setupPasswordUrl, 'Սահմանել գաղտնաբառը')}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Հղումը շուտով կդառնա անվավեր։ Եթե այս նամակը չեք սպասել, կարող եք անտեսել այն։</p>
     `;
     await sendTransactionalEmail({
@@ -292,10 +281,8 @@ export default class MailService {
     const safeName = userName.trim() || 'Հարգելի օգտվող';
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(safeName)} 💜</p>
-        <p style="margin:0 0 16px;">Ստացել ենք Ձեր գաղտնաբառը վերականգնելու հայցը։ Խնդրում ենք սեղմել ստորևի կոճակը՝ նոր գաղտնաբառ ընտրելու համար (հղումը կարճ ժամանակով է գործում)։</p>
-        <p style="margin:0 0 20px;">${ctaButton(resetUrl, 'Վերականգնել գաղտնաբառը')}</p>
-        <p style="margin:0 0 12px;font-size:15px;color:${BRAND.muted};">Եթե կոճակը չի բացվում, պատճենեք հղումը Ձեր դիտարկիչի մեջ՝</p>
-        <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:${BRAND.link};">${escapeHtml(resetUrl)}</p>
+        <p style="margin:0 0 16px;">Ստացել ենք Ձեր գաղտնաբառը վերականգնելու հայցը։ Սեղմեք կոճակը՝ նոր գաղտնաբառ ընտրելու համար (հղումը կարճ ժամանակով է գործում)։</p>
+        <p style="margin:0 0 16px;">${ctaButton(resetUrl, 'Վերականգնել գաղտնաբառը')}</p>
         <p style="margin:0;font-size:14px;color:${BRAND.muted};">Եթե դուք չեք հայցել վերականգնում, պարզապես անտեսեք այս նամակը — Ձեր հաշիվը անվտանգ է մնում։</p>
     `;
     await sendTransactionalEmail({
@@ -316,7 +303,7 @@ export default class MailService {
     const nextStep =
       bookingData.bookingStatus === 'pending'
         ? 'Խնդրում ենք ավարտել քարտային վճարումը, որպեսզի ամրագրումը հաստատվի։'
-        : 'Դասից առաջ ստուգեք Ձեր «Bookings» էջը՝ թարմացումները տեսնելու համար։';
+        : 'Դասից առաջ ստուգեք ամրագրման մանրամասները Ձեր ուսանողական հարթակում։';
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(bookingData.studentName || 'Student')} 🎉</p>
         <p style="margin:0 0 20px;">Ձեր ամրագրման տեղեկությունները պատրաստ են։</p>
@@ -332,40 +319,40 @@ export default class MailService {
           <li><strong style="color:${BRAND.text};">Վճարման կարգավիճակ՝</strong> ${escapeHtml(bookingData.paymentStatus)}</li>
           <li><strong style="color:${BRAND.text};">Ամրագրման կարգավիճակ՝</strong> ${escapeHtml(bookingData.bookingStatus)}</li>
         </ul>
-        <p style="margin:0 0 12px;color:${BRAND.muted};">${escapeHtml(nextStep)}</p>
-        <p style="margin:0 0 12px;color:${BRAND.muted};">Աջակցություն՝ ${escapeHtml(bookingData.supportEmail || 'support@viva.am')}</p>
-        <p style="margin:0 0 12px;">${ctaButton(bookingData.dashboardUrl, 'Բացել Ձեր գրանցումների էջը')}</p>
-        <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(bookingData.dashboardUrl)}</p>
+        <p style="margin:0 0 8px;color:${BRAND.muted};">${escapeHtml(nextStep)}</p>
+        <p style="margin:0;color:${BRAND.muted};">Աջակցություն՝ ${escapeHtml(bookingData.supportEmail || 'support@viva.am')}</p>
     `;
     await sendTransactionalEmail({
       to: [{ email: userEmail }],
       subject: `Ձեր դասը հաստատված է (#${bookingData.bookingId})`,
       htmlContent: emailShell(inner),
-      textContent: `Ձեր դասը հաստատված է (#${bookingData.bookingId}).\nԱմսաթիվ՝ ${dateHy}\nԳին՝ ${price}\nՀարթակ՝ ${bookingData.dashboardUrl}\n`,
+      textContent: `Ձեր դասը հաստատված է (#${bookingData.bookingId}).\nԱմսաթիվ՝ ${dateHy}\nԳին՝ ${price}\n`,
     });
   }
 
   static async sendBookingLifecycleUpdate(userEmail: string, bookingData: BookingLifecycleEmailData): Promise<void> {
     const amount = Number.isFinite(Number(bookingData.bookingId)) ? `#${bookingData.bookingId}` : '—';
     const priceDate = formatBookingDateHy(`${bookingData.dateIso}T${bookingData.time}:00+04:00`);
+    const intro =
+      bookingData.eventKey === 'confirmed'
+        ? 'Ձեր ամրագրումը հաստատվել է։'
+        : 'Ձեր ամրագրման հետ կապված առկա է նոր թարմացում։';
     const inner = `
         <p style="margin:0 0 16px;">Բարև, ${escapeHtml(bookingData.studentName || 'Student')} 👋</p>
-        <p style="margin:0 0 16px;">Ձեր ամրագրման մեջ կա նոր թարմացում։</p>
+        <p style="margin:0 0 16px;">${escapeHtml(intro)}</p>
         <ul style="margin:0 0 20px;padding-left:20px;color:${BRAND.muted};">
           <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Ամրագրում՝</strong> ${escapeHtml(amount)}</li>
           <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Տեսակ՝</strong> ${escapeHtml(bookingData.bookingType)}</li>
           <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Ժամանակ՝</strong> ${escapeHtml(priceDate)}</li>
           <li><strong style="color:${BRAND.text};">Կարգավիճակ՝</strong> ${escapeHtml(bookingData.statusLabel)}</li>
         </ul>
-        <p style="margin:0 0 12px;color:${BRAND.muted};">${escapeHtml(bookingData.summary)}</p>
-        <p style="margin:0 0 12px;">${ctaButton(bookingData.dashboardUrl, 'Բացել Bookings էջը')}</p>
-        <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(bookingData.dashboardUrl)}</p>
+        <p style="margin:0;color:${BRAND.muted};">${escapeHtml(bookingData.summary)}</p>
     `;
     await sendTransactionalEmail({
       to: [{ email: userEmail }],
       subject: bookingEventSubject(bookingData),
       htmlContent: emailShell(inner),
-      textContent: `Ամրագրման թարմացում ${amount}\nՏեսակ՝ ${bookingData.bookingType}\nԿարգավիճակ՝ ${bookingData.statusLabel}\n${bookingData.summary}\n${bookingData.dashboardUrl}\n`,
+      textContent: `Ամրագրման թարմացում ${amount}\nՏեսակ՝ ${bookingData.bookingType}\nԿարգավիճակ՝ ${bookingData.statusLabel}\n${bookingData.summary}\n`,
     });
   }
 
@@ -380,15 +367,13 @@ export default class MailService {
           <li style="margin-bottom:8px;"><strong style="color:${BRAND.text};">Գումար՝</strong> ${escapeHtml(amount)} ֏</li>
           <li><strong style="color:${BRAND.text};">Կարգավիճակ՝</strong> ${escapeHtml(txData.statusLabel)}</li>
         </ul>
-        <p style="margin:0 0 12px;color:${BRAND.muted};">${escapeHtml(txData.actionLabel)}</p>
-        <p style="margin:0 0 12px;">${ctaButton(txData.dashboardUrl, 'Բացել Transactions էջը')}</p>
-        <p style="margin:0;word-break:break-all;font-size:13px;color:${BRAND.link};">${escapeHtml(txData.dashboardUrl)}</p>
+        <p style="margin:0;color:${BRAND.muted};">${escapeHtml(txData.actionLabel)}</p>
     `;
     await sendTransactionalEmail({
       to: [{ email: userEmail }],
       subject: transactionEventSubject(txData),
       htmlContent: emailShell(inner),
-      textContent: `Գործարքի թարմացում #${txData.transactionId}\nՆկարագրություն՝ ${txData.description}\nԳումար՝ ${amount} ֏\nԿարգավիճակ՝ ${txData.statusLabel}\n${txData.actionLabel}\n${txData.dashboardUrl}\n`,
+      textContent: `Գործարքի թարմացում #${txData.transactionId}\nՆկարագրություն՝ ${txData.description}\nԳումար՝ ${amount} ֏\nԿարգավիճակ՝ ${txData.statusLabel}\n${txData.actionLabel}\n`,
     });
   }
 }

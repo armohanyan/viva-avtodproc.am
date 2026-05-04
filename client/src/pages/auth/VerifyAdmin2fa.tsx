@@ -81,7 +81,13 @@ export default function VerifyAdmin2fa() {
       try {
         const data = await vivaApiJson<{
           accessToken: string;
-          user: { id: string | number; email: string; name: string; accountType: AccountType };
+          user: {
+            id: string | number;
+            email: string;
+            name: string;
+            accountType: AccountType;
+            hasPassword?: boolean;
+          };
         }>("/auth/verify-admin-mfa", { method: "POST", body: { mfaToken, code: digits } });
         clearPendingAdminMfaToken();
         signIn({
@@ -90,6 +96,7 @@ export default function VerifyAdmin2fa() {
           accountType: data.user.accountType,
           accessToken: data.accessToken,
           id: data.user.id,
+          ...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
         });
         showToast(t("loginSuccess"), "success");
         setLocation(absWouterHref(resolvePostAuthPanelPath(data.user.accountType, window.location.search)));

@@ -8,6 +8,7 @@ import AdminTableScroll from "src/components/AdminTableScroll";
 import { useNotifications } from "src/modules/notifications/useNotifications";
 import { useLang } from "src/lib/i18n";
 import { notificationTargetHref, type NotificationPanel } from "src/modules/notifications/notificationLinks";
+import { localizedNotificationTitle } from "src/modules/notifications/notificationTitle";
 
 type Props = {
   title: string;
@@ -67,7 +68,7 @@ export default function NotificationsListPage({ title, subtitle, panel }: Props)
                 items.map((n) => (
                   <tr key={n.id} className={!n.isRead ? "bg-primary/5" : ""}>
                     <td className="px-4 py-3.5">
-                      <p className="font-medium text-foreground">{n.title}</p>
+                      <p className="font-medium text-foreground">{localizedNotificationTitle(n, t)}</p>
                       <p className="text-xs text-muted-foreground">{n.message}</p>
                     </td>
                     <td className="px-4 py-3.5">

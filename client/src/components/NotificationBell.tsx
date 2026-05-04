@@ -11,6 +11,7 @@ import {
 import { Button } from "src/components/ui/button";
 import { useNotifications } from "src/modules/notifications/useNotifications";
 import { notificationTargetHref, type NotificationPanel } from "src/modules/notifications/notificationLinks";
+import { localizedNotificationTitle } from "src/modules/notifications/notificationTitle";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
 
@@ -66,7 +67,9 @@ export default function NotificationBell({ listHref, panel, onNavigate }: Props)
               asChild
             >
               <Link href={notificationTargetHref(panel, n)}>
-                <span className={cn("text-xs font-medium", !n.isRead ? "text-foreground" : "text-muted-foreground")}>{n.title}</span>
+                <span className={cn("text-xs font-medium", !n.isRead ? "text-foreground" : "text-muted-foreground")}>
+                  {localizedNotificationTitle(n, t)}
+                </span>
                 <span className="text-xs text-muted-foreground line-clamp-2">{n.message}</span>
                 <span className="text-[10px] text-muted-foreground">
                   {new Date(n.createdAt).toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}

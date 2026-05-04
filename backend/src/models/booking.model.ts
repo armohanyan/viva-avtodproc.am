@@ -1,11 +1,12 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { autoIncrementPk, fkUnsignedInt } from './auto-id';
+import { autoIncrementPk, fkUnsignedInt, fkUnsignedIntNullable } from './auto-id';
 
 export class Booking extends Model<InferAttributes<Booking>, InferCreationAttributes<Booking>> {
   declare id: CreationOptional<number>;
   declare studentUserId: number;
-  declare instructorUserId: number;
+  /** Null when the instructor user was removed; booking history is retained. */
+  declare instructorUserId: CreationOptional<number | null>;
   declare branchId: number;
   declare dateIso: string;
   /** Start of the first hour (HH:MM), same calendar day as {@link dateIso}. */
@@ -42,7 +43,7 @@ Booking.init(
   {
     id: autoIncrementPk(),
     studentUserId: fkUnsignedInt(),
-    instructorUserId: fkUnsignedInt(),
+    instructorUserId: fkUnsignedIntNullable(),
     branchId: fkUnsignedInt(),
     dateIso: { type: DataTypes.DATEONLY, allowNull: false },
     time: { type: DataTypes.STRING(16), allowNull: false },

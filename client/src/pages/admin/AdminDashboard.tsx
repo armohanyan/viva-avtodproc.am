@@ -8,14 +8,22 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Users, Calendar, TrendingUp, Car, ArrowUpRight, ArrowDownRight, LayoutDashboard, Edit2, Trash2 } from "lucide-react";
+import { Users, Calendar, TrendingUp, Car, LayoutDashboard, Edit2, Trash2, Undo2 } from "lucide-react";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { formatShortDateFromIso, localeForLang } from "src/lib/adminFormat";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { Button } from "src/components/ui/button";
-import { hasLessonWindowEnded, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
+import {
+	hasLessonWindowEnded,
+	yerevanTodayIso,
+	yerevanWeekRangeContaining,
+	yerevanMonthRangeContaining,
+	yerevanDateInInclusiveRange,
+	yerevanLocalRangeToUtcMsBounds,
+	yerevanCalendarDateFromInstant,
+} from "src/lib/yerevanLessonCalendar";
 
 const SLOT_LIKE = ["confirmed", "pending", "pending_prebook", "pending_payment", "completed"] as const;
 
@@ -54,8 +62,15 @@ type AdminTodayLessonRow = {
 	lessonPassedSuccessfully: boolean | null;
 };
 
-type StudentMini = { id: string; name: string };
-type FinanceTx = { status: string; grossAmd: number; createdAt: string; entryType?: "income" | "expense" };
+type StudentMini = { id: string; name: string; joinedIso?: string };
+type KpiPeriod = "day" | "week" | "month";
+type FinanceTx = {
+  status: string;
+  grossAmd: number;
+  createdAt: string;
+  entryType?: "income" | "expense";
+  expenseKind?: string | null;
+};
 
 type RecentBookingRow = { id: number; student: string; instructor: string; date: string; time: string; status: string };
 type RecentBookedCallRow = {
@@ -106,20 +121,31 @@ export default function AdminDashboard() {
   const [contactRequestsPage, setContactRequestsPage] = useState(1);
   const [todayLessons, setTodayLessons] = useState<AdminTodayLessonRow[]>([]);
   const [outcomeBusyId, setOutcomeBusyId] = useState<number | null>(null);
-  const [statsValues, setStatsValues] = useState({ users: 0, bookings: 0, revenueMonth: 0, activeInstructors: 0 });
+  const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("day");
+  const [rawStudents, setRawStudents] = useState<StudentMini[]>([]);
+  const [rawBookings, setRawBookings] = useState<BookingAdminRow[]>([]);
+  const [rawTxs, setRawTxs] = useState<FinanceTx[]>([]);
 
   const loadDashboard = useCallback(async () => {
     try {
-      const [students, bookings, instructors, txs, bookedCalls, contactRequests] = await Promise.all([
+      const [students, bookings, txs, bookedCalls, contactRequests] = await Promise.all([
         vivaApiJson<StudentMini[]>("/students"),
         vivaApiJson<BookingAdminRow[]>("/bookings"),
-        vivaApiJson<Array<{ status?: string }>>("/instructors"),
         vivaApiJson<FinanceTx[]>("/finance/transactions"),
         vivaApiJson<RecentBookedCallRow[]>("/booked-calls"),
         vivaApiJson<RecentContactRequestRow[]>("/contact-requests"),
       ]);
-      const byStudent = new Map((Array.isArray(students) ? students : []).map((s) => [String(s.id), s.name]));
+      const studentRows = Array.isArray(students) ? students : [];
+      const byStudent = new Map(studentRows.map((s) => [String(s.id), s.name]));
+      setRawStudents(
+        studentRows.map((s) => ({
+          id: String(s.id),
+          name: typeof s.name === "string" ? s.name : "",
+          joinedIso: typeof (s as { joinedIso?: string }).joinedIso === "string" ? (s as { joinedIso: string }).joinedIso : undefined,
+        })),
+      );
       const bookingList = Array.isArray(bookings) ? bookings : [];
+      setRawBookings(bookingList);
       const todayY = yerevanTodayIso();
       const todayRows: AdminTodayLessonRow[] = bookingList
         .filter((b) => String(b.dateIso).slice(0, 10) === todayY && isSlotReservingStatus(String(b.status)))
@@ -156,26 +182,13 @@ export default function AdminDashboard() {
       setRecentBookingsData(rows);
       setRecentBookedCalls(Array.isArray(bookedCalls) ? bookedCalls : []);
       setRecentContactRequests(Array.isArray(contactRequests) ? contactRequests : []);
-      const now = new Date();
-      const m0 = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-      const m1 = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
-      const rev = (Array.isArray(txs) ? txs : [])
-        .filter((x) => {
-          if ((x.entryType ?? "income") !== "income") return false;
-          const ts = new Date(x.createdAt).getTime();
-          return ts >= m0 && ts <= m1;
-        })
-        .reduce((s, x) => {
-          if (x.status === "completed") return s + (x.grossAmd ?? 0);
-          if (x.status === "refunded") return s - (x.grossAmd ?? 0);
-          return s;
-        }, 0);
-      setStatsValues({
-        users: Array.isArray(students) ? students.length : 0,
-        bookings: bookingList.length,
-        revenueMonth: rev,
-        activeInstructors: (Array.isArray(instructors) ? instructors : []).filter((i) => i.status !== "inactive").length,
-      });
+      setRawTxs(
+        (Array.isArray(txs) ? txs : []).map((x) => ({
+          ...x,
+          entryType: (x as FinanceTx).entryType ?? "income",
+          expenseKind: (x as FinanceTx).expenseKind ?? null,
+        })),
+      );
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
@@ -219,6 +232,73 @@ export default function AdminDashboard() {
     void loadDashboard();
   }, [loadDashboard]);
 
+  const kpiStats = useMemo(() => {
+    const todayY = yerevanTodayIso();
+    let start: string;
+    let end: string;
+    if (kpiPeriod === "day") {
+      start = todayY;
+      end = todayY;
+    } else if (kpiPeriod === "week") {
+      ({ start, end } = yerevanWeekRangeContaining(todayY));
+    } else {
+      ({ start, end } = yerevanMonthRangeContaining(todayY));
+    }
+    const { fromMs, toMs } = yerevanLocalRangeToUtcMsBounds(start, end);
+
+    const newStudents = rawStudents.filter((s) => {
+      if (!s.joinedIso?.trim()) return false;
+      const jd = yerevanCalendarDateFromInstant(s.joinedIso);
+      return yerevanDateInInclusiveRange(jd, start, end);
+    }).length;
+
+    const bookingsInPeriod = rawBookings.filter(
+      (b) => yerevanDateInInclusiveRange(String(b.dateIso), start, end) && isSlotReservingStatus(String(b.status)),
+    );
+
+    const txsInPeriod = rawTxs.filter((x) => {
+      const ts = new Date(x.createdAt).getTime();
+      return ts >= fromMs && ts <= toMs;
+    });
+
+    const incomeCompletedSum = txsInPeriod
+      .filter((x) => (x.entryType ?? "income") === "income" && x.status === "completed")
+      .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
+
+    const bookingRefundSum = txsInPeriod
+      .filter(
+        (x) =>
+          (x.entryType ?? "income") === "expense" &&
+          x.expenseKind === "booking_refund" &&
+          x.status === "completed",
+      )
+      .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
+
+    const legacyRefundedIncomeSum = txsInPeriod
+      .filter((x) => (x.entryType ?? "income") === "income" && x.status === "refunded")
+      .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
+
+    const refundMoney = bookingRefundSum + legacyRefundedIncomeSum;
+    const revenue = incomeCompletedSum - bookingRefundSum - legacyRefundedIncomeSum;
+
+    const instructorNames = new Set(
+      bookingsInPeriod
+        .map((b) => String(b.instructorName ?? "").trim())
+        .filter((n) => n.length > 0),
+    );
+
+    return {
+      newStudents,
+      bookingsCount: bookingsInPeriod.length,
+      revenue,
+      refundMoney,
+      instructorsTeaching: instructorNames.size,
+    };
+  }, [rawStudents, rawBookings, rawTxs, kpiPeriod]);
+
+  const kpiFootnoteKey =
+    kpiPeriod === "day" ? ("adminKpiScopeDay" as const) : kpiPeriod === "week" ? ("adminKpiScopeWeek" as const) : ("adminKpiScopeMonth" as const);
+
   const filteredRecentBookings = useMemo(() => {
     const q = bookingSearch.trim().toLowerCase();
     return recentBookingsData.filter((b) => {
@@ -254,20 +334,52 @@ export default function AdminDashboard() {
     return activeContactRequests.slice(start, start + PAGE_SIZE);
   }, [activeContactRequests, safeContactRequestsPage]);
 
-  const stats = [
-    { label: t("totalUsers"), value: String(statsValues.users), change: "—", up: true, icon: Users, color: "text-primary", bg: "bg-primary/10" },
-    { label: t("totalBookings"), value: String(statsValues.bookings), change: "—", up: true, icon: Calendar, color: "text-primary", bg: "bg-primary/10" },
-    {
-      label: t("revenue"),
-      value: `${statsValues.revenueMonth.toLocaleString()} ֏`,
-      change: "—",
-      up: true,
-      icon: TrendingUp,
-      color: "text-primary",
-      bg: "bg-primary/10",
-    },
-    { label: t("activeInstructors"), value: String(statsValues.activeInstructors), change: "—", up: true, icon: Car, color: "text-primary", bg: "bg-primary/10" },
-  ];
+  const stats = useMemo(
+    () =>
+      [
+        {
+          label: t("adminKpiStudentsJoined"),
+          value: String(kpiStats.newStudents),
+          icon: Users,
+          color: "text-primary",
+          bg: "bg-primary/10",
+          footnote: kpiFootnoteKey,
+        },
+        {
+          label: t("adminKpiLessonBookings"),
+          value: String(kpiStats.bookingsCount),
+          icon: Calendar,
+          color: "text-primary",
+          bg: "bg-primary/10",
+          footnote: kpiFootnoteKey,
+        },
+        {
+          label: t("revenue"),
+          value: `${kpiStats.revenue.toLocaleString()} ֏`,
+          icon: TrendingUp,
+          color: "text-primary",
+          bg: "bg-primary/10",
+          footnote: "adminKpiRevenueNetFootnote" as const,
+        },
+        {
+          label: t("adminKpiRefundMoney"),
+          value: `${kpiStats.refundMoney.toLocaleString()} ֏`,
+          icon: Undo2,
+          color: "text-rose-600 dark:text-rose-400",
+          bg: "bg-rose-500/10",
+          footnote: kpiFootnoteKey,
+        },
+        {
+          label: t("adminKpiInstructorsTeaching"),
+          value: String(kpiStats.instructorsTeaching),
+          icon: Car,
+          color: "text-primary",
+          bg: "bg-primary/10",
+          footnote: kpiFootnoteKey,
+        },
+      ] as const,
+    [kpiStats, kpiFootnoteKey, t],
+  );
 
   const statusColor: Record<string, string> = {
     confirmed: "bg-emerald-100 text-emerald-700",
@@ -280,8 +392,26 @@ export default function AdminDashboard() {
     <AdminLayout>
       <PanelPageHeader icon={LayoutDashboard} title={t("adminDashboard")} subtitle={t("adminDashboardPageSubtitle")} />
 
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <p className="text-sm text-muted-foreground">{t("adminKpiFilterHint")}</p>
+        <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/50 shrink-0" role="group" aria-label={t("adminKpiFilterAria")}>
+          {(["day", "week", "month"] as const).map((p) => (
+            <Button
+              key={p}
+              type="button"
+              size="sm"
+              variant={kpiPeriod === p ? "secondary" : "ghost"}
+              className="h-8 px-3 rounded-md"
+              onClick={() => setKpiPeriod(p)}
+            >
+              {p === "day" ? t("adminKpiFilterDay") : p === "week" ? t("adminKpiFilterWeek") : t("adminKpiFilterMonth")}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
         {stats.map((s, i) => (
           <Card key={i} className="p-5 border-border">
             <div className="flex items-start justify-between">
@@ -290,16 +420,7 @@ export default function AdminDashboard() {
                 <p className="text-2xl font-bold text-foreground">
                   {s.value}
                 </p>
-                <div className="flex items-center gap-1 mt-1">
-                  {s.up ? (
-                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500" />
-                  ) : (
-                    <ArrowDownRight className="w-3.5 h-3.5 text-red-500" />
-                  )}
-                  <span className={`text-xs font-medium ${s.up ? "text-emerald-600" : "text-red-500"}`}>
-                    {s.change} {t("adminStatsChangeThisMonth")}
-                  </span>
-                </div>
+                <p className="text-xs text-muted-foreground mt-1">{t(s.footnote)}</p>
               </div>
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center shrink-0`}>
                 <s.icon className={`w-5 h-5 ${s.color}`} />

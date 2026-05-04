@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Package, StudentProfile, User } from '../models';
+import { OAuthAccount, Package, StudentProfile, User } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import InstructorStudentRatingService from './instructor-student-rating.service';
@@ -38,10 +38,32 @@ export type AdminStudentRow = {
   branchId: number;
   skillRating: number;
   licenseAchieved: boolean;
+  /**
+   * True when `/admin/invite-student` can succeed: no password yet, no OAuth-only sign-in,
+   * and a real (non internal placeholder) email is on file.
+   */
+  inviteEligible: boolean;
 };
 
+function studentInviteEligible(stu: User, oauthUserIds: Set<number>): boolean {
+  if (stu.passwordHash) return false;
+  if (oauthUserIds.has(stu.id)) return false;
+  const email = typeof stu.email === 'string' ? stu.email.trim() : '';
+  if (!email || isInternalNoLoginEmail(email)) return false;
+  return true;
+}
+
 export default class StudentAdminService {
-  private static mapProfileRows(rows: StudentProfile[]): AdminStudentRow[] {
+  private static async oauthUserIdSetFor(userIds: number[]): Promise<Set<number>> {
+    if (userIds.length === 0) return new Set();
+    const oauthRows = await OAuthAccount.findAll({
+      where: { userId: { [Op.in]: userIds } },
+      attributes: ['userId'],
+    });
+    return new Set(oauthRows.map((r) => r.userId));
+  }
+
+  private static mapProfileRows(rows: StudentProfile[], oauthUserIds: Set<number>): AdminStudentRow[] {
     return rows
       .map((sp) => {
         const row = sp as ProfileJoined;
@@ -62,6 +84,7 @@ export default class StudentAdminService {
           branchId: sp.branchId,
           skillRating: sp.skillRating,
           licenseAchieved: sp.licenseAchieved,
+          inviteEligible: studentInviteEligible(stu, oauthUserIds),
         };
       })
       .filter((row): row is AdminStudentRow => row != null);
@@ -76,7 +99,11 @@ export default class StudentAdminService {
       ],
       order: [['joinedAt', 'DESC']],
     });
-    return this.mapProfileRows(rows);
+    const userIds = rows
+      .map((sp) => (sp as ProfileJoined).studentAccount?.id)
+      .filter((id): id is number => typeof id === 'number');
+    const oauthUserIds = await this.oauthUserIdSetFor(userIds);
+    return this.mapProfileRows(rows, oauthUserIds);
   }
 
   /** Students assigned to this instructor (`student_profiles.instructor_user_id`). */
@@ -90,7 +117,11 @@ export default class StudentAdminService {
       ],
       order: [['joinedAt', 'DESC']],
     });
-    return this.mapProfileRows(rows);
+    const userIds = rows
+      .map((sp) => (sp as ProfileJoined).studentAccount?.id)
+      .filter((id): id is number => typeof id === 'number');
+    const oauthUserIds = await this.oauthUserIdSetFor(userIds);
+    return this.mapProfileRows(rows, oauthUserIds);
   }
 
   static async patchByAssignedInstructor(

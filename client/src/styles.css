@@ -158,4 +158,18 @@
       radial-gradient(700px 320px at 88% -12%, rgba(244, 134, 51, 0.14), transparent 64%),
       linear-gradient(180deg, rgba(33, 23, 17, 0.96) 0%, rgba(20, 14, 11, 0.98) 100%);
   }
+
+  /** Global API in-flight top bar (see `GlobalApiRequestLoader`). */
+  .viva-global-api-loader__bar {
+    animation: viva-global-api-loader-slide 0.95s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes viva-global-api-loader-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(calc(100vw / 0.42 + 100%));
+  }
 }

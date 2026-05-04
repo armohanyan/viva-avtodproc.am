@@ -1,0 +1,8 @@
+import type { CanonicalBookingStatus } from "src/types/booking.types";
+
+export function toCanonicalBookingStatus(raw: string): CanonicalBookingStatus {
+  if (raw === "confirmed" || raw === "pending" || raw === "cancelled" || raw === "refunded") return raw;
+  if (raw === "completed") return "confirmed";
+  if (raw === "pending_prebook" || raw === "pending_payment") return "pending";
+  return "pending";
+}

@@ -10,7 +10,6 @@ import {
 	Calendar,
 	Newspaper,
 	LogOut,
-	Shield,
 	GraduationCap,
 	UserCog,
 	Settings,
@@ -34,18 +33,12 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { ADMIN_NAV_LINKS } from "src/modules/admin/admin.consts";
+import { ADMIN_NAV_LINKS, adminNavAllowedForUser } from "src/modules/admin/admin.consts";
 import type { AdminNavigationLink } from "src/modules/admin/admin.types";
-import type { AccountType } from "src/modules/accounts";
 import { useAccount } from "src/modules/accounts";
-import type { TranslationKey } from "src/lib/i18n";
 import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
 import NotificationBell from "src/components/NotificationBell";
-
-function panelRoleLabelKey(accountType: AccountType): TranslationKey {
-	return accountType === "super_admin" ? "roleLabelSuperAdmin" : "roleAdmin";
-}
 
 interface Props {
 	children: ReactNode;
@@ -75,7 +68,6 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/learn/groups": Users,
 		"/admin/instructors": Car,
 		"/admin/students": GraduationCap,
-		"/admin/students/analytics": GraduationCap,
 		"/admin/finance": Landmark,
 		"/admin/blogs": Newspaper,
 		"/admin/accounts": UserCog,
@@ -96,21 +88,24 @@ export default function AdminLayout({ children }: Props) {
 	}, [t]);
 
 	const renderAdminNavItem = (link: AdminNavigationLink, closeMobileNav: () => void) => {
-		if (link.allowedAccountTypes?.length && user && !link.allowedAccountTypes.includes(user.accountType)) {
+		if (!adminNavAllowedForUser(user, link.allowedAccountTypes)) {
 			return null;
 		}
+		const visibleChildren =
+			link.children?.filter((c) => adminNavAllowedForUser(user, c.allowedAccountTypes)) ?? [];
 		const Icon = iconByPath[link.href as keyof typeof iconByPath];
-		const hasChildren = Boolean(link.children?.length);
+		const hasChildren = Boolean(visibleChildren.length);
 
 		if (link.collapsible && link.children?.length) {
+			if (!visibleChildren.length) return null;
 			const onParent = location === link.href;
-			const underParent = link.children.some(
+			const underParent = visibleChildren.some(
 				(c) => location === c.href || location.startsWith(`${c.href}/`),
 			);
 			const routeBasedOpen = onParent || underParent;
 			const override = collapsibleOverrides[link.href];
 			const isOpen = override ?? routeBasedOpen;
-			const childOwnsParentPath = link.children.some((c) => c.href === link.href && location === link.href);
+			const childOwnsParentPath = visibleChildren.some((c) => c.href === link.href && location === link.href);
 			const parentStrong = onParent && !childOwnsParentPath;
 			const parentSoft = underParent && !onParent;
 
@@ -159,7 +154,7 @@ export default function AdminLayout({ children }: Props) {
 					</div>
 					{isOpen ? (
 						<div className="ml-3 pl-3 border-l border-white/15 space-y-0.5">
-							{link.children.map((child) => {
+							{visibleChildren.map((child) => {
 								const childActive = location === child.href;
 								return (
 									<Link
@@ -183,6 +178,7 @@ export default function AdminLayout({ children }: Props) {
 		}
 
 		if (!hasChildren) {
+			if (link.children?.length && !visibleChildren.length) return null;
 			const active = location === link.href;
 			return (
 				<Link
@@ -202,7 +198,9 @@ export default function AdminLayout({ children }: Props) {
 		}
 
 		const onParent = location === link.href;
-		const underParent = location.startsWith(`${link.href}/`);
+		const underParent = visibleChildren.some(
+			(c) => location === c.href || location.startsWith(`${c.href}/`),
+		);
 		const parentSoft = underParent && !onParent;
 		const parentStrong = onParent;
 
@@ -223,7 +221,7 @@ export default function AdminLayout({ children }: Props) {
 					{t(link.translationKey)}
 				</Link>
 				<div className="ml-3 pl-3 border-l border-white/15 space-y-0.5">
-					{link.children!.map((child) => {
+					{visibleChildren.map((child) => {
 						const childActive = location === child.href;
 						return (
 							<Link
@@ -256,9 +254,9 @@ export default function AdminLayout({ children }: Props) {
 		if (location === "/admin/learn/exam-questions") return t("adminExamQuestionsTitle");
 		if (location === "/admin/learn/groups") return t("adminSidebarGroups");
 		if (location === "/admin/learn/packages") return t("packages");
-		if (location === "/admin/students/analytics") return t("adminStudentsAnalytics");
 		if (location === "/admin/finance/income") return t("adminFinanceIncomeTitle");
 		if (location === "/admin/finance/outcomes") return t("adminFinanceOutcomesTitle");
+		if (location === "/admin/finance/transactions") return t("adminFinanceTransactionsTitle");
 		if (location === "/admin/finance") return t("adminFinanceOverviewTitle");
 		return adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard");
 	}, [location, t, adminNavLabels]);
@@ -304,23 +302,17 @@ export default function AdminLayout({ children }: Props) {
 			)}
 			renderSidebar={({ closeMobileNav }) => (
 				<div className="flex flex-col h-full min-h-0 bg-hero">
-					<div className="p-5 border-b border-border shrink-0">
-						<Link href="/admin/dashboard" className="flex items-center gap-2">
-							<div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-								<img src="/logo.jpg" alt={t("brandName")} className="w-5 h-5 object-contain" />
-							</div>
-							<div>
-								<span className="font-bold text-hero-foreground text-sm">{t("brandName")}</span>
-								<div className="flex items-center gap-1">
-									<Shield className="w-3 h-3 text-primary" />
-									<span className="text-xs text-primary font-medium">
-										{user ? t(panelRoleLabelKey(user.accountType)) : t("adminSidebarRoleBadge")}
-									</span>
-								</div>
-							</div>
+					<div className="px-3 pt-4 pb-2 shrink-0">
+						<Link
+							href="/admin/dashboard"
+							onClick={() => closeMobileNav()}
+							className="flex items-center gap-2 min-w-0"
+						>
+							<img src="/logo.jpg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
+							<span className="font-bold text-hero-foreground text-sm truncate">{t("brandName")}</span>
 						</Link>
 					</div>
-					<nav className="px-3 py-4 flex-1 min-h-0 overflow-y-auto space-y-1">
+					<nav className="px-3 pb-4 flex-1 min-h-0 overflow-y-auto space-y-1">
 						{ADMIN_NAV_LINKS.map((link) => renderAdminNavItem(link, closeMobileNav))}
 					</nav>
 				</div>

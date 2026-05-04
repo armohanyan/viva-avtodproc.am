@@ -1,4 +1,4 @@
-import { API_V1_PREFIX } from "src/constants/api";
+import { API_V1_PREFIX } from "src/constants/api.constants";
 import { apiJson, ApiRequestError } from "src/lib/api";
 import type { Blog } from "src/lib/blogs";
 

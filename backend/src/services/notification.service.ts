@@ -217,7 +217,7 @@ export default class NotificationService {
         if (diff > window.toleranceMs) continue;
         const title = 'Դասի հիշեցում';
         const message = window.label === '24h' ? 'Ձեր դասը մոտենում է (24 ժամից)' : 'Ձեր դասը մոտենում է (2 ժամից)';
-        created += await this.createMany([
+        const batch: CreateNotificationInput[] = [
           {
             recipientUserId: b.studentUserId,
             recipientRole: 'student',
@@ -229,7 +229,9 @@ export default class NotificationService {
             metadata: { reminderType: window.label },
             dedupeKey: `lesson-reminder:${b.id}:${window.label}:student:${b.studentUserId}`,
           },
-          {
+        ];
+        if (b.instructorUserId != null) {
+          batch.push({
             recipientUserId: b.instructorUserId,
             recipientRole: 'instructor',
             type: 'LESSON_UPCOMING',
@@ -239,8 +241,9 @@ export default class NotificationService {
             entityId: String(b.id),
             metadata: { reminderType: window.label },
             dedupeKey: `lesson-reminder:${b.id}:${window.label}:instructor:${b.instructorUserId}`,
-          },
-        ]);
+          });
+        }
+        created += await this.createMany(batch);
       }
     }
     return created;

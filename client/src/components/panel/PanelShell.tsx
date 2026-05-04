@@ -1,9 +1,10 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Sheet, SheetContent, SheetTrigger } from "src/components/ui/sheet";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "src/components/ui/sheet";
 import { Button } from "src/components/ui/button";
-import { Menu } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useLang } from "src/lib/i18n";
+import { cn } from "src/lib/utils";
 
 export type PanelShellSidebarContext = {
 	/** Close the mobile drawer after navigation. */
@@ -27,8 +28,22 @@ const asideClass: Record<NonNullable<PanelShellProps["sidebarSurface"]>, string>
 };
 
 const sheetClass: Record<NonNullable<PanelShellProps["sidebarSurface"]>, string> = {
-	card: "w-[min(20rem,86vw)] p-0",
-	hero: "w-[min(20rem,86vw)] p-0 bg-hero",
+	card: "w-[min(21rem,92vw)] max-w-[min(21rem,92vw)] border-r border-border bg-card p-0 gap-0",
+	hero: "w-[min(21rem,92vw)] max-w-[min(21rem,92vw)] border-r border-white/10 bg-hero p-0 text-hero-foreground gap-0",
+};
+
+const mobileDrawerChrome: Record<
+	NonNullable<PanelShellProps["sidebarSurface"]>,
+	{ bar: string; closeClass: string }
+> = {
+	card: {
+		bar: "border-border bg-card",
+		closeClass: "text-foreground hover:bg-muted",
+	},
+	hero: {
+		bar: "border-white/15 bg-hero",
+		closeClass: "text-hero-foreground hover:bg-white/10 hover:text-hero-foreground",
+	},
 };
 
 /**
@@ -68,8 +83,35 @@ export function PanelShell({
 									<Menu className="h-6 w-6" />
 								</Button>
 							</SheetTrigger>
-							<SheetContent side="left" className={sheetClass[sidebarSurface]}>
-								<div className="h-full pt-12 flex flex-col min-h-0">{renderSidebar(ctx)}</div>
+							<SheetContent side="left" showCloseButton={false} className={sheetClass[sidebarSurface]}>
+								<SheetTitle className="sr-only">{t("mainNavigation")}</SheetTitle>
+								<div
+									className={cn(
+										"flex h-full min-h-0 flex-col overflow-hidden",
+										"pt-[env(safe-area-inset-top,0px)]",
+									)}
+								>
+									<div
+										className={cn(
+											"flex shrink-0 items-center justify-end border-b px-1 pb-2 pt-1",
+											mobileDrawerChrome[sidebarSurface].bar,
+										)}
+									>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-lg"
+											className={cn("shrink-0", mobileDrawerChrome[sidebarSurface].closeClass)}
+											aria-label={t("closeMenu")}
+											onClick={closeMobileNav}
+										>
+											<X className="h-6 w-6" aria-hidden />
+										</Button>
+									</div>
+									<div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain touch-pan-y [&_nav_a]:flex [&_nav_a]:min-h-11 [&_nav_a]:items-center [&_nav_button]:min-h-11 [&_nav_button]:min-w-11">
+										{renderSidebar(ctx)}
+									</div>
+								</div>
 							</SheetContent>
 						</Sheet>
 						<h1 className="font-semibold text-foreground text-sm sm:text-base truncate min-w-0">{headerTitle}</h1>

@@ -23,7 +23,7 @@ import { InstructorStudentRating } from './instructor-student-rating.model';
 import { MarketingSetting } from './marketing-setting.model';
 import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
-import { Notification } from './notification.model';
+import { Notification, NOTIFICATION_TYPES } from './notification.model';
 import { Package } from './package.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
@@ -386,6 +386,45 @@ async function ensureFinanceTransactionsRefundColumns(): Promise<void> {
   }
   if (!have.has('refund_reviewed_at')) {
     await sequelize.query('ALTER TABLE `finance_transactions` ADD COLUMN `refund_reviewed_at` DATETIME NULL');
+  }
+}
+
+/** Adds `booking_refund` expense kind and optional link to the original payment row. */
+async function ensureFinanceTransactionsBookingRefundExpenseKind(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const kindRows = await sequelize.query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions' AND COLUMN_NAME = 'expense_kind'`,
+    { type: QueryTypes.SELECT },
+  );
+  const colType = kindRows[0]?.COLUMN_TYPE ?? '';
+  if (colType && !colType.includes('booking_refund')) {
+    await sequelize.query(
+      "ALTER TABLE `finance_transactions` MODIFY COLUMN `expense_kind` ENUM(" +
+        "'salary','hourly_rate','rent','utilities','maintenance','marketing','booking_refund','other'" +
+        ') NULL DEFAULT NULL',
+    );
+  }
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'
+       AND COLUMN_NAME = 'related_payment_transaction_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length === 0) {
+    await sequelize.query(
+      'ALTER TABLE `finance_transactions` ADD COLUMN `related_payment_transaction_id` INT UNSIGNED NULL AFTER `booking_id`',
+    );
   }
 }
 
@@ -856,6 +895,108 @@ async function ensureBookingsPrepaidMetaColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `prepaid_meta` JSON NULL');
 }
 
+/**
+ * Lets staff delete an instructor user while keeping booking rows: null `instructor_user_id` and
+ * `ON DELETE SET NULL` on the FK to `users`.
+ */
+async function ensureBookingsInstructorUserIdOnDeleteSetNull(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ IS_NULLABLE: 'YES' | 'NO' }>(
+    `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'instructor_user_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0) {
+    return;
+  }
+  const nullable = colRows[0]!.IS_NULLABLE === 'YES';
+  const fkRows = await sequelize.query<{ CONSTRAINT_NAME: string; DELETE_RULE: string }>(
+    `SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+     INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+       ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+       AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+       AND rc.TABLE_NAME = kcu.TABLE_NAME
+     WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+       AND rc.TABLE_NAME = 'bookings'
+       AND kcu.COLUMN_NAME = 'instructor_user_id'
+       AND kcu.REFERENCED_TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (nullable && fkRows.length === 1 && fkRows[0]!.DELETE_RULE === 'SET NULL') {
+    return;
+  }
+  for (const row of fkRows) {
+    const name = row.CONSTRAINT_NAME.replace(/`/g, '');
+    await sequelize.query(`ALTER TABLE \`bookings\` DROP FOREIGN KEY \`${name}\``);
+  }
+  if (!nullable) {
+    await sequelize.query(
+      'ALTER TABLE `bookings` MODIFY COLUMN `instructor_user_id` INT UNSIGNED NULL',
+    );
+  }
+  const remaining = await sequelize.query<{ CONSTRAINT_NAME: string; DELETE_RULE: string }>(
+    `SELECT rc.CONSTRAINT_NAME, rc.DELETE_RULE
+     FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+     INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+       ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+       AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+       AND rc.TABLE_NAME = kcu.TABLE_NAME
+     WHERE rc.CONSTRAINT_SCHEMA = DATABASE()
+       AND rc.TABLE_NAME = 'bookings'
+       AND kcu.COLUMN_NAME = 'instructor_user_id'
+       AND kcu.REFERENCED_TABLE_NAME = 'users'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (remaining.some((r) => r.DELETE_RULE === 'SET NULL')) {
+    return;
+  }
+  for (const row of remaining) {
+    const name = row.CONSTRAINT_NAME.replace(/`/g, '');
+    await sequelize.query(`ALTER TABLE \`bookings\` DROP FOREIGN KEY \`${name}\``);
+  }
+  await sequelize.query(
+    'ALTER TABLE `bookings` ADD CONSTRAINT `bookings_instructor_user_id_fk` ' +
+      'FOREIGN KEY (`instructor_user_id`) REFERENCES `users` (`id`) ON UPDATE CASCADE ON DELETE SET NULL',
+  );
+}
+
+/** Slot rows duplicate instructor id for uniqueness; keep nullable when instructor user is removed. */
+async function ensureBookingSlotsInstructorUserIdNullable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_slots'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ IS_NULLABLE: 'YES' | 'NO' }>(
+    `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_slots' AND COLUMN_NAME = 'instructor_user_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0 || colRows[0]!.IS_NULLABLE === 'YES') {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `booking_slots` MODIFY COLUMN `instructor_user_id` INT UNSIGNED NULL',
+  );
+}
+
 /** In-app notifications table with read/unread indexes and optional dedupe key. */
 async function ensureNotificationsTable(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -887,6 +1028,35 @@ async function ensureNotificationsTable(): Promise<void> {
     'CREATE INDEX `notifications_recipient_created_idx` ON `notifications` (`recipient_user_id`, `created_at`)',
   );
   await ensureIdx('notifications_type_idx', 'CREATE INDEX `notifications_type_idx` ON `notifications` (`type`)');
+}
+
+/** Extend `notifications.type` ENUM when new values are added to {@link NOTIFICATION_TYPES}. */
+async function ensureNotificationsTypeEnumValues(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length === 0) {
+    return;
+  }
+  const col = await sequelize.query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notifications' AND COLUMN_NAME = 'type'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (col.length === 0) {
+    return;
+  }
+  const columnType = col[0]!.COLUMN_TYPE;
+  if (columnType.includes('BOOKING_REFUNDED') && columnType.includes('BOOKING_REFUND_INVITATION')) {
+    return;
+  }
+  const literals = NOTIFICATION_TYPES.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ');
+  await sequelize.query(`ALTER TABLE \`notifications\` MODIFY COLUMN \`type\` ENUM(${literals}) NOT NULL`);
 }
 
 async function ensureAuthTables(): Promise<void> {
@@ -1335,7 +1505,14 @@ export async function syncModels(): Promise<void> {
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
   await ensureRefreshTokensIdColumn();
   await ensureOAuthAccountsIdColumn();
+  /** Before `sync()`: legacy `finance_transactions` may lack columns that index DDL references (`booking_id`, …). */
+  await ensureFinanceTransactionsBookingIdColumn();
+  await ensureFinanceTransactionsEntryColumns();
+  await ensureFinanceTransactionsRefundColumns();
+  await ensureFinanceTransactionsBookingRefundExpenseKind();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await ensureBookingsInstructorUserIdOnDeleteSetNull();
+  await ensureBookingSlotsInstructorUserIdNullable();
   await ensureInstructorProfilesDropScheduleColumn();
   await ensureInstructorProfilesDropRedundantDisplayColumns();
   await ensureTheoryCohortsDropScheduleColumn();
@@ -1347,9 +1524,6 @@ export async function syncModels(): Promise<void> {
   await ensureStudentProfilesTheoryLessonColumns();
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
-  await ensureFinanceTransactionsBookingIdColumn();
-  await ensureFinanceTransactionsEntryColumns();
-  await ensureFinanceTransactionsRefundColumns();
   await ensureCarExpensesDropPaymentColumns();
   await ensureBookingsPaymentColumns();
   await ensureBookingsHoldExtensionCountColumn();
@@ -1364,6 +1538,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsLessonPassedSuccessfullyColumn();
   await ensureBookingsPrepaidMetaColumn();
   await ensureNotificationsTable();
+  await ensureNotificationsTypeEnumValues();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
   await ensureStudentExamStatsTable();
 }

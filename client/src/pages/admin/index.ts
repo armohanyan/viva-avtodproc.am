@@ -1,6 +1,5 @@
 export { default as AdminDashboardPage } from "./AdminDashboard";
 export { default as AdminUsersPage } from "./AdminUsers";
-export { default as AdminUsersAnalyticsPage } from "./AdminUsersAnalytics";
 export { default as AdminInstructorsPage } from "./AdminInstructors";
 export { default as AdminBookingsPage } from "./AdminBookings";
 export { default as AdminBookedCallsPage } from "./AdminBookedCalls";
@@ -16,6 +15,7 @@ export { default as AdminNotificationsPage } from "./AdminNotifications";
 export { default as AdminFinanceOverviewPage } from "./finance/AdminFinanceOverview";
 export { default as AdminFinanceIncomePage } from "./finance/AdminFinanceIncome";
 export { default as AdminFinanceOutcomesPage } from "./finance/AdminFinanceOutcomes";
+export { default as AdminFinanceTransactionsPage } from "./finance/AdminFinanceTransactions";
 export { default as AdminProfilePage } from "./AdminProfile";
 export { default as AdminLearnHubPage } from "./AdminLearnHub";
 export { default as AdminExamQuestionsPage } from "./AdminExamQuestions";
@@ -23,6 +23,7 @@ export { AdminRedirectCohortsToLearn, AdminRedirectPackagesToLearn } from "./Adm
 export {
   AdminRedirectUsersToStudents,
   AdminRedirectUsersAnalyticsToStudents,
+  AdminRedirectLegacyStudentsAnalytics,
   AdminRedirectLearnPracticalToStudents,
   AdminRedirectLearnTheoryToStudents,
 } from "./AdminStudentsLegacyRedirects";

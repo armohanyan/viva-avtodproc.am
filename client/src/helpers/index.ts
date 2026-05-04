@@ -1,1 +1,1 @@
-export { combineRoutes } from "src/shared/helpers/route.helper";
+export { combineRoutes } from "src/utils/route.utils";

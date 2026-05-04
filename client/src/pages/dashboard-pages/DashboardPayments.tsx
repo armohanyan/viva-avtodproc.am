@@ -10,6 +10,7 @@ import { Reveal } from "src/lib/motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "src/modules/accounts";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { formatAmd } from "src/utils/currency.utils";
 
 type FinanceTx = {
   id: number;
@@ -20,10 +21,6 @@ type FinanceTx = {
   status: string;
   method: string;
 };
-
-function formatAmd(n: number): string {
-  return `${Number(n).toLocaleString()} ֏`;
-}
 
 function financeStatusKey(status: string): TranslationKey {
   switch (status) {

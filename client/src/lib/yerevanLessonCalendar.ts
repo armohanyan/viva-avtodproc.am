@@ -51,3 +51,56 @@ export function hasLessonWindowEnded(dateIso: string, time: string, endTime: str
 	if (!Number.isFinite(endMs)) return false;
 	return now.getTime() >= endMs;
 }
+
+const WEEKDAY_SHORT_MON0 = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** 0 = Monday … 6 = Sunday, using Asia/Yerevan calendar for `dateIso` (YYYY-MM-DD). */
+export function yerevanWeekdayIndexMonday0(dateIso: string): number {
+	const ms = Date.parse(`${dateIso.slice(0, 10)}T12:00:00${SLOT_OFFSET}`);
+	if (!Number.isFinite(ms)) return 0;
+	const short = new Intl.DateTimeFormat("en-US", { timeZone: YEREVAN_TZ, weekday: "short" }).format(new Date(ms));
+	const idx = WEEKDAY_SHORT_MON0.indexOf(short as (typeof WEEKDAY_SHORT_MON0)[number]);
+	return idx >= 0 ? idx : 0;
+}
+
+/** Monday–Sunday week in Yerevan that contains `todayIso`. */
+export function yerevanWeekRangeContaining(todayIso: string): { start: string; end: string } {
+	const start = yerevanAddCalendarDays(todayIso, -yerevanWeekdayIndexMonday0(todayIso));
+	const end = yerevanAddCalendarDays(start, 6);
+	return { start, end };
+}
+
+/** First and last calendar day of the month in Yerevan that contains `todayIso`. */
+export function yerevanMonthRangeContaining(todayIso: string): { start: string; end: string } {
+	const [ys, ms] = todayIso.slice(0, 10).split("-");
+	const y = Number(ys);
+	const m = Number(ms);
+	if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) {
+		return { start: todayIso.slice(0, 10), end: todayIso.slice(0, 10) };
+	}
+	const start = `${y}-${String(m).padStart(2, "0")}-01`;
+	const nextM = m === 12 ? 1 : m + 1;
+	const nextY = m === 12 ? y + 1 : y;
+	const firstNext = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+	const end = yerevanAddCalendarDays(firstNext, -1);
+	return { start, end };
+}
+
+export function yerevanDateInInclusiveRange(dateIso: string, start: string, end: string): boolean {
+	const d = dateIso.slice(0, 10);
+	return d >= start.slice(0, 10) && d <= end.slice(0, 10);
+}
+
+/** UTC ms bounds for filtering `createdAt`-style ISO strings to Yerevan calendar days [start..end]. */
+export function yerevanLocalRangeToUtcMsBounds(startDateIso: string, endDateIso: string): { fromMs: number; toMs: number } {
+	const fromMs = Date.parse(`${startDateIso.slice(0, 10)}T00:00:00.000${SLOT_OFFSET}`);
+	const toMs = Date.parse(`${endDateIso.slice(0, 10)}T23:59:59.999${SLOT_OFFSET}`);
+	return { fromMs, toMs };
+}
+
+/** Calendar YYYY-MM-DD in Yerevan for an absolute instant (e.g. student `joinedIso`). */
+export function yerevanCalendarDateFromInstant(iso: string): string {
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+	return d.toLocaleDateString("en-CA", { timeZone: YEREVAN_TZ });
+}

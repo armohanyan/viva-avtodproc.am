@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { AccountType } from "src/modules/accounts/account.types";
+import type { AccountType } from "./auth.types";
 
 export interface AppRoute {
   readonly path: string;

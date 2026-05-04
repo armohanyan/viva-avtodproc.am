@@ -36,9 +36,6 @@
 			],
 			"@modules/*": [
 				"./src/modules/*"
-			],
-			"@shared/*": [
-				"./src/shared/*"
 			]
 		}
 	},

@@ -25,7 +25,9 @@ const financeTxBodySchema = z.object({
   providerRef: z.string().optional(),
   source: z.enum(['system', 'manual']),
   entryType: z.enum(['income', 'expense']).optional(),
-  expenseKind: z.enum(['salary', 'hourly_rate', 'rent', 'utilities', 'maintenance', 'marketing', 'other']).nullish(),
+  expenseKind: z
+    .enum(['salary', 'hourly_rate', 'rent', 'utilities', 'maintenance', 'marketing', 'booking_refund', 'other'])
+    .nullish(),
   employeeName: z.string().nullish(),
   units: z.number().positive().nullish(),
   unitRateAmd: z.number().int().positive().nullish(),
@@ -43,6 +45,11 @@ const createSchema = financeTxBodySchema.superRefine((data, ctx) => {
       path: ['description'],
     });
   }
+});
+
+const approveRefundBodySchema = z.object({
+  /** Positive AMD; defaults to full original payment when omitted. */
+  refundAmountAmd: z.coerce.number().int().positive().optional(),
 });
 
 const updateSchema = financeTxBodySchema
@@ -161,7 +168,8 @@ export default class FinanceController {
       if (!Number.isFinite(id) || id <= 0) {
         return next(new InputValidationError('Invalid transaction id', HttpStatusCodesUtil.BAD_REQUEST));
       }
-      const row = await FinanceService.approveRefundRequest(id);
+      const body = parseBody(approveRefundBodySchema, req.body ?? {});
+      const row = await FinanceService.approveRefundRequest(id, body.refundAmountAmd);
       SuccessHandlerUtil.handleUpdate(res, next, row);
     } catch (e) {
       next(e);
