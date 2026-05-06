@@ -7,6 +7,7 @@ export interface ExamQuestion {
   readonly text: Record<Lang, string>;
   readonly options: Record<Lang, readonly string[]>;
   readonly optionExplanations?: Record<Lang, readonly (string | null)[]>;
+  readonly explanation?: string;
   readonly correctIndex: number;
   readonly category: ExamQuestionCategory;
   /** Thematic chapter (1–10). Used with `?topic=` on thematic practice; omit for sign-only questions. */
@@ -16,11 +17,12 @@ export interface ExamQuestion {
 }
 
 /** Localized copy for the active UI language (same correctIndex across languages). */
-export function getQuestionInLang(q: ExamQuestion, lang: Lang): { text: string; options: string[]; optionExplanations: (string | null)[] } {
+export function getQuestionInLang(q: ExamQuestion, lang: Lang): { text: string; options: string[]; explanation?: string } {
+  const fallbackExplanation = q.optionExplanations?.[lang]?.[q.correctIndex] ?? undefined;
   return {
     text: q.text[lang],
     options: [...q.options[lang]],
-    optionExplanations: q.optionExplanations ? [...q.optionExplanations[lang]] : Array.from({ length: q.options[lang].length }, () => null),
+    explanation: q.explanation ?? (fallbackExplanation ?? undefined),
   };
 }
 
@@ -220,19 +222,25 @@ export function selectQuestionsForMode(
   pool: readonly ExamQuestion[] = EXAM_QUESTION_POOL,
   opts?: SelectExamQuestionsOpts,
 ): ExamQuestion[] {
+  const thematicTopicId = opts?.thematicTopicId?.trim();
   let filtered: ExamQuestion[];
   if (mode === "signs") {
     filtered = pool.filter((q) => q.category === "signs");
   } else if (mode === "topics") {
     filtered = pool.filter((q) => q.category === "rules" || q.category === "safety");
-    const tid = opts?.thematicTopicId?.trim();
-    if (tid) {
-      filtered = filtered.filter((q) => q.topicId === tid);
+    if (thematicTopicId) {
+      filtered = filtered.filter((q) => q.topicId === thematicTopicId);
     }
   } else {
     filtered = [...pool];
   }
   const shuffled = [...filtered].sort(() => Math.random() - 0.5);
-  const take = mode === "full" ? Math.min(5, shuffled.length) : Math.min(4, shuffled.length);
+  // Thematic sessions should include the full topic pool (not the previous hard cap of 4).
+  const take =
+    mode === "topics"
+      ? shuffled.length
+      : mode === "full"
+        ? Math.min(5, shuffled.length)
+        : Math.min(4, shuffled.length);
   return shuffled.slice(0, take);
 }

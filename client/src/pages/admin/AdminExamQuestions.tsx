@@ -33,7 +33,7 @@ import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { cn } from "src/lib/utils";
 
-const LANGS: Lang[] = ["en", "ru", "am"];
+const LANGS: Lang[] = ["am", "en", "ru"];
 
 const emptyOptions = (): Record<Lang, string[]> => ({
   en: ["", "", "", ""],
@@ -42,11 +42,6 @@ const emptyOptions = (): Record<Lang, string[]> => ({
 });
 
 const emptyText = (): Record<Lang, string> => ({ en: "", ru: "", am: "" });
-const emptyExplanations = (): Record<Lang, (string | null)[]> => ({
-  en: [null, null, null, null],
-  ru: [null, null, null, null],
-  am: [null, null, null, null],
-});
 
 const EXAM_IMAGE_MAX_BYTES = 800 * 1024;
 
@@ -54,7 +49,7 @@ function questionToForm(q: ExamQuestion): {
   id: string;
   text: Record<Lang, string>;
   options: Record<Lang, string[]>;
-  optionExplanations: Record<Lang, (string | null)[]>;
+  explanation: string;
   correctIndex: number;
   category: ExamQuestionCategory;
   topicId: string;
@@ -68,11 +63,7 @@ function questionToForm(q: ExamQuestion): {
       ru: [...q.options.ru],
       am: [...q.options.am],
     },
-    optionExplanations: {
-      en: [...(q.optionExplanations?.en ?? [null, null, null, null])],
-      ru: [...(q.optionExplanations?.ru ?? [null, null, null, null])],
-      am: [...(q.optionExplanations?.am ?? [null, null, null, null])],
-    },
+    explanation: q.explanation ?? "",
     correctIndex: q.correctIndex,
     category: q.category,
     topicId: q.topicId ?? "",
@@ -85,7 +76,7 @@ function defaultForm() {
     id: "",
     text: emptyText(),
     options: emptyOptions(),
-    optionExplanations: emptyExplanations(),
+    explanation: "",
     correctIndex: 0,
     category: "rules" as ExamQuestionCategory,
     topicId: "5",
@@ -102,7 +93,7 @@ type ExamDto = {
   id: string;
   text: Record<string, string>;
   options: Record<string, string[]>;
-  optionExplanations?: Record<string, (string | null)[]>;
+  explanation?: string;
   correctIndex: number;
   category: ExamQuestionCategory;
   topicId?: string;
@@ -114,7 +105,7 @@ function mapApiToQuestion(q: ExamDto): ExamQuestion {
     id: q.id,
     text: q.text as ExamQuestion["text"],
     options: q.options as ExamQuestion["options"],
-    optionExplanations: q.optionExplanations as ExamQuestion["optionExplanations"],
+    explanation: q.explanation,
     correctIndex: q.correctIndex,
     category: q.category,
     topicId: q.topicId,
@@ -221,10 +212,10 @@ export default function AdminExamQuestions() {
           return false;
         }
       }
-      if (!form.optionExplanations[L][form.correctIndex]?.trim()) {
-        showToast(t("fillRequired"), "error");
-        return false;
-      }
+    }
+    if (!form.explanation.trim()) {
+      showToast(t("fillRequired"), "error");
+      return false;
     }
     if (form.category !== "signs" && !form.topicId.trim()) {
       showToast(t("adminExamQuestionsErrTopic"), "error");
@@ -265,7 +256,7 @@ export default function AdminExamQuestions() {
       id,
       text: form.text,
       options: form.options as Record<string, string[]>,
-      optionExplanations: form.optionExplanations,
+      explanation: form.explanation.trim(),
       correctIndex: form.correctIndex,
       category: resolvedCategory,
       ...(resolvedTopicId ? { topicId: resolvedTopicId } : {}),
@@ -668,25 +659,19 @@ export default function AdminExamQuestions() {
                         })
                       }
                     />
-                    <Label className="text-[11px] mt-1.5 block text-muted-foreground">
-                      Բացատրություն {i + 1}
-                      {form.correctIndex === i ? " (պարտադիր է ճիշտ պատասխանի համար)" : ""}
-                    </Label>
-                    <Input
-                      className="mt-1"
-                      value={form.optionExplanations[L][i] ?? ""}
-                      onChange={(e) =>
-                        setForm((f) => {
-                          const next = { ...f.optionExplanations, [L]: [...f.optionExplanations[L]] };
-                          next[L][i] = e.target.value.trim() ? e.target.value : null;
-                          return { ...f, optionExplanations: next };
-                        })
-                      }
-                    />
                   </div>
                 ))}
               </div>
             ))}
+
+            <div>
+              <Label>Բացատրություն</Label>
+              <textarea
+                className={cn(textareaClass, "mt-1")}
+                value={form.explanation}
+                onChange={(e) => setForm((f) => ({ ...f, explanation: e.target.value }))}
+              />
+            </div>
 
         </form>
       </AppModal>

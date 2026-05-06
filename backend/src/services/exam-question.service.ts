@@ -12,7 +12,7 @@ export type ExamQuestionDto = {
   id: string;
   text: Record<string, string>;
   options: Record<string, string[]>;
-  optionExplanations?: Record<string, (string | null)[]>;
+  explanation?: string;
   correctIndex: number;
   category: 'rules' | 'signs' | 'safety';
   topicId?: string;
@@ -79,15 +79,19 @@ function normalizeQuestion(raw: unknown): ExamQuestionDto | null {
   if (category !== 'rules' && category !== 'signs' && category !== 'safety') return null;
   const text = q.text as Record<string, string>;
   const options = q.options as Record<string, string[]>;
-  let optionExplanations: Record<string, (string | null)[]> | undefined;
-  if (q.optionExplanations && typeof q.optionExplanations === 'object') {
-    optionExplanations = q.optionExplanations as Record<string, (string | null)[]>;
-  }
+  const explanation =
+    typeof q.explanation === 'string'
+      ? q.explanation
+      : q.explanation && typeof q.explanation === 'object'
+        ? (q.explanation as Record<string, unknown>).am ??
+          (q.explanation as Record<string, unknown>).en ??
+          (q.explanation as Record<string, unknown>).ru
+        : undefined;
   return {
     id: q.id.trim(),
     text,
     options,
-    optionExplanations,
+    ...(typeof explanation === 'string' ? { explanation } : {}),
     correctIndex: ci,
     category,
     topicId: typeof q.topicId === 'string' ? q.topicId : undefined,
@@ -137,8 +141,18 @@ async function migrateFromDatabase(): Promise<QuestionStore | null> {
       id: String(row.id),
       text: JSON.parse(row.textJson) as Record<string, string>,
       options: JSON.parse(row.optionsJson) as Record<string, string[]>,
-      optionExplanations: row.optionExplanationsJson
-        ? (JSON.parse(row.optionExplanationsJson) as Record<string, (string | null)[]>)
+      explanation: row.optionExplanationsJson
+        ? (() => {
+            try {
+              const parsed = JSON.parse(row.optionExplanationsJson) as Record<string, unknown>;
+              if (typeof parsed.am === 'string') return parsed.am;
+              if (typeof parsed.en === 'string') return parsed.en;
+              if (typeof parsed.ru === 'string') return parsed.ru;
+              return undefined;
+            } catch {
+              return undefined;
+            }
+          })()
         : undefined,
       correctIndex: row.correctIndex,
       category: row.category,

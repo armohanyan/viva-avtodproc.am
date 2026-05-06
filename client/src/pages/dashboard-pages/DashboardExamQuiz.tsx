@@ -310,7 +310,7 @@ export default function DashboardExamQuiz() {
                       {loc.options.map((opt, optionIndex) => {
                         const isSelectedOption = userAns === optionIndex;
                         const isCorrectOption = optionIndex === question.correctIndex;
-                        const explanation = loc.optionExplanations[optionIndex];
+                        const explanation = loc.explanation;
                         const explanationKey = `${question.id}-${optionIndex}`;
                         const isOpen = Boolean(openExplanations[explanationKey]);
                         const showExplanationToggle = Boolean(explanation) && isCorrectOption;
@@ -457,7 +457,7 @@ export default function DashboardExamQuiz() {
                   const hideImmediateFeedback = timedExam;
                   const isCorrectOption = i === q.correctIndex;
                   const showExplanationToggle =
-                    !hideImmediateFeedback && selected !== null && Boolean(current.optionExplanations[i]) && isCorrectOption;
+                    !hideImmediateFeedback && selected !== null && Boolean(current.explanation) && isCorrectOption;
                   return (
                     <div key={i} className="rounded-xl border border-transparent">
                       <button
@@ -498,7 +498,7 @@ export default function DashboardExamQuiz() {
                             <span>{t("examQuizShowExplanation")}</span>
                           </button>
                           {openExplanations[`q-${index}-${i}`] ? (
-                            <p className="mt-1 text-xs text-muted-foreground">{current.optionExplanations[i]}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">{current.explanation}</p>
                           ) : null}
                         </div>
                       ) : null}
@@ -541,7 +541,7 @@ export default function DashboardExamQuiz() {
                         {loc.options.map((opt, optIdx) => {
                           const isCorrectOption = optIdx === question.correctIndex;
                           const showExplanationToggle =
-                            !hideImmediateFeedback && sel !== null && Boolean(loc.optionExplanations[optIdx]) && isCorrectOption;
+                            !hideImmediateFeedback && sel !== null && Boolean(loc.explanation) && isCorrectOption;
                           return (
                           <div key={optIdx} className="rounded-xl border border-transparent">
                             <button
@@ -582,7 +582,7 @@ export default function DashboardExamQuiz() {
                                   <span>{t("examQuizShowExplanation")}</span>
                                 </button>
                                 {openExplanations[`q-${qIdx}-${optIdx}`] ? (
-                                  <p className="mt-1 text-xs text-muted-foreground">{loc.optionExplanations[optIdx]}</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">{loc.explanation}</p>
                                 ) : null}
                               </div>
                             ) : null}

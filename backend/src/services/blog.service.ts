@@ -68,7 +68,7 @@ export default class BlogService {
   }
 
   static async getBySlug(slug: string): Promise<BlogDto | null> {
-    const b = await Blog.findOne({ where: { slug, published: true } });
+    const b = await Blog.findOne({ where: { slug } });
     return b ? toDto(b) : null;
   }
 

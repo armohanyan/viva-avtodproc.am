@@ -12,6 +12,7 @@
     "build": "npm run build:backend && npm run build:web",
     "build:all": "npm run build:backend && npm run build:web && npm run build:panel",
     "start:backend": "npm run start --prefix backend",
-    "typecheck:backend": "npm run typecheck --prefix backend"
+    "typecheck:backend": "npm run typecheck --prefix backend",
+    "sync:exam-questions": "npm run sync:exam-questions --prefix backend --"
   }
 }

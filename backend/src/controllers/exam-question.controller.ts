@@ -14,7 +14,7 @@ const langRecord = z.record(z.string(), z.string());
 const questionPayloadSchema = z.object({
   text: langRecord,
   options: z.record(z.string(), z.array(z.string())),
-  optionExplanations: z.record(z.string(), z.array(z.string().nullable())).optional(),
+  explanation: z.string().optional(),
   correctIndex: z.number().int().min(0).max(3),
   category: z.enum(['rules', 'signs', 'safety']),
   topicId: z.string().optional(),

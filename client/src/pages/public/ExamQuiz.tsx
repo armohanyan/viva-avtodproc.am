@@ -331,7 +331,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                           {loc.options.map((opt, optionIndex) => {
                             const isSelectedOption = userAns === optionIndex;
                             const isCorrectOption = optionIndex === question.correctIndex;
-                            const explanation = loc.optionExplanations[optionIndex];
+                            const explanation = loc.explanation;
                             const explanationKey = `${question.id}-${optionIndex}`;
                             const isOpen = Boolean(openExplanations[explanationKey]);
                             const showExplanationToggle = Boolean(explanation) && isCorrectOption;
@@ -462,7 +462,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                         const hideImmediateFeedback = timedExam;
                         const isSelectedOption = selected === i;
                         const isCorrectOption = i === q!.correctIndex;
-                        const explanation = current.optionExplanations[i];
+                        const explanation = current.explanation;
                         const showExplanationToggle =
                           !hideImmediateFeedback && selected !== null && Boolean(explanation) && isCorrectOption;
                         return (
@@ -548,7 +548,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                               {loc.options.map((opt, optIdx) => {
                                 const isSelectedOption = sel === optIdx;
                                 const isCorrectOption = optIdx === question.correctIndex;
-                                const explanation = loc.optionExplanations[optIdx];
+                                const explanation = loc.explanation;
                                 const showExplanationToggle =
                                   !hideImmediateFeedback && sel !== null && Boolean(explanation) && isCorrectOption;
                                 return (

@@ -23,6 +23,20 @@ const textareaClass = cn(
   "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
 );
 
+const DEFAULT_STAT_KEYS = Object.keys(MARKETING_STAT_LABEL_KEY);
+
+function normalizeStats(stats: MarketingAdminBundle["stats"]): MarketingAdminBundle["stats"] {
+  const byKey = new Map(stats.map((row) => [row.key, row]));
+  return DEFAULT_STAT_KEYS.map((key, index) => {
+    const existing = byKey.get(key);
+    return {
+      key,
+      value: existing?.value ?? "",
+      sortOrder: existing?.sortOrder ?? index,
+    };
+  });
+}
+
 export default function AdminMarketing() {
   const testimonialFormId = useId();
   const { t } = useLang();
@@ -56,7 +70,7 @@ export default function AdminMarketing() {
   });
 
   const applyBundle = useCallback((b: MarketingAdminBundle) => {
-    setStats(b.stats);
+    setStats(normalizeStats(b.stats));
     setTestimonials(b.testimonials);
     setPhonesText(b.contact.phones.join("\n"));
     setEmailsText(b.contact.emails.join("\n"));

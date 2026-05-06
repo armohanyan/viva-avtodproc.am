@@ -40,23 +40,15 @@ function parseOptionsRecord(o: unknown, keys: Lang[]): Record<Lang, string[]> | 
   return out as Record<Lang, string[]>;
 }
 
-function parseExplanations(o: unknown, keys: Lang[], optionLen: number): Record<Lang, (string | null)[]> | undefined {
-  if (o === undefined || o === null) return undefined;
-  if (!o || typeof o !== "object") return undefined;
-  const r = o as Record<string, unknown>;
-  const out: Partial<Record<Lang, (string | null)[]>> = {};
-  for (const k of keys) {
-    const arr = r[k];
-    if (!Array.isArray(arr) || arr.length !== optionLen) return undefined;
-    const row: (string | null)[] = [];
-    for (const x of arr) {
-      if (x === null) row.push(null);
-      else if (typeof x === "string") row.push(x);
-      else return undefined;
-    }
-    out[k] = row;
+function parseExplanation(raw: unknown): string | undefined {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    if (typeof r.am === "string") return r.am;
+    if (typeof r.en === "string") return r.en;
+    if (typeof r.ru === "string") return r.ru;
   }
-  return out as Record<Lang, (string | null)[]>;
+  return undefined;
 }
 
 function parseOne(raw: unknown): ExamQuestion | null {
@@ -75,13 +67,13 @@ function parseOne(raw: unknown): ExamQuestion | null {
   if ((category === "rules" || category === "safety") && !topicId) {
     topicId = "5";
   }
-  const exp = parseExplanations(o.optionExplanations, LANGS, 4);
+  const explanation = parseExplanation(o.explanation);
   const imageUrl = sanitizeCoverImageUrl(typeof o.imageUrl === "string" ? o.imageUrl : null);
   return {
     id: o.id.trim(),
     text,
     options,
-    optionExplanations: exp,
+    ...(explanation ? { explanation } : {}),
     correctIndex: ci,
     category,
     ...(topicId ? { topicId } : {}),

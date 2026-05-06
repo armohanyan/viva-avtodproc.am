@@ -266,8 +266,8 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
               }`}
             >
               <p>{opt}</p>
-              {localized.optionExplanations[idx] ? (
-                <p className="text-xs text-muted-foreground mt-1">{localized.optionExplanations[idx]}</p>
+              {idx === question.correctIndex && localized.explanation ? (
+                <p className="text-xs text-muted-foreground mt-1">{localized.explanation}</p>
               ) : null}
             </div>
           ))}

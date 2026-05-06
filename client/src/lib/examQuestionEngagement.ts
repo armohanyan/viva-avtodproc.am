@@ -21,7 +21,7 @@ type ExamQuestionDto = {
   id: string;
   text: Record<string, string>;
   options: Record<string, string[]>;
-  optionExplanations?: Record<string, (string | null)[]>;
+  explanation?: string;
   correctIndex: number;
   category: "rules" | "signs" | "safety";
   topicId?: string;
@@ -33,7 +33,7 @@ function mapDto(q: ExamQuestionDto): ExamQuestion {
     id: q.id,
     text: q.text,
     options: q.options,
-    optionExplanations: q.optionExplanations,
+    explanation: q.explanation,
     correctIndex: q.correctIndex,
     category: q.category,
     topicId: q.topicId,
