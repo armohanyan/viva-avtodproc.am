@@ -6,22 +6,32 @@ import path from "path";
 const clientRoot = path.join(__dirname, "../..");
 loadEnvConfig(clientRoot);
 
+/** Same rule as `src/lib/apiBaseUrl.ts` `normalizeApiBaseUrl` — rewrites append `/api/:path*`. */
+function normalizeBackendOrigin(s: string): string {
+	const t = s.replace(/\/+$/, "");
+	if (t.endsWith("/api")) {
+		return t.slice(0, -4);
+	}
+	return t;
+}
+
 /**
  * Where the Next server can reach Express for rewrites (Docker: `http://backend:3001`).
  * Order matches `vite.config.ts` intent: internal URL first, then public API base, then Vite proxy target from `client/.env`.
+ * Must be origin only (no `/api`); rewrites append `/api/:path*`.
  */
 function backendProxyOrigin(): string {
 	const internal = process.env.INTERNAL_API_BASE_URL?.trim();
 	if (internal) {
-		return internal.replace(/\/+$/, "");
+		return normalizeBackendOrigin(internal);
 	}
 	const publicBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 	if (publicBase) {
-		return publicBase.replace(/\/+$/, "");
+		return normalizeBackendOrigin(publicBase);
 	}
 	const viteProxy = process.env.VITE_API_PROXY_TARGET?.trim();
 	if (viteProxy) {
-		return viteProxy.replace(/\/+$/, "");
+		return normalizeBackendOrigin(viteProxy);
 	}
 	return "http://127.0.0.1:3001";
 }

@@ -15,6 +15,8 @@ class App {
 
   constructor() {
     this.app = express();
+    /** Behind nginx: forwarded headers are trusted for IP/rate-limit (express-rate-limit). */
+    this.app.set('trust proxy', 1);
     this.app.use(helmet());
     this.app.use('/upload', express.static(path.join(process.cwd(), 'upload')));
   }
