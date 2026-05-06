@@ -67,9 +67,31 @@ export default class BlogService {
     return rows.map(toDto);
   }
 
+  /** Slug from URL may be over-encoded; decode until stable to match stored unicode slugs. */
+  private static decodeSlugParam(slug: string): string {
+    let s = slug.trim();
+    for (let i = 0; i < 6; i++) {
+      if (!/%[0-9A-Fa-f]{2}/.test(s)) break;
+      try {
+        const next = decodeURIComponent(s);
+        if (next === s) break;
+        s = next;
+      } catch {
+        break;
+      }
+    }
+    return s;
+  }
+
   static async getBySlug(slug: string): Promise<BlogDto | null> {
-    const b = await Blog.findOne({ where: { slug } });
-    return b ? toDto(b) : null;
+    const raw = slug.trim();
+    const decoded = BlogService.decodeSlugParam(raw);
+    const candidates = raw === decoded ? [raw] : [decoded, raw];
+    for (const s of candidates) {
+      const b = await Blog.findOne({ where: { slug: s } });
+      if (b) return toDto(b);
+    }
+    return null;
   }
 
   static async create(input: {
