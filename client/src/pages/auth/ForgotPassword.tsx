@@ -40,9 +40,7 @@ export default function ForgotPassword() {
       <div className="w-full max-w-md">
         <div className="bg-card rounded-2xl border border-border shadow-sm p-8">
           <div className="flex items-center gap-2 mb-8">
-            <div className="w-9 h-9 bg-primary rounded-lg flex items-center justify-center">
-              <img src="/logo.jpg" alt={t("brandName")} className="w-6 h-6 object-contain" />
-            </div>
+            <img src="/logo.svg" alt={t("brandName")} className="w-9 h-9 object-contain" />
             <span className="font-bold text-lg text-foreground">{t("brandName")}</span>
           </div>
 

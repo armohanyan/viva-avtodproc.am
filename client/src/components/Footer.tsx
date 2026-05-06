@@ -52,9 +52,7 @@ export default function Footer() {
         >
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center overflow-hidden">
-                <img src="/logo.jpg" alt={t("brandName")} className="w-7 h-7 object-contain" />
-              </div>
+              <img src="/logo.svg" alt={t("brandName")} className="w-9 h-9 object-contain" />
             </div>
             <p className="text-sm text-hero-foreground/80 leading-relaxed mb-5">{t("aboutSub")}</p>
             {socialLinks.length > 0 ? (

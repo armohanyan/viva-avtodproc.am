@@ -20,6 +20,7 @@ type AdminNavEntry =
 
 export default function Navbar() {
   const { t } = useLang();
+  const brandDisplayName = "ՎԻՎԱ Ավտոդպրոց";
   const { user } = useAccount();
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
@@ -98,9 +99,8 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center gap-4 min-w-0 md:gap-6 lg:gap-8">
           <MarketingLink href="/" className="flex shrink-0 items-center gap-2">
-            <div className="w-9 h-9 bg-accent rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-              <img src="/logo.jpg" alt={t("brandName")} className="w-7 h-7 object-contain" />
-            </div>
+            <img src="/logo.svg" alt={t("brandName")} className="h-10 w-10 object-contain shrink-0" />
+            <span className="hidden xl:inline font-semibold text-foreground whitespace-nowrap">{brandDisplayName}</span>
           </MarketingLink>
 
           <div className="hidden lg:flex flex-1 min-w-0 items-center gap-3 lg:gap-4">
@@ -297,10 +297,8 @@ export default function Navbar() {
               <div className="flex h-full flex-col pt-12">
                 <div className="border-b border-border px-4 pb-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                      <img src="/logo.jpg" alt={t("brandName")} className="w-6 h-6 object-contain" />
-                    </div>
-                    <span className="font-semibold text-foreground">{t("brandName")}</span>
+                    <img src="/logo.svg" alt={t("brandName")} className="h-9 w-9 object-contain shrink-0" />
+                    <span className="font-semibold text-foreground">{brandDisplayName}</span>
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto px-3 py-3">

@@ -35,7 +35,7 @@ export default function InstructorProfile() {
   const firstName = nameParts[0] ?? "";
   const lastName = nameParts.slice(1).join(" ");
 
-  const avatarSrc = me?.imageSrc ?? "/logo.jpg";
+  const avatarSrc = me?.imageSrc ?? "/logo.svg";
 
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingPass, setSavingPass] = useState(false);

@@ -308,7 +308,7 @@ export default function AdminLayout({ children }: Props) {
 							onClick={() => closeMobileNav()}
 							className="flex items-center gap-2 min-w-0"
 						>
-							<img src="/logo.jpg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
+							<img src="/logo.svg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
 							<span className="font-bold text-hero-foreground text-sm truncate">{t("brandName")}</span>
 						</Link>
 					</div>

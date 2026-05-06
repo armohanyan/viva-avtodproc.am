@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import PaymentsAndRefunds from "src/pages/public/PaymentsAndRefunds";
-import { LEGAL_DOCS } from "src/lib/legalDocsContent";
+import { getRequestSeoLang, legalMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: LEGAL_DOCS.payments.en.pageTitle,
-  description: LEGAL_DOCS.payments.en.metaDescription,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await getRequestSeoLang();
+  return legalMetadata("payments", lang, "/payments-and-refunds");
+}
 
 export default function Page() {
   return <PaymentsAndRefunds />;

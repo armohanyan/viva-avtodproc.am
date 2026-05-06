@@ -79,7 +79,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 								{user ? (
 									<span className="text-xs font-semibold">{initialsFromName(user.name)}</span>
 								) : (
-									<img src="/logo.jpg" alt="" className="w-full h-full object-cover" />
+									<img src="/logo.svg" alt="" className="w-full h-full object-cover" />
 								)}
 							</button>
 						</DropdownMenuTrigger>
@@ -114,7 +114,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 							onClick={() => closeMobileNav()}
 							className="flex items-center gap-2 min-w-0"
 						>
-							<img src="/logo.jpg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
+							<img src="/logo.svg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
 							<span className="font-bold text-foreground text-sm truncate">{t("brandName")}</span>
 						</Link>
 					</div>

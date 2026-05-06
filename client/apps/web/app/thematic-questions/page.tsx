@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import ExamTests from "src/pages/public/ExamTests";
+import { buildRouteMetadata, getRequestSeoLang } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Exam Tests & Topic Practice",
-  description:
-    "Practice thematic driving theory questions, track progress, and prepare for the official exam with Viva Autoschool.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await getRequestSeoLang();
+  return buildRouteMetadata("/thematic-questions", lang);
+}
 
 export default function Page() {
   return <ExamTests />;

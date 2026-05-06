@@ -52,7 +52,7 @@ const createNewInstructorDraft = (): InstructorForm => ({
   status: "active",
   availableBranchIds: [],
   hourlyPrice: 7000,
-  imageSrc: "/logo.jpg",
+  imageSrc: "/logo.svg",
   fleetCarIds: [],
 });
 
@@ -800,7 +800,7 @@ export default function AdminInstructors() {
                     alt=""
                     className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted shrink-0"
                     onError={(e) => {
-                      e.currentTarget.src = "/logo.jpg";
+                      e.currentTarget.src = "/logo.svg";
                     }}
                   />
                   <div className="flex-1 min-w-0">
@@ -946,7 +946,7 @@ export default function AdminInstructors() {
                     alt=""
                     className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted shrink-0"
                     onError={(e) => {
-                      e.currentTarget.src = "/logo.jpg";
+                      e.currentTarget.src = "/logo.svg";
                     }}
                   />
                   <div className="flex-1 min-w-0">

@@ -15,7 +15,7 @@ export function useInstructors() {
 					? data.map((ins) => ({
 							...ins,
 							id: String(ins.id),
-							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.jpg",
+							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.svg",
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
 							fleetCarIds: Array.isArray(ins.fleetCarIds) ? ins.fleetCarIds : [],
 							...(typeof ins.inviteEligible === "boolean" ? { inviteEligible: ins.inviteEligible } : {}),

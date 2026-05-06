@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import TermsOfService from "src/pages/public/TermsOfService";
-import { LEGAL_DOCS } from "src/lib/legalDocsContent";
+import { getRequestSeoLang, legalMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: LEGAL_DOCS.terms.en.pageTitle,
-  description: LEGAL_DOCS.terms.en.metaDescription,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await getRequestSeoLang();
+  return legalMetadata("terms", lang, "/terms");
+}
 
 export default function Page() {
   return <TermsOfService />;

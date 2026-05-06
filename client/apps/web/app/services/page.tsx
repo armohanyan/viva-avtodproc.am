@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Services from "src/pages/public/Services";
+import { buildRouteMetadata, getRequestSeoLang } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Services",
-  description:
-    "Practical driving lessons, theory courses, license preparation, and refresher training — everything you need for your Armenian driver's license.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await getRequestSeoLang();
+  return buildRouteMetadata("/services", lang);
+}
 
 export default function Page() {
   return <Services />;

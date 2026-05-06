@@ -4377,6 +4377,7 @@ export function LangProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(LANG_STORAGE_KEY, lang);
+      document.cookie = `viva_lang=${lang}; path=/; max-age=31536000; samesite=lax`;
     }
     if (typeof document !== "undefined") {
       document.documentElement.lang = lang;

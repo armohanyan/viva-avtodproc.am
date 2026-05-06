@@ -265,9 +265,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-hero to-hero" />
         <div className="relative">
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-              <img src="/logo.jpg" alt={t("brandName")} className="w-7 h-7 object-contain" />
-            </div>
+            <img src="/logo.svg" alt={t("brandName")} className="w-10 h-10 object-contain" />
             <span className="font-bold text-xl text-hero-foreground">{t("brandName")}</span>
           </Link>
         </div>
@@ -357,9 +355,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
           <Card className="gap-0 overflow-hidden border-border/80 py-0 shadow-md">
             <div className="border-b border-border/60 bg-muted/30 px-5 pt-5 pb-4 sm:px-8 sm:pt-6">
               <div className="flex lg:hidden items-center justify-center gap-2 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-                  <img src="/logo.jpg" alt={t("brandName")} className="h-7 w-7 object-contain" />
-                </div>
+                <img src="/logo.svg" alt={t("brandName")} className="h-10 w-10 object-contain" />
                 <span className="font-semibold text-lg text-foreground">{t("brandName")}</span>
               </div>
               <TabsList className="grid h-11 w-full grid-cols-2 rounded-lg bg-muted/80 p-1">

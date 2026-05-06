@@ -53,7 +53,8 @@ services:
       DB_AUTO_SEED: ${DB_AUTO_SEED:-1}
       DB_SYNC_ALTER: ${DB_SYNC_ALTER:-0}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-docker-dev-change-me}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3001,http://127.0.0.1:3001}
+      # Set explicit domains in production (recommended). Fallback `*` prevents accidental domain lockout.
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
     ports:
       - "${BACKEND_PUBLISH_PORT:-3001}:3001"
     depends_on:
@@ -65,7 +66,8 @@ services:
       context: ./client
       dockerfile: Dockerfile
       args:
-        VITE_MARKETING_ORIGIN: ${VITE_MARKETING_ORIGIN:-http://localhost:5173}
+        # For same-origin deploys leave empty; for split domains set your marketing origin explicitly.
+        VITE_MARKETING_ORIGIN: ${VITE_MARKETING_ORIGIN:-}
     container_name: viva-frontend
     restart: unless-stopped
     ports:
@@ -79,9 +81,10 @@ services:
       context: ./client
       dockerfile: Dockerfile.web
       args:
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:5173}
-        NEXT_PUBLIC_PANEL_URL: ${NEXT_PUBLIC_PANEL_URL:-http://localhost:3000}
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3001}
+        # Provide your real domains in production to avoid localhost links in built assets.
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+        NEXT_PUBLIC_PANEL_URL: ${NEXT_PUBLIC_PANEL_URL:-}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
     container_name: viva-web
     restart: unless-stopped
     ports:
