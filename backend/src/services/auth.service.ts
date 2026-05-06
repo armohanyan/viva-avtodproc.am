@@ -4,7 +4,7 @@ import { Op } from 'sequelize';
 import config from '../config';
 import { sequelize } from '../database/sequelize';
 import { signAccessToken } from '../helpers';
-import { OAuthAccount, User } from '../models';
+import { Branch, OAuthAccount, StudentProfile, User } from '../models';
 import type { AccountType } from '../models/user.model';
 import type { OAuthProvider } from '../models/oauth-account.model';
 import ErrorsUtil from '../utils/errors.util';
@@ -58,6 +58,31 @@ function toDto(user: User): AuthUserDto {
 }
 
 export default class AuthService {
+  private static async ensureStudentProfile(userId: number): Promise<void> {
+    const existing = await StudentProfile.findOne({ where: { userId } });
+    if (existing) {
+      return;
+    }
+    const branch = await Branch.findOne({ order: [['id', 'ASC']] });
+    if (!branch) {
+      return;
+    }
+    await StudentProfile.create({
+      userId,
+      branchId: branch.id,
+      packageId: null,
+      instructorUserId: null,
+      lessonsCompleted: 0,
+      lessonsTotal: 0,
+      theoryLessonsCompleted: 0,
+      theoryLessonsTotal: 0,
+      enrollmentStatus: 'active',
+      skillRating: 0,
+      licenseAchieved: false,
+      joinedAt: new Date().toISOString().slice(0, 10),
+    });
+  }
+
   private static async assertActive(user: User): Promise<void> {
     if (!user.isActive) {
       throw new UnauthorizedError('Account is disabled', HttpStatusCodesUtil.UNAUTHORIZED);
@@ -136,6 +161,8 @@ export default class AuthService {
       passwordHash,
     });
 
+    await this.ensureStudentProfile(user.id);
+
     return this.issueTokens(user);
   }
 
@@ -209,6 +236,7 @@ export default class AuthService {
           },
           { transaction: t },
         );
+        await this.ensureStudentProfile(u.id);
       }
 
       await OAuthAccount.create(

@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { Op } from 'sequelize';
 import type { AccountType } from '../models/user.model';
-import { User } from '../models';
+import { Branch, StudentProfile, User } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import StudentInvitationService from './student-invitation.service';
@@ -38,6 +38,31 @@ function toRow(u: User): AccountRow {
 }
 
 export default class AccountsService {
+  private static async ensureStudentProfile(userId: number): Promise<void> {
+    const existing = await StudentProfile.findOne({ where: { userId } });
+    if (existing) {
+      return;
+    }
+    const branch = await Branch.findOne({ order: [['id', 'ASC']] });
+    if (!branch) {
+      return;
+    }
+    await StudentProfile.create({
+      userId,
+      branchId: branch.id,
+      packageId: null,
+      instructorUserId: null,
+      lessonsCompleted: 0,
+      lessonsTotal: 0,
+      theoryLessonsCompleted: 0,
+      theoryLessonsTotal: 0,
+      enrollmentStatus: 'active',
+      skillRating: 0,
+      licenseAchieved: false,
+      joinedAt: new Date().toISOString().slice(0, 10),
+    });
+  }
+
   static async list(filters?: { roles?: AccountType[] }): Promise<AccountRow[]> {
     const rows = await User.findAll({
       where: filters?.roles?.length ? { accountType: { [Op.in]: filters.roles } } : undefined,
@@ -78,6 +103,9 @@ export default class AccountsService {
       passwordHash,
       isActive: input.isActive !== false,
     });
+    if (u.accountType === 'student') {
+      await this.ensureStudentProfile(u.id);
+    }
     if (input.sendInvite && !input.password) {
       if (input.accountType === 'student') await StudentInvitationService.createAndEmailInvite(u.id);
       if (input.accountType === 'instructor') await StudentInvitationService.createAndEmailInstructorInvite(u.id);

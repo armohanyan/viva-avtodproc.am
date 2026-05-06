@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { OAuthAccount, Package, StudentProfile, User } from '../models';
+import { Branch, OAuthAccount, Package, StudentProfile, User } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import InstructorStudentRatingService from './instructor-student-rating.service';
@@ -54,6 +54,41 @@ function studentInviteEligible(stu: User, oauthUserIds: Set<number>): boolean {
 }
 
 export default class StudentAdminService {
+  private static async ensureProfilesForStudents(userIds?: number[]): Promise<void> {
+    const branch = await Branch.findOne({ order: [['id', 'ASC']] });
+    if (!branch) return;
+
+    const where = userIds?.length
+      ? { id: { [Op.in]: userIds }, accountType: 'student' as const }
+      : { accountType: 'student' as const };
+    const students = await User.findAll({ where, attributes: ['id'] });
+    if (students.length === 0) return;
+
+    const existingProfiles = await StudentProfile.findAll({
+      where: { userId: { [Op.in]: students.map((s) => s.id) } },
+      attributes: ['userId'],
+    });
+    const existingUserIds = new Set(existingProfiles.map((p) => p.userId));
+
+    for (const student of students) {
+      if (existingUserIds.has(student.id)) continue;
+      await StudentProfile.create({
+        userId: student.id,
+        branchId: branch.id,
+        packageId: null,
+        instructorUserId: null,
+        lessonsCompleted: 0,
+        lessonsTotal: 0,
+        theoryLessonsCompleted: 0,
+        theoryLessonsTotal: 0,
+        enrollmentStatus: 'active',
+        skillRating: 0,
+        licenseAchieved: false,
+        joinedAt: new Date().toISOString().slice(0, 10),
+      });
+    }
+  }
+
   private static async oauthUserIdSetFor(userIds: number[]): Promise<Set<number>> {
     if (userIds.length === 0) return new Set();
     const oauthRows = await OAuthAccount.findAll({
@@ -91,6 +126,7 @@ export default class StudentAdminService {
   }
 
   static async list(): Promise<AdminStudentRow[]> {
+    await this.ensureProfilesForStudents();
     const rows = await StudentProfile.findAll({
       include: [
         { model: User, as: 'studentAccount', required: true },
@@ -108,6 +144,11 @@ export default class StudentAdminService {
 
   /** Students assigned to this instructor (`student_profiles.instructor_user_id`). */
   static async listForInstructor(instructorUserId: number): Promise<AdminStudentRow[]> {
+    const assignedStudentProfiles = await StudentProfile.findAll({
+      where: { instructorUserId },
+      attributes: ['userId'],
+    });
+    await this.ensureProfilesForStudents(assignedStudentProfiles.map((p) => p.userId));
     const rows = await StudentProfile.findAll({
       where: { instructorUserId },
       include: [
