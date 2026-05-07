@@ -7,8 +7,8 @@
   "scripts": {
     "dev:stack": "bash scripts/dev-with-docker-mysql.sh",
     "build:backend": "npm run build --prefix backend",
-    "build:web": "npm run build -w web --prefix client",
-    "build:panel": "npm run build --prefix client",
+    "build:web": "npm run build -w marketing --prefix client",
+    "build:panel": "npm run build -w app --prefix client",
     "build": "npm run build:backend && npm run build:web",
     "build:all": "npm run build:backend && npm run build:web && npm run build:panel",
     "start:backend": "npm run start --prefix backend",

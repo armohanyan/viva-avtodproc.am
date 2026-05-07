@@ -4,5 +4,7 @@ dist
 .env
 .env.*
 *.md
-apps/web/node_modules
-apps/web/.next
+marketing/node_modules
+marketing/.next
+app/node_modules
+app/dist

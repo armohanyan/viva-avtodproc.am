@@ -1,0 +1,70 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "src/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "src/components/**/*.ts",
+    "src/components/**/*.tsx",
+    "src/constants/**/*.ts",
+    "src/data/**/*.ts",
+    "src/lib/**/*.ts",
+    "src/lib/**/*.tsx",
+    "src/modules/accounts/**/*.ts",
+    "src/modules/accounts/**/*.tsx",
+    "src/modules/branches/**/*.ts",
+    "src/modules/branches/**/*.tsx",
+    "src/modules/cities/**/*.ts",
+    "src/modules/cities/**/*.tsx",
+    "src/modules/exam/**/*.ts",
+    "src/modules/exam/**/*.tsx",
+    "src/modules/instructors/**/*.ts",
+    "src/modules/instructors/**/*.tsx",
+    "src/modules/marketing/**/*.ts",
+    "src/modules/marketing/**/*.tsx",
+    "src/modules/packages/**/*.ts",
+    "src/modules/packages/**/*.tsx",
+    "src/views/public/**/*.ts",
+    "src/views/public/**/*.tsx",
+    "src/types/**/*.ts",
+    "src/types/**/*.d.ts",
+    "src/utils/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

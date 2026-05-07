@@ -14,7 +14,7 @@
 # Production-style stack (baked images): docker compose -f docker-compose.prod.yml up --build
 #
 # Ports (defaults):
-#   Marketing (Next apps/web):  http://localhost:5173
+#   Marketing (Next marketing): http://localhost:5173
 #   Panel / accounts (Vite):    http://localhost:3000  (host → container :5173; set PANEL_DEFAULT_ORIGIN accordingly)
 #   API (Express):              http://localhost:3001/api/v1/health
 #   Local API without Docker:   default `PANEL_DEFAULT_ORIGIN` is http://localhost:5173 (Vite dev server).
@@ -105,7 +105,7 @@ services:
       [
         "sh",
         "-c",
-        "find node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; npm install && npm run dev -- --host 0.0.0.0",
+        "find node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; npm install && npm run dev -w app -- --host 0.0.0.0",
       ]
     healthcheck:
       test:
@@ -144,7 +144,7 @@ services:
       [
         "sh",
         "-c",
-        "find node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; npm install && npm run dev -w web -- --hostname 0.0.0.0 --port 5173",
+        "find node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true; npm install && npm run dev -w marketing -- --hostname 0.0.0.0 --port 5173",
       ]
     depends_on:
       backend:

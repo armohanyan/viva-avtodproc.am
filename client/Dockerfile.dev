@@ -3,7 +3,8 @@
 FROM node:22-bookworm-slim
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY apps/web/package.json ./apps/web/
+COPY marketing/package.json ./marketing/
+COPY app/package.json ./app/
 # atmn → ink-* pulls legacy peer ranges; strict ci can fail inside the image.
 RUN npm ci --legacy-peer-deps
 ENV NEXT_TELEMETRY_DISABLED=1

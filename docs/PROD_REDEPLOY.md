@@ -3,7 +3,7 @@
 This project runs two Node services in production:
 
 - `viva-api` from `backend` (`npm run start`)
-- `viva-web` from `client/apps/web` (`npm run start`, Next.js)
+- `viva-web` from `client/marketing` (`npm run start`, Next.js)
 
 Use this checklist on your server each time you redeploy.
 
@@ -66,7 +66,7 @@ npm ci --prefix backend
 npm ci --prefix client
 
 npm run build --prefix backend
-npm run build -w web --prefix client
+npm run build -w marketing --prefix client
 ```
 
 ## 4) Start or restart services with PM2
@@ -87,7 +87,7 @@ pm2 start npm --name viva-api --cwd /var/www/viva-avtodproc.am/backend -- start
 Start Web (Next app workspace):
 
 ```bash
-PORT=13102 HOSTNAME=127.0.0.1 pm2 start npm --name viva-web --cwd /var/www/viva-avtodproc.am/client/apps/web -- start
+PORT=13102 HOSTNAME=127.0.0.1 pm2 start npm --name viva-web --cwd /var/www/viva-avtodproc.am/client/marketing -- start
 ```
 
 Persist PM2 state:
@@ -158,13 +158,13 @@ Cause: PM2 started from wrong folder.
 Correct folders:
 
 - API must run from `backend`
-- Web must run from `client/apps/web` (not `client`)
+- Web must run from `client/marketing` (not `client`)
 
 Quick verify:
 
 ```bash
 npm run --prefix /var/www/viva-avtodproc.am/backend
-npm run --prefix /var/www/viva-avtodproc.am/client/apps/web
+npm run --prefix /var/www/viva-avtodproc.am/client/marketing
 ```
 
 ### Error: `EADDRINUSE 127.0.0.1:13102`
@@ -181,7 +181,7 @@ Stop duplicate process, then restart:
 ```bash
 pm2 delete viva-web || true
 kill -9 <PID_USING_13102>
-PORT=13102 HOSTNAME=127.0.0.1 pm2 start npm --name viva-web --cwd /var/www/viva-avtodproc.am/client/apps/web -- start
+PORT=13102 HOSTNAME=127.0.0.1 pm2 start npm --name viva-web --cwd /var/www/viva-avtodproc.am/client/marketing -- start
 ```
 
 ## 8) Quick daily commands

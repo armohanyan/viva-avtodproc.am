@@ -1,8 +1,6 @@
 /**
- * Next.js expects `apps/web/public` to be a directory (shared static assets live in `client/public`).
- * Git stores that path as a symlink; on Windows without symlink support it becomes a small text file.
- * Next then treats `join(public, '/')` as an existing *file* and serves it for `/`, which conflicts with `app/page.tsx`.
- * This script replaces a broken file (or wrong link) with a directory symlink / Windows junction.
+ * Legacy helper retained for older checkouts that still use `apps/web/public`.
+ * Current structure keeps standalone assets in `client/marketing/public`.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -10,8 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientRoot = path.resolve(__dirname, "..");
-const webPublic = path.join(clientRoot, "apps", "web", "public");
-const targetDir = path.join(clientRoot, "public");
+const webPublic = path.join(clientRoot, "marketing", "public");
+const targetDir = path.join(clientRoot, "marketing", "public");
 
 function createLink() {
   if (process.platform === "win32") {
@@ -23,7 +21,7 @@ function createLink() {
 
 function main() {
   if (!fs.existsSync(targetDir) || !fs.statSync(targetDir).isDirectory()) {
-    console.warn("ensure-next-web-public: client/public is missing; skip.");
+    console.warn("ensure-next-web-public: marketing/public is missing; skip.");
     return;
   }
   if (!fs.existsSync(webPublic)) {
@@ -57,7 +55,7 @@ function main() {
       return;
     }
     console.warn(
-      "ensure-next-web-public: apps/web/public is a non-empty folder not linked to client/public; leave as-is.",
+      "ensure-next-web-public: marketing/public is a non-empty folder; leave as-is.",
     );
   }
 }

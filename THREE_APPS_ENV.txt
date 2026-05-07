@@ -6,7 +6,7 @@ THREE APPS — where each .env lives (local dev, no Docker)
   --------------------------------------------------------------------------------
   1. API (Express)  backend/               backend/.env              cd backend && npm run dev
   2. Panel (Vite)   client/                client/.env.local         cd client && npm run dev
-  3. Marketing      client/apps/web/       client/apps/web/.env.local   cd client && npm run dev -w web -- --port 3002
+  3. Marketing      client/marketing/      client/marketing/.env.local  cd client && npm run dev -w marketing -- --port 3002
 
 Ports used below: API = 3001, Panel = 5173, Marketing = 3002 (change if you like).
 
@@ -39,7 +39,7 @@ VITE_API_PROXY_TARGET=http://127.0.0.1:3001
 VITE_MARKETING_ORIGIN=http://localhost:3002
 
 ================================================================================
-3) client/apps/web/.env.local   — Marketing (Next.js)
+3) client/marketing/.env.local  — Marketing (Next.js)
 ================================================================================
 
 # Public URL of THIS Next app (must match the port you pass to next dev)
@@ -65,4 +65,4 @@ Tracked templates in the repo:
   backend/.env.example
   client/.env.example
   client/.env.local.example
-  client/apps/web/.env.example
+  client/marketing/.env.example
