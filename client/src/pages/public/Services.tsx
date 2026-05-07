@@ -3,7 +3,7 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
-import { Car, BookOpen, Award, CheckCircle2 } from "lucide-react";
+import { Car, BookOpen, CheckCircle2 } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
@@ -29,7 +29,7 @@ export default function Services() {
     },
     {
       icon: BookOpen,
-      title: t("theoryCourses"),
+      title: t("theoryGroupCourses"),
       desc: t("theoryDesc"),
       color: "text-primary",
       bg: "bg-primary/10",
@@ -42,17 +42,17 @@ export default function Services() {
       ],
     },
     {
-      icon: Award,
-      title: t("licensePrep"),
-      desc: t("licensePrepDesc"),
+      icon: BookOpen,
+      title: t("theoryIndividualCourses"),
+      desc: t("theoryDesc"),
       color: "text-primary",
       bg: "bg-primary/10",
       border: "border-primary/20",
       details: [
-        t("servicesCardPrepDetail1"),
-        t("servicesCardPrepDetail2"),
-        t("servicesCardPrepDetail3"),
-        t("servicesCardPrepDetail4"),
+        t("servicesCardTheoryDetail1"),
+        t("servicesCardTheoryDetail2"),
+        t("servicesCardTheoryDetail3"),
+        t("servicesCardTheoryDetail4"),
       ],
     },
   ];
