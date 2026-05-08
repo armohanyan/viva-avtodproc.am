@@ -98,9 +98,37 @@ export default class InstructorController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
+      const actor = (req as StaffRequest).staff;
+      const { id } = parseParams(instructorUserIdParamsSchema, req.params);
+
+      if (!actor) {
+        return next(new PermissionError('Authentication required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+
+      if (actor.accountType === 'instructor') {
+        const actorUserId = Number(actor.sub);
+
+        if (!Number.isFinite(actorUserId) || actorUserId <= 0 || actorUserId !== id) {
+          return next(
+            new PermissionError('You can only update your own profile image.', HttpStatusCodesUtil.FORBIDDEN),
+          );
+        }
+
+        const bodyKeys = Object.keys(body);
+        const invalidInstructorKeys = bodyKeys.filter((k) => k !== 'imageSrc');
+
+        if (invalidInstructorKeys.length > 0) {
+          return next(
+            new PermissionError(
+              'Instructors can only update their profile image.',
+              HttpStatusCodesUtil.FORBIDDEN,
+            ),
+          );
+        }
+      }
+
       if ('availableBranchIds' in body) {
-        const staff = (req as StaffRequest).staff;
-        if (!staff || staff.accountType !== 'super_admin') {
+        if (actor.accountType !== 'super_admin') {
           return next(
             new PermissionError(
               'Only a super administrator can change instructor branches.',
@@ -109,7 +137,6 @@ export default class InstructorController {
           );
         }
       }
-      const { id } = parseParams(instructorUserIdParamsSchema, req.params);
       const row = await InstructorService.update(id, body);
 
       if (!row) {

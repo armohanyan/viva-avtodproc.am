@@ -6,7 +6,7 @@ import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Shield, UserCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { loadAccountSession, saveAccountSession, useAccount, useAuthPasswordSectionState } from "src/modules/accounts";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -15,13 +15,14 @@ import { useBranches } from "src/modules/branches";
 import { useCities } from "src/modules/cities";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { getApiErrorMessage } from "src/lib/api";
+import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 
 export default function InstructorProfile() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
   const passwordSection = useAuthPasswordSectionState();
-  const { instructors, loading } = useInstructors();
+  const { instructors, loading, refresh } = useInstructors();
   const { branches } = useBranches();
   const { cities } = useCities();
 
@@ -36,6 +37,8 @@ export default function InstructorProfile() {
   const lastName = nameParts.slice(1).join(" ");
 
   const avatarSrc = me?.imageSrc ?? "/logo.svg";
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingPass, setSavingPass] = useState(false);
@@ -75,6 +78,35 @@ export default function InstructorProfile() {
 
   const branchesLine = me ? formatInstructorBranches(me, branches, cities) : "—";
 
+  const handleAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.currentTarget.value = "";
+    if (!file || !me?.id) return;
+
+    setUploadingAvatar(true);
+
+    try {
+      const uploadedUrl = await uploadStaffImageFile(file);
+      await vivaApiJson(`/instructors/${encodeURIComponent(me.id)}`, {
+        method: "PATCH",
+        body: { imageSrc: uploadedUrl },
+      });
+
+      const prev = loadAccountSession();
+
+      if (prev) {
+        saveAccountSession({ ...prev });
+      }
+
+      await refresh();
+      showToast(t("instructorUpdatedToast"), "success");
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   return (
     <InstructorPanelLayout>
       <PanelPageHeader icon={UserCircle} title={t("profile")} subtitle={t("instructorProfilePublicHint")} />
@@ -87,6 +119,22 @@ export default function InstructorProfile() {
                 <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
               </div>
             </div>
+            <input
+              ref={avatarFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => void handleAvatarPick(e)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploadingAvatar}
+              onClick={() => avatarFileInputRef.current?.click()}
+            >
+              {uploadingAvatar ? t("loading") : "Upload image"}
+            </Button>
             <h3 className="font-bold text-foreground text-lg">{displayName || "—"}</h3>
             <p className="text-xs text-muted-foreground text-left leading-relaxed">{t("instructorProfileCardFieldsHint")}</p>
           </Card>

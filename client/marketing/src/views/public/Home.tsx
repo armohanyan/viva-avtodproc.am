@@ -35,11 +35,16 @@ import { usePackages } from "src/modules/packages/usePackages";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 
 function telHrefFromListedPhone(phone: string): string {
   const compact = phone.replace(/[^\d+]/g, "");
   return compact ? `tel:${compact}` : "tel:";
 }
+
+const DEFAULT_HOME_INTRO_TITLE = "Մեր մասին";
+const DEFAULT_HOME_INTRO_DESCRIPTION =
+  "Viva ավտոդպրոցը օգնում է ուսանողներին սովորել անվտանգ, վստահ և ժամանակակից մեթոդներով։ Մեր նպատակն է պատրաստել պատասխանատու վարորդներ՝ ապահովելով որակյալ տեսական և գործնական ուսուցում։";
 
 export default function Home() {
   const { t } = useLang();
@@ -69,6 +74,13 @@ export default function Home() {
 
     return mkt.testimonials.map((x) => ({ name: x.authorName, text: x.quote, rating: x.rating }));
   }, [mkt]);
+  const siteContent = mkt?.siteContent;
+  const heroBackgroundImage = sameOriginStaffUploadUrl(siteContent?.homeHeroBackgroundImage) ?? "/home-hero-2.svg";
+  const ownerPhoto = sameOriginStaffUploadUrl(siteContent?.ownerPhoto);
+  const introTitle = siteContent?.homeIntroTitle?.trim() || DEFAULT_HOME_INTRO_TITLE;
+  const introDescription = siteContent?.homeIntroDescription?.trim() || DEFAULT_HOME_INTRO_DESCRIPTION;
+  const ownerName = siteContent?.ownerName?.trim() || "";
+  const ownerPosition = siteContent?.ownerPosition?.trim() || "";
 
   type ContactTabKey = "phone" | "email" | "address" | "hours";
   const contactTabs = useMemo(() => {
@@ -183,7 +195,7 @@ export default function Home() {
       <section className="relative bg-hero text-hero-foreground overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/home-hero-2.svg')" }}
+          style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
           aria-hidden="true"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-hero/40 to-hero/90" />
@@ -233,6 +245,32 @@ export default function Home() {
             </div>
           </div>
         ) : null}
+      </section>
+
+      <section className="py-14 bg-accent/35 border-y border-border/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
+            <div className="lg:col-span-8">
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">{introTitle}</h2>
+              <p className="text-muted-foreground leading-relaxed">{introDescription}</p>
+            </div>
+            <div className="lg:col-span-4">
+              <div className="rounded-2xl border border-border bg-card p-4 flex items-center gap-4">
+                {ownerPhoto ? (
+                  <img src={ownerPhoto} alt={ownerName || "Owner"} className="h-20 w-20 rounded-xl object-cover border border-border" />
+                ) : (
+                  <div className="h-20 w-20 rounded-xl border border-dashed border-border bg-muted/30 flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
+                    Owner photo
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-foreground">{ownerName || "Viva Autoschool"}</p>
+                  {ownerPosition ? <p className="text-sm text-muted-foreground">{ownerPosition}</p> : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="py-20 bg-background">

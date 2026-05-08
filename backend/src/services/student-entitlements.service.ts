@@ -1,6 +1,6 @@
 import type { Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { Branch, Package, StudentExtraPractical, StudentProfile, User } from '../models';
+import { Branch, Package, PackageLessonBalance, PackageOrder, StudentExtraPractical, StudentProfile, User } from '../models';
 import FinanceService from './finance.service';
 import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
 import ErrorsUtil from '../utils/errors.util';
@@ -38,12 +38,17 @@ function tierFromPackage(pkg: Package): PackageTierId {
 export type StudentEntitlementsDto = {
   packages: Array<{
     purchaseId: number;
+    packageId: number;
+    packageName: string;
     tier: PackageTierId;
     purchasedAt: string;
+    status: string;
     practicalTotal: number;
     practicalUsed: number;
     theoryTotal: number;
     theoryUsed: number;
+    personalTheoryTotal: number;
+    personalTheoryUsed: number;
   }>;
   extras: Array<{
     id: number;
@@ -59,6 +64,57 @@ export default class StudentEntitlementsService {
     const user = await User.findByPk(userId);
 
     if (!user || user.accountType !== 'student') return null;
+
+    const orders = await PackageOrder.findAll({
+      where: { studentUserId: userId },
+      include: [{ model: Package, as: 'package', required: true }],
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+    });
+
+    if (orders.length > 0) {
+      const balances = await PackageLessonBalance.findAll({
+        where: { packageOrderId: orders.map((o) => o.id) },
+      });
+
+      const byOrder = new Map<number, PackageLessonBalance[]>();
+
+      for (const b of balances) {
+        const list = byOrder.get(b.packageOrderId) ?? [];
+        list.push(b);
+        byOrder.set(b.packageOrderId, list);
+      }
+
+      return {
+        packages: orders.map((o) => {
+          const pkg = o.getDataValue('package') as Package;
+          const rows = byOrder.get(o.id) ?? [];
+          const byType = new Map(rows.map((r) => [r.lessonType, r] as const));
+          const practical = byType.get('practical');
+          const theory = byType.get('theory');
+          const personalTheory = byType.get('theory_personal');
+          const theoryTotal = Number(personalTheory?.totalIncluded ?? theory?.totalIncluded ?? 0);
+          const theoryUsed = Number(personalTheory?.bookedCount ?? theory?.bookedCount ?? 0);
+          return {
+            purchaseId: o.id,
+            packageId: pkg.id,
+            packageName: pkg.name,
+            tier: tierFromPackage(pkg),
+            purchasedAt: dateIso(o.createdAt),
+            status: String(o.status ?? 'active'),
+            practicalTotal: Number(practical?.totalIncluded ?? 0),
+            practicalUsed: Number(practical?.bookedCount ?? 0),
+            theoryTotal,
+            theoryUsed,
+            personalTheoryTotal: theoryTotal,
+            personalTheoryUsed: theoryUsed,
+          };
+        }),
+        extras: await this.listExtras(userId),
+      };
+    }
     const profile = await StudentProfile.findOne({ where: { userId } });
 
     if (!profile) {
@@ -82,12 +138,17 @@ export default class StudentEntitlementsService {
       packages: [
         {
           purchaseId: profile.packageId,
+          packageId: profile.packageId,
+          packageName: pkg.name,
           tier: tierFromPackage(pkg),
           purchasedAt: joined,
+          status: 'active',
           practicalTotal: profile.lessonsTotal,
           practicalUsed: profile.lessonsCompleted,
           theoryTotal,
           theoryUsed,
+          personalTheoryTotal: 0,
+          personalTheoryUsed: 0,
         },
       ],
       extras: await this.listExtras(userId),
@@ -111,6 +172,7 @@ export default class StudentEntitlementsService {
   private static async applyPackageAssignment(
     userId: number,
     packageId: number,
+    orderStatus: 'active' | 'paid' = 'active',
     transaction?: Transaction,
   ): Promise<{ branchId: number } | null> {
     const user = await User.findByPk(userId, { transaction });
@@ -119,6 +181,37 @@ export default class StudentEntitlementsService {
     if (!pkg) return null;
     const theoryTotal =
       Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : legacyTheorySessionsFromPackageName(pkg);
+    const order = await PackageOrder.create(
+      {
+        studentUserId: userId,
+        packageId: pkg.id,
+        status: orderStatus,
+        paidAt: orderStatus === 'paid' ? new Date() : null,
+        source: orderStatus === 'paid' ? 'student_checkout' : 'admin_assign',
+      },
+      { transaction },
+    );
+    await PackageLessonBalance.bulkCreate(
+      [
+        {
+          packageOrderId: order.id,
+          studentUserId: userId,
+          packageId: pkg.id,
+          lessonType: 'practical',
+          totalIncluded: Number(pkg.lessons ?? 0),
+          bookedCount: 0,
+        },
+        {
+          packageOrderId: order.id,
+          studentUserId: userId,
+          packageId: pkg.id,
+          lessonType: 'theory_personal',
+          totalIncluded: theoryTotal,
+          bookedCount: 0,
+        },
+      ],
+      { transaction },
+    );
     let profile = await StudentProfile.findOne({ where: { userId }, transaction });
     if (!profile) {
       const branch = await Branch.findOne({ order: [['id', 'ASC']], transaction });
@@ -171,7 +264,7 @@ export default class StudentEntitlementsService {
     }
 
     await sequelize.transaction(async (transaction) => {
-      const applied = await this.applyPackageAssignment(userId, packageId, transaction);
+      const applied = await this.applyPackageAssignment(userId, packageId, 'paid', transaction);
       if (!applied) {
         throw new InputValidationError('Could not enroll in package.', HttpStatusCodesUtil.BAD_REQUEST);
       }
@@ -197,7 +290,7 @@ export default class StudentEntitlementsService {
 
   static async assignPackage(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
     const applied = await sequelize.transaction(async (transaction) =>
-      this.applyPackageAssignment(userId, packageId, transaction),
+      this.applyPackageAssignment(userId, packageId, 'active', transaction),
     );
     if (!applied) return null;
     return this.get(userId);

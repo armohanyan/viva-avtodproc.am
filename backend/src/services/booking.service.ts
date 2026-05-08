@@ -7,6 +7,10 @@ import {
   FinanceTransaction,
   InstructorBranch,
   InstructorProfile,
+  Package,
+  PackageLessonBalance,
+  PackageOrder,
+  StudentProfile,
   TheoryCohort,
   TheoryCohortEnrollment,
   User,
@@ -201,6 +205,10 @@ export type StudentPaidBookingCreateDto = {
   holdExtensionCount: number;
   maxHoldExtensions: number;
   paymentRequiredNow: true;
+};
+
+export type AdminPackageAtomicCreateDto = {
+  bookingIds: number[];
 };
 
 function dateIsoString(v: unknown): string {
@@ -448,6 +456,143 @@ function coercePrepaidMetaFromRow(raw: unknown): PrepaidMeta | null {
   return StudentPracticalCreditsService.isNonEmptyMeta(m) ? m : null;
 }
 
+function readPositiveInt(raw: unknown): number {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+async function consumePackageLessonCreditsInTx(input: {
+  studentUserId: number;
+  lessonType: 'practical' | 'theory' | 'theory_personal';
+  slotCount: number;
+  packageOrderId?: number;
+  transaction: Transaction;
+}): Promise<Record<string, unknown> | null> {
+  if (input.slotCount <= 0) return null;
+  const resolveActiveOrder = async (): Promise<PackageOrder | null> => {
+    const orderWhere: Record<string, unknown> = {
+      studentUserId: input.studentUserId,
+      status: { [Op.in]: ['active', 'paid', 'confirmed'] },
+    };
+    if (input.packageOrderId != null && Number.isFinite(input.packageOrderId) && input.packageOrderId > 0) {
+      orderWhere.id = input.packageOrderId;
+    }
+    return PackageOrder.findOne({
+      where: orderWhere,
+      transaction: input.transaction,
+      lock: Transaction.LOCK.UPDATE,
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+    });
+  };
+
+  let order = await resolveActiveOrder();
+  if (!order) {
+    // Backward-compat: older admin package assignment updates only `student_profiles`.
+    // Bootstrap one active package order + balances from profile snapshot so booking can proceed.
+    const profile = await StudentProfile.findOne({
+      where: { userId: input.studentUserId },
+      transaction: input.transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (profile && profile.packageId != null) {
+      const created = await PackageOrder.create(
+        {
+          studentUserId: input.studentUserId,
+          packageId: profile.packageId,
+          status: 'active',
+          paidAt: null,
+          source: 'legacy_profile_bootstrap',
+          note: 'Auto-created from student profile during package booking.',
+        },
+        { transaction: input.transaction },
+      );
+      await PackageLessonBalance.bulkCreate(
+        [
+          {
+            packageOrderId: created.id,
+            studentUserId: input.studentUserId,
+            packageId: profile.packageId,
+            lessonType: 'practical',
+            totalIncluded: Math.max(0, readPositiveInt(profile.lessonsTotal)),
+            bookedCount: Math.max(0, readPositiveInt(profile.lessonsCompleted)),
+          },
+          {
+            packageOrderId: created.id,
+            studentUserId: input.studentUserId,
+            packageId: profile.packageId,
+            lessonType: 'theory_personal',
+            totalIncluded: Math.max(0, readPositiveInt(profile.theoryLessonsTotal)),
+            bookedCount: Math.max(0, readPositiveInt(profile.theoryLessonsCompleted)),
+          },
+        ],
+        { transaction: input.transaction },
+      );
+      order = created;
+    }
+  }
+  if (!order) {
+    throw new InputValidationError(
+      'Student has no active package credits to consume.',
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+  let balance = await PackageLessonBalance.findOne({
+    where: {
+      packageOrderId: order.id,
+      studentUserId: input.studentUserId,
+      lessonType: input.lessonType,
+    },
+    transaction: input.transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+  if (!balance && input.lessonType === 'theory_personal') {
+    balance = await PackageLessonBalance.findOne({
+      where: {
+        packageOrderId: order.id,
+        studentUserId: input.studentUserId,
+        lessonType: 'theory',
+      },
+      transaction: input.transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+  }
+  if (!balance) {
+    throw new InputValidationError(
+      'Selected package does not include this lesson type.',
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+  const remaining = Math.max(0, readPositiveInt(balance.totalIncluded) - readPositiveInt(balance.bookedCount));
+  if (remaining < input.slotCount) {
+    throw new InputValidationError(
+      'Not enough package lessons remaining for selected slots.',
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+  await balance.update(
+    { bookedCount: readPositiveInt(balance.bookedCount) + input.slotCount },
+    { transaction: input.transaction },
+  );
+  if (input.lessonType === 'practical') {
+    return {
+      pkg: input.slotCount,
+      extras: [],
+      packageOrderId: order.id,
+      packageBalanceType: 'practical',
+      packageBalanceUnits: input.slotCount,
+    };
+  }
+  return {
+    pkgTheory: input.slotCount,
+    packageOrderId: order.id,
+    packageBalanceType: input.lessonType,
+    packageBalanceUnits: input.slotCount,
+  };
+}
+
 /** Ends a student booking, frees slots, optionally records a refund line when the student had paid. */
 async function finalizePracticalCancellationInTx(opts: {
   row: Booking;
@@ -469,6 +614,40 @@ async function finalizePracticalCancellationInTx(opts: {
   }
 
   const rawPrepaid = row.prepaidMeta as Record<string, unknown> | null;
+  const pkgTheory = Math.max(0, Math.floor(Number(rawPrepaid?.pkgTheory) || 0));
+  if (pkgTheory > 0) {
+    const profile = await StudentProfile.findOne({
+      where: { userId: studentUserId },
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (profile) {
+      const next = Math.max(0, readPositiveInt(profile.theoryLessonsCompleted) - pkgTheory);
+      await profile.update({ theoryLessonsCompleted: next }, { transaction });
+    }
+  }
+
+  const packageOrderId = Math.floor(Number(rawPrepaid?.packageOrderId) || 0);
+  const packageBalanceUnits = Math.max(0, Math.floor(Number(rawPrepaid?.packageBalanceUnits) || 0));
+  const packageBalanceTypeRaw = String(rawPrepaid?.packageBalanceType ?? '').trim();
+  const packageBalanceType =
+    packageBalanceTypeRaw === 'practical' || packageBalanceTypeRaw === 'theory' || packageBalanceTypeRaw === 'theory_personal'
+      ? packageBalanceTypeRaw
+      : null;
+  if (packageOrderId > 0 && packageBalanceUnits > 0 && packageBalanceType) {
+    const bal = await PackageLessonBalance.findOne({
+      where: {
+        packageOrderId,
+        studentUserId,
+        lessonType: packageBalanceType,
+      },
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (bal) {
+      await bal.update({ bookedCount: Math.max(0, readPositiveInt(bal.bookedCount) - packageBalanceUnits) }, { transaction });
+    }
+  }
   if (row.lessonType === 'theory' && rawPrepaid) {
     const cohortId = Math.floor(Number(rawPrepaid.theoryCohortId));
     if (Number.isFinite(cohortId) && cohortId > 0) {
@@ -1318,6 +1497,8 @@ export default class BookingService {
     lessonType: 'practical' | 'theory_personal';
     status: string;
     branchId: number;
+    consumePackageCredits?: boolean;
+    packageOrderId?: number;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -1359,6 +1540,16 @@ export default class BookingService {
     let newId = 0;
     try {
       await sequelize.transaction(async (transaction) => {
+        const prepaidMeta =
+          input.consumePackageCredits === true
+            ? await consumePackageLessonCreditsInTx({
+                studentUserId: input.studentId,
+                lessonType: input.lessonType,
+                slotCount: entries.length,
+                packageOrderId: input.packageOrderId,
+                transaction,
+              })
+            : null;
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -1367,11 +1558,13 @@ export default class BookingService {
             dateIso: first.dateIso,
             time: first.time,
             endTime,
-            totalPriceAmd,
+            totalPriceAmd: prepaidMeta ? 0 : totalPriceAmd,
             lessonType: input.lessonType,
             status: input.status,
             paidAt: null,
             holdExpiresAt: null,
+            prepaidMeta,
+            ...(prepaidMeta ? { paymentStatus: 'paid' as const } : {}),
           },
           { transaction },
         );
@@ -1405,6 +1598,8 @@ export default class BookingService {
     slots?: readonly string[];
     theoryCohortId?: number;
     slotEntries?: readonly { dateIso: string; time: string }[];
+    consumePackageCredits?: boolean;
+    packageOrderId?: number;
   }): Promise<BookingAdminDto | null> {
     const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? []);
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
@@ -1422,6 +1617,8 @@ export default class BookingService {
         lessonType: input.type,
         status: input.status,
         branchId: input.branchId,
+        consumePackageCredits: input.consumePackageCredits,
+        packageOrderId: input.packageOrderId,
       });
     }
 
@@ -1444,6 +1641,8 @@ export default class BookingService {
         instructorName: input.instructorName,
         instructorUserId: input.instructorUserId,
         theoryCohortId: input.theoryCohortId,
+        consumePackageCredits: input.consumePackageCredits,
+        packageOrderId: input.packageOrderId,
       });
     }
 
@@ -1517,6 +1716,165 @@ export default class BookingService {
     return rows.find((x) => x.id === newId) ?? null;
   }
 
+  /**
+   * Admin package flow: create practical + theory_personal package bookings atomically.
+   * If any selected slot fails, the whole operation is rolled back.
+   */
+  static async createAdminPackageAtomic(input: {
+    studentId: number;
+    packageId: number;
+    branchId: number;
+    status: string;
+    packageOrderId?: number;
+    practical?: {
+      instructorName: string;
+      instructorUserId?: number;
+      dateIso: string;
+      slots?: readonly string[];
+      slotEntries?: readonly { dateIso: string; time: string }[];
+    } | null;
+    theoryPersonal?: {
+      instructorName: string;
+      instructorUserId?: number;
+      dateIso: string;
+      slots?: readonly string[];
+      slotEntries?: readonly { dateIso: string; time: string }[];
+    } | null;
+  }): Promise<AdminPackageAtomicCreateDto> {
+    LoggerUtil.info(
+      `[booking-package-atomic] start student=${input.studentId} package=${input.packageId} order=${input.packageOrderId ?? 'auto'}`,
+    );
+    const pkg = await Package.findByPk(input.packageId);
+    if (!pkg) {
+      throw new InputValidationError('Package not found.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const practicalEntries = normalizeAdminSlotEntries(
+      input.practical?.slotEntries ??
+        (input.practical?.slots ?? []).map((t) => ({ dateIso: input.practical!.dateIso, time: t })),
+    );
+    const theoryEntries = normalizeAdminSlotEntries(
+      input.theoryPersonal?.slotEntries ??
+        (input.theoryPersonal?.slots ?? []).map((t) => ({ dateIso: input.theoryPersonal!.dateIso, time: t })),
+    );
+    if (practicalEntries.length > Number(pkg.lessons ?? 0)) {
+      throw new InputValidationError(
+        'Selected practical slots exceed package practical lessons.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    if (theoryEntries.length > Number(pkg.theoryLessons ?? 0)) {
+      throw new InputValidationError(
+        'Selected theory slots exceed package theory lessons.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+
+    const bookingIds: number[] = [];
+    try {
+      await sequelize.transaction(async (transaction) => {
+        const createOne = async (opts: {
+          lessonType: 'practical' | 'theory_personal';
+          entries: AdminSlotEntry[];
+          instructorName?: string;
+          instructorUserId?: number;
+        }) => {
+          if (opts.entries.length === 0) return;
+          const instructor =
+            opts.instructorUserId != null && Number.isFinite(opts.instructorUserId)
+              ? await User.findOne({
+                  where: { id: opts.instructorUserId, accountType: 'instructor' },
+                  transaction,
+                  lock: Transaction.LOCK.UPDATE,
+                })
+              : await User.findOne({
+                  where: { name: String(opts.instructorName ?? '').trim(), accountType: 'instructor' },
+                  transaction,
+                  lock: Transaction.LOCK.UPDATE,
+                });
+          if (!instructor) {
+            throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.BAD_REQUEST);
+          }
+          const instructorUserId = instructor.id;
+          const branchOk = await InstructorBranch.findOne({
+            where: { instructorUserId, branchId: input.branchId },
+            transaction,
+          });
+          if (!branchOk) {
+            throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+          }
+          const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId }, transaction });
+          assertInstructorTeachesLessonType(profile, opts.lessonType);
+          for (const e of opts.entries) {
+            const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+              instructorUserId,
+              e.dateIso,
+              e.time,
+            );
+            if (unavailable) {
+              throw new InputValidationError(
+                `${opts.lessonType}: slot ${e.dateIso} ${e.time} is no longer available for instructor.`,
+                HttpStatusCodesUtil.CONFLICT,
+              );
+            }
+          }
+          const prepaidMeta = await consumePackageLessonCreditsInTx({
+            studentUserId: input.studentId,
+            lessonType: opts.lessonType,
+            slotCount: opts.entries.length,
+            packageOrderId: input.packageOrderId,
+            transaction,
+          });
+          const first = opts.entries[0]!;
+          const created = await Booking.create(
+            {
+              studentUserId: input.studentId,
+              instructorUserId,
+              branchId: input.branchId,
+              dateIso: first.dateIso,
+              time: first.time,
+              endTime: endTimeExclusiveForSlotEntries(opts.entries),
+              totalPriceAmd: 0,
+              lessonType: opts.lessonType,
+              status: input.status,
+              paidAt: null,
+              holdExpiresAt: null,
+              prepaidMeta,
+              paymentStatus: 'paid',
+            },
+            { transaction },
+          );
+          await replaceBookingSlotRowsFromEntries(created.id, instructorUserId, opts.entries, transaction);
+          bookingIds.push(created.id);
+        };
+
+        await createOne({
+          lessonType: 'practical',
+          entries: practicalEntries,
+          instructorName: input.practical?.instructorName,
+          instructorUserId: input.practical?.instructorUserId,
+        });
+        await createOne({
+          lessonType: 'theory_personal',
+          entries: theoryEntries,
+          instructorName: input.theoryPersonal?.instructorName,
+          instructorUserId: input.theoryPersonal?.instructorUserId,
+        });
+      });
+    } catch (e) {
+      LoggerUtil.warn(
+        `[booking-package-atomic] rollback student=${input.studentId} package=${input.packageId} reason=${e instanceof Error ? e.message : String(e)}`,
+      );
+      if (isDuplicateSlotClaimError(e)) {
+        throw new ConflictError(SLOT_NO_LONGER_AVAILABLE, HttpStatusCodesUtil.CONFLICT);
+      }
+      throw e;
+    }
+    LoggerUtil.info(
+      `[booking-package-atomic] commit student=${input.studentId} package=${input.packageId} bookings=${bookingIds.join(',')}`,
+    );
+    return { bookingIds };
+  }
+
   /** Admin: one booking spanning consecutive hourly slots (practical, theory group, or personal theory). */
   private static async createAdminWithConsecutiveSlots(input: {
     studentId: number;
@@ -1528,6 +1886,8 @@ export default class BookingService {
     instructorName: string;
     instructorUserId?: number;
     theoryCohortId?: number;
+    consumePackageCredits?: boolean;
+    packageOrderId?: number;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
     const sorted = normalizeAndSortSlots(input.slots);
@@ -1640,6 +2000,16 @@ export default class BookingService {
           }
         }
 
+        const prepaidMeta =
+          input.consumePackageCredits === true
+            ? await consumePackageLessonCreditsInTx({
+                studentUserId: input.studentId,
+                lessonType: input.lessonType,
+                slotCount: sorted.length,
+                packageOrderId: input.packageOrderId,
+                transaction,
+              })
+            : null;
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -1648,11 +2018,13 @@ export default class BookingService {
             dateIso,
             time: sorted[0],
             endTime: exclusiveEnd,
-            totalPriceAmd,
+            totalPriceAmd: prepaidMeta ? 0 : totalPriceAmd,
             lessonType: input.lessonType,
             status: input.status,
             paidAt: null,
             holdExpiresAt: null,
+            prepaidMeta,
+            ...(prepaidMeta ? { paymentStatus: 'paid' as const } : {}),
           },
           { transaction },
         );
@@ -2353,9 +2725,11 @@ export default class BookingService {
   /** Staff: complete a student-initiated cancellation (free slots, refund ledger if the booking was paid). */
   static async staffApprovePracticalCancellation(bookingId: number): Promise<StaffApproveStudentCancellationResponse> {
     const t0 = Date.now();
+
     const step = (label: string) => {
       LoggerUtil.info(`[approve-student-cancellation] bookingId=${bookingId} step=${label} +${Date.now() - t0}ms`);
     };
+
     step('start');
 
     const result = await sequelize.transaction(async (transaction) => {
@@ -2365,11 +2739,14 @@ export default class BookingService {
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
+
       step('after_load_booking');
       if (!row) {
         throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
+
       const st = normalizeBookingStatus(row.status);
+
       if (row.cancellationRequestedAt == null) {
         if (st === 'refunded' || st === 'cancelled') {
           step('idempotent_already_closed');
@@ -2381,20 +2758,25 @@ export default class BookingService {
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
+
       if (st !== 'pending' && st !== 'pending_payment' && st !== 'confirmed') {
         throw new InputValidationError('This booking cannot be resolved here.', HttpStatusCodesUtil.BAD_REQUEST);
       }
+
       const requestedAt = new Date(row.cancellationRequestedAt as Date);
       const dateIso = dateIsoString(row.dateIso);
       const refundAllowedByPolicy =
         row.paidAt != null && studentRefundEligibleAtRequestTime(requestedAt, dateIso, row.time);
+
       step('before_finalize');
+
       const fin = await finalizePracticalCancellationInTx({
         row,
         studentUserId: row.studentUserId,
         transaction,
         refundIfPaid: refundAllowedByPolicy,
       });
+
       step('after_finalize');
       return { kind: 'completed' as const, status: fin.status };
     });
@@ -2461,16 +2843,23 @@ export default class BookingService {
    */
   static async autoCancelReservedUnpaidAfterPaymentDeadlineFromCron(bookingId: number): Promise<boolean> {
     let did = false;
+
     await sequelize.transaction(async (transaction) => {
       const row = await Booking.findByPk(bookingId, { transaction, lock: Transaction.LOCK.UPDATE });
+
       if (!row) return;
       if (row.paidAt != null) return;
+
       const st = normalizeBookingStatus(String(row.status));
+
       if (st !== 'pending_payment') return;
       if (!row.paymentRequiredAt) return;
+
       const today = todayIsoUtc();
       const pr = String(row.paymentRequiredAt).slice(0, 10);
+
       if (!shouldAutoCancelUnpaidAfterPaymentDeadline(today, pr, false)) return;
+
       await finalizePracticalCancellationInTx({
         row,
         studentUserId: row.studentUserId,
@@ -2479,6 +2868,7 @@ export default class BookingService {
         cancellationReason: BOOKING_CANCELLATION_REASON.PAYMENT_NOT_COMPLETED_BEFORE_REQUIRED_DATE,
         recordAutoCancelledAt: true,
       });
+
       did = true;
     });
     if (did) {

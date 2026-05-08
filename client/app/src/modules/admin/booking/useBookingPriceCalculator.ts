@@ -24,8 +24,8 @@ export type BookingPriceInput = {
 export function computeBookingTotalAmd(input: BookingPriceInput): number {
   const { flowKind } = input;
   if (flowKind === "package" && input.selectedPackage) {
-    const fromApi = input.selectedPackage.priceAmd;
-    if (typeof fromApi === "number" && Number.isFinite(fromApi) && fromApi > 0) return fromApi;
+    const fromApi = Number((input.selectedPackage as { priceAmd?: unknown }).priceAmd);
+    if (Number.isFinite(fromApi) && fromApi > 0) return fromApi;
     return Math.max(0, parseAmdInput(input.selectedPackage.price));
   }
 

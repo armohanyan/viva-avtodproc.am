@@ -32,12 +32,23 @@ export type MarketingSocialDto = {
   whatsapp: string;
 };
 
+export type MarketingSiteContentDto = {
+  homeHeroBackgroundImage: string;
+  ownerPhoto: string;
+  homeIntroTitle: string;
+  homeIntroDescription: string;
+  ownerName: string;
+  ownerPosition: string;
+  ownerDescription: string;
+};
+
 export type MarketingPublicBundle = {
   stats: { key: string; value: string }[];
   testimonials: { id: number; authorName: string; quote: string; rating: number }[];
   contact: MarketingContactDto;
   footer: MarketingFooterDto;
   social: MarketingSocialDto;
+  siteContent: MarketingSiteContentDto;
 };
 
 const SK = {
@@ -54,6 +65,13 @@ const SK = {
   SOCIAL_YT: 'social_youtube_url',
   SOCIAL_TT: 'social_tiktok_url',
   SOCIAL_WHATSAPP: 'social_whatsapp',
+  HOME_HERO_BG_IMAGE: 'home_hero_background_image',
+  OWNER_PHOTO: 'owner_photo',
+  HOME_INTRO_TITLE: 'home_intro_title',
+  HOME_INTRO_DESCRIPTION: 'home_intro_description',
+  OWNER_NAME: 'owner_name',
+  OWNER_POSITION: 'owner_position',
+  OWNER_DESCRIPTION: 'owner_description',
 } as const;
 
 function parseJsonArray(raw: string | undefined): string[] {
@@ -83,6 +101,7 @@ async function readContactFooterSocial(): Promise<{
   contact: MarketingContactDto;
   footer: MarketingFooterDto;
   social: MarketingSocialDto;
+  siteContent: MarketingSiteContentDto;
 }> {
   const m = await loadSettingsMap();
   const phones = parseJsonArray(m.get(SK.CONTACT_PHONES));
@@ -108,6 +127,15 @@ async function readContactFooterSocial(): Promise<{
       youtube: getSetting(m, SK.SOCIAL_YT),
       tiktok: getSetting(m, SK.SOCIAL_TT),
       whatsapp: getSetting(m, SK.SOCIAL_WHATSAPP),
+    },
+    siteContent: {
+      homeHeroBackgroundImage: getSetting(m, SK.HOME_HERO_BG_IMAGE),
+      ownerPhoto: getSetting(m, SK.OWNER_PHOTO),
+      homeIntroTitle: getSetting(m, SK.HOME_INTRO_TITLE),
+      homeIntroDescription: getSetting(m, SK.HOME_INTRO_DESCRIPTION),
+      ownerName: getSetting(m, SK.OWNER_NAME),
+      ownerPosition: getSetting(m, SK.OWNER_POSITION),
+      ownerDescription: getSetting(m, SK.OWNER_DESCRIPTION),
     },
   };
 }
@@ -216,8 +244,9 @@ export default class MarketingService {
     contact: MarketingContactDto;
     footer: MarketingFooterDto;
     social: MarketingSocialDto;
+    siteContent: MarketingSiteContentDto;
   }): Promise<void> {
-    const { contact, footer, social } = payload;
+    const { contact, footer, social, siteContent } = payload;
     const upserts: Array<{ settingKey: string; valueText: string }> = [
       { settingKey: SK.CONTACT_PHONES, valueText: JSON.stringify(contact.phones) },
       { settingKey: SK.CONTACT_EMAILS, valueText: JSON.stringify(contact.emails) },
@@ -232,6 +261,13 @@ export default class MarketingService {
       { settingKey: SK.SOCIAL_YT, valueText: social.youtube },
       { settingKey: SK.SOCIAL_TT, valueText: social.tiktok },
       { settingKey: SK.SOCIAL_WHATSAPP, valueText: social.whatsapp },
+      { settingKey: SK.HOME_HERO_BG_IMAGE, valueText: siteContent.homeHeroBackgroundImage },
+      { settingKey: SK.OWNER_PHOTO, valueText: siteContent.ownerPhoto },
+      { settingKey: SK.HOME_INTRO_TITLE, valueText: siteContent.homeIntroTitle },
+      { settingKey: SK.HOME_INTRO_DESCRIPTION, valueText: siteContent.homeIntroDescription },
+      { settingKey: SK.OWNER_NAME, valueText: siteContent.ownerName },
+      { settingKey: SK.OWNER_POSITION, valueText: siteContent.ownerPosition },
+      { settingKey: SK.OWNER_DESCRIPTION, valueText: siteContent.ownerDescription },
     ];
     for (const u of upserts) {
       await MarketingSetting.upsert(u, { conflictFields: ['settingKey'] });
@@ -242,7 +278,13 @@ export default class MarketingService {
     contact: MarketingContactDto;
     footer: MarketingFooterDto;
     social: MarketingSocialDto;
-  }): Promise<{ contact: MarketingContactDto; footer: MarketingFooterDto; social: MarketingSocialDto }> {
+    siteContent: MarketingSiteContentDto;
+  }): Promise<{
+    contact: MarketingContactDto;
+    footer: MarketingFooterDto;
+    social: MarketingSocialDto;
+    siteContent: MarketingSiteContentDto;
+  }> {
     await this.replaceSettingsInternal(payload);
     const r = await readContactFooterSocial();
     return r;
@@ -251,7 +293,7 @@ export default class MarketingService {
   static async getPublicBundle(): Promise<MarketingPublicBundle> {
     const stats = await this.listStats();
     const testimonials = await this.listTestimonialsPublished();
-    const { contact, footer, social } = await readContactFooterSocial();
+    const { contact, footer, social, siteContent } = await readContactFooterSocial();
     return {
       stats: stats.map((s) => ({ key: s.key, value: s.value })),
       testimonials: testimonials.map((t) => ({
@@ -263,6 +305,7 @@ export default class MarketingService {
       contact,
       footer,
       social,
+      siteContent,
     };
   }
 
@@ -272,10 +315,11 @@ export default class MarketingService {
     contact: MarketingContactDto;
     footer: MarketingFooterDto;
     social: MarketingSocialDto;
+    siteContent: MarketingSiteContentDto;
   }> {
     const stats = await this.listStats();
     const testimonials = await this.listTestimonialsAll();
-    const { contact, footer, social } = await readContactFooterSocial();
-    return { stats, testimonials, contact, footer, social };
+    const { contact, footer, social, siteContent } = await readContactFooterSocial();
+    return { stats, testimonials, contact, footer, social, siteContent };
   }
 }

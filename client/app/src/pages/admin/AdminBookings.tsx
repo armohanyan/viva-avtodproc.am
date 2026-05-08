@@ -54,6 +54,7 @@ import {
 } from "./finance/adminFinanceShared";
 import { BOOKING_STATUS_BADGE_CLASS } from "src/constants/booking.constants";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
+import { ApiRequestError } from "src/lib/api";
 
 type StudentRow = { id: string; name: string; email?: string };
 
@@ -71,6 +72,26 @@ type Booking = {
   status: string;
   branchId: string;
   cancellationRequestedAt?: string | null;
+};
+
+type StudentPackageOrderBalance = {
+  purchaseId: number;
+  packageId: number;
+  packageName: string;
+  status: string;
+  practicalTotal: number;
+  practicalUsed: number;
+  theoryTotal: number;
+  theoryUsed: number;
+  personalTheoryTotal?: number;
+  personalTheoryUsed?: number;
+};
+
+type AddInlineErrors = {
+  general: string | null;
+  slots: string | null;
+  packagePracticalSlots: string | null;
+  packageTheorySlots: string | null;
 };
 
 const typeColor: Record<string, string> = {
@@ -170,6 +191,12 @@ function slotPickSummaryLine(pick: LessonBookingPayload | null): string | null {
   return null;
 }
 
+function slotPickCount(pick: LessonBookingPayload | null): number {
+  if (!pick) return 0;
+  const nEntries = pick.slotEntries?.length ?? 0;
+  return nEntries > 0 ? nEntries : pick.times.length;
+}
+
 function theoryCohortSelectSuffix(c: TheoryCohortOption): string {
   const time = formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime);
   const pricePart =
@@ -237,6 +264,12 @@ export default function AdminBookings() {
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState<Booking | null>(null);
+  const [addInlineErrors, setAddInlineErrors] = useState<AddInlineErrors>({
+    general: null,
+    slots: null,
+    packagePracticalSlots: null,
+    packageTheorySlots: null,
+  });
   const [bookingModalTab, setBookingModalTab] = useState<"booking" | "payment">("booking");
   const [addPayment, setAddPayment] = useState<BookingPaymentFields>(() => defaultPaymentFields());
   const [editPayment, setEditPayment] = useState<BookingPaymentFields>(() => defaultPaymentFields());
@@ -265,8 +298,10 @@ export default function AdminBookings() {
   const [addFlowKind, setAddFlowKind] = useState<AdminBookingFlowKind>("practical");
   const [addPackageId, setAddPackageId] = useState("");
   const [addPackagePracticalSlotPick, setAddPackagePracticalSlotPick] = useState<LessonBookingPayload | null>(null);
-  const [addPackageTheoryCohortId, setAddPackageTheoryCohortId] = useState("");
+  const [addPackageTheoryInstructorName, setAddPackageTheoryInstructorName] = useState("");
   const [addPackageTheorySlotPick, setAddPackageTheorySlotPick] = useState<LessonBookingPayload | null>(null);
+  const [addStudentPackageOrders, setAddStudentPackageOrders] = useState<StudentPackageOrderBalance[]>([]);
+  const [addSelectedPackageOrderId, setAddSelectedPackageOrderId] = useState<number | null>(null);
   const [packagesList, setPackagesList] = useState<AdminPackageOption[]>([]);
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [packagesFetchError, setPackagesFetchError] = useState(false);
@@ -329,25 +364,19 @@ export default function AdminBookings() {
     return "";
   }, [editBooking, instructors, editTheoryCohortId, bookableTheoryCohorts]);
 
-  const packageTheoryCalendarInstructors = useMemo(() => {
-    const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
-    if (!addPackageTheoryCohortId) return base;
-    const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
-    if (!c) return base;
-    const full = instructors.find((i) => i.name === c.instructorName);
-    if (full && !base.some((b) => b.id === full.id)) {
-      return [...base, full];
-    }
-    return base;
-  }, [addPackageTheoryCohortId, bookableTheoryCohorts, instructors]);
+  const packageTheoryCalendarInstructors = useMemo(
+    () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
+    [instructors],
+  );
 
   const packageTheoryCalendarInstructorId = useMemo(() => {
-    if (!addPackageTheoryCohortId) return "";
-    const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
-    if (!c) return "";
-    const m = instructors.find((i) => i.name === c.instructorName);
-    return m?.id ?? "";
-  }, [addPackageTheoryCohortId, bookableTheoryCohorts, instructors]);
+    if (addPackageTheorySlotPick?.instructorUserId) {
+      return String(addPackageTheorySlotPick.instructorUserId);
+    }
+    const name = addPackageTheorySlotPick?.instructor || addPackageTheoryInstructorName || "";
+    const m = instructors.find((i) => i.name === name);
+    return m?.id ?? packageTheoryCalendarInstructors[0]?.id ?? "";
+  }, [addPackageTheorySlotPick, addPackageTheoryInstructorName, instructors, packageTheoryCalendarInstructors]);
 
   const theoryPersonalCalendarInstructors = useMemo(
     () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
@@ -368,15 +397,6 @@ export default function AdminBookings() {
     const m = instructors.find((i) => i.name === name);
     return m?.id ?? practicalInstructorsForCalendar[0]?.id ?? "";
   }, [addPackagePracticalSlotPick, draft?.instructorName, instructors, practicalInstructorsForCalendar]);
-
-  useEffect(() => {
-    if (addFlowKind !== "package" || !addPackageTheoryCohortId) return;
-    const pkg = packagesList.find((p) => p.id === addPackageId);
-    if (!pkg || pkg.theoryLessons <= 0) return;
-    const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
-    if (!c) return;
-    setDraft((d) => (d ? { ...d, branchId: c.branchId } : d));
-  }, [addFlowKind, addPackageTheoryCohortId, addPackageId, packagesList, bookableTheoryCohorts]);
 
   useEffect(() => {
     if (!addOpen && !editBooking) return;
@@ -492,6 +512,35 @@ export default function AdminBookings() {
   }, [addOpen]);
 
   useEffect(() => {
+    if (!addOpen || addFlowKind !== "package") return;
+    const studentId = Number(draft?.studentId ?? 0);
+    if (!Number.isFinite(studentId) || studentId <= 0) {
+      setAddStudentPackageOrders([]);
+      setAddSelectedPackageOrderId(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await vivaApiJson<{ packages?: StudentPackageOrderBalance[] }>(
+          `/students/${encodeURIComponent(String(studentId))}/entitlements`,
+        );
+        if (cancelled) return;
+        const rows = Array.isArray(data?.packages) ? data.packages : [];
+        setAddStudentPackageOrders(rows);
+      } catch {
+        if (!cancelled) {
+          setAddStudentPackageOrders([]);
+          setAddSelectedPackageOrderId(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, addFlowKind, draft?.studentId]);
+
+  useEffect(() => {
     if (!editBooking) {
       setEditSlotPick(null);
       lastEditSlotInitKey.current = "";
@@ -586,7 +635,7 @@ export default function AdminBookings() {
       setAddFlowKind("practical");
       setAddPackageId("");
       setAddPackagePracticalSlotPick(null);
-      setAddPackageTheoryCohortId("");
+      setAddPackageTheoryInstructorName("");
       setAddPackageTheorySlotPick(null);
       setAddPracticalLessonType("");
       setAddTheoryThemeTitles([]);
@@ -667,7 +716,7 @@ export default function AdminBookings() {
       setTheoryCohortId("");
       setAddPackageId("");
       setAddPackagePracticalSlotPick(null);
-      setAddPackageTheoryCohortId("");
+      setAddPackageTheoryInstructorName("");
       setAddPackageTheorySlotPick(null);
       if (flow !== "practical") setAddPracticalLessonType("");
       if (flow !== "theory_personal") setAddTheoryThemeTitles([]);
@@ -701,6 +750,86 @@ export default function AdminBookings() {
     [packagesList, addPackageId],
   );
 
+  const selectedStudentPackageOrder = useMemo(() => {
+    if (addSelectedPackageOrderId == null) return null;
+    return addStudentPackageOrders.find((o) => o.purchaseId === addSelectedPackageOrderId) ?? null;
+  }, [addStudentPackageOrders, addSelectedPackageOrderId]);
+
+  const packageOrderHasRemainingCredits = useCallback(
+    (order: StudentPackageOrderBalance, pkg: AdminPackageOption) => {
+      const practicalRemaining = Math.max(0, Number(order.practicalTotal ?? 0) - Number(order.practicalUsed ?? 0));
+      const theoryRemaining = Math.max(0, Number(order.theoryTotal ?? 0) - Number(order.theoryUsed ?? 0));
+      const needsPractical = Number(pkg.lessons ?? 0) > 0;
+      const needsTheory = Number(pkg.theoryLessons ?? 0) > 0;
+      return (needsPractical && practicalRemaining > 0) || (needsTheory && theoryRemaining > 0);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (addFlowKind !== "package" || !selectedAddPackage) {
+      setAddSelectedPackageOrderId(null);
+      return;
+    }
+    const packageIdNum = Number(selectedAddPackage.id);
+    const candidates = addStudentPackageOrders.filter(
+      (o) =>
+        o.packageId === packageIdNum &&
+        ["active", "paid", "confirmed"].includes(String(o.status ?? "").toLowerCase()) &&
+        packageOrderHasRemainingCredits(o, selectedAddPackage),
+    );
+    if (candidates.length === 0) {
+      setAddSelectedPackageOrderId(null);
+      return;
+    }
+    if (addSelectedPackageOrderId != null && candidates.some((c) => c.purchaseId === addSelectedPackageOrderId)) {
+      return;
+    }
+    setAddSelectedPackageOrderId(candidates[0]!.purchaseId);
+  }, [addFlowKind, selectedAddPackage, addStudentPackageOrders, addSelectedPackageOrderId, packageOrderHasRemainingCredits]);
+
+  const hasReusableSelectedPackageOrder = useMemo(() => {
+    if (!selectedStudentPackageOrder || !selectedAddPackage) return false;
+    return packageOrderHasRemainingCredits(selectedStudentPackageOrder, selectedAddPackage);
+  }, [selectedStudentPackageOrder, selectedAddPackage, packageOrderHasRemainingCredits]);
+  const packageSelectedSlotsCount = useMemo(
+    () => slotPickCount(addPackagePracticalSlotPick) + slotPickCount(addPackageTheorySlotPick),
+    [addPackagePracticalSlotPick, addPackageTheorySlotPick],
+  );
+
+  const packageSelectionStats = useMemo(() => {
+    const practicalTotal = Math.max(
+      0,
+      Number(selectedStudentPackageOrder?.practicalTotal ?? selectedAddPackage?.lessons ?? 0),
+    );
+    const practicalBooked = Math.max(0, Number(selectedStudentPackageOrder?.practicalUsed ?? 0));
+    const theoryTotal = Math.max(
+      0,
+      Number(selectedStudentPackageOrder?.theoryTotal ?? selectedAddPackage?.theoryLessons ?? 0),
+    );
+    const theoryBooked = Math.max(0, Number(selectedStudentPackageOrder?.theoryUsed ?? 0));
+    const practicalSelected = slotPickCount(addPackagePracticalSlotPick);
+    const theorySelected = slotPickCount(addPackageTheorySlotPick);
+    const practicalRemainingBefore = Math.max(0, practicalTotal - practicalBooked);
+    const theoryRemainingBefore = Math.max(0, theoryTotal - theoryBooked);
+    return {
+      practical: {
+        booked: practicalBooked,
+        selected: practicalSelected,
+        total: practicalTotal,
+        remaining: Math.max(0, practicalRemainingBefore - practicalSelected),
+        remainingBeforeSelection: practicalRemainingBefore,
+      },
+      theory: {
+        booked: theoryBooked,
+        selected: theorySelected,
+        total: theoryTotal,
+        remaining: Math.max(0, theoryRemainingBefore - theorySelected),
+        remainingBeforeSelection: theoryRemainingBefore,
+      },
+    };
+  }, [selectedAddPackage, selectedStudentPackageOrder, addPackagePracticalSlotPick, addPackageTheorySlotPick]);
+
   const addPriceInput: BookingPriceInput = useMemo(
     () => ({
       flowKind: addFlowKind,
@@ -727,6 +856,11 @@ export default function AdminBookings() {
   );
 
   const addTotalAmd = useBookingPriceCalculator(addPriceInput);
+  const addEffectiveTotalAmd = useMemo(() => {
+    if (addFlowKind !== "package") return addTotalAmd;
+    // Show package price on package selection; switch to zero only when actually scheduling from existing balance.
+    return hasReusableSelectedPackageOrder && packageSelectedSlotsCount > 0 ? 0 : addTotalAmd;
+  }, [addFlowKind, hasReusableSelectedPackageOrder, packageSelectedSlotsCount, addTotalAmd]);
 
   const addValidation = useMemo(
     () =>
@@ -745,9 +879,7 @@ export default function AdminBookings() {
               : "",
         selectedPackage: selectedAddPackage,
         packagePracticalSlots: addPackagePracticalSlotPick,
-        packageTheoryCohortId: addPackageTheoryCohortId,
         packageTheorySlots: addPackageTheorySlotPick,
-        packageTheoryCalendarInstructorId,
         practicalLessonType: addPracticalLessonType,
         theoryThemeTitles: addTheoryThemeTitles,
       }),
@@ -762,9 +894,7 @@ export default function AdminBookings() {
       theoryPersonalCalendarInstructorId,
       selectedAddPackage,
       addPackagePracticalSlotPick,
-      addPackageTheoryCohortId,
       addPackageTheorySlotPick,
-      packageTheoryCalendarInstructorId,
       addPracticalLessonType,
       addTheoryThemeTitles,
     ],
@@ -830,14 +960,20 @@ export default function AdminBookings() {
     const pkg = selectedAddPackage;
     const lines: string[] = [];
     if (pkg) lines.push(pkg.name);
+    if (pkg && pkg.lessons > 0) {
+      lines.push(
+        `${t("lessonTypePractical")}: ${packageSelectionStats.practical.selected}/${packageSelectionStats.practical.total} ${t("selected")}`,
+      );
+    }
     if (pkg && pkg.lessons > 0 && addPackagePracticalSlotPick) {
       lines.push(
         `${t("lessonTypePractical")}: ${addPackagePracticalSlotPick.instructor} · ${addPackagePracticalSlotPick.dateIso} · ${addPackagePracticalSlotPick.times.join(", ")}`,
       );
     }
     if (pkg && pkg.theoryLessons > 0) {
-      const c = bookableTheoryCohorts.find((x) => x.id === addPackageTheoryCohortId);
-      if (c) lines.push(`${t("lessonTypeTheory")}: ${c.name}`);
+      lines.push(
+        `${t("lessonTypeTheoryPersonal")}: ${packageSelectionStats.theory.selected}/${packageSelectionStats.theory.total} ${t("selected")}`,
+      );
       if (addPackageTheorySlotPick && addPackageTheorySlotPick.times.length > 0) {
         lines.push(`${addPackageTheorySlotPick.dateIso} · ${addPackageTheorySlotPick.times.join(", ")}`);
       }
@@ -857,10 +993,13 @@ export default function AdminBookings() {
     instructors,
     selectedAddPackage,
     addPackagePracticalSlotPick,
-    addPackageTheoryCohortId,
     addPackageTheorySlotPick,
     addPracticalLessonType,
     addTheoryThemeTitles,
+    packageSelectionStats.practical.selected,
+    packageSelectionStats.practical.total,
+    packageSelectionStats.theory.selected,
+    packageSelectionStats.theory.total,
   ]);
 
   const filtered = useMemo(() => {
@@ -1162,6 +1301,12 @@ export default function AdminBookings() {
       if (!ok) return;
     }
     try {
+      setAddInlineErrors({
+        general: null,
+        slots: null,
+        packagePracticalSlots: null,
+        packageTheorySlots: null,
+      });
       if (addFlowKind === "package") {
         const pkg = selectedAddPackage!;
         const studentNum = Number(draft.studentId);
@@ -1174,46 +1319,53 @@ export default function AdminBookings() {
             branchId: Number(draft.branchId),
           },
         });
-        let anchorBookingId: number | null = null;
-        if (pkg.lessons > 0) {
-          const pick = addPackagePracticalSlotPick!;
-          const cr = await vivaApiJson<{ id: number }>("/bookings", {
-            method: "POST",
-            body: {
-              studentId: studentNum,
-              branchId: Number(draft.branchId),
-              status: draft.status,
-              type: "practical",
-              dateIso: pick.dateIso,
-              slots: pick.times,
-              ...(pick.slotEntries && pick.slotEntries.length > 0 ? { slotEntries: pick.slotEntries } : {}),
-              ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
-                ? { instructorUserId: Number(pick.instructorUserId) }
-                : {}),
-              instructorName: pick.instructor || draft.instructorName,
-            },
-          });
-          anchorBookingId = Number(cr.id);
-        }
-        if (pkg.theoryLessons > 0) {
-          const pick = addPackageTheorySlotPick!;
-          const cr = await vivaApiJson<{ id: number }>("/bookings", {
-            method: "POST",
-            body: {
-              studentId: studentNum,
-              branchId: Number(draft.branchId),
-              status: draft.status,
-              type: "theory",
-              dateIso: pick.dateIso,
-              slots: pick.times,
-              ...(pick.slotEntries && pick.slotEntries.length > 0 ? { slotEntries: pick.slotEntries } : {}),
-              theoryCohortId: Number(addPackageTheoryCohortId),
-            },
-          });
-          if (anchorBookingId == null || !Number.isFinite(anchorBookingId)) {
-            anchorBookingId = Number(cr.id);
-          }
-        }
+        const practicalCount = slotPickCount(addPackagePracticalSlotPick);
+        const theoryCount = slotPickCount(addPackageTheorySlotPick);
+        const packageResult = await vivaApiJson<{ bookingIds?: number[] }>("/bookings/package-atomic", {
+          method: "POST",
+          body: {
+            studentId: studentNum,
+            packageId: Number(pkg.id),
+            branchId: Number(draft.branchId),
+            status: draft.status,
+            ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
+            ...(pkg.lessons > 0 && practicalCount > 0 && addPackagePracticalSlotPick
+              ? {
+                  practical: {
+                    instructorName: addPackagePracticalSlotPick.instructor || draft.instructorName,
+                    ...(addPackagePracticalSlotPick.instructorUserId &&
+                    Number.isFinite(Number(addPackagePracticalSlotPick.instructorUserId))
+                      ? { instructorUserId: Number(addPackagePracticalSlotPick.instructorUserId) }
+                      : {}),
+                    dateIso: addPackagePracticalSlotPick.dateIso,
+                    slots: addPackagePracticalSlotPick.times,
+                    ...(addPackagePracticalSlotPick.slotEntries && addPackagePracticalSlotPick.slotEntries.length > 0
+                      ? { slotEntries: addPackagePracticalSlotPick.slotEntries }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(pkg.theoryLessons > 0 && theoryCount > 0 && addPackageTheorySlotPick
+              ? {
+                  theoryPersonal: {
+                    instructorName:
+                      addPackageTheorySlotPick.instructor || addPackageTheoryInstructorName || draft.instructorName,
+                    ...(addPackageTheorySlotPick.instructorUserId &&
+                    Number.isFinite(Number(addPackageTheorySlotPick.instructorUserId))
+                      ? { instructorUserId: Number(addPackageTheorySlotPick.instructorUserId) }
+                      : {}),
+                    dateIso: addPackageTheorySlotPick.dateIso,
+                    slots: addPackageTheorySlotPick.times,
+                    ...(addPackageTheorySlotPick.slotEntries && addPackageTheorySlotPick.slotEntries.length > 0
+                      ? { slotEntries: addPackageTheorySlotPick.slotEntries }
+                      : {}),
+                  },
+                }
+              : {}),
+          },
+        });
+        const bookingIds = Array.isArray(packageResult?.bookingIds) ? packageResult.bookingIds : [];
+        const anchorBookingId = bookingIds.length > 0 ? Number(bookingIds[0]) : null;
         if (wantsPayment) {
           await postManualFinance(addPayment, {
             studentId: draft.studentId,
@@ -1285,18 +1437,35 @@ export default function AdminBookings() {
       await refresh();
       showToast(t("bookingCreatedToast"), "success");
     } catch (err) {
-      showToast(getApiErrorMessage(err), "error");
+      const ui = getApiErrorMessage(err);
+      const raw = err instanceof ApiRequestError ? String(err.message ?? "").toLowerCase() : "";
+      if (addFlowKind === "package") {
+        if (raw.includes("practical") && raw.includes("slot")) {
+          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: ui, packageTheorySlots: null });
+        } else if ((raw.includes("theory_personal") || raw.includes("theory")) && raw.includes("slot")) {
+          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheorySlots: ui });
+        } else if (raw.includes("slot")) {
+          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: ui, packageTheorySlots: ui });
+        } else {
+          setAddInlineErrors({ general: ui, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
+        }
+      } else if (raw.includes("slot")) {
+        setAddInlineErrors({ general: null, slots: ui, packagePracticalSlots: null, packageTheorySlots: null });
+      } else {
+        setAddInlineErrors({ general: ui, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
+      }
+      showToast(ui, "error");
     }
   };
 
   const handleAddCheckoutContinue = useCallback(() => {
-    const amt = addTotalAmd;
+    const amt = addEffectiveTotalAmd;
     setAddPayment((p) => ({
       ...p,
       grossStr: amt > 0 ? String(amt) : p.grossStr,
     }));
     setBookingModalTab("payment");
-  }, [addTotalAmd]);
+  }, [addEffectiveTotalAmd]);
 
   const renderPaymentFields = (
     payment: BookingPaymentFields,
@@ -1900,10 +2069,11 @@ export default function AdminBookings() {
             setAddFlowKind("practical");
             setAddPackageId("");
             setAddPackagePracticalSlotPick(null);
-            setAddPackageTheoryCohortId("");
+            setAddPackageTheoryInstructorName("");
             setAddPackageTheorySlotPick(null);
             setAddPracticalLessonType("");
             setAddTheoryThemeTitles([]);
+            setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
           }
         }}
         title={t("bookingDialogAddTitle")}
@@ -1987,10 +2157,7 @@ export default function AdminBookings() {
                         value={draft.branchId}
                         onChange={(e) => setDraft({ ...draft, branchId: e.target.value })}
                         disabled={
-                          (addFlowKind === "theory_group" && !!theoryCohortId) ||
-                          (addFlowKind === "package" &&
-                            !!addPackageTheoryCohortId &&
-                            (selectedAddPackage?.theoryLessons ?? 0) > 0)
+                          addFlowKind === "theory_group" && !!theoryCohortId
                         }
                         className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
                       >
@@ -2001,6 +2168,9 @@ export default function AdminBookings() {
                         ))}
                       </select>
                     </div>
+                    {addInlineErrors.general ? (
+                      <p className="text-xs text-red-600">{addInlineErrors.general}</p>
+                    ) : null}
 
                     {addFlowKind === "theory_group" ? (
                       <div>
@@ -2114,25 +2284,52 @@ export default function AdminBookings() {
                           onChangeId={(id) => {
                             setAddPackageId(id);
                             setAddPackagePracticalSlotPick(null);
-                            setAddPackageTheoryCohortId("");
+                            setAddPackageTheoryInstructorName("");
                             setAddPackageTheorySlotPick(null);
+                            setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
                           }}
                           loading={packagesLoading}
                           error={packagesFetchError}
                           emptyHintKey="adminBookingPackagesEmpty"
                           t={t}
                         />
+                        {selectedAddPackage ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {selectedAddPackage.lessons > 0 ? (
+                              <Card className="border-border p-3">
+                                <p className="text-xs text-muted-foreground">{t("lessonTypePractical")}</p>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {packageSelectionStats.practical.selected} / {packageSelectionStats.practical.total}{" "}
+                                  {t("selected")}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t("booked")}: {packageSelectionStats.practical.booked}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t("dashboardProgressPracticalRemaining")}: {packageSelectionStats.practical.remaining}
+                                </p>
+                              </Card>
+                            ) : null}
+                            {selectedAddPackage.theoryLessons > 0 ? (
+                              <Card className="border-border p-3">
+                                <p className="text-xs text-muted-foreground">{t("lessonTypeTheoryPersonal")}</p>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {packageSelectionStats.theory.selected} / {packageSelectionStats.theory.total}{" "}
+                                  {t("selected")}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t("booked")}: {packageSelectionStats.theory.booked}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {t("dashboardLessonsTheoryCredits")}: {packageSelectionStats.theory.remaining}
+                                </p>
+                              </Card>
+                            ) : null}
+                          </div>
+                        ) : null}
                         {selectedAddPackage && selectedAddPackage.lessons > 0 ? (
                           <>
-                            <InstructorSelector
-                              label={t("cohortColInstructor")}
-                              instructors={practicalInstructorsForCalendar}
-                              valueName={draft.instructorName}
-                              onChangeName={(name) => {
-                                setDraft({ ...draft, instructorName: name });
-                                setAddPackagePracticalSlotPick(null);
-                              }}
-                            />
+                            <p className="text-sm font-semibold text-foreground">Գործնական դասեր</p>
                             <SlotSelector
                               hint={t("adminBookingPackagePracticalSlotsHint").replace(
                                 /%n/g,
@@ -2145,56 +2342,64 @@ export default function AdminBookings() {
                                 if (ins) {
                                   setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
                                   setAddPackagePracticalSlotPick(null);
+                                  setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
                                 }
                               }}
                               branchId={draft.branchId}
                               studentName={studentLabel(draft.studentId)}
                               showInstructorPicker
-                              onBookingConfirmed={setAddPackagePracticalSlotPick}
-                              onAdminSelectionCleared={() => setAddPackagePracticalSlotPick(null)}
+                              onBookingConfirmed={(p) => {
+                                setAddPackagePracticalSlotPick(p);
+                                setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
+                              }}
+                              onAdminSelectionCleared={() => {
+                                setAddPackagePracticalSlotPick(null);
+                                setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
+                              }}
                               calendarKey={`add-pkg-prac-${draft.instructorName}-${draft.branchId}-${addPackageId}`}
-                              maxSelectableSlots={selectedAddPackage.lessons}
+                              maxSelectableSlots={packageSelectionStats.practical.remainingBeforeSelection}
                               maxSelectableSlotsErrorKey="adminBookingValPackagePracticalCount"
                               t={t}
                             />
+                            {addInlineErrors.packagePracticalSlots ? (
+                              <p className="mt-1 text-xs text-red-600">{addInlineErrors.packagePracticalSlots}</p>
+                            ) : null}
                           </>
                         ) : null}
                         {selectedAddPackage && selectedAddPackage.theoryLessons > 0 ? (
                           <>
-                            <GroupLessonSelector
-                              label={t("adminBookingTheoryCohortLabel")}
-                              placeholderKey="adminBookingTheoryCohortPlaceholder"
-                              cohorts={bookableTheoryCohorts}
-                              valueId={addPackageTheoryCohortId}
-                              onChangeId={(id) => {
-                                setAddPackageTheoryCohortId(id);
-                                setAddPackageTheorySlotPick(null);
-                                const c = bookableTheoryCohorts.find((x) => x.id === id);
-                                if (c) {
-                                  setDraft((d) => (d ? { ...d, branchId: c.branchId } : d));
-                                }
-                              }}
-                              formatOptionSuffix={(c) => theoryCohortSelectSuffix(c)}
-                              t={t}
-                            />
+                            <p className="text-sm font-semibold text-foreground">Տեսական անհատական դասեր</p>
                             <SlotSelector
-                              hint={t("adminBookingSlotCalendarHint")}
-                              blockingMessage={
-                                !addPackageTheoryCohortId ? t("adminBookingTheoryPickCohortFirst") : undefined
-                              }
+                              hint="Կարող եք ժամերը ընտրել հիմա կամ ավելի ուշ"
                               selectedInstructorId={packageTheoryCalendarInstructorId}
                               instructors={packageTheoryCalendarInstructors}
-                              onInstructorChange={() => {}}
+                              onInstructorChange={(id) => {
+                                const ins = instructors.find((i) => i.id === id);
+                                if (ins) {
+                                  setAddPackageTheoryInstructorName(ins.name);
+                                  setAddPackageTheorySlotPick(null);
+                                  setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
+                                }
+                              }}
                               branchId={draft.branchId}
                               studentName={studentLabel(draft.studentId)}
-                              showInstructorPicker={false}
-                              onBookingConfirmed={setAddPackageTheorySlotPick}
-                              onAdminSelectionCleared={() => setAddPackageTheorySlotPick(null)}
-                              calendarKey={`add-pkg-th-${addPackageTheoryCohortId}-${draft.branchId}`}
-                              maxSelectableSlots={selectedAddPackage.theoryLessons}
+                              showInstructorPicker
+                              onBookingConfirmed={(p) => {
+                                setAddPackageTheorySlotPick(p);
+                                setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
+                              }}
+                              onAdminSelectionCleared={() => {
+                                setAddPackageTheorySlotPick(null);
+                                setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
+                              }}
+                              calendarKey={`add-pkg-th-${addPackageTheoryInstructorName}-${draft.branchId}-${addPackageId}`}
+                              maxSelectableSlots={packageSelectionStats.theory.remainingBeforeSelection}
                               maxSelectableSlotsErrorKey="adminBookingValPackageTheoryCount"
                               t={t}
                             />
+                            {addInlineErrors.packageTheorySlots ? (
+                              <p className="mt-1 text-xs text-red-600">{addInlineErrors.packageTheorySlots}</p>
+                            ) : null}
                           </>
                         ) : null}
                       </>
@@ -2211,6 +2416,7 @@ export default function AdminBookings() {
                             if (ins) {
                               setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
                               setSlotPick(null);
+                              setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                             }
                           }}
                           branchId={draft.branchId}
@@ -2229,10 +2435,16 @@ export default function AdminBookings() {
                               return next;
                             });
                           }}
-                          onAdminSelectionCleared={() => setSlotPick(null)}
+                          onAdminSelectionCleared={() => {
+                            setSlotPick(null);
+                            setAddInlineErrors((prev) => ({ ...prev, slots: null }));
+                          }}
                           calendarKey={`add-practical-${draft.instructorName}-${draft.branchId}`}
                           t={t}
                         />
+                        {addInlineErrors.slots ? (
+                          <p className="mt-1 text-xs text-red-600">{addInlineErrors.slots}</p>
+                        ) : null}
                         {addFieldInvalid.slots ? (
                           <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectSlots")}</p>
                         ) : null}
@@ -2250,6 +2462,7 @@ export default function AdminBookings() {
                             if (ins) {
                               setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
                               setSlotPick(null);
+                              setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                             }
                           }}
                           branchId={draft.branchId}
@@ -2268,10 +2481,16 @@ export default function AdminBookings() {
                               return next;
                             });
                           }}
-                          onAdminSelectionCleared={() => setSlotPick(null)}
+                          onAdminSelectionCleared={() => {
+                            setSlotPick(null);
+                            setAddInlineErrors((prev) => ({ ...prev, slots: null }));
+                          }}
                           calendarKey={`add-personal-${draft.instructorName}-${draft.branchId}`}
                           t={t}
                         />
+                        {addInlineErrors.slots ? (
+                          <p className="mt-1 text-xs text-red-600">{addInlineErrors.slots}</p>
+                        ) : null}
                         {addFieldInvalid.slots ? (
                           <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectSlots")}</p>
                         ) : null}
@@ -2284,7 +2503,7 @@ export default function AdminBookings() {
                     <CheckoutSummary
                       title={t("adminBookingCheckoutTitle")}
                       lines={addCheckoutLines}
-                      totalAmd={addTotalAmd}
+                      totalAmd={addEffectiveTotalAmd}
                       validationMessageKeys={addValidation.ok ? [] : addValidation.messageKeys}
                       checkoutDisabled={!addValidation.ok}
                       checkoutHintKey="adminBookingCheckoutHintIncomplete"

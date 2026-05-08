@@ -25,6 +25,8 @@ import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
 import { Notification, NOTIFICATION_TYPES } from './notification.model';
 import { Package } from './package.model';
+import { PackageLessonBalance } from './package-lesson-balance.model';
+import { PackageOrder } from './package-order.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
@@ -48,6 +50,16 @@ StudentProfile.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'stu
 StudentProfile.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 StudentProfile.belongsTo(Package, { foreignKey: 'packageId', targetKey: 'id', as: 'package' });
 StudentProfile.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'assignedInstructor' });
+
+User.hasMany(PackageOrder, { foreignKey: 'studentUserId', sourceKey: 'id', as: 'packageOrders' });
+PackageOrder.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+Package.hasMany(PackageOrder, { foreignKey: 'packageId', sourceKey: 'id', as: 'orders' });
+PackageOrder.belongsTo(Package, { foreignKey: 'packageId', targetKey: 'id', as: 'package' });
+
+PackageOrder.hasMany(PackageLessonBalance, { foreignKey: 'packageOrderId', sourceKey: 'id', as: 'lessonBalances' });
+PackageLessonBalance.belongsTo(PackageOrder, { foreignKey: 'packageOrderId', targetKey: 'id', as: 'packageOrder' });
+PackageLessonBalance.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+PackageLessonBalance.belongsTo(Package, { foreignKey: 'packageId', targetKey: 'id', as: 'package' });
 
 User.hasMany(InstructorBranch, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 Branch.hasMany(InstructorBranch, { foreignKey: 'branchId', sourceKey: 'id' });
@@ -133,6 +145,8 @@ export {
   MarketingStat,
   MarketingTestimonial,
   Notification,
+  PackageLessonBalance,
+  PackageOrder,
   AdminMfaChallenge,
   OAuthAccount,
   Package,
@@ -194,6 +208,71 @@ async function ensurePackagesTheoryLessonsColumn(): Promise<void> {
   await sequelize.query(
     'ALTER TABLE `packages` ADD COLUMN `theory_lessons` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `lessons`',
   );
+}
+
+async function ensurePackageOrdersTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'package_orders'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  await sequelize.query(`
+    CREATE TABLE \`package_orders\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`student_user_id\` INT UNSIGNED NOT NULL,
+      \`package_id\` INT UNSIGNED NOT NULL,
+      \`status\` VARCHAR(32) NOT NULL DEFAULT 'active',
+      \`paid_at\` DATETIME NULL,
+      \`expires_at\` DATETIME NULL,
+      \`source\` VARCHAR(32) NULL,
+      \`note\` VARCHAR(255) NULL,
+      \`finance_transaction_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      KEY \`package_orders_student_idx\` (\`student_user_id\`),
+      KEY \`package_orders_package_idx\` (\`package_id\`),
+      CONSTRAINT \`package_orders_student_fk\` FOREIGN KEY (\`student_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+      CONSTRAINT \`package_orders_package_fk\` FOREIGN KEY (\`package_id\`) REFERENCES \`packages\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensurePackageLessonBalancesTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'package_lesson_balances'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  await sequelize.query(`
+    CREATE TABLE \`package_lesson_balances\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`package_order_id\` INT UNSIGNED NOT NULL,
+      \`student_user_id\` INT UNSIGNED NOT NULL,
+      \`package_id\` INT UNSIGNED NOT NULL,
+      \`lesson_type\` ENUM('practical','theory','theory_personal') NOT NULL,
+      \`total_included\` INT UNSIGNED NOT NULL DEFAULT 0,
+      \`booked_count\` INT UNSIGNED NOT NULL DEFAULT 0,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      UNIQUE KEY \`package_balances_order_type_uniq\` (\`package_order_id\`, \`lesson_type\`),
+      KEY \`package_balances_student_idx\` (\`student_user_id\`),
+      KEY \`package_balances_package_idx\` (\`package_id\`),
+      CONSTRAINT \`package_balances_order_fk\` FOREIGN KEY (\`package_order_id\`) REFERENCES \`package_orders\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+      CONSTRAINT \`package_balances_student_fk\` FOREIGN KEY (\`student_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+      CONSTRAINT \`package_balances_package_fk\` FOREIGN KEY (\`package_id\`) REFERENCES \`packages\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 /** Adds theory progress columns on `student_profiles` when missing. */
@@ -1521,6 +1600,8 @@ export async function syncModels(): Promise<void> {
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensurePackagesTheoryLessonsColumn();
+  await ensurePackageOrdersTable();
+  await ensurePackageLessonBalancesTable();
   await ensureStudentProfilesTheoryLessonColumns();
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();

@@ -17,6 +17,8 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import { cn } from "src/lib/utils";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 
 const textareaClass = cn(
   "flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none md:text-sm dark:bg-input/30",
@@ -24,6 +26,16 @@ const textareaClass = cn(
 );
 
 const DEFAULT_STAT_KEYS = Object.keys(MARKETING_STAT_LABEL_KEY);
+const MARKETING_IMAGE_MAX_BYTES = 800 * 1024;
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
+
+const DEFAULT_HOME_INTRO_TITLE = "Մեր մասին";
+const DEFAULT_HOME_INTRO_DESCRIPTION =
+  "Viva ավտոդպրոցը օգնում է ուսանողներին սովորել անվտանգ, վստահ և ժամանակակից մեթոդներով։ Մեր նպատակն է պատրաստել պատասխանատու վարորդներ՝ ապահովելով որակյալ տեսական և գործնական ուսուցում։";
+const DEFAULT_OWNER_NAME = "[Անուն Ազգանուն]";
+const DEFAULT_OWNER_POSITION = "Հիմնադիր / Տնօրեն";
+const DEFAULT_OWNER_DESCRIPTION =
+  "Մեր նպատակն է յուրաքանչյուր ուսանողի տալ ոչ միայն վարորդական գիտելիքներ, այլ նաև վստահություն, պատասխանատվություն և անվտանգ վարելու մշակույթ։";
 
 function normalizeStats(stats: MarketingAdminBundle["stats"]): MarketingAdminBundle["stats"] {
   const byKey = new Map(stats.map((row) => [row.key, row]));
@@ -57,6 +69,13 @@ export default function AdminMarketing() {
   const [socialYt, setSocialYt] = useState("");
   const [socialTt, setSocialTt] = useState("");
   const [socialWhatsapp, setSocialWhatsapp] = useState("");
+  const [homeHeroBackgroundImage, setHomeHeroBackgroundImage] = useState("");
+  const [ownerPhoto, setOwnerPhoto] = useState("");
+  const [homeIntroTitle, setHomeIntroTitle] = useState(DEFAULT_HOME_INTRO_TITLE);
+  const [homeIntroDescription, setHomeIntroDescription] = useState(DEFAULT_HOME_INTRO_DESCRIPTION);
+  const [ownerName, setOwnerName] = useState(DEFAULT_OWNER_NAME);
+  const [ownerPosition, setOwnerPosition] = useState(DEFAULT_OWNER_POSITION);
+  const [ownerDescription, setOwnerDescription] = useState(DEFAULT_OWNER_DESCRIPTION);
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editTm, setEditTm] = useState<MarketingTestimonialAdmin | null>(null);
@@ -85,6 +104,13 @@ export default function AdminMarketing() {
     setSocialYt(b.social.youtube);
     setSocialTt(b.social.tiktok ?? "");
     setSocialWhatsapp(b.social.whatsapp ?? "");
+    setHomeHeroBackgroundImage(sameOriginStaffUploadUrl(b.siteContent.homeHeroBackgroundImage) ?? "");
+    setOwnerPhoto(sameOriginStaffUploadUrl(b.siteContent.ownerPhoto) ?? "");
+    setHomeIntroTitle(b.siteContent.homeIntroTitle || DEFAULT_HOME_INTRO_TITLE);
+    setHomeIntroDescription(b.siteContent.homeIntroDescription || DEFAULT_HOME_INTRO_DESCRIPTION);
+    setOwnerName(b.siteContent.ownerName || DEFAULT_OWNER_NAME);
+    setOwnerPosition(b.siteContent.ownerPosition || DEFAULT_OWNER_POSITION);
+    setOwnerDescription(b.siteContent.ownerDescription || DEFAULT_OWNER_DESCRIPTION);
   }, []);
 
   const load = useCallback(async () => {
@@ -139,6 +165,7 @@ export default function AdminMarketing() {
         contact: MarketingAdminBundle["contact"];
         footer: MarketingAdminBundle["footer"];
         social: MarketingAdminBundle["social"];
+        siteContent: MarketingAdminBundle["siteContent"];
       }>("/marketing/settings", {
         method: "PUT",
         body: {
@@ -158,11 +185,37 @@ export default function AdminMarketing() {
             tiktok: socialTt.trim(),
             whatsapp: socialWhatsapp.trim(),
           },
+          siteContent: {
+            homeHeroBackgroundImage: homeHeroBackgroundImage.trim(),
+            ownerPhoto: ownerPhoto.trim(),
+            homeIntroTitle: homeIntroTitle.trim(),
+            homeIntroDescription: homeIntroDescription.trim(),
+            ownerName: ownerName.trim(),
+            ownerPosition: ownerPosition.trim(),
+            ownerDescription: ownerDescription.trim(),
+          },
         },
       });
-      setPhonesText(data.contact.phones.join("\n"));
-      setEmailsText(data.contact.emails.join("\n"));
+      applyBundle({
+        stats,
+        testimonials,
+        ...data,
+      });
       showToast(t("blogUpdatedToast"), "success");
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
+    }
+  };
+
+  const uploadMarketingImage = async (file: File | undefined, onSuccess: (url: string) => void) => {
+    if (!file) return;
+    if (file.size > MARKETING_IMAGE_MAX_BYTES) {
+      showToast("Image is too large (max 800KB).", "error");
+      return;
+    }
+    try {
+      const uploadedUrl = await uploadStaffImageFile(file);
+      onSuccess(sameOriginStaffUploadUrl(uploadedUrl) ?? uploadedUrl);
     } catch (e) {
       showToast(getApiErrorMessage(e) || t("couldNotLoadData"), "error");
     }
@@ -256,6 +309,7 @@ export default function AdminMarketing() {
           <TabsTrigger value="stats">{t("adminMarketingStatsSection")}</TabsTrigger>
           <TabsTrigger value="testimonials">{t("adminMarketingTestimonialsSection")}</TabsTrigger>
           <TabsTrigger value="contact">{t("adminMarketingContactSection")}</TabsTrigger>
+          <TabsTrigger value="website">Website Content</TabsTrigger>
         </TabsList>
 
         <TabsContent value="stats">
@@ -403,6 +457,98 @@ export default function AdminMarketing() {
             </div>
             <Button type="submit" className="bg-primary text-primary-foreground">
               {t("adminMarketingSaveContact")}
+            </Button>
+          </form>
+        </TabsContent>
+
+        <TabsContent value="website">
+          <form onSubmit={saveContact} className="max-w-3xl space-y-5 rounded-xl border border-border bg-card p-6">
+            <div className="space-y-2">
+              <Label>Home Hero Background Image</Label>
+              {homeHeroBackgroundImage ? (
+                <img src={homeHeroBackgroundImage} alt="Home hero background" className="h-36 w-full rounded-lg object-cover border border-border bg-muted" />
+              ) : (
+                <div className="h-24 rounded-lg border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
+                  No uploaded hero image. Default hero background will be used.
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  type="file"
+                  accept={IMAGE_ACCEPT}
+                  className="max-w-xs"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    await uploadMarketingImage(file, setHomeHeroBackgroundImage);
+                  }}
+                />
+                <Button type="button" variant="outline" onClick={() => setHomeHeroBackgroundImage("")}>
+                  Remove
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Home intro title</Label>
+              <Input className="h-10" value={homeIntroTitle} onChange={(e) => setHomeIntroTitle(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Home intro description</Label>
+              <textarea
+                className={cn(textareaClass, "min-h-[120px]")}
+                value={homeIntroDescription}
+                onChange={(e) => setHomeIntroDescription(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Owner photo (shared on Home and About)</Label>
+              {ownerPhoto ? (
+                <img src={ownerPhoto} alt="Owner" className="h-36 w-36 rounded-2xl object-cover border border-border bg-muted" />
+              ) : (
+                <div className="h-24 rounded-lg border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
+                  No owner photo uploaded.
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  type="file"
+                  accept={IMAGE_ACCEPT}
+                  className="max-w-xs"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    await uploadMarketingImage(file, setOwnerPhoto);
+                  }}
+                />
+                <Button type="button" variant="outline" onClick={() => setOwnerPhoto("")}>
+                  Remove
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Owner name</Label>
+                <Input className="h-10" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Owner position</Label>
+                <Input className="h-10" value={ownerPosition} onChange={(e) => setOwnerPosition(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Owner message</Label>
+              <textarea
+                className={cn(textareaClass, "min-h-[120px]")}
+                value={ownerDescription}
+                onChange={(e) => setOwnerDescription(e.target.value)}
+              />
+            </div>
+
+            <Button type="submit" className="bg-primary text-primary-foreground">
+              Save website content
             </Button>
           </form>
         </TabsContent>

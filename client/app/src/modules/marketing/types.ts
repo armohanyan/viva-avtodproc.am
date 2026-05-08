@@ -11,6 +11,15 @@ export type MarketingPublicDto = {
   };
   footer: { addressLine1: string; addressLine2: string };
   social: { facebook: string; instagram: string; youtube: string; tiktok: string; whatsapp: string };
+  siteContent: {
+    homeHeroBackgroundImage: string;
+    ownerPhoto: string;
+    homeIntroTitle: string;
+    homeIntroDescription: string;
+    ownerName: string;
+    ownerPosition: string;
+    ownerDescription: string;
+  };
 };
 
 export type MarketingTestimonialAdmin = {
@@ -28,4 +37,5 @@ export type MarketingAdminBundle = {
   contact: MarketingPublicDto["contact"];
   footer: MarketingPublicDto["footer"];
   social: MarketingPublicDto["social"];
+  siteContent: MarketingPublicDto["siteContent"];
 };

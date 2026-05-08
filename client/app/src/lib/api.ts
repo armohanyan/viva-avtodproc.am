@@ -70,6 +70,16 @@ function tr(key: string): string {
 			errorServerGeneric: "Server error. Please try again later.",
 			errorInviteEmailRequired: "Email is required before sending an invitation.",
 			invalidEmail: "Please enter a valid email.",
+			bookingSlotUnavailable: "Selected time slot is no longer available. Please choose another slot.",
+			bookingInstructorUnavailable: "Instructor is not available at this time. Please pick another time.",
+			bookingInstructorNotFound: "Selected instructor was not found. Please reselect instructor.",
+			bookingBranchMismatch: "Selected instructor does not serve this branch.",
+			bookingPackageNoCredits: "No active package credits found for this student.",
+			bookingPackageNoLessonType: "This package does not include the selected lesson type.",
+			bookingPackageNotEnough: "Not enough package lessons remaining for selected slots.",
+			bookingAlreadyPending: "There is already a pending booking. Complete or cancel it first.",
+			bookingPaymentWindowExpired: "Payment time window has expired. Please book again.",
+			bookingPaymentWindowMissing: "No active payment window for this booking.",
 		},
 		ru: {
 			errorEmailAlreadyInUse: "Этот email уже используется.",
@@ -82,6 +92,16 @@ function tr(key: string): string {
 			errorServerGeneric: "Ошибка сервера. Попробуйте позже.",
 			errorInviteEmailRequired: "Перед отправкой приглашения требуется email.",
 			invalidEmail: "Введите корректный email.",
+			bookingSlotUnavailable: "Выбранный слот уже недоступен. Выберите другое время.",
+			bookingInstructorUnavailable: "Инструктор недоступен в это время. Выберите другое время.",
+			bookingInstructorNotFound: "Выбранный инструктор не найден. Выберите инструктора снова.",
+			bookingBranchMismatch: "Выбранный инструктор не обслуживает этот филиал.",
+			bookingPackageNoCredits: "Для этого студента не найдено активных кредитов пакета.",
+			bookingPackageNoLessonType: "В выбранном пакете нет этого типа урока.",
+			bookingPackageNotEnough: "Недостаточно оставшихся уроков пакета для выбранных слотов.",
+			bookingAlreadyPending: "Уже есть ожидающее бронирование. Сначала завершите или отмените его.",
+			bookingPaymentWindowExpired: "Окно оплаты истекло. Забронируйте снова.",
+			bookingPaymentWindowMissing: "Для этого бронирования нет активного окна оплаты.",
 		},
 		am: {
 			errorEmailAlreadyInUse: "Այս էլ. հասցեն արդեն օգտագործվում է։",
@@ -94,6 +114,16 @@ function tr(key: string): string {
 			errorServerGeneric: "Սերվերի սխալ։ Խնդրում ենք փորձել ավելի ուշ։",
 			errorInviteEmailRequired: "Հրավեր ուղարկելուց առաջ պարտադիր է էլ. հասցեն։",
 			invalidEmail: "Խնդրում ենք մուտքագրել վավեր էլ. հասցե։",
+			bookingSlotUnavailable: "Ընտրված ժամը այլևս հասանելի չէ։ Խնդրում ենք ընտրել այլ ժամ։",
+			bookingInstructorUnavailable: "Հրահանգիչը այս ժամին հասանելի չէ։ Ընտրեք այլ ժամ։",
+			bookingInstructorNotFound: "Ընտրված հրահանգիչը չի գտնվել։ Խնդրում ենք ընտրել կրկին։",
+			bookingBranchMismatch: "Ընտրված հրահանգիչը չի սպասարկում այս մասնաճյուղը։",
+			bookingPackageNoCredits: "Այս ուսանողի համար ակտիվ փաթեթային կրեդիտներ չեն գտնվել։",
+			bookingPackageNoLessonType: "Փաթեթը չի ներառում ընտրված դասի տեսակը։",
+			bookingPackageNotEnough: "Ընտրված ժամերի համար փաթեթում մնացած դասերը բավարար չեն։",
+			bookingAlreadyPending: "Արդեն կա սպասող ամրագրում։ Ավարտեք կամ չեղարկեք այն։",
+			bookingPaymentWindowExpired: "Վճարման ժամկետը ավարտվել է։ Խնդրում ենք ամրագրել նորից։",
+			bookingPaymentWindowMissing: "Այս ամրագրման համար ակտիվ վճարման պատուհան չկա։",
 		},
 	};
 	return m[lang][key] ?? m.en[key] ?? key;
@@ -125,6 +155,18 @@ export function getApiErrorMessage(err: unknown): string {
 		if (m.includes("authentication required")) return tr("errorAuthRequired");
 		if (m.includes("invalid or expired token")) return tr("errorUnauthorized");
 		if (m.includes("invalid email")) return tr("invalidEmail");
+		if (m.includes("selected slot(s) are no longer available") || m.includes("slot is no longer available")) {
+			return tr("bookingSlotUnavailable");
+		}
+		if (m.includes("instructor is not available at this time")) return tr("bookingInstructorUnavailable");
+		if (m.includes("instructor not found")) return tr("bookingInstructorNotFound");
+		if (m.includes("instructor does not serve this branch")) return tr("bookingBranchMismatch");
+		if (m.includes("student has no active package credits")) return tr("bookingPackageNoCredits");
+		if (m.includes("selected package does not include this lesson type")) return tr("bookingPackageNoLessonType");
+		if (m.includes("not enough package lessons remaining")) return tr("bookingPackageNotEnough");
+		if (m.includes("already have a pending booking")) return tr("bookingAlreadyPending");
+		if (m.includes("payment window has expired")) return tr("bookingPaymentWindowExpired");
+		if (m.includes("no active payment window")) return tr("bookingPaymentWindowMissing");
 
 		if (status === 401) return tr("errorUnauthorized");
 		if (status === 403) return tr("errorForbidden");

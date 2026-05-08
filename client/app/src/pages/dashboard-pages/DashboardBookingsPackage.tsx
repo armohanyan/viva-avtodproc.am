@@ -1,6 +1,7 @@
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { CheckCircle2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
@@ -9,25 +10,99 @@ import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { useActivePackages } from "src/modules/packages/useActivePackages";
 import { useLocation } from "wouter";
+import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 
 export function DashboardBookingsPackageTab() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { showToast } = useToast();
-  const { completePackagePurchase } = useStudentEntitlements();
+  const { completePackagePurchase, packagePracticalRemaining, theoryLessonsRemaining } = useStudentEntitlements();
   const { packages, loading, error } = useActivePackages();
   const [, setLocation] = useLocation();
+  const [pendingPackageId, setPendingPackageId] = useState<number | null>(null);
+  const [posBusy, setPosBusy] = useState(false);
+  const [slotPromptOpen, setSlotPromptOpen] = useState(false);
 
-  const buyPackage = async (packageId: number) => {
+  const locale = useMemo(() => {
+    if (lang === "am") return "hy-AM";
+    if (lang === "ru") return "ru-RU";
+    return "en-US";
+  }, [lang]);
+
+  const pendingPackage = useMemo(
+    () => (pendingPackageId != null ? packages.find((p) => p.id === pendingPackageId) ?? null : null),
+    [packages, pendingPackageId],
+  );
+
+  const buyPackage = (packageId: number) => {
+    setPendingPackageId(packageId);
+  };
+
+  const approvePackagePayment = async (): Promise<boolean> => {
+    if (pendingPackageId == null) return false;
+    setPosBusy(true);
     try {
-      await completePackagePurchase(packageId);
+      await completePackagePurchase(pendingPackageId);
       showToast(t("bookingsPackageSimulatedToast"), "success");
+      setPendingPackageId(null);
+      setSlotPromptOpen(true);
+      return true;
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+      return false;
+    } finally {
+      setPosBusy(false);
     }
   };
 
   return (
     <Reveal delay={0.06}>
+      <SimulatedAcbaPosDialog
+        open={pendingPackageId !== null}
+        onOpenChange={(open) => {
+          if (!open && !posBusy) setPendingPackageId(null);
+        }}
+        amountAmd={pendingPackage?.priceAmd ?? null}
+        locale={locale}
+        busy={posBusy}
+        onApprove={approvePackagePayment}
+      />
+      <Dialog open={slotPromptOpen} onOpenChange={setSlotPromptOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ընտրեք դասերի ժամերը</DialogTitle>
+            <DialogDescription className="text-left">
+              Փաթեթը ակտիվ է։ Կարող եք ընտրել ժամերը հիմա կամ ավելի ուշ։
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">
+              Գործնական դասեր մնացել է: <span className="font-semibold text-foreground">{packagePracticalRemaining}</span>
+            </p>
+            <p className="text-muted-foreground">
+              Տեսական անհատական դասեր մնացել է:{" "}
+              <span className="font-semibold text-foreground">{theoryLessonsRemaining}</span>
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setSlotPromptOpen(false)}>
+              Ավելի ուշ
+            </Button>
+            <Button
+              onClick={() => {
+                setSlotPromptOpen(false);
+                if (theoryLessonsRemaining > 0) {
+                  setLocation("/dashboard/bookings/theory-personal");
+                  return;
+                }
+                setLocation("/dashboard/bookings/practical");
+              }}
+            >
+              Ընտրել հիմա
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {error ? (
         <p className="text-sm text-destructive mb-4" role="alert">
           {error}

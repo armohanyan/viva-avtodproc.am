@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import UploadController from '../controllers/upload.controller';
-import { requireStaff } from '../middleware/staff-auth.middleware';
+import { requireStaffOrInstructor } from '../middleware/staff-auth.middleware';
 import { staffImageUploadSingle } from '../middleware/upload-image.middleware';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -11,7 +11,7 @@ const router = Router();
 
 router.post(
   '/image',
-  requireStaff,
+  requireStaffOrInstructor,
   (req, res, next) => {
     staffImageUploadSingle(req, res, (err: unknown) => {
       if (err instanceof multer.MulterError) {

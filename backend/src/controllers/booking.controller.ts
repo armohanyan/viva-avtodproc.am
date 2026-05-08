@@ -29,6 +29,8 @@ const createBodySchema = z.object({
       }),
     )
     .optional(),
+  consumePackageCredits: z.boolean().optional(),
+  packageOrderId: z.coerce.number().int().positive().optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -103,6 +105,32 @@ const studentMultiSlotSchema = z
     path: ['instructorId'],
   });
 
+const adminPackageAtomicSchema = z.object({
+  studentId: z.coerce.number().int().positive(),
+  packageId: z.coerce.number().int().positive(),
+  branchId: z.coerce.number().int().positive(),
+  status: bookingStatusSchema,
+  packageOrderId: z.coerce.number().int().positive().optional(),
+  practical: z
+    .object({
+      instructorName: z.string().min(1),
+      instructorUserId: z.coerce.number().int().positive().optional(),
+      dateIso: z.string().min(1),
+      slots: z.array(z.string().min(4)).optional(),
+      slotEntries: z.array(z.object({ dateIso: z.string().min(1), time: z.string().min(4) })).optional(),
+    })
+    .optional(),
+  theoryPersonal: z
+    .object({
+      instructorName: z.string().min(1),
+      instructorUserId: z.coerce.number().int().positive().optional(),
+      dateIso: z.string().min(1),
+      slots: z.array(z.string().min(4)).optional(),
+      slotEntries: z.array(z.object({ dateIso: z.string().min(1), time: z.string().min(4) })).optional(),
+    })
+    .optional(),
+});
+
 function readBearerToken(req: Request): string | undefined {
   const raw = req.headers.authorization;
   return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
@@ -143,6 +171,24 @@ function parseBookingRouteId(req: Request, next: NextFunction): number | undefin
 }
 
 export default class BookingController {
+  static async createAdminPackageAtomic(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(adminPackageAtomicSchema, req.body);
+      const data = await BookingService.createAdminPackageAtomic({
+        studentId: body.studentId,
+        packageId: body.packageId,
+        branchId: body.branchId,
+        status: body.status,
+        packageOrderId: body.packageOrderId,
+        practical: body.practical,
+        theoryPersonal: body.theoryPersonal,
+      });
+      SuccessHandlerUtil.handleAdd(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const rawStudent = req.query.studentUserId;
@@ -236,6 +282,8 @@ export default class BookingController {
             slots: body.slots,
             theoryCohortId: body.theoryCohortId,
             slotEntries: body.slotEntries,
+            consumePackageCredits: body.consumePackageCredits,
+            packageOrderId: body.packageOrderId,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -290,6 +338,8 @@ export default class BookingController {
         slots: body.slots,
         theoryCohortId: body.theoryCohortId,
         slotEntries: body.slotEntries,
+        consumePackageCredits: body.consumePackageCredits,
+        packageOrderId: body.packageOrderId,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

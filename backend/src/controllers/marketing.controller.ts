@@ -42,10 +42,21 @@ const socialSchema = z.object({
   whatsapp: z.string(),
 });
 
+const siteContentSchema = z.object({
+  homeHeroBackgroundImage: z.string(),
+  ownerPhoto: z.string(),
+  homeIntroTitle: z.string(),
+  homeIntroDescription: z.string(),
+  ownerName: z.string(),
+  ownerPosition: z.string(),
+  ownerDescription: z.string(),
+});
+
 const replaceSettingsSchema = z.object({
   contact: contactSchema,
   footer: footerSchema,
   social: socialSchema,
+  siteContent: siteContentSchema,
 });
 
 const testimonialCreateSchema = z.object({

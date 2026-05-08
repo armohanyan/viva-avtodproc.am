@@ -5,6 +5,7 @@ import { requireStaff } from '../middleware/staff-auth.middleware';
 const router = Router();
 
 router.get('/', BookingController.list);
+router.post('/package-atomic', requireStaff, BookingController.createAdminPackageAtomic);
 router.post('/', BookingController.create);
 router.post('/theory-groups/:cohortId/book', BookingController.createTheoryGroupStudentBooking);
 router.post('/:id/extend-payment-hold', BookingController.extendPaymentHold);

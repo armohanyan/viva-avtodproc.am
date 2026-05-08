@@ -30,6 +30,29 @@ export function requireStaff(req: Request, _res: Response, next: NextFunction): 
   }
 }
 
+/** Requires `Authorization: Bearer <access token>` with account type admin/super_admin/instructor. */
+export function requireStaffOrInstructor(req: Request, _res: Response, next: NextFunction): void {
+  const raw = req.headers.authorization;
+  const token = raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
+
+  if (!token) {
+    return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+  }
+
+  try {
+    const payload = verifyAccessToken(token);
+
+    if (payload.accountType !== 'admin' && payload.accountType !== 'super_admin' && payload.accountType !== 'instructor') {
+      return next(new PermissionError('Staff or instructor access required', HttpStatusCodesUtil.FORBIDDEN));
+    }
+
+    (req as StaffRequest).staff = payload;
+    next();
+  } catch {
+    next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+  }
+}
+
 /**
  * When `Authorization: Bearer` is present and valid for `admin` / `super_admin`, sets `req.staff`.
  * Invalid or missing tokens are ignored (route still runs). Use on public GET routes that optionally enrich for staff.
