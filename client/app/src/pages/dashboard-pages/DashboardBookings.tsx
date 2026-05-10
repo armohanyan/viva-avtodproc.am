@@ -14,6 +14,7 @@ import { useToast } from "src/lib/toast";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
+import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 
 type StudentPracticalCancelResponse =
   | { outcome: "pending_admin"; cancellationRequestedAt: string }
@@ -106,6 +107,7 @@ export function DashboardBookingsListTab() {
   const { showToast } = useToast();
   const { user } = useAccount();
   const { bookings, loading, refresh } = useStudentBookings(user?.accountType === "student" ? user.id : undefined);
+  const { refreshEntitlements } = useStudentEntitlements();
   const locale = localeFromLang(lang);
   const { upcoming, past } = useMemo(() => partitionStudentBookings(bookings), [bookings]);
   const [busyId, setBusyId] = useState<string | number | null>(null);
@@ -130,6 +132,7 @@ export function DashboardBookingsListTab() {
       }
       setCancelTarget(null);
       await refresh();
+      await refreshEntitlements();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     } finally {

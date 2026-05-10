@@ -6,8 +6,9 @@ import { CalendarDays } from "lucide-react";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
+import { absWouterHref } from "src/lib/wouterFullPath";
 
 export type BookingsShellActive = "home" | "package" | "practical" | "theory-personal" | "theory-group";
 
@@ -33,9 +34,12 @@ function pageSubtitle(active: BookingsShellActive, t: (k: TranslationKey) => str
 
 export default function DashboardBookingsShell({ active, children }: Props) {
   const { t } = useLang();
+  const [, setLocation] = useLocation();
   const subtitle = pageSubtitle(active, t);
   const { packagePracticalRemaining, theoryLessonsRemaining } = useStudentEntitlements();
   const hasRemaining = packagePracticalRemaining > 0 || theoryLessonsRemaining > 0;
+  const hasPracticalRemaining = packagePracticalRemaining > 0;
+  const hasTheoryRemaining = theoryLessonsRemaining > 0;
 
   return (
     <DashboardLayout>
@@ -53,12 +57,20 @@ export default function DashboardBookingsShell({ active, children }: Props) {
                 </p>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" asChild>
-                  <Link href="/dashboard/bookings/practical">{t("dashboardLessonsBookPractical")}</Link>
-                </Button>
-                <Button size="sm" asChild>
-                  <Link href="/dashboard/bookings/theory-personal">{t("bookingsSubnavTheoryPersonal")}</Link>
-                </Button>
+                {hasPracticalRemaining ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setLocation(absWouterHref("/dashboard/bookings/practical"))}
+                  >
+                    {t("dashboardLessonsBookPractical")}
+                  </Button>
+                ) : null}
+                {hasTheoryRemaining ? (
+                  <Button size="sm" onClick={() => setLocation(absWouterHref("/dashboard/bookings/theory-personal"))}>
+                    {t("bookingsSubnavTheoryPersonal")}
+                  </Button>
+                ) : null}
               </div>
             </div>
           </Card>

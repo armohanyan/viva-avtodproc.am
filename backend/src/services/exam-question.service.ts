@@ -24,11 +24,16 @@ export type ExamQuestionMetaDto = {
   examCardTitles: string[];
   thematicCardQuestionIds: string[][];
   examCardQuestionIds: string[][];
+  /** Total questions in the store (for progress UI without loading full bodies). */
+  totalQuestions: number;
 };
 
-const THEMATIC_CARD_COUNT = 10;
+const THEMATIC_CARD_COUNT = 11;
 const EXAM_CARD_COUNT = 60;
-const THEMATIC_TOPIC_IDS = ['5', '3', '2', '6', '8', '7', '10', '4', '9', '1'] as const;
+/** Color perception (`5`) is last; `11` is road markings (split from former combined slot). */
+const THEMATIC_TOPIC_IDS = ['3', '2', '6', '8', '7', '10', '11', '4', '9', '1', '5'] as const;
+/** Public UI thematic slots are 1..11; map each slot to the stored topic id. */
+const THEMATIC_SLOT_TO_TOPIC_ID = THEMATIC_TOPIC_IDS;
 const STORAGE_FILE = path.resolve(__dirname, '../../data/exam-questions.store.json');
 
 type QuestionStore = {
@@ -73,12 +78,15 @@ function normalizeQuestion(raw: unknown): ExamQuestionDto | null {
   if (typeof q.id !== 'string' || !q.id.trim()) return null;
   if (!q.text || typeof q.text !== 'object') return null;
   if (!q.options || typeof q.options !== 'object') return null;
-  const ci = Number(q.correctIndex);
-  const category = q.category;
-  if (!Number.isInteger(ci) || ci < 0 || ci > 3) return null;
-  if (category !== 'rules' && category !== 'signs' && category !== 'safety') return null;
   const text = q.text as Record<string, string>;
   const options = q.options as Record<string, string[]>;
+  const ci = Number(q.correctIndex);
+  const category = q.category;
+  const amOpts = Array.isArray(options.am) ? options.am.length : 0;
+  if (!Number.isInteger(ci) || ci < 0) return null;
+  if (amOpts <= 0) return null;
+  if (ci >= amOpts) return null;
+  if (category !== 'rules' && category !== 'signs' && category !== 'safety') return null;
   const explanation =
     typeof q.explanation === 'string'
       ? q.explanation
@@ -195,6 +203,49 @@ export default class ExamQuestionService {
     return store.questions;
   }
 
+  /** Rules + safety only (all thematic-style theory), for topic quizzes without `?topic=` or full-practice shuffle. */
+  static async listPackRulesSafety(): Promise<ExamQuestionDto[]> {
+    const store = await readStore();
+    return store.questions.filter((q) => q.category === 'rules' || q.category === 'safety');
+  }
+
+  /** Signs only (road signs category). */
+  static async listPackSigns(): Promise<ExamQuestionDto[]> {
+    const store = await readStore();
+    return store.questions.filter((q) => q.category === 'signs');
+  }
+
+  /** One thematic topic: rules/safety rows with this `topicId`. */
+  static async listPackThematicTopic(topicId: string): Promise<ExamQuestionDto[]> {
+    const raw = topicId.trim();
+    if (!raw) return [];
+    const slot = Number.parseInt(raw, 10);
+    const tid =
+      Number.isInteger(slot) && slot >= 1 && slot <= THEMATIC_SLOT_TO_TOPIC_ID.length
+        ? THEMATIC_SLOT_TO_TOPIC_ID[slot - 1]
+        : raw;
+    const store = await readStore();
+    return store.questions.filter(
+      (q) => (q.topicId ?? '') === tid && (q.category === 'rules' || q.category === 'safety'),
+    );
+  }
+
+  /** Resolve questions by id in request order (dedupe, skip missing). */
+  static async listPackByIdsOrdered(ids: string[]): Promise<ExamQuestionDto[]> {
+    const store = await readStore();
+    const byId = new Map(store.questions.map((q) => [q.id, q]));
+    const out: ExamQuestionDto[] = [];
+    const seen = new Set<string>();
+    for (const raw of ids) {
+      const id = String(raw).trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const row = byId.get(id);
+      if (row) out.push(row);
+    }
+    return out;
+  }
+
   static async getById(id: string): Promise<ExamQuestionDto | null> {
     const qid = id.trim();
     if (!qid) return null;
@@ -292,6 +343,7 @@ export default class ExamQuestionService {
           row.length ? row : inferred.examCardQuestionIds[idx],
         ),
       ),
+      totalQuestions: store.questions.length,
     };
   }
 
@@ -309,6 +361,7 @@ export default class ExamQuestionService {
       examCardQuestionIds: prune(
         normalizeCardQuestions(input.examCardQuestionIds ?? current.examCardQuestionIds, EXAM_CARD_COUNT),
       ),
+      totalQuestions: store.questions.length,
     };
     await writeStore({ ...store, meta: next });
     return next;

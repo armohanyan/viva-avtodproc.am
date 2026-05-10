@@ -1,5 +1,5 @@
-import { Transaction } from 'sequelize';
-import { StudentExtraPractical, StudentProfile } from '../models';
+import { Op, Transaction } from 'sequelize';
+import { PackageLessonBalance, PackageOrder, StudentExtraPractical, StudentProfile } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 
@@ -9,14 +9,58 @@ const { InputValidationError } = ErrorsUtil;
 export type PrepaidMeta = {
   pkg: number;
   extras: Array<{ id: number; n: number }>;
+  packageOrderId?: number;
+  packageBalanceType?: 'practical';
+  packageBalanceUnits?: number;
 };
 
 export default class StudentPracticalCreditsService {
+  private static async listActivePracticalBalances(
+    userId: number,
+    transaction?: Transaction,
+  ): Promise<Array<{ orderId: number; balance: PackageLessonBalance }>> {
+    const orders = await PackageOrder.findAll({
+      where: {
+        studentUserId: userId,
+        status: { [Op.in]: ['active', 'paid', 'confirmed'] },
+      },
+      attributes: ['id'],
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      transaction,
+      lock: transaction ? Transaction.LOCK.UPDATE : undefined,
+    });
+    if (orders.length === 0) return [];
+    const orderIds = orders.map((o) => o.id);
+    const balances = await PackageLessonBalance.findAll({
+      where: {
+        studentUserId: userId,
+        lessonType: 'practical',
+        packageOrderId: orderIds,
+      },
+      order: [['packageOrderId', 'DESC']],
+      transaction,
+      lock: transaction ? Transaction.LOCK.UPDATE : undefined,
+    });
+    const orderRank = new Map(orderIds.map((id, i) => [id, i]));
+    return balances
+      .map((balance) => ({ orderId: Number(balance.packageOrderId), balance }))
+      .sort((a, b) => (orderRank.get(a.orderId) ?? 9999) - (orderRank.get(b.orderId) ?? 9999));
+  }
+
   static async availableSlotCount(userId: number, transaction?: Transaction): Promise<number> {
-    const profile = await StudentProfile.findOne({ where: { userId }, transaction });
-    let pkg = 0;
-    if (profile && profile.packageId != null) {
-      pkg = Math.max(0, Number(profile.lessonsTotal) - Number(profile.lessonsCompleted));
+    const practicalBalances = await this.listActivePracticalBalances(userId, transaction);
+    let pkg = practicalBalances.reduce(
+      (acc, row) => acc + Math.max(0, Number(row.balance.totalIncluded) - Number(row.balance.bookedCount)),
+      0,
+    );
+    if (pkg <= 0) {
+      const profile = await StudentProfile.findOne({ where: { userId }, transaction });
+      if (profile && profile.packageId != null) {
+        pkg = Math.max(0, Number(profile.lessonsTotal) - Number(profile.lessonsCompleted));
+      }
     }
     const extras = await StudentExtraPractical.findAll({
       where: { userId },
@@ -49,21 +93,37 @@ export default class StudentPracticalCreditsService {
     let remaining = slots;
     const meta: PrepaidMeta = { pkg: 0, extras: [] };
 
-    const profile = await StudentProfile.findOne({
-      where: { userId },
-      transaction,
-      lock: Transaction.LOCK.UPDATE,
-    });
-    if (profile && remaining > 0) {
-      const cap = Math.max(0, Number(profile.lessonsTotal) - Number(profile.lessonsCompleted));
+    const practicalBalances = await this.listActivePracticalBalances(userId, transaction);
+    for (const row of practicalBalances) {
+      if (remaining <= 0) break;
+      const cap = Math.max(0, Number(row.balance.totalIncluded) - Number(row.balance.bookedCount));
       const take = Math.min(remaining, cap);
-      if (take > 0) {
-        await profile.update(
-          { lessonsCompleted: Number(profile.lessonsCompleted) + take },
-          { transaction },
-        );
-        meta.pkg = take;
-        remaining -= take;
+      if (take <= 0) continue;
+      await row.balance.update({ bookedCount: Number(row.balance.bookedCount) + take }, { transaction });
+      meta.pkg += take;
+      meta.packageOrderId = row.orderId;
+      meta.packageBalanceType = 'practical';
+      meta.packageBalanceUnits = (meta.packageBalanceUnits ?? 0) + take;
+      remaining -= take;
+    }
+
+    if (remaining > 0) {
+      const profile = await StudentProfile.findOne({
+        where: { userId },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (profile) {
+        const cap = Math.max(0, Number(profile.lessonsTotal) - Number(profile.lessonsCompleted));
+        const take = Math.min(remaining, cap);
+        if (take > 0) {
+          await profile.update(
+            { lessonsCompleted: Number(profile.lessonsCompleted) + take },
+            { transaction },
+          );
+          meta.pkg += take;
+          remaining -= take;
+        }
       }
     }
 
@@ -98,7 +158,8 @@ export default class StudentPracticalCreditsService {
   static async restoreSlots(userId: number, meta: PrepaidMeta, transaction: Transaction): Promise<void> {
     if (meta.pkg <= 0 && (meta.extras?.length ?? 0) === 0) return;
 
-    if (meta.pkg > 0) {
+    const packageUnits = Math.max(0, Number(meta.packageBalanceUnits ?? 0));
+    if (meta.pkg > 0 && packageUnits <= 0) {
       const profile = await StudentProfile.findOne({
         where: { userId },
         transaction,
@@ -120,6 +181,6 @@ export default class StudentPracticalCreditsService {
   }
 
   static isNonEmptyMeta(m: PrepaidMeta | null | undefined): m is PrepaidMeta {
-    return !!m && (m.pkg > 0 || (m.extras?.length ?? 0) > 0);
+    return !!m && (m.pkg > 0 || (m.extras?.length ?? 0) > 0 || Number(m.packageBalanceUnits ?? 0) > 0);
   }
 }

@@ -6,10 +6,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
-import type { ExamQuizMode } from "src/data/examSampleQuestions";
-import { countQuestionsForExamMode } from "src/lib/examQuestions";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
-import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 
 export default function DashboardExamTests() {
   const { t } = useLang();
@@ -30,6 +27,10 @@ export default function DashboardExamTests() {
     activeSession: null,
   });
   const [examCardTitles, setExamCardTitles] = useState<string[]>(() => defaultExamQuestionMeta().examCardTitles);
+  const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
+    () => defaultExamQuestionMeta().examCardQuestionIds,
+  );
+  const [totalQuestionCount, setTotalQuestionCount] = useState(0);
 
   useEffect(() => {
     setStats(getExamStats());
@@ -40,7 +41,11 @@ export default function DashboardExamTests() {
     let mounted = true;
     const sync = async () => {
       const meta = await loadExamQuestionMeta();
-      if (mounted) setExamCardTitles(meta.examCardTitles);
+      if (mounted) {
+        setExamCardTitles(meta.examCardTitles);
+        setExamCardQuestionIds(meta.examCardQuestionIds);
+        setTotalQuestionCount(meta.totalQuestions);
+      }
     };
     void sync();
     const off = subscribeExamQuestionMetaUpdated(() => void sync());
@@ -50,23 +55,22 @@ export default function DashboardExamTests() {
     };
   }, []);
 
-  const pool = useExamQuestionPool();
-
-  const poolTotalForMode = (mode: ExamQuizMode) => countQuestionsForExamMode(pool, mode);
-
-  const totalQuestions = pool.length;
+  const totalQuestions = totalQuestionCount;
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
     return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
   }, [stats.answered, totalQuestions]);
 
-  const activeTopicStats = stats.activeSession ? stats.topicStats[stats.activeSession.topicId] : undefined;
+  const examCards = useMemo(() => {
+    const n = Math.max(examCardTitles.length, examCardQuestionIds.length);
+    return Array.from({ length: n }, (_, i) => {
+      const title = examCardTitles[i]?.trim() || `${t("examTestsNumberedTitle")} ${i + 1}`;
+      const ids = examCardQuestionIds[i] ?? [];
+      const total = ids.length;
+      return { title, total, index: i };
+    });
+  }, [examCardTitles, examCardQuestionIds, t]);
 
-  const modes: Array<{ href: string; total: number }> = [
-    { href: `${basePath}/quiz/full`, total: poolTotalForMode("full") },
-    { href: `${basePath}/quiz/topics`, total: poolTotalForMode("topics") },
-    { href: `${basePath}/quiz/signs`, total: poolTotalForMode("signs") },
-  ];
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
@@ -105,52 +109,32 @@ export default function DashboardExamTests() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-3">
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs text-muted-foreground">{t("examTestsStatAttempts")}</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{stats.attempts}</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs text-muted-foreground">{t("examTestsStatBest")}</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{stats.bestPct}%</p>
-              {stats.activeSession && activeTopicStats && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {activeTopicStats.bestCorrect ?? 0}/{activeTopicStats.bestAnswered ?? 0}
-                </p>
-              )}
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs text-muted-foreground">{t("examTestsStatLast")}</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{stats.lastPct}%</p>
-              {stats.activeSession && activeTopicStats && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {activeTopicStats.lastCorrect ?? 0}/{activeTopicStats.lastAnswered ?? 0}
-                </p>
-              )}
-            </div>
-          </div>
         </Card>
 
         <div className="flex justify-end mb-3">
           <span className="text-sm text-muted-foreground">{t("examTestsRestoreResultsCaption")}</span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-          {modes.map((m, index) => {
-            const answeredInMode = 0;
-            const testLabel = examCardTitles[index] || `${t("examTestsNumberedTitle")} ${index + 1}`;
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {examCards.map((card) => {
+            const topicKey = `exam-ticket-${card.index}`;
+            const answeredInMode = stats.topicStats[topicKey]?.answered ?? 0;
+            const href = `${basePath}/quiz/full?ticket=${card.index}`;
 
             return (
-              <Card key={m.href} className="rounded-xl sm:rounded-2xl border border-neutral-200/90 dark:border-border bg-card shadow-none transition-colors hover:bg-muted/30">
+              <Card
+                key={card.index}
+                className="rounded-xl sm:rounded-2xl border border-neutral-200/90 dark:border-border bg-card shadow-none transition-colors hover:bg-muted/30"
+              >
                 <div className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5 sm:py-4">
-                  <Link href={m.href} className="min-w-0 flex-1">
+                  <Link href={href} className="min-w-0 flex-1">
                     <p className="text-sm sm:text-[15px] font-medium text-neutral-800 dark:text-foreground leading-snug min-w-0">
-                      {testLabel}
+                      {card.title}
                     </p>
                   </Link>
                   <div className="flex items-center gap-2 shrink-0">
                     <p className="text-sm text-muted-foreground tabular-nums">
-                      {answeredInMode} / {m.total}
+                      {answeredInMode} / {card.total}
                     </p>
                   </div>
                 </div>

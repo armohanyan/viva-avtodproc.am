@@ -2,6 +2,7 @@ import type { Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import { Branch, Package, PackageLessonBalance, PackageOrder, StudentExtraPractical, StudentProfile, User } from '../models';
 import FinanceService from './finance.service';
+import NotificationService from './notification.service';
 import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -284,6 +285,7 @@ export default class StudentEntitlementsService {
         transaction,
       });
     });
+    await this.notifyPackagePurchase(user, pkg).catch(() => {});
 
     return this.get(userId);
   }
@@ -334,6 +336,31 @@ export default class StudentEntitlementsService {
       });
     });
     return this.get(userId);
+  }
+
+  private static async notifyPackagePurchase(user: User, pkg: Package): Promise<void> {
+    const studentName = user.name?.trim() || 'Student';
+    const packageLabel = pkg.name.trim() || 'Package';
+    await NotificationService.createOne({
+      recipientUserId: user.id,
+      recipientRole: 'student',
+      type: 'PAYMENT_RECEIVED',
+      title: 'Package activated',
+      message: `Your package purchase is confirmed (${packageLabel}). You can now pick your lesson slots.`,
+      entityType: 'system',
+      entityId: String(pkg.id),
+      dedupeKey: `package-purchase:student:${user.id}:package:${pkg.id}`,
+      metadata: { packageId: pkg.id, packageName: packageLabel },
+    });
+    await NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: 'PAYMENT_RECEIVED',
+      title: 'Package purchased',
+      message: `${studentName} purchased ${packageLabel}.`,
+      entityType: 'system',
+      entityId: String(pkg.id),
+      dedupeKey: `package-purchase:staff:student:${user.id}:package:${pkg.id}`,
+      metadata: { studentUserId: user.id, packageId: pkg.id, packageName: packageLabel },
+    });
   }
 }
 

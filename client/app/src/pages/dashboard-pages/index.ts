@@ -3,6 +3,7 @@ export { default as DashboardLearnPage } from "./DashboardLearn";
 export { default as DashboardExamTestsPage } from "./DashboardExamTests";
 export { default as DashboardExamQuizPage } from "./DashboardExamQuiz";
 export { default as DashboardThematicTestsPage } from "./DashboardThematicTests";
+export { default as DashboardThematicTopicProgressPage } from "./DashboardThematicTopicProgress";
 export { default as DashboardQuestionDetailPage } from "./DashboardQuestionDetail";
 export { default as DashboardSavedQuestionsPage } from "./DashboardSavedQuestions";
 export { default as DashboardBookingsPage } from "./DashboardBookingsOutlet";
@@ -15,3 +16,4 @@ export { default as DashboardServicesPage } from "./DashboardServices";
 export { default as DashboardLessonsPage } from "./DashboardLessons";
 export { default as DashboardProgressPage } from "./DashboardProgress";
 export { default as DashboardNotificationsPage } from "./DashboardNotifications";
+

@@ -5,9 +5,11 @@ export type ExamQuestionMeta = {
   examCardTitles: string[];
   thematicCardQuestionIds: string[][];
   examCardQuestionIds: string[][];
+  /** From API: total questions in store (avoids loading all bodies for progress). */
+  totalQuestions: number;
 };
 
-const THEMATIC_CARD_COUNT = 10;
+const THEMATIC_CARD_COUNT = 11;
 const EXAM_CARD_COUNT = 60;
 const UPDATE_EVENT = "viva-exam-question-meta-updated";
 
@@ -21,6 +23,7 @@ export function defaultExamQuestionMeta(): ExamQuestionMeta {
     examCardTitles: defaults("Թեստ", EXAM_CARD_COUNT),
     thematicCardQuestionIds: Array.from({ length: THEMATIC_CARD_COUNT }, () => []),
     examCardQuestionIds: Array.from({ length: EXAM_CARD_COUNT }, () => []),
+    totalQuestions: 0,
   };
 }
 
@@ -43,6 +46,10 @@ export async function loadExamQuestionMeta(): Promise<ExamQuestionMeta> {
       examCardTitles: normalize(raw.examCardTitles, EXAM_CARD_COUNT, "Թեստ"),
       thematicCardQuestionIds: normalizeMatrix(raw.thematicCardQuestionIds, THEMATIC_CARD_COUNT),
       examCardQuestionIds: normalizeMatrix(raw.examCardQuestionIds, EXAM_CARD_COUNT),
+      totalQuestions:
+        typeof raw.totalQuestions === "number" && Number.isFinite(raw.totalQuestions) && raw.totalQuestions >= 0
+          ? raw.totalQuestions
+          : 0,
     };
   } catch {
     return defaultExamQuestionMeta();
@@ -56,6 +63,10 @@ export async function updateExamQuestionMeta(next: ExamQuestionMeta): Promise<Ex
     examCardTitles: normalize(data.examCardTitles, EXAM_CARD_COUNT, "Թեստ"),
     thematicCardQuestionIds: normalizeMatrix(data.thematicCardQuestionIds, THEMATIC_CARD_COUNT),
     examCardQuestionIds: normalizeMatrix(data.examCardQuestionIds, EXAM_CARD_COUNT),
+    totalQuestions:
+      typeof data.totalQuestions === "number" && Number.isFinite(data.totalQuestions) && data.totalQuestions >= 0
+        ? data.totalQuestions
+        : 0,
   };
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(UPDATE_EVENT));

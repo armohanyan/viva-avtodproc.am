@@ -8,7 +8,7 @@ import { Button } from "src/components/ui/button";
 import { useLang } from "src/lib/i18n";
 import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
-import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
+import { loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 
 const EMPTY_STATS: ExamStats = {
   answered: 0,
@@ -32,7 +32,17 @@ export default function DashboardProgress() {
     hasTheoryFromPackage,
     ownedPackages,
   } = useStudentEntitlements();
-  const pool = useExamQuestionPool();
+  const [totalQuestions, setTotalQuestions] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    void loadExamQuestionMeta().then((meta) => {
+      if (mounted) setTotalQuestions(meta.totalQuestions);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [examStats, setExamStats] = useState<ExamStats>(EMPTY_STATS);
 
@@ -41,7 +51,6 @@ export default function DashboardProgress() {
     return subscribeExamStatsChanged(() => setExamStats(getExamStats()));
   }, []);
 
-  const totalQuestions = pool.length;
   const examProgressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
     return Math.min(100, Number(((examStats.answered / totalQuestions) * 100).toFixed(1)));

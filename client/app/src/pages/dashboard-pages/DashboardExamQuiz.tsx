@@ -12,8 +12,17 @@ import {
 import { CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
-import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
-import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
+import {
+  addExamAttempt,
+  clearActiveSession,
+  fetchTopicProgressSnapshot,
+  resetTopicProgress,
+  saveTopicCurrentQuestionIndex,
+  updateActiveSession,
+  upsertTopicAnswerProgress,
+} from "src/lib/examStats";
+import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
+import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
@@ -38,25 +47,89 @@ export default function DashboardExamQuiz() {
 
   const topicParam =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") : null;
-  const topicId = topicParam || "5";
+  const ticketParam =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ticket") : null;
+  const ticketIndex =
+    ticketParam != null && /^\d+$/.test(ticketParam) ? Number.parseInt(ticketParam, 10) : null;
+  const useExamTicket = mode === "full" && ticketIndex !== null;
+  const topicId = useExamTicket ? `exam-ticket-${ticketIndex}` : topicParam || "5";
   const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
+  const topicBackHref = thematicTopicId
+    ? `/dashboard/learn/thematic-tests/topic/${encodeURIComponent(thematicTopicId)}`
+    : "/dashboard/learn/thematic-tests";
+  const effectiveBackHref = mode === "topics" ? topicBackHref : backHref;
 
-  const pool = useExamQuestionPool();
+  const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
+    () => defaultExamQuestionMeta().examCardQuestionIds,
+  );
+  const [examMetaReady, setExamMetaReady] = useState(true);
 
+  useEffect(() => {
+    let mounted = true;
+    const sync = async () => {
+      if (!useExamTicket) {
+        if (mounted) setExamMetaReady(true);
+        return;
+      }
+      if (mounted) setExamMetaReady(false);
+      const meta = await loadExamQuestionMeta();
+      if (!mounted) return;
+      setExamCardQuestionIds(meta.examCardQuestionIds);
+      setExamMetaReady(true);
+    };
+    void sync();
+    const off = subscribeExamQuestionMetaUpdated(() => void sync());
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, [useExamTicket]);
+
+  const { pool, loading: poolLoading } = useExamQuizQuestionPool({
+    mode,
+    thematicTopicId,
+    examTicketActive: useExamTicket,
+    examTicketMetaPending: useExamTicket && !examMetaReady,
+    examTicketQuestionIds:
+      useExamTicket && examMetaReady ? (examCardQuestionIds[ticketIndex!] ?? []) : [],
+  });
+
+  const quizLoading = (useExamTicket && !examMetaReady) || poolLoading;
   const [round, setRound] = useState(0);
   const [endedByTimeout, setEndedByTimeout] = useState(false);
   const questions = useMemo(() => {
     if (!mode) return [];
-    return selectQuestionsForMode(mode, pool, {
-      thematicTopicId: thematicTopicId ?? null,
-    });
-  }, [mode, round, thematicTopicId, pool]);
+    if (useExamTicket) {
+      if (!examMetaReady) return [];
+      const ids = examCardQuestionIds[ticketIndex!] ?? [];
+      return selectQuestionsForMode(mode, pool, { fixedQuestionIds: ids });
+    }
+    return selectQuestionsForMode(mode, pool);
+  }, [mode, round, thematicTopicId, pool, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex]);
+  const topicQuestionIds = useMemo(() => questions.map((q) => q.id), [questions]);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
   const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
   const [layoutMode, setLayoutMode] = useState<QuizLayoutMode>("step");
+
+  useEffect(() => {
+    if (mode !== "topics" || questions.length === 0) return;
+    let mounted = true;
+    void fetchTopicProgressSnapshot(topicId, topicQuestionIds).then((snapshot) => {
+      if (!mounted) return;
+      const resumedAnswers = questions.map((q) => {
+        const row = snapshot.answeredQuestions[q.id];
+        return row ? row.selectedAnswerId : null;
+      });
+      setAnswers(resumedAnswers);
+      setIndex(Math.max(0, Math.min(questions.length - 1, snapshot.currentQuestionIndex)));
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [mode, topicId, topicQuestionIds, questions, round]);
 
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
@@ -75,39 +148,31 @@ export default function DashboardExamQuiz() {
   const discardSessionRef = useRef(false);
 
   const updateSessionProgress = (attemptAnswers: (number | null)[]) => {
-    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
-    if (answered === 0) return;
-    const correct = questions.reduce((acc, question, i) => {
-      const userAns = attemptAnswers[i];
-      if (userAns === null || userAns === undefined) return acc;
-      return acc + (userAns === question.correctIndex ? 1 : 0);
-    }, 0);
+    const answers = questions
+      .map((question, i) => {
+        const selectedAnswerId = attemptAnswers[i];
+        if (selectedAnswerId === null || selectedAnswerId === undefined) return null;
+        return { questionId: question.id, selectedAnswerId };
+      })
+      .filter((v): v is { questionId: string; selectedAnswerId: number } => Boolean(v));
+    if (answers.length === 0) return;
     updateActiveSession({
       topicId,
-      answered,
-      correct,
-      wrong: Math.max(0, answered - correct),
+      answers,
     });
   };
 
   const saveAttemptStats = (attemptAnswers: (number | null)[]) => {
     if (questions.length === 0 || statsSavedRef.current) return;
-    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
-    if (answered === 0) return;
-    const correct = questions.reduce((acc, question, i) => {
-      const userAns = attemptAnswers[i];
-      if (userAns === null || userAns === undefined) return acc;
-      return acc + (userAns === question.correctIndex ? 1 : 0);
-    }, 0);
-    const wrong = Math.max(0, answered - correct);
-    const questionOutcomes = questions
+    const answers = questions
       .map((question, i) => {
-        const userAns = attemptAnswers[i];
-        if (userAns === null || userAns === undefined) return null;
-        return { questionId: question.id, isCorrect: userAns === question.correctIndex };
+        const selectedAnswerId = attemptAnswers[i];
+        if (selectedAnswerId === null || selectedAnswerId === undefined) return null;
+        return { questionId: question.id, selectedAnswerId };
       })
-      .filter((v): v is { questionId: string; isCorrect: boolean } => Boolean(v));
-    addExamAttempt({ topicId, answered, correct, wrong, questionOutcomes });
+      .filter((v): v is { questionId: string; selectedAnswerId: number } => Boolean(v));
+    if (answers.length === 0) return;
+    addExamAttempt({ topicId, answers });
     statsSavedRef.current = true;
   };
 
@@ -158,7 +223,7 @@ export default function DashboardExamQuiz() {
     setEndedByTimeout(false);
     statsSavedRef.current = false;
     discardSessionRef.current = false;
-  }, [round, mode]);
+  }, [round, mode, ticketIndex]);
 
   useEffect(() => {
     if (questions.length === 0) return;
@@ -167,6 +232,11 @@ export default function DashboardExamQuiz() {
       return questions.map((_, i) => (i < prev.length ? prev[i] ?? null : null));
     });
   }, [questions]);
+
+  useEffect(() => {
+    if (mode !== "topics" || questions.length === 0 || finished) return;
+    saveTopicCurrentQuestionIndex(topicId, topicQuestionIds, index);
+  }, [mode, topicId, topicQuestionIds, index, finished, questions.length]);
 
   useEffect(() => {
     if (finished || layoutMode !== "step") return;
@@ -187,6 +257,16 @@ export default function DashboardExamQuiz() {
       next[qIdx] = optionIdx;
       return next;
     });
+    if (mode === "topics" && questions[qIdx]) {
+      const q = questions[qIdx];
+      upsertTopicAnswerProgress({
+        topicId,
+        questionIds: topicQuestionIds,
+        questionId: q.id,
+        selectedAnswerId: optionIdx,
+        currentQuestionIndex: Math.min(questions.length - 1, qIdx + 1),
+      });
+    }
   };
 
   const finishScrollMode = () => {
@@ -201,6 +281,16 @@ export default function DashboardExamQuiz() {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
+    if (mode === "topics") {
+      const q = questions[index];
+      upsertTopicAnswerProgress({
+        topicId,
+        questionIds: topicQuestionIds,
+        questionId: q.id,
+        selectedAnswerId: selected,
+        currentQuestionIndex: isLast ? questions.length - 1 : index + 1,
+      });
+    }
     if (isLast) {
       setIndex(questions.length);
     } else {
@@ -213,6 +303,18 @@ export default function DashboardExamQuiz() {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
+    if (mode === "topics" && selected !== null) {
+      const q = questions[index];
+      upsertTopicAnswerProgress({
+        topicId,
+        questionIds: topicQuestionIds,
+        questionId: q.id,
+        selectedAnswerId: selected,
+        currentQuestionIndex: Math.max(0, index - 1),
+      });
+    } else if (mode === "topics") {
+      saveTopicCurrentQuestionIndex(topicId, topicQuestionIds, Math.max(0, index - 1));
+    }
     setIndex((i) => Math.max(0, i - 1));
   };
 
@@ -220,6 +322,7 @@ export default function DashboardExamQuiz() {
     if (finished) {
       saveAttemptStats(answers);
     }
+    resetTopicProgress(topicId);
     statsSavedRef.current = false;
     discardSessionRef.current = false;
     setEndedByTimeout(false);
@@ -236,11 +339,21 @@ export default function DashboardExamQuiz() {
     }
     discardSessionRef.current = true;
     clearActiveSession();
-    setLocation(backHref);
+    setLocation(effectiveBackHref);
   };
 
   if (!match || !mode) {
     return <Redirect to="/dashboard/learn/exam-tests" />;
+  }
+
+  if (quizLoading) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-lg mx-auto text-center py-12">
+          <p className="text-muted-foreground mb-4">{t("examQuizLoading")}</p>
+        </div>
+      </DashboardLayout>
+    );
   }
 
   if (questions.length === 0) {
@@ -248,7 +361,7 @@ export default function DashboardExamQuiz() {
       <DashboardLayout>
         <div className="max-w-lg mx-auto text-center py-12">
           <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-          <Link href={backHref}>
+          <Link href={effectiveBackHref}>
             <Button variant="outline">{t("examQuizBackToList")}</Button>
           </Link>
         </div>
@@ -277,7 +390,7 @@ export default function DashboardExamQuiz() {
                 <Button onClick={restart} variant="outline" className="w-full sm:w-auto">
                   {t("examQuizRetake")}
                 </Button>
-                <Link href={backHref}>
+                <Link href={effectiveBackHref}>
                   <Button className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">{t("examQuizBackToList")}</Button>
                 </Link>
               </div>
@@ -364,7 +477,7 @@ export default function DashboardExamQuiz() {
       <DashboardLayout>
         <div className="max-w-lg mx-auto text-center py-12">
           <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-          <Link href={backHref}>
+          <Link href={effectiveBackHref}>
             <Button variant="outline">{t("examQuizBackToList")}</Button>
           </Link>
         </div>

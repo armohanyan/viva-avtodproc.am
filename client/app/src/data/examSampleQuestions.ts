@@ -10,7 +10,7 @@ export interface ExamQuestion {
   readonly explanation?: string;
   readonly correctIndex: number;
   readonly category: ExamQuestionCategory;
-  /** Thematic chapter (1–10). Used with `?topic=` on thematic practice; omit for sign-only questions. */
+  /** Thematic chapter id (`?topic=`). Thematic UI uses 11 cards (ids include `11` for markings; `5` is color perception, last in the list). Omit for exam-only questions. */
   readonly topicId?: string;
   /** Optional illustration (HTTPS URL or data URL), same for all languages. */
   readonly imageUrl?: string | null;
@@ -215,6 +215,8 @@ export type ExamQuizMode = "full" | "topics" | "signs";
 export type SelectExamQuestionsOpts = {
   /** When set (thematic URL with `?topic=`), keep only rules/safety questions with this `topicId`. */
   thematicTopicId?: string | null;
+  /** When set (exam URL with `?ticket=`), use these question ids in order from the pool (e.g. one official exam card). */
+  fixedQuestionIds?: string[] | null;
 };
 
 export function selectQuestionsForMode(
@@ -222,6 +224,13 @@ export function selectQuestionsForMode(
   pool: readonly ExamQuestion[] = EXAM_QUESTION_POOL,
   opts?: SelectExamQuestionsOpts,
 ): ExamQuestion[] {
+  if (opts?.fixedQuestionIds != null) {
+    const fixedIds = opts.fixedQuestionIds.filter((id) => typeof id === "string" && id.trim());
+    if (fixedIds.length === 0) return [];
+    const byId = new Map(pool.map((q) => [q.id, q]));
+    return fixedIds.map((id) => byId.get(id.trim())).filter((q): q is ExamQuestion => Boolean(q));
+  }
+
   const thematicTopicId = opts?.thematicTopicId?.trim();
   let filtered: ExamQuestion[];
   if (mode === "signs") {
@@ -234,13 +243,13 @@ export function selectQuestionsForMode(
   } else {
     filtered = [...pool];
   }
+  if (mode === "topics") {
+    // Keep server-provided topic order stable to avoid reshuffling on every open.
+    return [...filtered];
+  }
+
   const shuffled = [...filtered].sort(() => Math.random() - 0.5);
-  // Thematic sessions should include the full topic pool (not the previous hard cap of 4).
-  const take =
-    mode === "topics"
-      ? shuffled.length
-      : mode === "full"
-        ? Math.min(5, shuffled.length)
-        : Math.min(4, shuffled.length);
+  const take = mode === "full" ? Math.min(5, shuffled.length) : Math.min(4, shuffled.length);
   return shuffled.slice(0, take);
 }
+

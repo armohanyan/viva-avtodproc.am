@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "sync:exam-questions": "tsx src/scripts/sync-exam-questions-from-themes.ts",
+    "import:exam-questions": "tsx src/scripts/import-exam-questions-from-folders.ts",
     "db:seed": "tsx src/scripts/run-seed.ts",
     "jobs:bookings": "tsx src/scripts/run-booking-jobs.ts",
     "selftest:booking": "tsx src/scripts/booking-rules-selftest.ts",

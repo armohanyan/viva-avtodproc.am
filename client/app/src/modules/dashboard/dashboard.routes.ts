@@ -6,6 +6,7 @@ import {
   DashboardExamTestsPage,
   DashboardExamQuizPage,
   DashboardThematicTestsPage,
+  DashboardThematicTopicProgressPage,
   DashboardQuestionDetailPage,
   DashboardSavedQuestionsPage,
   DashboardBookingsPage,
@@ -30,6 +31,7 @@ export const dashboardRoutes: readonly AppRoute[] = [
   { path: "/dashboard/learn/exam-tests", component: DashboardExamTestsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/exam-tests/question/:id", component: DashboardQuestionDetailPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/thematic-tests", component: DashboardThematicTestsPage, allowedAccountTypes: STUDENT },
+  { path: "/dashboard/learn/thematic-tests/topic/:topicId", component: DashboardThematicTopicProgressPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/thematic-tests/question/:id", component: DashboardQuestionDetailPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/learn/saved-questions", component: DashboardSavedQuestionsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/exam-tests/quiz/:mode", component: DashboardExamQuizPage, allowedAccountTypes: STUDENT },
@@ -39,3 +41,4 @@ export const dashboardRoutes: readonly AppRoute[] = [
   { path: "/dashboard/payments", component: DashboardPaymentsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/profile", component: DashboardProfilePage, allowedAccountTypes: STUDENT },
 ];
+

@@ -12,9 +12,9 @@ import {
   THEMATIC_TOPIC_TITLE_KEYS,
 } from "src/data/thematicTopics";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
-import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import { Reveal } from "src/lib/motion";
 import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
+import { vivaApiJson } from "src/lib/vivaApi";
 
 export default function DashboardThematicTests() {
   const { t } = useLang();
@@ -33,28 +33,57 @@ export default function DashboardThematicTests() {
   const [thematicCardQuestionIds, setThematicCardQuestionIds] = useState<string[][]>(
     () => defaultExamQuestionMeta().thematicCardQuestionIds,
   );
+  const [colorTopicCountFallback, setColorTopicCountFallback] = useState<number | null>(null);
 
-  const pool = useExamQuestionPool();
+  const isGenericTopicTitle = (title: string): boolean => /^(Թեմա|Тема|Theme)\s*\d+$/i.test(title.trim());
 
   const topics = useMemo(
-    () => {
-      const validIds = new Set(pool.map((q) => q.id));
-      return (
-      THEMATIC_TOPIC_IDS.map((topicId, i) => ({
-        iconSrc: THEMATIC_TOPIC_ICON[topicId],
-        title: thematicCardTitles[i] || t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
-        total: (thematicCardQuestionIds[i] ?? []).filter((id) => validIds.has(id)).length,
-        topicId,
-      }))
-    );
-    },
-    [pool, t, thematicCardQuestionIds, thematicCardTitles],
+    () =>
+      THEMATIC_TOPIC_IDS.map((topicId, i) => {
+        const topicSlotId = String(i + 1);
+        return {
+          iconSrc: THEMATIC_TOPIC_ICON[topicId],
+          title: (() => {
+            const titleFromMeta = thematicCardTitles[i]?.trim() ?? "";
+            const fallbackTitle = t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey);
+            return !titleFromMeta || isGenericTopicTitle(titleFromMeta) ? fallbackTitle : titleFromMeta;
+          })(),
+          total: (() => {
+            const totalFromMeta = (thematicCardQuestionIds[i] ?? []).length;
+            return topicId === "5" && totalFromMeta === 0 && colorTopicCountFallback != null
+              ? colorTopicCountFallback
+              : totalFromMeta;
+          })(),
+          topicId: topicSlotId,
+        };
+      }),
+    [t, thematicCardQuestionIds, thematicCardTitles, colorTopicCountFallback],
   );
 
   useEffect(() => {
     setStats(getExamStats());
     return subscribeExamStatsChanged(() => setStats(getExamStats()));
   }, []);
+
+  useEffect(() => {
+    const colorIndex = THEMATIC_TOPIC_IDS.indexOf("5");
+    const colorCount = colorIndex >= 0 ? (thematicCardQuestionIds[colorIndex] ?? []).length : 0;
+    if (colorCount > 0) {
+      setColorTopicCountFallback(null);
+      return;
+    }
+    let mounted = true;
+    void vivaApiJson<Array<{ id: string }>>("/exam-questions/pack/thematic/11")
+      .then((rows) => {
+        if (mounted) setColorTopicCountFallback(Array.isArray(rows) ? rows.length : 0);
+      })
+      .catch(() => {
+        if (mounted) setColorTopicCountFallback(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [thematicCardQuestionIds]);
 
   useEffect(() => {
     let mounted = true;
@@ -73,17 +102,11 @@ export default function DashboardThematicTests() {
     };
   }, []);
 
-  const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);
-  const activeTopic = stats.activeSession ? topicById[stats.activeSession.topicId] : undefined;
-
-  const totalQuestions = useMemo(
-    () => pool.filter((q) => q.category === "rules" || q.category === "safety").length,
-    [pool],
-  );
+  const totalQuestions = useMemo(() => topics.reduce((sum, topic) => sum + topic.total, 0), [topics]);
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
     return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
-  }, [stats.answered]);
+  }, [stats.answered, totalQuestions]);
 
   return (
     <DashboardLayout>
@@ -123,30 +146,6 @@ export default function DashboardThematicTests() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-3">
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs text-muted-foreground">{t("examTestsStatAttempts")}</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{stats.attempts}</p>
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs text-muted-foreground">{t("examTestsStatBest")}</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{stats.bestPct}%</p>
-              {stats.activeSession && activeTopic && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {stats.topicStats[activeTopic.topicId]?.bestCorrect ?? 0}/{stats.topicStats[activeTopic.topicId]?.bestAnswered ?? 0}
-                </p>
-              )}
-            </div>
-            <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-              <p className="text-xs text-muted-foreground">{t("examTestsStatLast")}</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{stats.lastPct}%</p>
-              {stats.activeSession && activeTopic && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {stats.topicStats[activeTopic.topicId]?.lastCorrect ?? 0}/{stats.topicStats[activeTopic.topicId]?.lastAnswered ?? 0}
-                </p>
-              )}
-            </div>
-          </div>
         </Card>
 
         <div className="flex justify-end mb-3">
@@ -157,7 +156,7 @@ export default function DashboardThematicTests() {
           {topics.map((topic, i) => {
             const topicStats = stats.topicStats[topic.topicId] ?? { answered: 0 };
             const topicPct = topic.total > 0 ? Math.min(100, Math.round((topicStats.answered / topic.total) * 100)) : 0;
-            const href = `/dashboard/learn/exam-tests/quiz/topics?topic=${topic.topicId}`;
+            const href = `/dashboard/learn/thematic-tests/topic/${topic.topicId}`;
 
             return (
               <Reveal key={`${topic.topicId}-${i}`} delay={i * 0.05}>
@@ -165,7 +164,11 @@ export default function DashboardThematicTests() {
                   <Link href={href} className="block p-3.5 sm:p-4">
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 bg-amber-50 border-amber-200">
-                        <img src={topic.iconSrc} alt={topic.title} className="w-5 h-5" />
+                        {topic.iconSrc ? (
+                          <img src={topic.iconSrc} alt="" className="w-5 h-5" />
+                        ) : (
+                          <span className="sr-only">{topic.title}</span>
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1 pr-2">
@@ -202,3 +205,4 @@ export default function DashboardThematicTests() {
     </DashboardLayout>
   );
 }
+

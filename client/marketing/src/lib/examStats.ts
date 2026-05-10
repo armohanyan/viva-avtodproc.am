@@ -1,3 +1,6 @@
+import { loadAccountSession } from "src/modules/accounts/account.session";
+import { vivaApiJson } from "src/lib/vivaApi";
+
 export interface ExamStats {
   answered: number;
   correct: number;
@@ -31,6 +34,10 @@ export interface ActiveSession {
   startedAt: number;
   updatedAt: number;
 }
+export interface SessionAnswerInput {
+  questionId: string;
+  selectedAnswerId: number;
+}
 
 export interface StoredTopicStats {
   attempts: number;
@@ -54,9 +61,38 @@ export interface StoredExamStats {
   activeSession: ActiveSession | null;
 }
 
-const KEY = "exam.tests.stats.v2";
-
 const listeners = new Set<() => void>();
+let memoryStoredStats: StoredExamStats = {
+  attempts: 0,
+  bestPct: 0,
+  lastPct: 0,
+  totalCorrect: 0,
+  totalWrong: 0,
+  questionResults: {},
+  topics: {},
+  activeSession: null,
+};
+
+function normalizeActiveSession(raw: unknown): ActiveSession | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Partial<ActiveSession>;
+  const topicId = typeof r.topicId === "string" ? r.topicId.trim() : "";
+  const answered = Number(r.answered ?? 0);
+  const correct = Number(r.correct ?? 0);
+  const wrong = Number(r.wrong ?? 0);
+  const startedAt = Number(r.startedAt ?? Date.now());
+  const updatedAt = Number(r.updatedAt ?? startedAt);
+  // Hard rule: no selected answers => treat as no active session.
+  if (!topicId || !Number.isFinite(answered) || answered <= 0) return null;
+  return {
+    topicId,
+    answered: Math.max(0, answered),
+    correct: Number.isFinite(correct) ? Math.max(0, correct) : 0,
+    wrong: Number.isFinite(wrong) ? Math.max(0, wrong) : 0,
+    startedAt: Number.isFinite(startedAt) ? startedAt : Date.now(),
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+  };
+}
 
 export function subscribeExamStatsChanged(listener: () => void): () => void {
   listeners.add(listener);
@@ -89,8 +125,12 @@ function triggerRemoteSave(): void {
 }
 
 function persistLocal(payload: StoredExamStats, opts?: { skipRemote?: boolean }): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(payload));
+  memoryStoredStats = {
+    ...payload,
+    questionResults: payload.questionResults ?? {},
+    topics: payload.topics ?? {},
+    activeSession: normalizeActiveSession(payload.activeSession),
+  };
   emitExamStatsChanged();
   if (!opts?.skipRemote) {
     triggerRemoteSave();
@@ -127,10 +167,7 @@ export function mergeStoredExamStatsFromServer(remote: StoredExamStats): ExamSta
         ? (remote.questionResults as Record<string, boolean>)
         : {},
     topics: topicsRaw as Record<string, StoredTopicStats>,
-    activeSession:
-      remote.activeSession && typeof remote.activeSession === "object"
-        ? (remote.activeSession as ActiveSession)
-        : null,
+    activeSession: normalizeActiveSession(remote.activeSession),
   };
   persistLocal(normalized, { skipRemote: true });
   return getExamStats();
@@ -149,38 +186,13 @@ const EMPTY: ExamStats = {
 };
 
 function readStoredStats(): StoredExamStats {
-  if (typeof window === "undefined") {
-    return {
-      attempts: 0,
-      bestPct: 0,
-      lastPct: 0,
-      totalCorrect: 0,
-      totalWrong: 0,
-      questionResults: {},
-      topics: {},
-      activeSession: null,
-    };
-  }
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return { attempts: 0, bestPct: 0, lastPct: 0, totalCorrect: 0, totalWrong: 0, questionResults: {}, topics: {}, activeSession: null };
-    const parsed = JSON.parse(raw) as Partial<StoredExamStats>;
-    return {
-      attempts: Number(parsed.attempts ?? 0) || 0,
-      bestPct: Number(parsed.bestPct ?? 0) || 0,
-      lastPct: Number(parsed.lastPct ?? 0) || 0,
-      totalCorrect: Number(parsed.totalCorrect ?? 0) || 0,
-      totalWrong: Number(parsed.totalWrong ?? 0) || 0,
-      questionResults: parsed.questionResults && typeof parsed.questionResults === "object" ? (parsed.questionResults as Record<string, boolean>) : {},
-      topics: parsed.topics && typeof parsed.topics === "object" ? (parsed.topics as Record<string, StoredTopicStats>) : {},
-      activeSession:
-        parsed.activeSession && typeof parsed.activeSession === "object"
-          ? (parsed.activeSession as ActiveSession)
-          : null,
-    };
-  } catch {
-    return { attempts: 0, bestPct: 0, lastPct: 0, totalCorrect: 0, totalWrong: 0, questionResults: {}, topics: {}, activeSession: null };
-  }
+  return memoryStoredStats;
+}
+
+function getCurrentStudentId(): string | null {
+  const session = loadAccountSession();
+  if (!session || session.accountType !== "student" || !session.id) return null;
+  return String(session.id);
 }
 
 export function getExamStats(): ExamStats {
@@ -232,7 +244,7 @@ export function getExamStats(): ExamStats {
       lastPct: Number.isFinite(lastPct) ? Math.max(0, Math.min(100, lastPct)) : 0,
       questionResults,
       topicStats,
-      activeSession: parsed.activeSession ?? null,
+      activeSession: normalizeActiveSession(parsed.activeSession),
     };
   } catch {
     return EMPTY;
@@ -241,152 +253,67 @@ export function getExamStats(): ExamStats {
 
 export function addExamAttempt(result: {
   topicId: string;
-  answered: number;
-  correct: number;
-  wrong: number;
-  questionOutcomes: Array<{ questionId: string; isCorrect: boolean }>;
+  answers: SessionAnswerInput[];
 }): ExamStats {
-  const current = getExamStats();
-  const stored = readStoredStats();
-  const attemptPct = result.answered > 0 ? Math.round((result.correct / result.answered) * 100) : 0;
-  const topicId = result.topicId || "default";
-
-  const nextQuestionResults: Record<string, boolean> = { ...current.questionResults };
-  const currentTopic = current.topicStats[topicId];
-  const currentTopicQuestionResults: Record<string, boolean> = {};
-  if (currentTopic) {
-    for (const [qId, isCorrect] of Object.entries(current.questionResults)) {
-      if (qId.startsWith(`${topicId}:`)) {
-        currentTopicQuestionResults[qId.slice(topicId.length + 1)] = isCorrect;
-      }
-    }
-  }
-  const nextTopicQuestionResults = { ...currentTopicQuestionResults };
-
-  for (const outcome of result.questionOutcomes) {
-    if (!outcome.questionId) continue;
-    nextQuestionResults[`${topicId}:${outcome.questionId}`] = outcome.isCorrect;
-    nextTopicQuestionResults[outcome.questionId] = outcome.isCorrect;
-  }
-  const topicAnswered = Object.keys(nextTopicQuestionResults).length;
-  const topicCorrect = Object.values(nextTopicQuestionResults).filter(Boolean).length;
-  const topicWrong = Math.max(0, topicAnswered - topicCorrect);
-  const uniqueAnswered = Object.keys(nextQuestionResults).length;
-  const uniqueCorrect = Object.values(nextQuestionResults).filter(Boolean).length;
-
-  const nextTopics: Record<string, StoredTopicStats> = { ...stored.topics };
-  const prevTopic = nextTopics[topicId];
-  const isBestImproved = attemptPct > Number(prevTopic?.bestPct ?? 0);
-  nextTopics[topicId] = {
-    attempts: Number(nextTopics[topicId]?.attempts ?? 0) + 1,
-    bestPct: Math.max(Number(nextTopics[topicId]?.bestPct ?? 0), attemptPct),
-    lastPct: attemptPct,
-    bestCorrect: isBestImproved ? result.correct : Number(nextTopics[topicId]?.bestCorrect ?? 0),
-    bestAnswered: isBestImproved ? result.answered : Number(nextTopics[topicId]?.bestAnswered ?? 0),
-    lastCorrect: result.correct,
-    lastAnswered: result.answered,
-    questionResults: nextTopicQuestionResults,
-  };
-  const latestCorrectTotal = Object.values(nextTopics).reduce(
-    (sum, topic) => sum + Math.max(0, Number(topic.lastCorrect ?? 0)),
-    0,
-  );
-  const latestWrongTotal = Object.values(nextTopics).reduce(
-    (sum, topic) => sum + Math.max(0, Number(topic.lastAnswered ?? 0) - Number(topic.lastCorrect ?? 0)),
-    0,
-  );
-
-  const next: ExamStats = {
-    answered: uniqueAnswered,
-    correct: latestCorrectTotal,
-    wrong: latestWrongTotal,
-    attempts: current.attempts + 1,
-    bestPct: Math.max(current.bestPct, attemptPct),
-    lastPct: attemptPct,
-    questionResults: nextQuestionResults,
-    topicStats: {
-      ...current.topicStats,
-      [topicId]: {
-        answered: topicAnswered,
-        correct: topicCorrect,
-        wrong: topicWrong,
-        attempts: nextTopics[topicId].attempts,
-        bestPct: nextTopics[topicId].bestPct,
-        lastPct: nextTopics[topicId].lastPct,
-        bestCorrect: nextTopics[topicId].bestCorrect,
-        bestAnswered: nextTopics[topicId].bestAnswered,
-        lastCorrect: nextTopics[topicId].lastCorrect,
-        lastAnswered: nextTopics[topicId].lastAnswered,
-      },
+  const sid = getCurrentStudentId();
+  if (!sid) return getExamStats();
+  void vivaApiJson<StoredExamStats>(`/students/${encodeURIComponent(sid)}/exam-stats/attempt`, {
+    method: "POST",
+    body: {
+      topicId: result.topicId || "default",
+      answers: result.answers ?? [],
     },
-    activeSession: null,
-  };
-  const payload: StoredExamStats = {
-    attempts: next.attempts,
-    bestPct: next.bestPct,
-    lastPct: next.lastPct,
-    totalCorrect: next.correct,
-    totalWrong: next.wrong,
-    questionResults: next.questionResults,
-    topics: nextTopics,
-    activeSession: null,
-  };
-  persistLocal(payload);
-  return next;
+  })
+    .then((payload) => mergeStoredExamStatsFromServer(payload))
+    .catch(() => {
+      /* offline */
+    });
+  return getExamStats();
 }
 
 export function updateActiveSession(result: {
   topicId: string;
-  answered: number;
-  correct: number;
-  wrong: number;
+  answers: SessionAnswerInput[];
 }): ExamStats {
-  const current = getExamStats();
-  const stored = readStoredStats();
-  const now = Date.now();
-  const startedAt = stored.activeSession?.topicId === result.topicId ? stored.activeSession.startedAt : now;
-  const activeSession: ActiveSession = {
-    topicId: result.topicId,
-    answered: Math.max(0, result.answered),
-    correct: Math.max(0, result.correct),
-    wrong: Math.max(0, result.wrong),
-    startedAt,
-    updatedAt: now,
-  };
-
-  const payload: StoredExamStats = {
-    attempts: stored.attempts,
-    bestPct: stored.bestPct,
-    lastPct: stored.lastPct,
-    totalCorrect: stored.totalCorrect,
-    totalWrong: stored.totalWrong,
-    questionResults: stored.questionResults,
-    topics: stored.topics,
-    activeSession,
-  };
-  persistLocal(payload);
-  return {
-    ...current,
-    activeSession,
-  };
+  const sid = getCurrentStudentId();
+  if (!sid) return getExamStats();
+  void vivaApiJson<StoredExamStats>(`/students/${encodeURIComponent(sid)}/exam-stats/active-session`, {
+    method: "PUT",
+    body: {
+      topicId: result.topicId,
+      answers: result.answers ?? [],
+    },
+  })
+    .then((payload) => mergeStoredExamStatsFromServer(payload))
+    .catch(() => {
+      /* offline */
+    });
+  return getExamStats();
 }
 
 export function clearActiveSession(): ExamStats {
-  const current = getExamStats();
-  const stored = readStoredStats();
-  const payload: StoredExamStats = {
-    attempts: stored.attempts,
-    bestPct: stored.bestPct,
-    lastPct: stored.lastPct,
-    totalCorrect: stored.totalCorrect,
-    totalWrong: stored.totalWrong,
-    questionResults: stored.questionResults,
-    topics: stored.topics,
-    activeSession: null,
-  };
-  persistLocal(payload);
-  return {
-    ...current,
-    activeSession: null,
-  };
+  const sid = getCurrentStudentId();
+  if (!sid) return getExamStats();
+  void vivaApiJson<StoredExamStats>(`/students/${encodeURIComponent(sid)}/exam-stats/active-session`, {
+    method: "DELETE",
+  })
+    .then((payload) => mergeStoredExamStatsFromServer(payload))
+    .catch(() => {
+      /* offline */
+    });
+  return getExamStats();
+}
+
+export function resetTopicProgress(topicId: string): void {
+  const sid = getCurrentStudentId();
+  if (!sid) return;
+  const tid = topicId.trim();
+  if (!tid) return;
+  void vivaApiJson<StoredExamStats>(`/students/${encodeURIComponent(sid)}/exam-stats/topic/${encodeURIComponent(tid)}`, {
+    method: "DELETE",
+  })
+    .then((payload) => mergeStoredExamStatsFromServer(payload))
+    .catch(() => {
+      /* offline */
+    });
 }

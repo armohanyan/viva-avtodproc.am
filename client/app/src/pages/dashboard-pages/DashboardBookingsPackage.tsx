@@ -12,6 +12,7 @@ import { useActivePackages } from "src/modules/packages/useActivePackages";
 import { useLocation } from "wouter";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "src/components/ui/dialog";
+import { absWouterHref } from "src/lib/wouterFullPath";
 
 export function DashboardBookingsPackageTab() {
   const { t, lang } = useLang();
@@ -88,18 +89,27 @@ export function DashboardBookingsPackageTab() {
             <Button variant="outline" onClick={() => setSlotPromptOpen(false)}>
               Ավելի ուշ
             </Button>
-            <Button
-              onClick={() => {
-                setSlotPromptOpen(false);
-                if (theoryLessonsRemaining > 0) {
-                  setLocation("/dashboard/bookings/theory-personal");
-                  return;
-                }
-                setLocation("/dashboard/bookings/practical");
-              }}
-            >
-              Ընտրել հիմա
-            </Button>
+            {packagePracticalRemaining > 0 ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSlotPromptOpen(false);
+                  setLocation(absWouterHref("/dashboard/bookings/practical"));
+                }}
+              >
+                Գործնական դաս
+              </Button>
+            ) : null}
+            {theoryLessonsRemaining > 0 ? (
+              <Button
+                onClick={() => {
+                  setSlotPromptOpen(false);
+                  setLocation(absWouterHref("/dashboard/bookings/theory-personal"));
+                }}
+              >
+                1:1 տեսական դաս
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -145,7 +155,7 @@ export function DashboardBookingsPackageTab() {
                 variant="outline"
                 className="w-full mt-2"
                 size="sm"
-                onClick={() => setLocation("/dashboard/bookings/practical")}
+                onClick={() => setLocation(absWouterHref("/dashboard/bookings/practical"))}
               >
                 {t("dashboardLessonsBookPractical")}
               </Button>

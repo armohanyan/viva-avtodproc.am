@@ -4,7 +4,13 @@ import { parseBody, parseParams, verifyAccessToken } from '../helpers';
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
-import StudentExamStatsService, { studentExamStatsPayloadSchema } from '../services/student-exam-stats.service';
+import StudentExamStatsService, {
+  studentExamActiveSessionSchema,
+  studentExamAttemptSchema,
+  studentExamTopicIndexSchema,
+  studentExamTopicProgressSchema,
+  studentExamStatsPayloadSchema,
+} from '../services/student-exam-stats.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -65,6 +71,13 @@ const instructorRatingSubmitSchema = z.object({
 
 const studentIdParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
+});
+const studentTopicParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  topicId: z.string().trim().min(1),
+});
+const studentTopicProgressQuerySchema = z.object({
+  questionIds: z.union([z.array(z.string()), z.string(), z.undefined()]).optional(),
 });
 
 const instructorFieldsPatchSchema = z
@@ -360,6 +373,111 @@ export default class StudentController {
       const body = parseBody(studentExamStatsPayloadSchema, req.body);
       const data = await StudentExamStatsService.putForUser(id, body);
 
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsAttempt(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const body = parseBody(studentExamAttemptSchema, req.body);
+      const data = await StudentExamStatsService.applyAttempt(id, body);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsSetActiveSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const body = parseBody(studentExamActiveSessionSchema, req.body);
+      const data = await StudentExamStatsService.setActiveSession(id, body);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsClearActiveSession(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const data = await StudentExamStatsService.clearActiveSession(id);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsResetTopic(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id, topicId } = parseParams(studentTopicParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const data = await StudentExamStatsService.resetTopic(id, topicId);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsGetTopicProgress(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id, topicId } = parseParams(studentTopicParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const query = parseBody(studentTopicProgressQuerySchema, req.query ?? {});
+      const list = query.questionIds;
+      const questionIds = Array.isArray(list) ? list : typeof list === 'string' ? list.split(',') : [];
+      const data = await StudentExamStatsService.getTopicProgress(id, topicId, questionIds);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsUpsertTopicProgress(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const body = parseBody(studentExamTopicProgressSchema, req.body);
+      const data = await StudentExamStatsService.upsertTopicProgress(id, body);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async examStatsSaveTopicIndex(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfAccess(req, id, next)) return;
+      const body = parseBody(studentExamTopicIndexSchema, req.body);
+      const data = await StudentExamStatsService.saveTopicCurrentIndex(id, body);
       if (!data) {
         return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
       }

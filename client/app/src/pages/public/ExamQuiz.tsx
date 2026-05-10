@@ -15,9 +15,10 @@ import {
 } from "src/data/examSampleQuestions";
 import { CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
-import { addExamAttempt, clearActiveSession, updateActiveSession } from "src/lib/examStats";
+import { addExamAttempt, clearActiveSession, resetTopicProgress, updateActiveSession } from "src/lib/examStats";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
-import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
+import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
+import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
@@ -51,21 +52,63 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const { navigate, MarketingLink } = useAppNavigation();
   const topicParam =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("topic") : null;
-  const topicId = topicParam || "5";
-  const thematicTopicId =
-    listPath === "/thematic-questions" && mode === "topics" && topicParam ? topicParam : undefined;
+  const ticketParam =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ticket") : null;
+  const ticketIndex =
+    ticketParam != null && /^\d+$/.test(ticketParam) ? Number.parseInt(ticketParam, 10) : null;
+  const useExamTicket = listPath === "/exam-tests" && mode === "full" && ticketIndex !== null;
+  const topicId = useExamTicket ? `exam-ticket-${ticketIndex}` : topicParam || "5";
+  const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
   const timedExam = mode === "full";
 
-  const pool = useExamQuestionPool();
+  const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
+    () => defaultExamQuestionMeta().examCardQuestionIds,
+  );
+  const [examMetaReady, setExamMetaReady] = useState(true);
 
+  useEffect(() => {
+    let mounted = true;
+    const sync = async () => {
+      if (!useExamTicket) {
+        if (mounted) setExamMetaReady(true);
+        return;
+      }
+      if (mounted) setExamMetaReady(false);
+      const meta = await loadExamQuestionMeta();
+      if (!mounted) return;
+      setExamCardQuestionIds(meta.examCardQuestionIds);
+      setExamMetaReady(true);
+    };
+    void sync();
+    const off = subscribeExamQuestionMetaUpdated(() => void sync());
+    return () => {
+      mounted = false;
+      off();
+    };
+  }, [useExamTicket]);
+
+  const { pool, loading: poolLoading } = useExamQuizQuestionPool({
+    mode,
+    thematicTopicId,
+    examTicketActive: useExamTicket,
+    examTicketMetaPending: useExamTicket && !examMetaReady,
+    examTicketQuestionIds:
+      useExamTicket && examMetaReady ? (examCardQuestionIds[ticketIndex!] ?? []) : [],
+  });
+
+  const quizLoading = (useExamTicket && !examMetaReady) || poolLoading;
   const [round, setRound] = useState(0);
   const [endedByTimeout, setEndedByTimeout] = useState(false);
   const questions = useMemo(
-    () =>
-      selectQuestionsForMode(mode, pool, {
-        thematicTopicId: thematicTopicId ?? null,
-      }),
-    [mode, round, listPath, thematicTopicId, pool],
+    () => {
+      if (useExamTicket) {
+        if (!examMetaReady) return [];
+        const ids = examCardQuestionIds[ticketIndex!] ?? [];
+        return selectQuestionsForMode(mode, pool, { fixedQuestionIds: ids });
+      }
+      return selectQuestionsForMode(mode, pool);
+    },
+    [mode, round, listPath, thematicTopicId, pool, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex],
   );
 
   const [index, setIndex] = useState(0);
@@ -116,48 +159,36 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   });
 
   const updateSessionProgress = (attemptAnswers: (number | null)[]) => {
-    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
-    if (answered === 0) return;
-
-    const correct = questions.reduce((acc, question, i) => {
-      const userAns = attemptAnswers[i];
-      if (userAns === null || userAns === undefined) return acc;
-      return acc + (userAns === question.correctIndex ? 1 : 0);
-    }, 0);
+    const answers = questions
+      .map((question, i) => {
+        const selectedAnswerId = attemptAnswers[i];
+        if (selectedAnswerId === null || selectedAnswerId === undefined) return null;
+        return { questionId: question.id, selectedAnswerId };
+      })
+      .filter((v): v is { questionId: string; selectedAnswerId: number } => Boolean(v));
+    if (answers.length === 0) return;
 
     updateActiveSession({
       topicId,
-      answered,
-      correct,
-      wrong: Math.max(0, answered - correct),
+      answers,
     });
   };
 
   const saveAttemptStats = (attemptAnswers: (number | null)[]) => {
     if (questions.length === 0 || statsSavedRef.current) return;
 
-    const answered = attemptAnswers.filter((a) => a !== null && a !== undefined).length;
-
-    if (answered === 0) return;
-
-    const correct = questions.reduce((acc, question, i) => {
-      const userAns = attemptAnswers[i];
-      if (userAns === null || userAns === undefined) return acc;
-      return acc + (userAns === question.correctIndex ? 1 : 0);
-    }, 0);
-
-    const wrong = Math.max(0, answered - correct);
-    const questionOutcomes = questions
+    const answers = questions
       .map((question, i) => {
-        const userAns = attemptAnswers[i];
-        if (userAns === null || userAns === undefined) return null;
+        const selectedAnswerId = attemptAnswers[i];
+        if (selectedAnswerId === null || selectedAnswerId === undefined) return null;
         return {
           questionId: question.id,
-          isCorrect: userAns === question.correctIndex,
+          selectedAnswerId,
         };
       })
-      .filter((v): v is { questionId: string; isCorrect: boolean } => Boolean(v));
-    addExamAttempt({ topicId, answered, correct, wrong, questionOutcomes });
+      .filter((v): v is { questionId: string; selectedAnswerId: number } => Boolean(v));
+    if (answers.length === 0) return;
+    addExamAttempt({ topicId, answers });
     statsSavedRef.current = true;
   };
 
@@ -194,7 +225,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
 
   useEffect(() => {
     setEndedByTimeout(false);
-  }, [round, mode]);
+  }, [round, mode, ticketIndex]);
 
   const setLayoutModeAndSyncIndex = (mode: QuizLayoutMode) => {
     setLayoutMode(mode);
@@ -254,6 +285,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
     if (finished) {
       saveAttemptStats(answers);
     }
+    resetTopicProgress(topicId);
     statsSavedRef.current = false;
     discardSessionRef.current = false;
     setEndedByTimeout(false);
@@ -269,7 +301,11 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
       <Navbar />
       <section className="py-12 px-4">
         <div className="max-w-2xl mx-auto">
-          {questions.length === 0 ? (
+          {quizLoading ? (
+            <div className="max-w-lg mx-auto text-center py-12">
+              <p className="text-muted-foreground mb-4">{t("examQuizLoading")}</p>
+            </div>
+          ) : questions.length === 0 ? (
             <div className="max-w-lg mx-auto text-center py-12">
               <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
               <MarketingLink href={listPath}>

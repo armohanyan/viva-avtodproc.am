@@ -11,29 +11,52 @@ const { PermissionError, ResourceNotFoundError, UnauthorizedError } = ErrorsUtil
 
 const langRecord = z.record(z.string(), z.string());
 
-const questionPayloadSchema = z.object({
+const questionPayloadBase = z.object({
   text: langRecord,
   options: z.record(z.string(), z.array(z.string())),
   explanation: z.string().optional(),
-  correctIndex: z.number().int().min(0).max(3),
+  correctIndex: z.number().int().min(0).max(32),
   category: z.enum(['rules', 'signs', 'safety']),
   topicId: z.string().optional(),
   imageUrl: z.string().nullable().optional(),
 });
 
-const questionUpsertSchema = questionPayloadSchema.extend({
-  id: z.string().trim().min(1).optional(),
-});
+function refineQuestionPayload<T extends z.infer<typeof questionPayloadBase>>(data: T, ctx: z.RefinementCtx): void {
+  const opts = data.options?.am;
+  if (!Array.isArray(opts) || opts.length === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'options.am must be a non-empty array', path: ['options', 'am'] });
+    return;
+  }
+  if (data.correctIndex < 0 || data.correctIndex >= opts.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'correctIndex out of range for options.am',
+      path: ['correctIndex'],
+    });
+  }
+}
+
+const questionPayloadSchema = questionPayloadBase.superRefine(refineQuestionPayload);
+
+const questionUpsertSchema = questionPayloadBase
+  .extend({
+    id: z.string().trim().min(1).optional(),
+  })
+  .superRefine(refineQuestionPayload);
 
 const replaceSchema = z.object({
   questions: z.array(questionPayloadSchema),
 });
 
 const metaSchema = z.object({
-  thematicCardTitles: z.array(z.string()).length(10).optional(),
+  thematicCardTitles: z.array(z.string()).length(11).optional(),
   examCardTitles: z.array(z.string()).length(60).optional(),
-  thematicCardQuestionIds: z.array(z.array(z.string())).length(10).optional(),
+  thematicCardQuestionIds: z.array(z.array(z.string())).length(11).optional(),
   examCardQuestionIds: z.array(z.array(z.string())).length(60).optional(),
+});
+
+const packByIdsSchema = z.object({
+  ids: z.array(z.string()).max(400),
 });
 
 const setSavedSchema = z.object({
@@ -109,6 +132,44 @@ export default class ExamQuestionController {
   static async list(_req: Request, res: Response, next: NextFunction) {
     try {
       const data = await ExamQuestionService.list();
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listPackThematic(req: Request, res: Response, next: NextFunction) {
+    try {
+      const topicId = String(req.params.topicId ?? '').trim();
+      const data = await ExamQuestionService.listPackThematicTopic(topicId);
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listPackSigns(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await ExamQuestionService.listPackSigns();
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listPackRulesSafety(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await ExamQuestionService.listPackRulesSafety();
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listPackByIds(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(packByIdsSchema, req.body);
+      const data = await ExamQuestionService.listPackByIdsOrdered(body.ids);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);
@@ -255,9 +316,7 @@ export default class ExamQuestionController {
       if (savedIds.length === 0) {
         return SuccessHandlerUtil.handleList(res, next, []);
       }
-      const all = await ExamQuestionService.list();
-      const byId = new Map(all.map((q) => [q.id, q]));
-      const rows = savedIds.map((id) => byId.get(id)).filter((v): v is NonNullable<typeof v> => Boolean(v));
+      const rows = await ExamQuestionService.listPackByIdsOrdered(savedIds);
       SuccessHandlerUtil.handleList(res, next, rows);
     } catch (e) {
       next(e);

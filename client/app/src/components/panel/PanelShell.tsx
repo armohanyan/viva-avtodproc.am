@@ -72,7 +72,7 @@ export function PanelShell({
 		typeof headerTrailing === "function" ? headerTrailing(ctx) : headerTrailing;
 
 	return (
-		<div className="flex h-[100dvh] overflow-hidden bg-background">
+		<div className="fixed inset-0 flex h-[100dvh] overflow-hidden bg-background">
 			<aside className={asideClass[sidebarSurface]}>{renderSidebar(ctx)}</aside>
 			<div className="flex flex-col flex-1 min-w-0 min-h-0 lg:pl-64">
 				<header className="bg-card border-b border-border px-3 sm:px-6 min-h-14 h-14 sm:h-16 sm:min-h-16 flex items-center justify-between gap-2 shrink-0 z-20">

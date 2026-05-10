@@ -20,6 +20,7 @@ import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-h
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
+import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 
 const timeSlots = [
   "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
@@ -125,6 +126,7 @@ type StudentPracticalBookingCreateResponse = {
   maxHoldExtensions: number;
   paymentRequiredNow: boolean;
   paymentRequiredAt?: string | null;
+  coveredByPrepaidCredits?: boolean;
 };
 
 function formatCountdownMmSs(isoDeadline: string): string {
@@ -195,6 +197,7 @@ export default function LessonBookingCalendar({
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
+  const { refreshEntitlements } = useStudentEntitlements();
   const locale = localeFromLang(lang);
   const [weekOffset, setWeekOffset] = useState(0);
   /** Student: multiple hour starts on the same calendar date (must be consecutive on confirm). */
@@ -630,6 +633,7 @@ export default function LessonBookingCalendar({
         setBookingFlowDone(false);
         setConfirmed(true);
         setBusySlotsRefreshKey((k) => k + 1);
+        await refreshEntitlements();
         showToast(t("bookingCreatedToast"), "success");
       } catch (e) {
         showToast(getApiErrorMessage(e), "error");
@@ -708,7 +712,12 @@ export default function LessonBookingCalendar({
         : true;
 
   const studentPaymentStepActive =
-    mode === "student" && confirmed && studentPaySession && !serverPaidConfirmed && !bookingFlowDone;
+    mode === "student" &&
+    confirmed &&
+    studentPaySession &&
+    !studentPaySession.coveredByPrepaidCredits &&
+    !serverPaidConfirmed &&
+    !bookingFlowDone;
 
   const showPendingBookingCallout =
     mode === "student" && pendingBookingBlocksNew && !studentPaymentStepActive;
@@ -722,6 +731,7 @@ export default function LessonBookingCalendar({
       });
       setServerPaidConfirmed(true);
       setBusySlotsRefreshKey((k) => k + 1);
+      await refreshEntitlements();
       showToast(t("bookingPaymentCompletedToast"), "success");
       return true;
     } catch (e) {
@@ -1108,7 +1118,18 @@ export default function LessonBookingCalendar({
                     </p>
                   ) : null}
                   {!serverPaidConfirmed && mode === "student" ? (
-                    <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">{t("bookingPendingPayLaterReminder")}</p>
+                    studentPaySession?.coveredByPrepaidCredits ? (
+                      <div className="mt-2 space-y-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-2 text-left">
+                        <p className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-relaxed">
+                          {t("bookingCoveredByPackageLabel")}
+                        </p>
+                        <p className="text-[11px] text-emerald-800/90 dark:text-emerald-300/90 leading-relaxed">
+                          {t("bookingNoPaymentRequiredLabel")}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">{t("bookingPendingPayLaterReminder")}</p>
+                    )
                   ) : null}
                   <Button variant="outline" size="sm" className="mt-4 w-full text-xs" onClick={resetBooking}>
                     {t("bookAnother")}

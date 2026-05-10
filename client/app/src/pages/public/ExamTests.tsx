@@ -10,13 +10,13 @@ import {
   THEMATIC_TOPIC_TITLE_KEYS,
 } from "src/data/thematicTopics";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
-import { useExamQuestionPool } from "src/modules/exam/useExamQuestionPool";
 import { ArrowUpRight, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
 import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
+import { vivaApiJson } from "src/lib/vivaApi";
 
 export default function ExamTests() {
   const { t } = useLang();
@@ -37,26 +37,30 @@ export default function ExamTests() {
   const [thematicCardQuestionIds, setThematicCardQuestionIds] = useState<string[][]>(
     () => defaultExamQuestionMeta().thematicCardQuestionIds,
   );
+  const [colorTopicCountFallback, setColorTopicCountFallback] = useState<number | null>(null);
 
-  const pool = useExamQuestionPool();
+  const isGenericTopicTitle = (title: string): boolean => /^(Թեմա|Тема|Theme)\s*\d+$/i.test(title.trim());
 
   const topics = useMemo(
     () =>
       THEMATIC_TOPIC_IDS.map((topicId, i) => {
-        const validIds = new Set(pool.map((q) => q.id));
-        const total = (thematicCardQuestionIds[i] ?? []).filter((id) => validIds.has(id)).length;
-        const isFree = topicId === "5";
+        const topicSlotId = String(i + 1);
+        const totalFromMeta = (thematicCardQuestionIds[i] ?? []).length;
+        const total = topicId === "5" && totalFromMeta === 0 && colorTopicCountFallback != null ? colorTopicCountFallback : totalFromMeta;
+        const isFree = topicSlotId === "11";
+        const titleFromMeta = thematicCardTitles[i]?.trim() ?? "";
+        const fallbackTitle = t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey);
 
-      return {
+        return {
           iconSrc: THEMATIC_TOPIC_ICON[topicId],
-          title: thematicCardTitles[i] || t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey),
-          topicId,
+          title: !titleFromMeta || isGenericTopicTitle(titleFromMeta) ? fallbackTitle : titleFromMeta,
+          topicId: topicSlotId,
           total,
           isFree,
-          href: isFree ? `/thematic-questions/quiz/topics?topic=${topicId}` : lockedTopicHref,
+          href: isFree ? `/thematic-questions/quiz/topics?topic=${topicSlotId}` : lockedTopicHref,
         };
       }),
-    [pool, t, lockedTopicHref, thematicCardQuestionIds, thematicCardTitles],
+    [t, lockedTopicHref, thematicCardQuestionIds, thematicCardTitles, colorTopicCountFallback],
   );
 
   const steps = [
@@ -69,6 +73,26 @@ export default function ExamTests() {
     setStats(getExamStats());
     return subscribeExamStatsChanged(() => setStats(getExamStats()));
   }, []);
+
+  useEffect(() => {
+    const colorIndex = THEMATIC_TOPIC_IDS.indexOf("5");
+    const colorCount = colorIndex >= 0 ? (thematicCardQuestionIds[colorIndex] ?? []).length : 0;
+    if (colorCount > 0) {
+      setColorTopicCountFallback(null);
+      return;
+    }
+    let mounted = true;
+    void vivaApiJson<Array<{ id: string }>>("/exam-questions/pack/thematic/11")
+      .then((rows) => {
+        if (mounted) setColorTopicCountFallback(Array.isArray(rows) ? rows.length : 0);
+      })
+      .catch(() => {
+        if (mounted) setColorTopicCountFallback(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [thematicCardQuestionIds]);
 
   useEffect(() => {
     let mounted = true;
@@ -87,15 +111,12 @@ export default function ExamTests() {
     };
   }, []);
 
-  const totalQuestions = useMemo(
-    () => pool.filter((q) => q.category === "rules" || q.category === "safety").length,
-    [pool],
-  );
+  const totalQuestions = useMemo(() => topics.reduce((sum, topic) => sum + topic.total, 0), [topics]);
   const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);
   const progressPct = useMemo(() => {
     if (totalQuestions <= 0) return 0;
     return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
-  }, [stats.answered]);
+  }, [stats.answered, totalQuestions]);
   const activeTopic = stats.activeSession ? topicById[stats.activeSession.topicId] : undefined;
 
   return (
@@ -175,30 +196,6 @@ export default function ExamTests() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 mt-3">
-              <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-                <p className="text-xs text-muted-foreground">{t("examTestsStatAttempts")}</p>
-                <p className="text-sm font-semibold text-foreground mt-1">{stats.attempts}</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-                <p className="text-xs text-muted-foreground">{t("examTestsStatBest")}</p>
-                <p className="text-sm font-semibold text-foreground mt-1">{stats.bestPct}%</p>
-                {stats.activeSession && activeTopic && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {stats.topicStats[activeTopic.topicId]?.bestCorrect ?? 0}/{stats.topicStats[activeTopic.topicId]?.bestAnswered ?? 0}
-                  </p>
-                )}
-              </div>
-              <div className="rounded-lg border border-border/60 bg-background/60 p-3">
-                <p className="text-xs text-muted-foreground">{t("examTestsStatLast")}</p>
-                <p className="text-sm font-semibold text-foreground mt-1">{stats.lastPct}%</p>
-                {stats.activeSession && activeTopic && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {stats.topicStats[activeTopic.topicId]?.lastCorrect ?? 0}/{stats.topicStats[activeTopic.topicId]?.lastAnswered ?? 0}
-                  </p>
-                )}
-              </div>
-            </div>
           </Card>
 
           <div className="flex justify-end mb-3">
@@ -234,7 +231,11 @@ export default function ExamTests() {
                           topic.isFree ? "bg-amber-50 border-amber-200" : "bg-muted/50 border-border"
                         }`}
                       >
-                        <img src={topic.iconSrc} alt={topic.title} className="w-5 h-5" />
+                        {topic.iconSrc ? (
+                          <img src={topic.iconSrc} alt="" className="w-5 h-5" />
+                        ) : (
+                          <span className="sr-only">{topic.title}</span>
+                        )}
                       </div>
 
                       <div className="min-w-0 flex-1 pr-2">

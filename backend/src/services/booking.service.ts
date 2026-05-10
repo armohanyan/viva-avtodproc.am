@@ -201,10 +201,11 @@ export type StudentPaidBookingCreateDto = {
   id: number;
   totalPriceAmd: number;
   status: BookingStatus;
-  holdExpiresAt: string;
+  holdExpiresAt: string | null;
   holdExtensionCount: number;
   maxHoldExtensions: number;
-  paymentRequiredNow: true;
+  paymentRequiredNow: boolean;
+  coveredByPrepaidCredits: boolean;
 };
 
 export type AdminPackageAtomicCreateDto = {
@@ -593,6 +594,16 @@ async function consumePackageLessonCreditsInTx(input: {
   };
 }
 
+function isPackageCoverageUnavailableError(e: unknown): boolean {
+  if (!(e instanceof InputValidationError)) return false;
+  const msg = String((e as { message?: string }).message ?? '').toLowerCase();
+  return (
+    msg.includes('no active package credits') ||
+    msg.includes('does not include this lesson type') ||
+    msg.includes('not enough package lessons remaining')
+  );
+}
+
 /** Ends a student booking, frees slots, optionally records a refund line when the student had paid. */
 async function finalizePracticalCancellationInTx(opts: {
   row: Booking;
@@ -807,14 +818,44 @@ export default class BookingService {
     totalPriceAmd: number;
     prepaidMeta?: Record<string, unknown> | null;
     createSlotRows?: boolean;
+    tryConsumePackageCredits?: boolean;
   }): Promise<StudentPaidBookingCreateDto> {
     await BookingService.assertStudentHasNoPendingBooking(input.studentUserId);
     const dateIso = input.dateIso.slice(0, 10);
     const holdExp = new Date(Date.now() + PAYMENT_HOLD_MS);
     const exclusiveEnd = exclusiveEndFromSortedStarts(input.sortedSlots);
     let createdId = 0;
+    let coveredByPrepaidCredits = false;
+    let holdExpiresAt: string | null = holdExp.toISOString();
+    let status: BookingStatus = 'pending';
+    let totalPriceAmd = input.totalPriceAmd;
     try {
       await sequelize.transaction(async (transaction) => {
+        const prepaidBase = input.prepaidMeta ?? null;
+        let prepaidMeta = prepaidBase;
+        if (input.tryConsumePackageCredits === true) {
+          try {
+            const consumedMeta = await consumePackageLessonCreditsInTx({
+              studentUserId: input.studentUserId,
+              lessonType: input.lessonType,
+              slotCount: input.sortedSlots.length,
+              transaction,
+            });
+            prepaidMeta = prepaidBase
+              ? ({ ...(prepaidBase as Record<string, unknown>), ...(consumedMeta as Record<string, unknown>) } as Record<
+                  string,
+                  unknown
+                >)
+              : consumedMeta;
+          } catch (e) {
+            if (!isPackageCoverageUnavailableError(e)) throw e;
+            prepaidMeta = prepaidBase;
+          }
+        }
+        coveredByPrepaidCredits = prepaidMeta != null;
+        status = coveredByPrepaidCredits ? 'confirmed' : 'pending';
+        holdExpiresAt = coveredByPrepaidCredits ? null : holdExp.toISOString();
+        totalPriceAmd = coveredByPrepaidCredits ? 0 : input.totalPriceAmd;
         const created = await Booking.create(
           {
             studentUserId: input.studentUserId,
@@ -823,14 +864,14 @@ export default class BookingService {
             dateIso,
             time: input.sortedSlots[0],
             endTime: exclusiveEnd,
-            totalPriceAmd: input.totalPriceAmd,
+            totalPriceAmd,
             lessonType: input.lessonType,
-            status: 'pending',
-            paidAt: null,
-            holdExpiresAt: holdExp,
-            holdExtensionCount: 0,
-            prepaidMeta: input.prepaidMeta ?? null,
-            paymentStatus: 'unpaid',
+            status,
+            paidAt: coveredByPrepaidCredits ? new Date() : null,
+            holdExpiresAt: coveredByPrepaidCredits ? null : holdExp,
+            holdExtensionCount: coveredByPrepaidCredits ? 0 : 0,
+            prepaidMeta,
+            paymentStatus: coveredByPrepaidCredits ? 'paid' : 'unpaid',
             paymentRequiredAt: null,
           },
           { transaction },
@@ -854,14 +895,18 @@ export default class BookingService {
       }
       throw e;
     }
+    if (coveredByPrepaidCredits) {
+      void BookingNotificationService.onBookingConfirmed(createdId).catch(() => {});
+    }
     return {
       id: createdId,
-      totalPriceAmd: input.totalPriceAmd,
-      status: 'pending',
-      holdExpiresAt: holdExp.toISOString(),
+      totalPriceAmd,
+      status,
+      holdExpiresAt,
       holdExtensionCount: 0,
       maxHoldExtensions: MAX_PAYMENT_HOLD_EXTENSIONS,
-      paymentRequiredNow: true,
+      paymentRequiredNow: !coveredByPrepaidCredits,
+      coveredByPrepaidCredits,
     };
   }
 
@@ -1410,6 +1455,7 @@ export default class BookingService {
       sortedSlots: sorted,
       totalPriceAmd,
       prepaidMeta: null,
+      tryConsumePackageCredits: true,
     });
   }
 
@@ -1485,6 +1531,7 @@ export default class BookingService {
       totalPriceAmd,
       prepaidMeta: { theoryCohortId: cohort.id },
       createSlotRows: false,
+      tryConsumePackageCredits: true,
     });
   }
 
