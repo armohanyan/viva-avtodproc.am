@@ -77,12 +77,16 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
   const testimonials = useMemo(() => {
     if (!mkt?.testimonials?.length) return [];
-    return mkt.testimonials.map((x) => ({
-      name: x.authorName.trim() || t("roleStudent"),
-      text: x.quote.trim(),
-      rating: Math.min(5, Math.max(1, Math.round(Number(x.rating) || 5))),
-    }));
-  }, [mkt, t]);
+    return mkt.testimonials.map((x) => {
+      const nameRaw = x.authorName[lang] || x.authorName.am || x.authorName.ru || x.authorName.en || "";
+      const textRaw = x.quote[lang] || x.quote.am || x.quote.ru || x.quote.en || "";
+      return {
+        name: nameRaw.trim() || t("roleStudent"),
+        text: textRaw.trim(),
+        rating: Math.min(5, Math.max(1, Math.round(Number(x.rating) || 5))),
+      };
+    });
+  }, [mkt, t, lang]);
 
   const visibleTestimonials = useMemo(() => testimonials.filter((x) => x.text.length > 0), [testimonials]);
 

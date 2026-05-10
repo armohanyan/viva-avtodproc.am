@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Driving school hero illustration">
+  <defs>
+    <linearGradient id="accent" x1="180" y1="70" x2="1030" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f48633" stop-opacity="0.95" />
+      <stop offset="1" stop-color="#e28d51" stop-opacity="0.25" />
+    </linearGradient>
+    <linearGradient id="wire" x1="200" y1="120" x2="980" y2="520" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08" />
+    </linearGradient>
+  </defs>
+
+  <!-- Road -->
+  <path
+    d="M 380 600 L 820 600 L 690 290 Q 660 240 610 240 Q 560 240 530 290 Z"
+    fill="#000000"
+    opacity="0.28"
+  />
+  <path d="M 565 295 L 520 600" stroke="#ffffff" stroke-opacity="0.26" stroke-width="7" stroke-linecap="round" stroke-dasharray="18 14" />
+  <path d="M 635 295 L 690 600" stroke="#ffffff" stroke-opacity="0.16" stroke-width="7" stroke-linecap="round" stroke-dasharray="18 14" />
+
+  <!-- Safety/School markers -->
+  <g opacity="0.9">
+    <path d="M 480 260 L 560 220 L 620 245 L 540 285 Z" fill="url(#wire)" opacity="0.35" />
+    <path d="M 740 260 L 810 230 L 860 255 L 790 290 Z" fill="url(#wire)" opacity="0.25" />
+  </g>
+
+  <!-- Car -->
+  <g opacity="0.98">
+    <path
+      d="M 560 340
+         C 590 300 640 280 705 280
+         L 775 280
+         C 820 280 855 305 868 345
+         L 884 400
+         C 889 420 876 440 855 440
+         L 565 440
+         C 545 440 532 425 536 407
+         Z"
+      fill="url(#accent)"
+      opacity="0.85"
+    />
+    <path
+      d="M 610 305
+         C 635 290 665 282 705 282
+         L 735 282
+         C 760 282 787 292 805 308
+         L 820 338
+         L 595 338
+         Z"
+      fill="#ffffff"
+      opacity="0.12"
+    />
+    <path d="M 585 440 L 865 440" stroke="#ffffff" stroke-opacity="0.18" stroke-width="10" stroke-linecap="round" />
+    <path d="M 620 365 C 650 350 690 350 720 365" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="6" stroke-linecap="round" />
+
+    <circle cx="630" cy="460" r="46" fill="#000000" opacity="0.45" />
+    <circle cx="630" cy="460" r="34" fill="#ffffff" opacity="0.11" />
+    <circle cx="825" cy="460" r="46" fill="#000000" opacity="0.45" />
+    <circle cx="825" cy="460" r="34" fill="#ffffff" opacity="0.11" />
+
+    <path d="M 585 442 C 615 448 655 448 690 442" stroke="#ffffff" stroke-opacity="0.18" stroke-width="6" stroke-linecap="round" fill="none" />
+    <path d="M 750 442 C 790 448 820 448 850 442" stroke="#ffffff" stroke-opacity="0.14" stroke-width="6" stroke-linecap="round" fill="none" />
+  </g>
+
+  <!-- Steering wheel (learning vibe) -->
+  <g transform="translate(820,135)" opacity="0.9">
+    <circle cx="0" cy="0" r="62" fill="#000000" opacity="0.18" />
+    <circle cx="0" cy="0" r="62" fill="none" stroke="url(#wire)" stroke-width="10" stroke-linecap="round" />
+    <path d="M -62 0 L 62 0" stroke="url(#wire)" stroke-width="10" stroke-linecap="round" opacity="0.55" />
+    <path d="M 0 -62 L 0 62" stroke="url(#wire)" stroke-width="10" stroke-linecap="round" opacity="0.35" />
+    <circle cx="0" cy="0" r="18" fill="#ffffff" opacity="0.16" />
+  </g>
+
+  <!-- Open book (theory) -->
+  <g transform="translate(170,360)" opacity="0.9">
+    <path d="M 0 60 C 50 30 110 30 160 60 L 160 175 C 110 145 50 145 0 175 Z" fill="#ffffff" opacity="0.10" />
+    <path d="M 160 60 C 210 30 270 30 320 60 L 320 175 C 270 145 210 145 160 175 Z" fill="#ffffff" opacity="0.07" />
+    <path d="M 160 60 L 160 175" stroke="url(#wire)" stroke-width="8" stroke-linecap="round" opacity="0.35" />
+    <path d="M 40 105 L 120 105" stroke="url(#wire)" stroke-width="7" stroke-linecap="round" opacity="0.25" />
+    <path d="M 200 105 L 280 105" stroke="url(#wire)" stroke-width="7" stroke-linecap="round" opacity="0.22" />
+  </g>
+</svg>
+

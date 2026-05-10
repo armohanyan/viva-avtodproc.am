@@ -2,7 +2,6 @@
 
 import { useLang } from "src/lib/i18n";
 import { Button } from "src/components/ui/button";
-import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { CountUpText, Reveal } from "src/lib/motion";
 import InstructorCard from "src/components/InstructorCard";
@@ -11,9 +10,6 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppModal } from "src/components/AppModal";
 import {
-  Car,
-  BookOpen,
-  Award,
   Star,
   ArrowRight,
   CheckCircle2,
@@ -36,18 +32,18 @@ import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { HomeServicesBlock } from "src/views/public/Services";
 
 function telHrefFromListedPhone(phone: string): string {
   const compact = phone.replace(/[^\d+]/g, "");
   return compact ? `tel:${compact}` : "tel:";
 }
 
-const DEFAULT_HOME_INTRO_TITLE = "Մեր մասին";
 const DEFAULT_HOME_INTRO_DESCRIPTION =
   "Viva ավտոդպրոցը օգնում է ուսանողներին սովորել անվտանգ, վստահ և ժամանակակից մեթոդներով։ Մեր նպատակն է պատրաստել պատասխանատու վարորդներ՝ ապահովելով որակյալ տեսական և գործնական ուսուցում։";
 
 export default function Home() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { MarketingLink, panelHref } = useAppNavigation();
   const { branches } = useBranches();
   const { cities } = useCities();
@@ -72,15 +68,19 @@ export default function Home() {
   const testimonials = useMemo(() => {
     if (!mkt?.testimonials?.length) return [];
 
-    return mkt.testimonials.map((x) => ({ name: x.authorName, text: x.quote, rating: x.rating }));
-  }, [mkt]);
+    return mkt.testimonials.map((x) => ({
+      name: x.authorName[lang] || x.authorName.am || x.authorName.ru || x.authorName.en || "",
+      text: x.quote[lang] || x.quote.am || x.quote.ru || x.quote.en || "",
+      rating: x.rating,
+    }));
+  }, [mkt, lang]);
   const siteContent = mkt?.siteContent;
   const heroBackgroundImage = sameOriginStaffUploadUrl(siteContent?.homeHeroBackgroundImage) ?? "/home-hero-2.svg";
   const ownerPhoto = sameOriginStaffUploadUrl(siteContent?.ownerPhoto);
-  const introTitle = siteContent?.homeIntroTitle?.trim() || DEFAULT_HOME_INTRO_TITLE;
-  const introDescription = siteContent?.homeIntroDescription?.trim() || DEFAULT_HOME_INTRO_DESCRIPTION;
-  const ownerName = siteContent?.ownerName?.trim() || "";
-  const ownerPosition = siteContent?.ownerPosition?.trim() || "";
+  const introTitle = siteContent?.homeIntroTitle?.[lang]?.trim() || t("homeIntroDefaultTitle");
+  const introDescription = siteContent?.homeIntroDescription?.[lang]?.trim() || DEFAULT_HOME_INTRO_DESCRIPTION;
+  const ownerName = siteContent?.ownerName?.[lang]?.trim() || "";
+  const ownerPosition = siteContent?.ownerPosition?.[lang]?.trim() || "";
 
   type ContactTabKey = "phone" | "email" | "address" | "hours";
   const contactTabs = useMemo(() => {
@@ -142,12 +142,6 @@ export default function Home() {
     }
     return tabs;
   }, [mkt, t, branches]);
-
-  const services = [
-    { icon: Car, title: t("practicalLessons"), desc: t("practicalDesc"), color: "text-primary", bg: "bg-primary/10", href: "/services" },
-    { icon: BookOpen, title: t("theoryCourses"), desc: t("theoryDesc"), color: "text-primary", bg: "bg-primary/10", href: "/services" },
-    { icon: Award, title: t("licensePrep"), desc: t("licensePrepDesc"), color: "text-primary", bg: "bg-primary/10", href: "/services" },
-  ];
 
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
 
@@ -249,23 +243,29 @@ export default function Home() {
 
       <section className="py-14 bg-accent/35 border-y border-border/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
-            <div className="lg:col-span-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 lg:items-start">
+            <div className="lg:col-span-7">
               <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">{introTitle}</h2>
               <p className="text-muted-foreground leading-relaxed">{introDescription}</p>
             </div>
-            <div className="lg:col-span-4">
-              <div className="rounded-2xl border border-border bg-card p-4 flex items-center gap-4">
-                {ownerPhoto ? (
-                  <img src={ownerPhoto} alt={ownerName || "Owner"} className="h-20 w-20 rounded-xl object-cover border border-border" />
-                ) : (
-                  <div className="h-20 w-20 rounded-xl border border-dashed border-border bg-muted/30 flex items-center justify-center text-[10px] text-muted-foreground text-center px-2">
-                    Owner photo
-                  </div>
-                )}
-                <div>
-                  <p className="font-semibold text-foreground">{ownerName || "Viva Autoschool"}</p>
-                  {ownerPosition ? <p className="text-sm text-muted-foreground">{ownerPosition}</p> : null}
+            <div className="lg:col-span-5 max-w-md mx-auto lg:max-w-none lg:mx-0 w-full">
+              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                <div className="relative aspect-[4/5] sm:aspect-[3/4] lg:aspect-auto lg:min-h-[22rem] xl:min-h-[26rem] w-full bg-muted">
+                  {ownerPhoto ? (
+                    <img
+                      src={ownerPhoto}
+                      alt={ownerName || "Owner"}
+                      className="absolute inset-0 w-full h-full object-cover object-top"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center border-b border-dashed border-border bg-muted/40 text-xs text-muted-foreground text-center px-4">
+                      Owner photo
+                    </div>
+                  )}
+                </div>
+                <div className="p-5 sm:p-6">
+                  <p className="font-semibold text-lg text-foreground">{ownerName || "Viva Autoschool"}</p>
+                  {ownerPosition ? <p className="text-sm text-muted-foreground mt-1">{ownerPosition}</p> : null}
                 </div>
               </div>
             </div>
@@ -273,9 +273,9 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="py-20 bg-background">
+      <section className="py-16 sm:py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
+          <div className="text-center mb-8 sm:mb-10">
             <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
               {t("servicesEyebrow")}
             </p>
@@ -283,22 +283,7 @@ export default function Home() {
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">{t("servicesSub")}</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {services.map((s, i) => (
-              <MarketingLink key={i} href={s.href} className="block">
-                <Card className="p-6 hover:shadow-lg transition-shadow border-border group cursor-pointer flex flex-col h-full">
-                  <div className={`w-12 h-12 ${s.bg} rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform`}>
-                    <s.icon className={`w-6 h-6 ${s.color}`} />
-                  </div>
-                  <h3 className="font-semibold text-foreground mb-2">{s.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
-                  <div className={`flex items-center gap-1 mt-auto text-sm font-medium ${s.color}`}>
-                    {t("learnMore")} <ChevronRight className="w-4 h-4" />
-                  </div>
-                </Card>
-              </MarketingLink>
-            ))}
-          </div>
+          <HomeServicesBlock />
         </div>
       </section>
 

@@ -25,7 +25,8 @@ export default function Navbar() {
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
 
-  const isAdmin = location.startsWith("/admin");
+  const isAdmin = location.startsWith("/admin") || location.startsWith("/super-admin") || location.startsWith("/superadmin");
+  const isInstructor = location.startsWith("/instructor");
   const isDashboard = location.startsWith("/dashboard");
 
   const navLinks = PUBLIC_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
@@ -79,7 +80,7 @@ export default function Navbar() {
     }
     return out;
   }, [t, user]);
-  const isPublic = !isDashboard && !isAdmin;
+  const isPublic = !isDashboard && !isAdmin && !isInstructor;
   const panelLinkActive = (href: string) =>
     isAdmin && href === "/admin/learn"
       ? location === href || location.startsWith("/admin/learn/")
@@ -93,6 +94,15 @@ export default function Navbar() {
     location === href || (href === "/thematic-questions" && location.startsWith("/thematic-questions"));
 
   const isLearnActive = learnLinks.some((link) => learnLinkActive(link.href));
+  const mobilePublicLinks = navLinks.map((link) => ({
+    ...link,
+    isActive:
+      link.href === "/blogs"
+        ? blogNavActive
+        : link.href === "/thematic-questions"
+          ? learnLinkActive(link.href)
+          : location === link.href,
+  }));
 
   return (
     <nav className="sticky top-0 z-50 bg-background border-b border-border shadow-sm">
@@ -256,7 +266,7 @@ export default function Navbar() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2 border-l border-border pl-2 sm:gap-3 sm:pl-3">
-              <LangToggle />
+              {!isAdmin && !isInstructor && <LangToggle />}
               <ThemeToggle />
               {!isDashboard && !isAdmin && (
                 <>
@@ -302,86 +312,22 @@ export default function Navbar() {
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto px-3 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-3 pb-2">
-                    Navigation
-                  </div>
                   <div className="flex flex-col gap-1">
                     {isPublic ? (
-                      <>
-                        {publicRootLinks.slice(0, 2).map((l) => (
-                          <MarketingLink
-                            key={l.href}
-                            href={l.href}
-                            onClick={() => setOpen(false)}
-                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                              location === l.href
-                                ? "text-primary bg-primary/10"
-                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {l.label}
-                          </MarketingLink>
-                        ))}
-
-                        {offerLinks.map((l) => (
-                          <MarketingLink
-                            key={l.href}
-                            href={l.href}
-                            onClick={() => setOpen(false)}
-                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                              location === l.href
-                                ? "text-primary bg-primary/10"
-                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {l.label}
-                          </MarketingLink>
-                        ))}
-
-                        {learnLinks.map((l) => (
-                          <MarketingLink
-                            key={l.href}
-                            href={l.href}
-                            onClick={() => setOpen(false)}
-                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                              learnLinkActive(l.href)
-                                ? "text-primary bg-primary/10"
-                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {l.label}
-                          </MarketingLink>
-                        ))}
-
-                        {blogNav ? (
-                          <MarketingLink
-                            href={blogNav.href}
-                            onClick={() => setOpen(false)}
-                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                              blogNavActive
-                                ? "text-primary bg-primary/10"
-                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {blogNav.label}
-                          </MarketingLink>
-                        ) : null}
-
-                        {publicRootLinks.slice(2).map((l) => (
-                          <MarketingLink
-                            key={l.href}
-                            href={l.href}
-                            onClick={() => setOpen(false)}
-                            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                              location === l.href
-                                ? "text-primary bg-primary/10"
-                                : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {l.label}
-                          </MarketingLink>
-                        ))}
-                      </>
+                      mobilePublicLinks.map((l) => (
+                        <MarketingLink
+                          key={l.href}
+                          href={l.href}
+                          onClick={() => setOpen(false)}
+                          className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                            l.isActive
+                              ? "text-primary bg-primary/10"
+                              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                          }`}
+                        >
+                          {l.label}
+                        </MarketingLink>
+                      ))
                     ) : isAdmin ? (
                       adminNavEntries.map((l) =>
                         l.kind === "header" ? (
@@ -429,7 +375,7 @@ export default function Navbar() {
                 </div>
                 <div className="border-t border-border p-4 space-y-3 bg-background/60">
                   <div className="flex items-center gap-2 rounded-lg bg-accent/50 p-2">
-                    <LangToggle />
+                    {!isAdmin && !isInstructor && <LangToggle />}
                     <ThemeToggle />
                   </div>
                   {!isDashboard && !isAdmin && (

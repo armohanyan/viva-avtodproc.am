@@ -6,7 +6,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import type { MarketingAdminBundle, MarketingTestimonialAdmin } from "src/modules/marketing/types";
+import type { LocalizedText, MarketingAdminBundle, MarketingTestimonialAdmin } from "src/modules/marketing/types";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { Label } from "src/components/ui/label";
@@ -29,13 +29,27 @@ const DEFAULT_STAT_KEYS = Object.keys(MARKETING_STAT_LABEL_KEY);
 const MARKETING_IMAGE_MAX_BYTES = 800 * 1024;
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
 
-const DEFAULT_HOME_INTRO_TITLE = "Մեր մասին";
-const DEFAULT_HOME_INTRO_DESCRIPTION =
-  "Viva ավտոդպրոցը օգնում է ուսանողներին սովորել անվտանգ, վստահ և ժամանակակից մեթոդներով։ Մեր նպատակն է պատրաստել պատասխանատու վարորդներ՝ ապահովելով որակյալ տեսական և գործնական ուսուցում։";
-const DEFAULT_OWNER_NAME = "[Անուն Ազգանուն]";
-const DEFAULT_OWNER_POSITION = "Հիմնադիր / Տնօրեն";
-const DEFAULT_OWNER_DESCRIPTION =
-  "Մեր նպատակն է յուրաքանչյուր ուսանողի տալ ոչ միայն վարորդական գիտելիքներ, այլ նաև վստահություն, պատասխանատվություն և անվտանգ վարելու մշակույթ։";
+const DEFAULT_HOME_INTRO_TITLE: LocalizedText = { am: "Մեր մասին", ru: "О нас", en: "About Us" };
+const DEFAULT_HOME_INTRO_DESCRIPTION: LocalizedText = {
+  am: "Viva ավտոդպրոցը օգնում է ուսանողներին սովորել անվտանգ, վստահ և ժամանակակից մեթոդներով։ Մեր նպատակն է պատրաստել պատասխանատու վարորդներ՝ ապահովելով որակյալ տեսական և գործնական ուսուցում։",
+  ru: "Автошкола Viva помогает ученикам учиться безопасно, уверенно и современными методами. Наша цель — подготовить ответственных водителей с качественным теоретическим и практическим обучением.",
+  en: "Viva Autoschool helps students learn safely and confidently with modern methods. Our goal is to prepare responsible drivers through high-quality theory and practical training.",
+};
+const DEFAULT_OWNER_NAME: LocalizedText = { am: "[Անուն Ազգանուն]", ru: "[Имя Фамилия]", en: "[Full Name]" };
+const DEFAULT_OWNER_POSITION: LocalizedText = {
+  am: "Հիմնադիր / Տնօրեն",
+  ru: "Основатель / Директор",
+  en: "Founder / Director",
+};
+const DEFAULT_OWNER_DESCRIPTION: LocalizedText = {
+  am: "Մեր նպատակն է յուրաքանչյուր ուսանողի տալ ոչ միայն վարորդական գիտելիքներ, այլ նաև վստահություն, պատասխանատվություն և անվտանգ վարելու մշակույթ։",
+  ru: "Наша цель — дать каждому ученику не только знания по вождению, но и уверенность, ответственность и культуру безопасного вождения.",
+  en: "Our goal is to give every student not only driving knowledge, but also confidence, responsibility, and a culture of safe driving.",
+};
+
+const SITE_LANGS: Array<keyof LocalizedText> = ["am", "ru", "en"];
+const SITE_LANG_LABEL: Record<keyof LocalizedText, string> = { am: "Հայերեն", ru: "Ռուսերեն", en: "Անգլերեն" };
+const EMPTY_LOCALIZED: LocalizedText = { am: "", ru: "", en: "" };
 
 function normalizeStats(stats: MarketingAdminBundle["stats"]): MarketingAdminBundle["stats"] {
   const byKey = new Map(stats.map((row) => [row.key, row]));
@@ -47,6 +61,14 @@ function normalizeStats(stats: MarketingAdminBundle["stats"]): MarketingAdminBun
       sortOrder: existing?.sortOrder ?? index,
     };
   });
+}
+
+function normalizeLocalizedText(value: LocalizedText | null | undefined, fallback: LocalizedText): LocalizedText {
+  return {
+    am: value?.am ?? fallback.am,
+    ru: value?.ru ?? fallback.ru,
+    en: value?.en ?? fallback.en,
+  };
 }
 
 export default function AdminMarketing() {
@@ -71,18 +93,18 @@ export default function AdminMarketing() {
   const [socialWhatsapp, setSocialWhatsapp] = useState("");
   const [homeHeroBackgroundImage, setHomeHeroBackgroundImage] = useState("");
   const [ownerPhoto, setOwnerPhoto] = useState("");
-  const [homeIntroTitle, setHomeIntroTitle] = useState(DEFAULT_HOME_INTRO_TITLE);
-  const [homeIntroDescription, setHomeIntroDescription] = useState(DEFAULT_HOME_INTRO_DESCRIPTION);
-  const [ownerName, setOwnerName] = useState(DEFAULT_OWNER_NAME);
-  const [ownerPosition, setOwnerPosition] = useState(DEFAULT_OWNER_POSITION);
-  const [ownerDescription, setOwnerDescription] = useState(DEFAULT_OWNER_DESCRIPTION);
+  const [homeIntroTitle, setHomeIntroTitle] = useState<LocalizedText>(DEFAULT_HOME_INTRO_TITLE);
+  const [homeIntroDescription, setHomeIntroDescription] = useState<LocalizedText>(DEFAULT_HOME_INTRO_DESCRIPTION);
+  const [ownerName, setOwnerName] = useState<LocalizedText>(DEFAULT_OWNER_NAME);
+  const [ownerPosition, setOwnerPosition] = useState<LocalizedText>(DEFAULT_OWNER_POSITION);
+  const [ownerDescription, setOwnerDescription] = useState<LocalizedText>(DEFAULT_OWNER_DESCRIPTION);
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editTm, setEditTm] = useState<MarketingTestimonialAdmin | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [tmDraft, setTmDraft] = useState({
-    authorName: "",
-    quote: "",
+    authorName: { ...EMPTY_LOCALIZED },
+    quote: { ...EMPTY_LOCALIZED },
     rating: 5,
     sortOrder: 0,
     published: true,
@@ -106,11 +128,11 @@ export default function AdminMarketing() {
     setSocialWhatsapp(b.social.whatsapp ?? "");
     setHomeHeroBackgroundImage(sameOriginStaffUploadUrl(b.siteContent.homeHeroBackgroundImage) ?? "");
     setOwnerPhoto(sameOriginStaffUploadUrl(b.siteContent.ownerPhoto) ?? "");
-    setHomeIntroTitle(b.siteContent.homeIntroTitle || DEFAULT_HOME_INTRO_TITLE);
-    setHomeIntroDescription(b.siteContent.homeIntroDescription || DEFAULT_HOME_INTRO_DESCRIPTION);
-    setOwnerName(b.siteContent.ownerName || DEFAULT_OWNER_NAME);
-    setOwnerPosition(b.siteContent.ownerPosition || DEFAULT_OWNER_POSITION);
-    setOwnerDescription(b.siteContent.ownerDescription || DEFAULT_OWNER_DESCRIPTION);
+    setHomeIntroTitle(normalizeLocalizedText(b.siteContent.homeIntroTitle, DEFAULT_HOME_INTRO_TITLE));
+    setHomeIntroDescription(normalizeLocalizedText(b.siteContent.homeIntroDescription, DEFAULT_HOME_INTRO_DESCRIPTION));
+    setOwnerName(normalizeLocalizedText(b.siteContent.ownerName, DEFAULT_OWNER_NAME));
+    setOwnerPosition(normalizeLocalizedText(b.siteContent.ownerPosition, DEFAULT_OWNER_POSITION));
+    setOwnerDescription(normalizeLocalizedText(b.siteContent.ownerDescription, DEFAULT_OWNER_DESCRIPTION));
   }, []);
 
   const load = useCallback(async () => {
@@ -188,11 +210,31 @@ export default function AdminMarketing() {
           siteContent: {
             homeHeroBackgroundImage: homeHeroBackgroundImage.trim(),
             ownerPhoto: ownerPhoto.trim(),
-            homeIntroTitle: homeIntroTitle.trim(),
-            homeIntroDescription: homeIntroDescription.trim(),
-            ownerName: ownerName.trim(),
-            ownerPosition: ownerPosition.trim(),
-            ownerDescription: ownerDescription.trim(),
+            homeIntroTitle: {
+              am: homeIntroTitle.am.trim(),
+              ru: homeIntroTitle.ru.trim(),
+              en: homeIntroTitle.en.trim(),
+            },
+            homeIntroDescription: {
+              am: homeIntroDescription.am.trim(),
+              ru: homeIntroDescription.ru.trim(),
+              en: homeIntroDescription.en.trim(),
+            },
+            ownerName: {
+              am: ownerName.am.trim(),
+              ru: ownerName.ru.trim(),
+              en: ownerName.en.trim(),
+            },
+            ownerPosition: {
+              am: ownerPosition.am.trim(),
+              ru: ownerPosition.ru.trim(),
+              en: ownerPosition.en.trim(),
+            },
+            ownerDescription: {
+              am: ownerDescription.am.trim(),
+              ru: ownerDescription.ru.trim(),
+              en: ownerDescription.en.trim(),
+            },
           },
         },
       });
@@ -223,8 +265,8 @@ export default function AdminMarketing() {
 
   const openAdd = () => {
     setTmDraft({
-      authorName: "",
-      quote: "",
+      authorName: { ...EMPTY_LOCALIZED },
+      quote: { ...EMPTY_LOCALIZED },
       rating: 5,
       sortOrder: testimonials.length,
       published: true,
@@ -234,7 +276,7 @@ export default function AdminMarketing() {
 
   const submitTestimonial = async (e: FormEvent) => {
     e.preventDefault();
-    if (!tmDraft.authorName.trim() || !tmDraft.quote.trim()) {
+    if (!tmDraft.authorName.am.trim() || !tmDraft.quote.am.trim()) {
       showToast(t("fillRequired"), "error");
       return;
     }
@@ -243,8 +285,16 @@ export default function AdminMarketing() {
         await vivaApiJson(`/marketing/testimonials/${encodeURIComponent(editTm.id)}`, {
           method: "PATCH",
           body: {
-            authorName: tmDraft.authorName.trim(),
-            quote: tmDraft.quote.trim(),
+            authorName: {
+              am: tmDraft.authorName.am.trim(),
+              ru: tmDraft.authorName.ru.trim(),
+              en: tmDraft.authorName.en.trim(),
+            },
+            quote: {
+              am: tmDraft.quote.am.trim(),
+              ru: tmDraft.quote.ru.trim(),
+              en: tmDraft.quote.en.trim(),
+            },
             rating: tmDraft.rating,
             sortOrder: tmDraft.sortOrder,
             published: tmDraft.published,
@@ -255,8 +305,16 @@ export default function AdminMarketing() {
         await vivaApiJson("/marketing/testimonials", {
           method: "POST",
           body: {
-            authorName: tmDraft.authorName.trim(),
-            quote: tmDraft.quote.trim(),
+            authorName: {
+              am: tmDraft.authorName.am.trim(),
+              ru: tmDraft.authorName.ru.trim(),
+              en: tmDraft.authorName.en.trim(),
+            },
+            quote: {
+              am: tmDraft.quote.am.trim(),
+              ru: tmDraft.quote.ru.trim(),
+              en: tmDraft.quote.en.trim(),
+            },
             rating: tmDraft.rating,
             sortOrder: tmDraft.sortOrder,
             published: tmDraft.published,
@@ -288,6 +346,15 @@ export default function AdminMarketing() {
     return k ? t(k) : key;
   };
 
+  const localizedInputClass = "space-y-2 rounded-lg border border-border/60 p-3";
+  const updateLocalized = (
+    setter: (updater: (prev: LocalizedText) => LocalizedText) => void,
+    langKey: keyof LocalizedText,
+    value: string,
+  ) => {
+    setter((prev) => ({ ...prev, [langKey]: value }));
+  };
+
   if (loading) {
     return (
       <AdminLayout>
@@ -309,7 +376,7 @@ export default function AdminMarketing() {
           <TabsTrigger value="stats">{t("adminMarketingStatsSection")}</TabsTrigger>
           <TabsTrigger value="testimonials">{t("adminMarketingTestimonialsSection")}</TabsTrigger>
           <TabsTrigger value="contact">{t("adminMarketingContactSection")}</TabsTrigger>
-          <TabsTrigger value="website">Website Content</TabsTrigger>
+          <TabsTrigger value="website">Կայքի բովանդակություն</TabsTrigger>
         </TabsList>
 
         <TabsContent value="stats">
@@ -358,8 +425,8 @@ export default function AdminMarketing() {
                 <tbody className="divide-y divide-border">
                   {testimonials.map((row) => (
                     <tr key={row.id}>
-                      <td className="px-4 py-2 font-medium">{row.authorName}</td>
-                      <td className="px-4 py-2 text-muted-foreground max-w-md truncate">{row.quote}</td>
+                      <td className="px-4 py-2 font-medium">{row.authorName.am || row.authorName.ru || row.authorName.en}</td>
+                      <td className="px-4 py-2 text-muted-foreground max-w-md truncate">{row.quote.am || row.quote.ru || row.quote.en}</td>
                       <td className="px-4 py-2">{row.rating}</td>
                       <td className="px-4 py-2">
                         <div className="flex gap-1">
@@ -464,12 +531,12 @@ export default function AdminMarketing() {
         <TabsContent value="website">
           <form onSubmit={saveContact} className="max-w-3xl space-y-5 rounded-xl border border-border bg-card p-6">
             <div className="space-y-2">
-              <Label>Home Hero Background Image</Label>
+              <Label>Գլխավոր էջի հերո ֆոնի նկար</Label>
               {homeHeroBackgroundImage ? (
-                <img src={homeHeroBackgroundImage} alt="Home hero background" className="h-36 w-full rounded-lg object-cover border border-border bg-muted" />
+                <img src={homeHeroBackgroundImage} alt="Գլխավոր էջի հերո ֆոն" className="h-36 w-full rounded-lg object-cover border border-border bg-muted" />
               ) : (
                 <div className="h-24 rounded-lg border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
-                  No uploaded hero image. Default hero background will be used.
+                  Բեռնված հերո նկար չկա։ Կօգտագործվի լռելյայն ֆոնը։
                 </div>
               )}
               <div className="flex gap-2">
@@ -484,31 +551,49 @@ export default function AdminMarketing() {
                   }}
                 />
                 <Button type="button" variant="outline" onClick={() => setHomeHeroBackgroundImage("")}>
-                  Remove
+                  Հեռացնել
                 </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Home intro title</Label>
-              <Input className="h-10" value={homeIntroTitle} onChange={(e) => setHomeIntroTitle(e.target.value)} />
+              <Label>Գլխավոր էջի ներածական վերնագիր</Label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {SITE_LANGS.map((langKey) => (
+                  <div key={`homeIntroTitle-${langKey}`} className={localizedInputClass}>
+                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Input
+                      className="h-10"
+                      value={homeIntroTitle[langKey]}
+                      onChange={(e) => updateLocalized(setHomeIntroTitle, langKey, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
-              <Label>Home intro description</Label>
-              <textarea
-                className={cn(textareaClass, "min-h-[120px]")}
-                value={homeIntroDescription}
-                onChange={(e) => setHomeIntroDescription(e.target.value)}
-              />
+              <Label>Գլխավոր էջի ներածական նկարագրություն</Label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {SITE_LANGS.map((langKey) => (
+                  <div key={`homeIntroDescription-${langKey}`} className={localizedInputClass}>
+                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <textarea
+                      className={cn(textareaClass, "min-h-[120px]")}
+                      value={homeIntroDescription[langKey]}
+                      onChange={(e) => updateLocalized(setHomeIntroDescription, langKey, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Owner photo (shared on Home and About)</Label>
+              <Label>Հիմնադրի լուսանկար (օգտագործվում է «Գլխավոր» և «Մեր մասին» էջերում)</Label>
               {ownerPhoto ? (
-                <img src={ownerPhoto} alt="Owner" className="h-36 w-36 rounded-2xl object-cover border border-border bg-muted" />
+                <img src={ownerPhoto} alt="Հիմնադիր" className="h-36 w-36 rounded-2xl object-cover border border-border bg-muted" />
               ) : (
                 <div className="h-24 rounded-lg border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
-                  No owner photo uploaded.
+                  Հիմնադրի լուսանկար բեռնված չէ։
                 </div>
               )}
               <div className="flex gap-2">
@@ -523,32 +608,59 @@ export default function AdminMarketing() {
                   }}
                 />
                 <Button type="button" variant="outline" onClick={() => setOwnerPhoto("")}>
-                  Remove
+                  Հեռացնել
                 </Button>
               </div>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Owner name</Label>
-                <Input className="h-10" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Owner position</Label>
-                <Input className="h-10" value={ownerPosition} onChange={(e) => setOwnerPosition(e.target.value)} />
+            <div className="space-y-2">
+              <Label>Հիմնադրի անուն</Label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {SITE_LANGS.map((langKey) => (
+                  <div key={`ownerName-${langKey}`} className={localizedInputClass}>
+                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Input
+                      className="h-10"
+                      value={ownerName[langKey]}
+                      onChange={(e) => updateLocalized(setOwnerName, langKey, e.target.value)}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Owner message</Label>
-              <textarea
-                className={cn(textareaClass, "min-h-[120px]")}
-                value={ownerDescription}
-                onChange={(e) => setOwnerDescription(e.target.value)}
-              />
+              <Label>Հիմնադրի պաշտոն</Label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {SITE_LANGS.map((langKey) => (
+                  <div key={`ownerPosition-${langKey}`} className={localizedInputClass}>
+                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Input
+                      className="h-10"
+                      value={ownerPosition[langKey]}
+                      onChange={(e) => updateLocalized(setOwnerPosition, langKey, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Հիմնադրի ուղերձ</Label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {SITE_LANGS.map((langKey) => (
+                  <div key={`ownerDescription-${langKey}`} className={localizedInputClass}>
+                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <textarea
+                      className={cn(textareaClass, "min-h-[120px]")}
+                      value={ownerDescription[langKey]}
+                      onChange={(e) => updateLocalized(setOwnerDescription, langKey, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             <Button type="submit" className="bg-primary text-primary-foreground">
-              Save website content
+              Պահպանել կայքի բովանդակությունը
             </Button>
           </form>
         </TabsContent>
@@ -577,19 +689,43 @@ export default function AdminMarketing() {
         <form id={testimonialFormId} onSubmit={submitTestimonial} className="space-y-3">
           <div>
             <Label>{t("adminMarketingTestimonialAuthor")}</Label>
-            <Input
-              className="h-10 mt-1"
-              value={tmDraft.authorName}
-              onChange={(e) => setTmDraft((d) => ({ ...d, authorName: e.target.value }))}
-            />
+            <div className="mt-1 grid gap-3 sm:grid-cols-3">
+              {SITE_LANGS.map((langKey) => (
+                <div key={`testimonial-author-${langKey}`} className={localizedInputClass}>
+                  <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                  <Input
+                    className="h-10"
+                    value={tmDraft.authorName[langKey]}
+                    onChange={(e) =>
+                      setTmDraft((d) => ({
+                        ...d,
+                        authorName: { ...d.authorName, [langKey]: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           </div>
           <div>
             <Label>{t("adminMarketingTestimonialQuote")}</Label>
-            <textarea
-              className={cn(textareaClass, "mt-1 min-h-[120px]")}
-              value={tmDraft.quote}
-              onChange={(e) => setTmDraft((d) => ({ ...d, quote: e.target.value }))}
-            />
+            <div className="mt-1 grid gap-3 sm:grid-cols-3">
+              {SITE_LANGS.map((langKey) => (
+                <div key={`testimonial-quote-${langKey}`} className={localizedInputClass}>
+                  <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                  <textarea
+                    className={cn(textareaClass, "min-h-[120px]")}
+                    value={tmDraft.quote[langKey]}
+                    onChange={(e) =>
+                      setTmDraft((d) => ({
+                        ...d,
+                        quote: { ...d.quote, [langKey]: e.target.value },
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

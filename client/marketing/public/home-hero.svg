@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-label="Driving school illustration">
+  <defs>
+    <linearGradient id="strokeGlow" x1="120" y1="60" x2="1080" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.65" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.12" />
+    </linearGradient>
+  </defs>
+
+  <!-- Road (perspective) -->
+  <g fill="none" stroke="url(#strokeGlow)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M320 600 L880 600 L650 270 L450 270 Z" />
+    <path d="M450 270 L320 600" opacity="0.85" />
+    <path d="M650 270 L880 600" opacity="0.85" />
+    <path d="M610 360 L585 600" stroke-dasharray="18 14" opacity="0.9" />
+    <path d="M635 360 L610 600" stroke-dasharray="18 14" opacity="0.65" />
+  </g>
+
+  <!-- Steering wheel -->
+  <g fill="none" stroke="url(#strokeGlow)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="320" cy="230" r="92" />
+    <path d="M320 138 L320 54" opacity="0.7" />
+    <path d="M228 230 L144 230" opacity="0.7" />
+    <path d="M320 322 L320 406" opacity="0.7" />
+    <path d="M412 230 L496 230" opacity="0.7" />
+    <path d="M256 166 L384 294" opacity="0.35" />
+    <path d="M384 166 L256 294" opacity="0.35" />
+    <circle cx="320" cy="230" r="18" opacity="0.9" fill="none" />
+  </g>
+
+  <!-- Graduation cap -->
+  <g fill="none" stroke="url(#strokeGlow)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <path d="M130 255 L260 185 L390 255 L260 325 Z" />
+    <path d="M220 290 L220 345" opacity="0.7" />
+    <path d="M300 290 L300 345" opacity="0.7" />
+    <path d="M260 325 L260 385" opacity="0.65" />
+  </g>
+
+  <!-- Open book -->
+  <g fill="none" stroke="url(#strokeGlow)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    <path d="M105 430 C140 420, 185 420, 220 430 L220 520 C185 510, 140 510, 105 520 Z" />
+    <path d="M220 430 C255 420, 300 420, 335 430 L335 520 C300 510, 255 510, 220 520 Z" />
+    <path d="M220 430 L220 520" />
+    <path d="M140 465 L190 465" opacity="0.6" />
+    <path d="M250 465 L305 465" opacity="0.6" />
+  </g>
+
+  <!-- Car outline -->
+  <g fill="none" stroke="url(#strokeGlow)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
+    <path d="M650 360
+             C680 320, 720 300, 770 300
+             L860 300
+             C905 300, 940 325, 950 360
+             L960 395
+             C965 415, 955 430, 935 430
+             L670 430
+             C650 430, 635 415, 640 395
+             Z" />
+    <path d="M705 315 L805 315" opacity="0.55" />
+    <path d="M740 300 C755 275, 780 260, 820 260 C860 260, 890 278, 902 300" opacity="0.45" />
+    <path d="M690 395 L950 395" opacity="0.55" />
+
+    <circle cx="720" cy="440" r="48" />
+    <circle cx="920" cy="440" r="48" />
+    <path d="M720 392 L720 424" opacity="0.45" />
+    <path d="M920 392 L920 424" opacity="0.45" />
+  </g>
+</svg>
+

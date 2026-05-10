@@ -4,10 +4,15 @@ export const STAT_KEYS = ['years_exp', 'students', 'instructors', 'success_rate'
 export type StatKey = (typeof STAT_KEYS)[number];
 
 export type MarketingStatDto = { key: StatKey; value: string; sortOrder: number };
+export type LocalizedTextDto = {
+  am: string;
+  ru: string;
+  en: string;
+};
 export type MarketingTestimonialDto = {
   id: number;
-  authorName: string;
-  quote: string;
+  authorName: LocalizedTextDto;
+  quote: LocalizedTextDto;
   rating: number;
   sortOrder: number;
   published: boolean;
@@ -35,11 +40,11 @@ export type MarketingSocialDto = {
 export type MarketingSiteContentDto = {
   homeHeroBackgroundImage: string;
   ownerPhoto: string;
-  homeIntroTitle: string;
-  homeIntroDescription: string;
-  ownerName: string;
-  ownerPosition: string;
-  ownerDescription: string;
+  homeIntroTitle: LocalizedTextDto;
+  homeIntroDescription: LocalizedTextDto;
+  ownerName: LocalizedTextDto;
+  ownerPosition: LocalizedTextDto;
+  ownerDescription: LocalizedTextDto;
 };
 
 export type MarketingPublicBundle = {
@@ -68,10 +73,25 @@ const SK = {
   HOME_HERO_BG_IMAGE: 'home_hero_background_image',
   OWNER_PHOTO: 'owner_photo',
   HOME_INTRO_TITLE: 'home_intro_title',
+  HOME_INTRO_TITLE_AM: 'home_intro_title_am',
+  HOME_INTRO_TITLE_RU: 'home_intro_title_ru',
+  HOME_INTRO_TITLE_EN: 'home_intro_title_en',
   HOME_INTRO_DESCRIPTION: 'home_intro_description',
+  HOME_INTRO_DESCRIPTION_AM: 'home_intro_description_am',
+  HOME_INTRO_DESCRIPTION_RU: 'home_intro_description_ru',
+  HOME_INTRO_DESCRIPTION_EN: 'home_intro_description_en',
   OWNER_NAME: 'owner_name',
+  OWNER_NAME_AM: 'owner_name_am',
+  OWNER_NAME_RU: 'owner_name_ru',
+  OWNER_NAME_EN: 'owner_name_en',
   OWNER_POSITION: 'owner_position',
+  OWNER_POSITION_AM: 'owner_position_am',
+  OWNER_POSITION_RU: 'owner_position_ru',
+  OWNER_POSITION_EN: 'owner_position_en',
   OWNER_DESCRIPTION: 'owner_description',
+  OWNER_DESCRIPTION_AM: 'owner_description_am',
+  OWNER_DESCRIPTION_RU: 'owner_description_ru',
+  OWNER_DESCRIPTION_EN: 'owner_description_en',
 } as const;
 
 function parseJsonArray(raw: string | undefined): string[] {
@@ -86,6 +106,54 @@ function parseJsonArray(raw: string | undefined): string[] {
 
 function getSetting(map: Map<string, string>, key: string): string {
   return map.get(key)?.trim() ?? '';
+}
+
+function normalizeLocalizedText(value: unknown): LocalizedTextDto {
+  if (typeof value === 'string') {
+    return { am: value, ru: value, en: value };
+  }
+  if (!value || typeof value !== 'object') {
+    return { am: '', ru: '', en: '' };
+  }
+  const candidate = value as Partial<Record<'am' | 'ru' | 'en', unknown>>;
+  return {
+    am: typeof candidate.am === 'string' ? candidate.am : '',
+    ru: typeof candidate.ru === 'string' ? candidate.ru : '',
+    en: typeof candidate.en === 'string' ? candidate.en : '',
+  };
+}
+
+function parseLocalizedFromDb(raw: string): LocalizedTextDto {
+  const trimmed = raw.trim();
+  if (!trimmed) return { am: '', ru: '', en: '' };
+  if (!trimmed.startsWith('{')) {
+    return { am: trimmed, ru: trimmed, en: trimmed };
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const normalized = normalizeLocalizedText(parsed);
+    if (normalized.am || normalized.ru || normalized.en) return normalized;
+  } catch {
+    // fall through to legacy string value
+  }
+  return { am: trimmed, ru: trimmed, en: trimmed };
+}
+
+function toDbLocalizedText(value: LocalizedTextDto): string {
+  return JSON.stringify(normalizeLocalizedText(value));
+}
+
+function getLocalizedSetting(
+  map: Map<string, string>,
+  keys: { am: string; ru: string; en: string },
+  legacyKey?: string,
+): LocalizedTextDto {
+  const legacy = legacyKey ? getSetting(map, legacyKey) : '';
+  return {
+    am: getSetting(map, keys.am) || legacy,
+    ru: getSetting(map, keys.ru) || legacy,
+    en: getSetting(map, keys.en) || legacy,
+  };
 }
 
 async function loadSettingsMap(): Promise<Map<string, string>> {
@@ -131,11 +199,35 @@ async function readContactFooterSocial(): Promise<{
     siteContent: {
       homeHeroBackgroundImage: getSetting(m, SK.HOME_HERO_BG_IMAGE),
       ownerPhoto: getSetting(m, SK.OWNER_PHOTO),
-      homeIntroTitle: getSetting(m, SK.HOME_INTRO_TITLE),
-      homeIntroDescription: getSetting(m, SK.HOME_INTRO_DESCRIPTION),
-      ownerName: getSetting(m, SK.OWNER_NAME),
-      ownerPosition: getSetting(m, SK.OWNER_POSITION),
-      ownerDescription: getSetting(m, SK.OWNER_DESCRIPTION),
+      homeIntroTitle: getLocalizedSetting(
+        m,
+        { am: SK.HOME_INTRO_TITLE_AM, ru: SK.HOME_INTRO_TITLE_RU, en: SK.HOME_INTRO_TITLE_EN },
+        SK.HOME_INTRO_TITLE,
+      ),
+      homeIntroDescription: getLocalizedSetting(
+        m,
+        {
+          am: SK.HOME_INTRO_DESCRIPTION_AM,
+          ru: SK.HOME_INTRO_DESCRIPTION_RU,
+          en: SK.HOME_INTRO_DESCRIPTION_EN,
+        },
+        SK.HOME_INTRO_DESCRIPTION,
+      ),
+      ownerName: getLocalizedSetting(
+        m,
+        { am: SK.OWNER_NAME_AM, ru: SK.OWNER_NAME_RU, en: SK.OWNER_NAME_EN },
+        SK.OWNER_NAME,
+      ),
+      ownerPosition: getLocalizedSetting(
+        m,
+        { am: SK.OWNER_POSITION_AM, ru: SK.OWNER_POSITION_RU, en: SK.OWNER_POSITION_EN },
+        SK.OWNER_POSITION,
+      ),
+      ownerDescription: getLocalizedSetting(
+        m,
+        { am: SK.OWNER_DESCRIPTION_AM, ru: SK.OWNER_DESCRIPTION_RU, en: SK.OWNER_DESCRIPTION_EN },
+        SK.OWNER_DESCRIPTION,
+      ),
     },
   };
 }
@@ -151,8 +243,8 @@ function statRowToDto(r: MarketingStat): MarketingStatDto {
 function testimonialToDto(r: MarketingTestimonial): MarketingTestimonialDto {
   return {
     id: r.id,
-    authorName: r.authorName,
-    quote: r.quote,
+    authorName: parseLocalizedFromDb(r.authorName),
+    quote: parseLocalizedFromDb(r.quote),
     rating: r.rating,
     sortOrder: r.sortOrder,
     published: r.published,
@@ -195,15 +287,15 @@ export default class MarketingService {
   }
 
   static async createTestimonial(input: {
-    authorName: string;
-    quote: string;
+    authorName: LocalizedTextDto;
+    quote: LocalizedTextDto;
     rating?: number;
     sortOrder?: number;
     published?: boolean;
   }): Promise<MarketingTestimonialDto> {
     const row = await MarketingTestimonial.create({
-      authorName: input.authorName.trim(),
-      quote: input.quote.trim(),
+      authorName: toDbLocalizedText(input.authorName),
+      quote: toDbLocalizedText(input.quote),
       rating: Math.min(5, Math.max(1, input.rating ?? 5)),
       sortOrder: input.sortOrder ?? (await MarketingTestimonial.count()),
       published: input.published ?? true,
@@ -214,8 +306,8 @@ export default class MarketingService {
   static async updateTestimonial(
     id: number,
     patch: Partial<{
-      authorName: string;
-      quote: string;
+      authorName: LocalizedTextDto;
+      quote: LocalizedTextDto;
       rating: number;
       sortOrder: number;
       published: boolean;
@@ -224,8 +316,8 @@ export default class MarketingService {
     const row = await MarketingTestimonial.findByPk(id);
     if (!row) return null;
     await row.update({
-      ...(patch.authorName !== undefined ? { authorName: patch.authorName.trim() } : {}),
-      ...(patch.quote !== undefined ? { quote: patch.quote.trim() } : {}),
+      ...(patch.authorName !== undefined ? { authorName: toDbLocalizedText(patch.authorName) } : {}),
+      ...(patch.quote !== undefined ? { quote: toDbLocalizedText(patch.quote) } : {}),
       ...(patch.rating !== undefined
         ? { rating: Math.min(5, Math.max(1, Math.floor(patch.rating))) }
         : {}),
@@ -263,11 +355,26 @@ export default class MarketingService {
       { settingKey: SK.SOCIAL_WHATSAPP, valueText: social.whatsapp },
       { settingKey: SK.HOME_HERO_BG_IMAGE, valueText: siteContent.homeHeroBackgroundImage },
       { settingKey: SK.OWNER_PHOTO, valueText: siteContent.ownerPhoto },
-      { settingKey: SK.HOME_INTRO_TITLE, valueText: siteContent.homeIntroTitle },
-      { settingKey: SK.HOME_INTRO_DESCRIPTION, valueText: siteContent.homeIntroDescription },
-      { settingKey: SK.OWNER_NAME, valueText: siteContent.ownerName },
-      { settingKey: SK.OWNER_POSITION, valueText: siteContent.ownerPosition },
-      { settingKey: SK.OWNER_DESCRIPTION, valueText: siteContent.ownerDescription },
+      { settingKey: SK.HOME_INTRO_TITLE, valueText: siteContent.homeIntroTitle.am },
+      { settingKey: SK.HOME_INTRO_TITLE_AM, valueText: siteContent.homeIntroTitle.am },
+      { settingKey: SK.HOME_INTRO_TITLE_RU, valueText: siteContent.homeIntroTitle.ru },
+      { settingKey: SK.HOME_INTRO_TITLE_EN, valueText: siteContent.homeIntroTitle.en },
+      { settingKey: SK.HOME_INTRO_DESCRIPTION, valueText: siteContent.homeIntroDescription.am },
+      { settingKey: SK.HOME_INTRO_DESCRIPTION_AM, valueText: siteContent.homeIntroDescription.am },
+      { settingKey: SK.HOME_INTRO_DESCRIPTION_RU, valueText: siteContent.homeIntroDescription.ru },
+      { settingKey: SK.HOME_INTRO_DESCRIPTION_EN, valueText: siteContent.homeIntroDescription.en },
+      { settingKey: SK.OWNER_NAME, valueText: siteContent.ownerName.am },
+      { settingKey: SK.OWNER_NAME_AM, valueText: siteContent.ownerName.am },
+      { settingKey: SK.OWNER_NAME_RU, valueText: siteContent.ownerName.ru },
+      { settingKey: SK.OWNER_NAME_EN, valueText: siteContent.ownerName.en },
+      { settingKey: SK.OWNER_POSITION, valueText: siteContent.ownerPosition.am },
+      { settingKey: SK.OWNER_POSITION_AM, valueText: siteContent.ownerPosition.am },
+      { settingKey: SK.OWNER_POSITION_RU, valueText: siteContent.ownerPosition.ru },
+      { settingKey: SK.OWNER_POSITION_EN, valueText: siteContent.ownerPosition.en },
+      { settingKey: SK.OWNER_DESCRIPTION, valueText: siteContent.ownerDescription.am },
+      { settingKey: SK.OWNER_DESCRIPTION_AM, valueText: siteContent.ownerDescription.am },
+      { settingKey: SK.OWNER_DESCRIPTION_RU, valueText: siteContent.ownerDescription.ru },
+      { settingKey: SK.OWNER_DESCRIPTION_EN, valueText: siteContent.ownerDescription.en },
     ];
     for (const u of upserts) {
       await MarketingSetting.upsert(u, { conflictFields: ['settingKey'] });

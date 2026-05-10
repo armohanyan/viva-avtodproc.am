@@ -1,6 +1,8 @@
+export type LocalizedText = { am: string; ru: string; en: string };
+
 export type MarketingPublicDto = {
   stats: { key: string; value: string }[];
-  testimonials: { id: string; authorName: string; quote: string; rating: number }[];
+  testimonials: { id: string; authorName: LocalizedText; quote: LocalizedText; rating: number }[];
   contact: {
     phones: string[];
     emails: string[];
@@ -14,18 +16,18 @@ export type MarketingPublicDto = {
   siteContent: {
     homeHeroBackgroundImage: string;
     ownerPhoto: string;
-    homeIntroTitle: string;
-    homeIntroDescription: string;
-    ownerName: string;
-    ownerPosition: string;
-    ownerDescription: string;
+    homeIntroTitle: LocalizedText;
+    homeIntroDescription: LocalizedText;
+    ownerName: LocalizedText;
+    ownerPosition: LocalizedText;
+    ownerDescription: LocalizedText;
   };
 };
 
 export type MarketingTestimonialAdmin = {
   id: string;
-  authorName: string;
-  quote: string;
+  authorName: LocalizedText;
+  quote: LocalizedText;
   rating: number;
   sortOrder: number;
   published: boolean;

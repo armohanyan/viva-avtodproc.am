@@ -16,6 +16,7 @@ import { cityNameById, useCities } from "src/modules/cities";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { useMemo } from "react";
 import { apiFetch, apiV1Path, getApiErrorMessage } from "src/lib/api";
+import { MarketingSocialLinks, hasMarketingSocialLinks } from "src/components/MarketingSocialLinks";
 
 export default function Contact() {
   const { t } = useLang();
@@ -60,6 +61,7 @@ export default function Contact() {
   const showContactInfo = contactInfoRows.length > 0;
   const showBranches = branches.length > 0;
   const showRightColumn = showContactInfo || showBranches;
+  const showSocial = hasMarketingSocialLinks(mkt?.social);
 
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", subject: "", message: "" });
   const [loading, setLoading] = useState(false);
@@ -229,6 +231,15 @@ export default function Contact() {
               </Reveal>
             ) : null}
           </div>
+
+          {showSocial ? (
+            <Reveal delay={0.12}>
+              <div className="mt-14 pt-10 border-t border-border max-w-xl">
+                <h2 className="text-xl font-semibold text-foreground mb-4">{t("followUs")}</h2>
+                <MarketingSocialLinks social={mkt?.social} variant="page" />
+              </div>
+            </Reveal>
+          ) : null}
         </div>
       </section>
 

@@ -14,14 +14,13 @@ import {
 } from "src/modules/marketing/statLabels";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 
-const DEFAULT_OWNER_SECTION_TITLE = "Հիմնադիրի խոսքը";
 const DEFAULT_OWNER_NAME = "[Անուն Ազգանուն]";
 const DEFAULT_OWNER_POSITION = "Հիմնադիր / Տնօրեն";
 const DEFAULT_OWNER_DESCRIPTION =
   "Մեր նպատակն է յուրաքանչյուր ուսանողի տալ ոչ միայն վարորդական գիտելիքներ, այլ նաև վստահություն, պատասխանատվություն և անվտանգ վարելու մշակույթ։";
 
 export default function About() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const { data: mkt } = useMarketingPublic();
 
   const { storyStats, marketingStatByKey } = useMemo(() => {
@@ -49,9 +48,9 @@ export default function About() {
     { year: "2026", event: t("aboutMilestone2026").replace("{count}", graduateCountDisplay) },
   ];
   const ownerPhoto = sameOriginStaffUploadUrl(mkt?.siteContent.ownerPhoto);
-  const ownerName = mkt?.siteContent.ownerName?.trim() || DEFAULT_OWNER_NAME;
-  const ownerPosition = mkt?.siteContent.ownerPosition?.trim() || DEFAULT_OWNER_POSITION;
-  const ownerDescription = mkt?.siteContent.ownerDescription?.trim() || DEFAULT_OWNER_DESCRIPTION;
+  const ownerName = mkt?.siteContent.ownerName?.[lang]?.trim() || DEFAULT_OWNER_NAME;
+  const ownerPosition = mkt?.siteContent.ownerPosition?.[lang]?.trim() || DEFAULT_OWNER_POSITION;
+  const ownerDescription = mkt?.siteContent.ownerDescription?.[lang]?.trim() || DEFAULT_OWNER_DESCRIPTION;
 
   return (
     <div className="min-h-screen">
@@ -109,6 +108,37 @@ export default function About() {
         </div>
       </section>
 
+      {/* Founder / owner */}
+      <section className="py-20 bg-accent/30 border-y border-border/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold text-foreground">{t("aboutFounderSectionTitle")}</h2>
+          </div>
+          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="grid grid-cols-1 lg:grid-cols-12 lg:items-stretch">
+              <div className="relative lg:col-span-5 w-full bg-muted aspect-[4/5] sm:aspect-[16/10] lg:aspect-auto lg:min-h-[22rem] xl:min-h-[26rem] lg:h-full">
+                {ownerPhoto ? (
+                  <img
+                    src={ownerPhoto}
+                    alt={ownerName}
+                    className="absolute inset-0 w-full h-full object-cover object-top"
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center border-b lg:border-b-0 lg:border-r border-dashed border-border bg-muted/50 text-muted-foreground text-sm px-4 text-center">
+                    Owner photo
+                  </div>
+                )}
+              </div>
+              <div className="lg:col-span-7 p-6 sm:p-8 lg:p-10 xl:p-12 flex flex-col justify-center">
+                <h3 className="text-2xl sm:text-3xl font-bold text-foreground">{ownerName}</h3>
+                <p className="text-muted-foreground mt-1 text-base sm:text-lg">{ownerPosition}</p>
+                <p className="text-muted-foreground leading-relaxed mt-5">{ownerDescription}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Values */}
       <section className="py-20 bg-accent">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -148,41 +178,6 @@ export default function About() {
                   </div>
                 </Reveal>
               ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 bg-accent/30">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold text-foreground">{DEFAULT_OWNER_SECTION_TITLE}</h2>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-6 sm:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8 items-center">
-            <div className="md:col-span-4 flex justify-center">
-              {ownerPhoto ? (
-                <img src={ownerPhoto} alt={ownerName} className="h-56 w-56 rounded-2xl object-cover border border-border shadow-sm" />
-              ) : (
-                <div className="h-56 w-56 rounded-2xl border border-dashed border-border bg-muted/40 flex items-center justify-center text-muted-foreground text-sm">
-                  Owner photo
-                </div>
-              )}
-            </div>
-            <div className="md:col-span-8">
-              <p className="text-sm font-semibold text-primary mb-2">{DEFAULT_OWNER_SECTION_TITLE}</p>
-              <h3 className="text-2xl font-bold text-foreground">{ownerName}</h3>
-              <p className="text-muted-foreground mt-1">{ownerPosition}</p>
-              <p className="text-muted-foreground leading-relaxed mt-4">{ownerDescription}</p>
-              {storyStats.length > 0 ? (
-                <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {storyStats.slice(0, 4).map((s) => (
-                    <div key={s.label} className="rounded-xl border border-border bg-background px-3 py-2">
-                      <div className="font-semibold text-foreground">{s.value}</div>
-                      <div className="text-xs text-muted-foreground">{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
             </div>
           </div>
         </div>

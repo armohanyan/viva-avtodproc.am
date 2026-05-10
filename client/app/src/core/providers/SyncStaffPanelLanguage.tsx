@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useLang, type Lang } from "src/lib/i18n";
 
 /**
- * Admin and instructor UIs are Armenian-only. When the user enters these routes,
+ * Admin/super-admin and instructor UIs are Armenian-only. When the user enters these routes,
  * force global language to `am` and restore their previous choice when they leave.
  * (Nested context is not enough for every subtree / portal / timing edge case.)
  */
@@ -12,14 +12,18 @@ export function SyncStaffPanelLanguage(): null {
   const { lang, setLang } = useLang();
   const savedLangRef = useRef<Lang | null>(null);
   const langRef = useRef(lang);
+  const isStaffRoute =
+    location.startsWith("/admin") ||
+    location.startsWith("/super-admin") ||
+    location.startsWith("/superadmin") ||
+    location.startsWith("/instructor");
 
   useLayoutEffect(() => {
     langRef.current = lang;
   }, [lang]);
 
   useEffect(() => {
-    const staff = location.startsWith("/admin") || location.startsWith("/instructor");
-    if (staff) {
+    if (isStaffRoute) {
       if (savedLangRef.current === null) {
         savedLangRef.current = langRef.current;
       }
@@ -31,7 +35,7 @@ export function SyncStaffPanelLanguage(): null {
         setLang(prev);
       }
     }
-  }, [location, setLang]);
+  }, [isStaffRoute, setLang]);
 
   return null;
 }

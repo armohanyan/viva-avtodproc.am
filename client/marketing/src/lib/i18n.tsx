@@ -79,6 +79,8 @@ const en = {
   aboutTitle: "About Viva Driving School",
   aboutSub: "Helping drivers in Armenia get their license safely and confidently since 2010.",
   aboutEyebrow: "About Us",
+  homeIntroDefaultTitle: "About Us",
+  aboutFounderSectionTitle: "Founder Message",
   aboutText: "Viva Driving School is Armenia's leading driving education center. Our certified instructors provide personalized lessons tailored to each student's needs, whether you're a complete beginner or brushing up your skills.",
   aboutStoryParagraph2:
     "Founded in 2010, we have grown from a small family-run school to Armenia's largest and most trusted driving education center. Our fleet of 20+ modern vehicles and team of 18 certified instructors are ready to guide you every step of the way.",
@@ -132,6 +134,8 @@ const en = {
   refresherDesc: "For experienced drivers who want to build confidence or update their skills.",
   servicesIncludedTitle: "What's included:",
   servicesViewPackagesCta: "View Packages",
+  servicesPageLinkCta: "Full list of services",
+  servicesSwipeHint: "Swipe sideways for more",
 
   // Packages
   packagesTitle: "Choose Your Package",
@@ -1536,6 +1540,8 @@ const ru: typeof en = {
   aboutTitle: "О школе вождения Viva",
   aboutSub: "Помогаем водителям в Армении получить права безопасно и уверенно с 2010 года.",
   aboutEyebrow: "О нас",
+  homeIntroDefaultTitle: "О нас",
+  aboutFounderSectionTitle: "Слово основателя",
   aboutText: "Школа вождения Viva — ведущий учебный центр Армении. Наши сертифицированные инструкторы проводят персональные занятия, адаптированные под каждого студента.",
   aboutStoryParagraph2:
     "Основанная в 2010 году, наша автошкола выросла из небольшого семейного проекта в крупнейший и самый надежный центр обучения вождению в Армении. Наш автопарк из более чем 20 современных автомобилей и команда из 18 сертифицированных инструкторов готовы сопровождать вас на каждом этапе.",
@@ -1588,6 +1594,8 @@ const ru: typeof en = {
   refresherDesc: "Для опытных водителей, желающих повысить уверенность за рулём.",
   servicesIncludedTitle: "Что включено:",
   servicesViewPackagesCta: "Смотреть пакеты",
+  servicesPageLinkCta: "Все услуги подробнее",
+  servicesSwipeHint: "Свайпните в сторону",
 
   packagesTitle: "Выберите пакет",
   packagesSub: "Выберите пакет под свой график и цели.",
@@ -2982,6 +2990,8 @@ const am: typeof en = {
   aboutTitle: "Viva ավտոդպրոցի մասին",
   aboutSub: "2022 թվականից օգնում ենք Հայաստանի վարորդներին ստանալ վարորդական իրավունք անվտանգ և վստահ։",
   aboutEyebrow: "Մեր մասին",
+  homeIntroDefaultTitle: "Մեր մասին",
+  aboutFounderSectionTitle: "Հիմնադիրի խոսքը",
   aboutText: "ՎԻՎԱ Վարելու Դպրոցը Հայաստանի առաջատար վարորդական կրթական կենտրոնն է։ Մեր հավաստագրված ուսուցիչները տրամադրում են անհատականացված դասեր՝ հարմարեցված յուրաքանչյուր ուսանողի կարիքներին։",
   aboutStoryParagraph2:
     "Հիմնադրվելով 2022 թվականին` մենք փոքր ընտանեկան դպրոցի ձևաչափից դարձել ենք Հայաստանի ամենամեծ և վստահելի վարորդական կրթական կենտրոններից մեկը։ Մեր 20+ ժամանակակից մեքենաներից կազմված ավտոպարկը և 18 հավաստագրված ուսուցիչներից բաղկացած թիմը պատրաստ են ուղեկցել ձեզ յուրաքանչյուր փուլում։",
@@ -3034,6 +3044,8 @@ const am: typeof en = {
   refresherDesc: "Փորձառու վարորդների համար, ովքեր ցանկանում են վստահություն ձեռք բերել։",
   servicesIncludedTitle: "Ինչ է ներառված.",
   servicesViewPackagesCta: "Դիտել փաթեթները",
+  servicesPageLinkCta: "Ծառայությունների ամբողջական ցանկը",
+  servicesSwipeHint: "Շարժեք տողով՝ հաջորդը տեսնելու համար",
 
   packagesTitle: "Ընտրեք ձեր փաթեթը",
   packagesSub: "Ընտրեք փաթեթը ձեր գրաֆիկին և նպատակներին համապատասխան։",

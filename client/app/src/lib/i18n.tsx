@@ -79,6 +79,8 @@ const en = {
   aboutTitle: "About Viva Driving School",
   aboutSub: "Helping drivers in Armenia get their license safely and confidently since 2010.",
   aboutEyebrow: "About Us",
+  homeIntroDefaultTitle: "About Us",
+  aboutFounderSectionTitle: "Founder Message",
   aboutText: "Viva Driving School is Armenia's leading driving education center. Our certified instructors provide personalized lessons tailored to each student's needs, whether you're a complete beginner or brushing up your skills.",
   aboutStoryParagraph2:
     "Founded in 2010, we have grown from a small family-run school to Armenia's largest and most trusted driving education center. Our fleet of 20+ modern vehicles and team of 18 certified instructors are ready to guide you every step of the way.",
@@ -1504,6 +1506,8 @@ const ru: typeof en = {
   aboutTitle: "Об автошколе Viva",
   aboutSub: "Помогаем водителям в Армении получить права безопасно и уверенно с 2010 года.",
   aboutEyebrow: "О нас",
+  homeIntroDefaultTitle: "О нас",
+  aboutFounderSectionTitle: "Слово основателя",
   aboutText: "Автошкола Viva — ведущий учебный центр Армении. Наши сертифицированные инструкторы проводят персональные занятия, адаптированные под каждого ученика.",
   aboutStoryParagraph2:
     "Основанная в 2010 году, наша автошкола выросла из небольшого семейного проекта в крупнейший и самый надежный центр обучения вождению в Армении. Наш автопарк из более чем 20 современных автомобилей и команда из 18 сертифицированных инструкторов готовы сопровождать вас на каждом этапе.",
@@ -2943,6 +2947,8 @@ const am: typeof en = {
   aboutTitle: "Viva ավտոդպրոցի մասին",
   aboutSub: "2022 թվականից օգնում ենք Հայաստանի վարորդներին ձեռք բերել վարորդական իրավունք՝ ապահով և վստահ ուսուցման միջոցով։",
   aboutEyebrow: "Մեր մասին",
+  homeIntroDefaultTitle: "Մեր մասին",
+  aboutFounderSectionTitle: "Հիմնադիրի խոսքը",
   aboutText: "ՎԻՎԱ Վարելու Դպրոցը Հայաստանի առաջատար վարորդական ուսումնական կենտրոններից է։ Մեր հավաստագրված ուսուցիչները տրամադրում են անհատականացված դասընթացներ՝ հարմարեցված յուրաքանչյուր ուսանողի կարիքներին և մակարդակին։",
   aboutStoryParagraph2: "Հիմնադրվելով 2022 թվականին՝ մենք փոքր ընտանեկան նախաձեռնությունից դարձել ենք Հայաստանի ամենահուսալի և արագ զարգացող վարորդական կրթական կենտրոններից մեկը։ Մեր 20+ ժամանակակից մեքենաներից բաղկացած ավտոպարկը և 18 հավաստագրված ուսուցիչներից կազմված թիմը պատրաստ են աջակցել ձեզ ուսուցման յուրաքանչյուր փուլում։",
   aboutChecklistCertified: "Հավաստագրված է Տրանսպորտի նախարարության կողմից",
@@ -3924,7 +3930,7 @@ const am: typeof en = {
   // Public CTA / testimonials
   testimonialsEyebrow: "Վկայություններ",
   testimonialsTitle: "Ինչ են ասում մեր աշակերտները",
-  ctaReadyLicenseTitle: "Պատրաստե՞ք ձեր իրավունքին",
+  ctaReadyLicenseTitle: "Պատրաստե՞ք սկսել",
   ctaReadyLicenseSub: "Միացեք հազարավոր հաջողակ վարորդներին։ Ամրագրեք ձեր առաջին դասը և սկսեք ձեր ճանապարհը։",
 
   // Dashboard payments

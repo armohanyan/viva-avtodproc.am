@@ -42,14 +42,23 @@ const socialSchema = z.object({
   whatsapp: z.string(),
 });
 
+const localizedTextSchema = z.union([
+  z.string(),
+  z.object({
+    am: z.string(),
+    ru: z.string(),
+    en: z.string(),
+  }),
+]);
+
 const siteContentSchema = z.object({
   homeHeroBackgroundImage: z.string(),
   ownerPhoto: z.string(),
-  homeIntroTitle: z.string(),
-  homeIntroDescription: z.string(),
-  ownerName: z.string(),
-  ownerPosition: z.string(),
-  ownerDescription: z.string(),
+  homeIntroTitle: localizedTextSchema,
+  homeIntroDescription: localizedTextSchema,
+  ownerName: localizedTextSchema,
+  ownerPosition: localizedTextSchema,
+  ownerDescription: localizedTextSchema,
 });
 
 const replaceSettingsSchema = z.object({
@@ -59,9 +68,16 @@ const replaceSettingsSchema = z.object({
   siteContent: siteContentSchema,
 });
 
+function normalizeLocalizedTextInput(v: z.infer<typeof localizedTextSchema>): { am: string; ru: string; en: string } {
+  if (typeof v === 'string') {
+    return { am: v, ru: v, en: v };
+  }
+  return v;
+}
+
 const testimonialCreateSchema = z.object({
-  authorName: z.string().min(1),
-  quote: z.string().min(1),
+  authorName: localizedTextSchema,
+  quote: localizedTextSchema,
   rating: z.number().int().min(1).max(5).optional(),
   sortOrder: z.number().int().nonnegative().optional(),
   published: z.boolean().optional(),
@@ -101,7 +117,18 @@ export default class MarketingController {
   static async replaceSettings(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(replaceSettingsSchema, req.body);
-      const data = await MarketingService.replaceSettings(body);
+      const normalizedBody = {
+        ...body,
+        siteContent: {
+          ...body.siteContent,
+          homeIntroTitle: normalizeLocalizedTextInput(body.siteContent.homeIntroTitle),
+          homeIntroDescription: normalizeLocalizedTextInput(body.siteContent.homeIntroDescription),
+          ownerName: normalizeLocalizedTextInput(body.siteContent.ownerName),
+          ownerPosition: normalizeLocalizedTextInput(body.siteContent.ownerPosition),
+          ownerDescription: normalizeLocalizedTextInput(body.siteContent.ownerDescription),
+        },
+      };
+      const data = await MarketingService.replaceSettings(normalizedBody);
       res.status(HttpStatusCodesUtil.OK).json(data);
     } catch (e) {
       next(e);
@@ -111,7 +138,11 @@ export default class MarketingController {
   static async createTestimonial(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(testimonialCreateSchema, req.body);
-      const row = await MarketingService.createTestimonial(body);
+      const row = await MarketingService.createTestimonial({
+        ...body,
+        authorName: normalizeLocalizedTextInput(body.authorName),
+        quote: normalizeLocalizedTextInput(body.quote),
+      });
       SuccessHandlerUtil.handleAdd(res, next, row);
     } catch (e) {
       next(e);
@@ -121,7 +152,11 @@ export default class MarketingController {
   static async updateTestimonial(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(testimonialUpdateSchema, req.body);
-      const row = await MarketingService.updateTestimonial(Number(req.params.id), body);
+      const row = await MarketingService.updateTestimonial(Number(req.params.id), {
+        ...body,
+        ...(body.authorName !== undefined ? { authorName: normalizeLocalizedTextInput(body.authorName) } : {}),
+        ...(body.quote !== undefined ? { quote: normalizeLocalizedTextInput(body.quote) } : {}),
+      });
       if (!row) {
         return next(new ResourceNotFoundError('Testimonial not found', HttpStatusCodesUtil.NOT_FOUND));
       }

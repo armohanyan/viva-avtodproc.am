@@ -30,6 +30,8 @@ function whatsappUrl(e164Digits: string, message: string): string | null {
 function shouldHideFab(pathname: string): boolean {
   return (
     pathname.startsWith("/admin") ||
+    pathname.startsWith("/super-admin") ||
+    pathname.startsWith("/superadmin") ||
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/instructor") ||
     pathname.startsWith("/auth")
