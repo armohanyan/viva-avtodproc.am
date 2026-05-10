@@ -3,6 +3,7 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import {
   THEMATIC_TOPIC_ICON,
@@ -14,12 +15,22 @@ import { ArrowUpRight, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { Reveal } from "src/lib/motion";
 import { Card } from "src/components/ui/card";
-import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
+import {
+  getExamStats,
+  getScopedExamProgress,
+  isExamScopeTopicKey,
+  isThematicScopeTopicKey,
+  progressPercentPassed,
+  subscribeExamStatsChanged,
+  type ExamStats,
+} from "src/lib/examStats";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { vivaApiJson } from "src/lib/vivaApi";
 
 export default function ExamTests() {
   const { t } = useLang();
+  const [location] = useLocation();
+  const isExamPage = location.startsWith("/exam-tests");
   const { MarketingLink, panelHref } = useAppNavigation();
   const lockedTopicHref = panelHref("/login?redirect=/thematic-questions");
   const [stats, setStats] = useState<ExamStats>({
@@ -38,6 +49,10 @@ export default function ExamTests() {
     () => defaultExamQuestionMeta().thematicCardQuestionIds,
   );
   const [colorTopicCountFallback, setColorTopicCountFallback] = useState<number | null>(null);
+  const [examCardTitles, setExamCardTitles] = useState<string[]>(() => defaultExamQuestionMeta().examCardTitles);
+  const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
+    () => defaultExamQuestionMeta().examCardQuestionIds,
+  );
 
   const isGenericTopicTitle = (title: string): boolean => /^(Թեմա|Тема|Theme)\s*\d+$/i.test(title.trim());
 
@@ -101,6 +116,8 @@ export default function ExamTests() {
       if (mounted) {
         setThematicCardTitles(meta.thematicCardTitles);
         setThematicCardQuestionIds(meta.thematicCardQuestionIds);
+        setExamCardTitles(meta.examCardTitles);
+        setExamCardQuestionIds(meta.examCardQuestionIds);
       }
     };
     void sync();
@@ -111,13 +128,89 @@ export default function ExamTests() {
     };
   }, []);
 
-  const totalQuestions = useMemo(() => topics.reduce((sum, topic) => sum + topic.total, 0), [topics]);
+  // Exam-only total: sum of question counts across the 60 exam ticket cards
+  // (do NOT use meta.totalQuestions — that includes thematic questions too).
+  const totalExamQuestions = useMemo(
+    () => examCardQuestionIds.reduce((sum, row) => sum + row.length, 0),
+    [examCardQuestionIds],
+  );
+
+  const totalQuestions = useMemo(() => {
+    if (isExamPage) return totalExamQuestions;
+    return topics.reduce((sum, topic) => sum + topic.total, 0);
+  }, [isExamPage, totalExamQuestions, topics]);
+
   const topicById = useMemo(() => Object.fromEntries(topics.map((topic) => [topic.topicId, topic])), [topics]);
-  const progressPct = useMemo(() => {
-    if (totalQuestions <= 0) return 0;
-    return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
-  }, [stats.answered, totalQuestions]);
-  const activeTopic = stats.activeSession ? topicById[stats.activeSession.topicId] : undefined;
+  const scoped = useMemo(
+    () => getScopedExamProgress(stats, isExamPage ? "exam" : "thematic"),
+    [stats, isExamPage],
+  );
+  const progressPct = useMemo(
+    () => progressPercentPassed(scoped.passed, totalQuestions),
+    [scoped.passed, totalQuestions],
+  );
+
+  const activeSession = useMemo(() => {
+    const s = stats.activeSession;
+    if (!s) return null;
+    if (isExamPage && isExamScopeTopicKey(s.topicId)) return s;
+    if (!isExamPage && isThematicScopeTopicKey(s.topicId)) return s;
+    return null;
+  }, [stats.activeSession, isExamPage]);
+
+  const activeTopic = activeSession ? topicById[activeSession.topicId] : undefined;
+
+  const activeExamContinueHref = useMemo(() => {
+    if (!activeSession || !isExamPage) return null;
+    const m = /^exam-ticket-(\d+)$/.exec(activeSession.topicId);
+    if (m) return `/exam-tests/quiz/full?ticket=${encodeURIComponent(m[1])}`;
+    if (activeSession.topicId === "exam-full") return "/exam-tests/quiz/full";
+    if (activeSession.topicId === "exam-signs") return "/exam-tests/quiz/signs";
+    return null;
+  }, [activeSession, isExamPage]);
+
+  const activeExamTitle = useMemo(() => {
+    if (!activeSession || !isExamPage) return "";
+    const m = /^exam-ticket-(\d+)$/.exec(activeSession.topicId);
+    if (m) {
+      const idx = Number(m[1]);
+      const title = examCardTitles[idx]?.trim();
+      return title || `${t("examTestsNumberedTitle")} ${idx + 1}`;
+    }
+    if (activeSession.topicId === "exam-full") return t("examTestsModesHeading");
+    if (activeSession.topicId === "exam-signs") return t("examTestsModesHeading");
+    return activeSession.topicId;
+  }, [activeSession, isExamPage, examCardTitles, t]);
+
+  const activeThematicContinueHref = useMemo(() => {
+    if (!activeSession || isExamPage) return null;
+    if (activeTopic) return `/thematic-questions/quiz/topics?topic=${encodeURIComponent(activeTopic.topicId)}`;
+    if (activeSession.topicId === "thematic-full") return "/thematic-questions/quiz/full";
+    if (activeSession.topicId === "thematic-signs") return "/thematic-questions/quiz/signs";
+    const slot = activeSession.topicId.trim();
+    if (/^\d+$/.test(slot)) return `/thematic-questions/quiz/topics?topic=${encodeURIComponent(slot)}`;
+    return null;
+  }, [activeSession, isExamPage, activeTopic]);
+
+  const activeThematicTitle = useMemo(() => {
+    if (!activeSession || isExamPage) return "";
+    if (activeTopic) return activeTopic.title;
+    if (activeSession.topicId === "thematic-full") return t("examTestsModesHeading");
+    if (activeSession.topicId === "thematic-signs") return t("examTestsModesHeading");
+    return activeSession.topicId;
+  }, [activeSession, isExamPage, activeTopic, t]);
+
+  const activeSessionQuestionTotal = useMemo(() => {
+    if (!activeSession) return 0;
+    if (isExamPage) {
+      const m = /^exam-ticket-(\d+)$/.exec(activeSession.topicId);
+      if (m) return (examCardQuestionIds[Number(m[1])] ?? []).length;
+      return totalExamQuestions;
+    }
+    if (activeTopic) return activeTopic.total;
+    if (activeSession.topicId === "thematic-full" || activeSession.topicId === "thematic-signs") return totalQuestions;
+    return totalQuestions;
+  }, [activeSession, isExamPage, activeTopic, examCardQuestionIds, totalExamQuestions, totalQuestions]);
 
   return (
     <div className="min-h-screen">
@@ -139,16 +232,20 @@ export default function ExamTests() {
             <h2 className="text-2xl font-bold text-foreground">{t("examTestsTopicsHeading")}</h2>
           </div>
 
-          {stats.activeSession && activeTopic && (
+          {activeSession && (isExamPage ? activeExamContinueHref : activeThematicContinueHref) && (
             <Card className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-wide text-primary font-semibold">
                     {t("examTestsActiveSession")}
                   </p>
-                  <p className="text-sm text-foreground truncate">{activeTopic.title}</p>
+                  <p className="text-sm text-foreground truncate">
+                    {isExamPage ? activeExamTitle : activeThematicTitle}
+                  </p>
                 </div>
-                <MarketingLink href={`/thematic-questions/quiz/topics?topic=${activeTopic.topicId}`}>
+                <MarketingLink
+                  href={(isExamPage ? activeExamContinueHref : activeThematicContinueHref) ?? "/thematic-questions"}
+                >
                   <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
                     {t("examTestsContinueSession")}
                   </Button>
@@ -158,16 +255,16 @@ export default function ExamTests() {
                 <div className="rounded-lg bg-background/80 p-2">
                   <p className="text-[11px] text-muted-foreground">{t("examQuizQuestion")}</p>
                   <p className="text-sm font-semibold text-foreground">
-                    {stats.activeSession.answered}/{activeTopic.total}
+                    {activeSession.answered}/{Math.max(activeSessionQuestionTotal, activeSession.answered)}
                   </p>
                 </div>
                 <div className="rounded-lg bg-background/80 p-2">
                   <p className="text-[11px] text-muted-foreground">{t("examTestsPositiveResult")}</p>
-                  <p className="text-sm font-semibold text-emerald-600">{stats.activeSession.correct}</p>
+                  <p className="text-sm font-semibold text-emerald-600">{activeSession.correct}</p>
                 </div>
                 <div className="rounded-lg bg-background/80 p-2">
                   <p className="text-[11px] text-muted-foreground">{t("examTestsNegativeResult")}</p>
-                  <p className="text-sm font-semibold text-rose-500">{stats.activeSession.wrong}</p>
+                  <p className="text-sm font-semibold text-rose-500">{activeSession.wrong}</p>
                 </div>
               </div>
             </Card>
@@ -184,13 +281,13 @@ export default function ExamTests() {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-accent/40 p-3">
                 <p className="text-emerald-600 font-semibold text-sm">
-                  {stats.correct} / {totalQuestions}
+                  {scoped.passed} / {totalQuestions}
                 </p>
                 <p className="text-xs text-muted-foreground">{t("examTestsPositiveResult")}</p>
               </div>
               <div className="rounded-lg bg-accent/40 p-3">
                 <p className="text-rose-500 font-semibold text-sm">
-                  {stats.wrong} / {totalQuestions}
+                  {scoped.failed} / {totalQuestions}
                 </p>
                 <p className="text-xs text-muted-foreground">{t("examTestsNegativeResult")}</p>
               </div>

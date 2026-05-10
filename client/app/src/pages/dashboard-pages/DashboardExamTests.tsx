@@ -5,7 +5,13 @@ import DashboardLearnSubnav from "src/components/dashboard/DashboardLearnSubnav"
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
-import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
+import {
+  getExamStats,
+  getScopedExamProgress,
+  progressPercentPassed,
+  subscribeExamStatsChanged,
+  type ExamStats,
+} from "src/lib/examStats";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 
 export default function DashboardExamTests() {
@@ -30,7 +36,6 @@ export default function DashboardExamTests() {
   const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
     () => defaultExamQuestionMeta().examCardQuestionIds,
   );
-  const [totalQuestionCount, setTotalQuestionCount] = useState(0);
 
   useEffect(() => {
     setStats(getExamStats());
@@ -44,7 +49,6 @@ export default function DashboardExamTests() {
       if (mounted) {
         setExamCardTitles(meta.examCardTitles);
         setExamCardQuestionIds(meta.examCardQuestionIds);
-        setTotalQuestionCount(meta.totalQuestions);
       }
     };
     void sync();
@@ -55,11 +59,16 @@ export default function DashboardExamTests() {
     };
   }, []);
 
-  const totalQuestions = totalQuestionCount;
-  const progressPct = useMemo(() => {
-    if (totalQuestions <= 0) return 0;
-    return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
-  }, [stats.answered, totalQuestions]);
+  // Exam-only total: sum of question counts across the 60 exam ticket cards.
+  const totalQuestions = useMemo(
+    () => examCardQuestionIds.reduce((sum, row) => sum + row.length, 0),
+    [examCardQuestionIds],
+  );
+  const scoped = useMemo(() => getScopedExamProgress(stats, "exam"), [stats]);
+  const progressPct = useMemo(
+    () => progressPercentPassed(scoped.passed, totalQuestions),
+    [scoped.passed, totalQuestions],
+  );
 
   const examCards = useMemo(() => {
     const n = Math.max(examCardTitles.length, examCardQuestionIds.length);
@@ -97,13 +106,13 @@ export default function DashboardExamTests() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-accent/40 p-3">
               <p className="text-emerald-600 font-semibold text-sm">
-                {stats.correct} / {totalQuestions}
+                {scoped.passed} / {totalQuestions}
               </p>
               <p className="text-xs text-muted-foreground">{t("examTestsPositiveResult")}</p>
             </div>
             <div className="rounded-lg bg-accent/40 p-3">
               <p className="text-rose-500 font-semibold text-sm">
-                {stats.wrong} / {totalQuestions}
+                {scoped.failed} / {totalQuestions}
               </p>
               <p className="text-xs text-muted-foreground">{t("examTestsNegativeResult")}</p>
             </div>

@@ -13,9 +13,16 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
-import { addExamAttempt, clearActiveSession, resetTopicProgress, updateActiveSession } from "src/lib/examStats";
+import {
+  addExamAttempt,
+  fetchTopicProgressSnapshot,
+  resetTopicProgress,
+  saveTopicCurrentQuestionIndex,
+  updateActiveSession,
+  upsertTopicAnswerProgress,
+} from "src/lib/examStats";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
@@ -57,7 +64,17 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const ticketIndex =
     ticketParam != null && /^\d+$/.test(ticketParam) ? Number.parseInt(ticketParam, 10) : null;
   const useExamTicket = listPath === "/exam-tests" && mode === "full" && ticketIndex !== null;
-  const topicId = useExamTicket ? `exam-ticket-${ticketIndex}` : topicParam || "5";
+  const topicId = useExamTicket
+    ? `exam-ticket-${ticketIndex}`
+    : listPath === "/exam-tests" && mode === "full" && !useExamTicket
+      ? "exam-full"
+      : listPath === "/exam-tests" && mode === "signs"
+        ? "exam-signs"
+        : listPath === "/thematic-questions" && mode === "full" && !topicParam
+          ? "thematic-full"
+          : listPath === "/thematic-questions" && mode === "signs"
+            ? "thematic-signs"
+            : topicParam || (listPath === "/exam-tests" ? "exam-full" : "thematic-full");
   const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
   const timedExam = mode === "full";
 
@@ -110,12 +127,32 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
     },
     [mode, round, listPath, thematicTopicId, pool, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex],
   );
+  const topicQuestionIds = useMemo(() => questions.map((q) => q.id), [questions]);
+  // Only modes with a stable question set can be resumed across sessions; shuffled modes (signs, ad-hoc full) cannot.
+  const resumable = mode === "topics" || useExamTicket;
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<(number | null)[]>(() => []);
   const [openExplanations, setOpenExplanations] = useState<Record<string, boolean>>({});
   const [layoutMode, setLayoutMode] = useState<QuizLayoutMode>("step");
+
+  useEffect(() => {
+    if (!resumable || questions.length === 0) return;
+    let mounted = true;
+    void fetchTopicProgressSnapshot(topicId, topicQuestionIds).then((snapshot) => {
+      if (!mounted) return;
+      const resumedAnswers = questions.map((q) => {
+        const row = snapshot.answeredQuestions[q.id];
+        return row ? row.selectedAnswerId : null;
+      });
+      setAnswers(resumedAnswers);
+      setIndex(Math.max(0, Math.min(questions.length - 1, snapshot.currentQuestionIndex)));
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [resumable, topicId, topicQuestionIds, questions, round]);
 
   const finished = Boolean(questions.length > 0 && index >= questions.length);
 
@@ -219,6 +256,11 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   }, [questions]);
 
   useEffect(() => {
+    if (!resumable || questions.length === 0 || finished) return;
+    saveTopicCurrentQuestionIndex(topicId, topicQuestionIds, index);
+  }, [resumable, topicId, topicQuestionIds, index, finished, questions.length]);
+
+  useEffect(() => {
     if (finished || layoutMode !== "step") return;
     setSelected(answers[index] ?? null);
   }, [index, answers, finished, layoutMode]);
@@ -241,6 +283,16 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
       next[qIdx] = optionIdx;
       return next;
     });
+    if (resumable && questions[qIdx]) {
+      const q = questions[qIdx];
+      upsertTopicAnswerProgress({
+        topicId,
+        questionIds: topicQuestionIds,
+        questionId: q.id,
+        selectedAnswerId: optionIdx,
+        currentQuestionIndex: Math.min(questions.length - 1, qIdx + 1),
+      });
+    }
   };
 
   const finishScrollMode = () => {
@@ -257,6 +309,15 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
+    if (resumable) {
+      upsertTopicAnswerProgress({
+        topicId,
+        questionIds: topicQuestionIds,
+        questionId: q.id,
+        selectedAnswerId: selected,
+        currentQuestionIndex: isLast ? questions.length - 1 : index + 1,
+      });
+    }
     if (isLast) {
       setIndex(questions.length);
     } else {
@@ -269,6 +330,17 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
+    if (resumable && selected !== null) {
+      upsertTopicAnswerProgress({
+        topicId,
+        questionIds: topicQuestionIds,
+        questionId: q.id,
+        selectedAnswerId: selected,
+        currentQuestionIndex: Math.max(0, index - 1),
+      });
+    } else if (resumable) {
+      saveTopicCurrentQuestionIndex(topicId, topicQuestionIds, Math.max(0, index - 1));
+    }
     setIndex((i) => Math.max(0, i - 1));
   };
 
@@ -276,8 +348,8 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
     if (timedExam && !finished) {
       if (!window.confirm(t("examQuizExitConfirm"))) return;
     }
+    // Preserve the active session and per-question answers so the learner can resume from the list later.
     discardSessionRef.current = true;
-    clearActiveSession();
     navigate(listPath);
   };
 
@@ -442,8 +514,15 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                   </div>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-                  <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={exitToExamTests}>
-                    {t("examQuizBackToList")}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-muted-foreground"
+                    onClick={exitToExamTests}
+                    aria-label={t("examQuizBackToList")}
+                    title={t("examQuizBackToList")}
+                  >
+                    <ArrowLeft className="w-4 h-4" aria-hidden />
                   </Button>
                   <MarketingLink href={`${mode === "topics" ? "/thematic-questions/question" : "/exam-tests/question"}/${q?.id ?? ""}`}>
                     <Button
@@ -464,26 +543,28 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                     <button
                       type="button"
                       onClick={() => setLayoutModeAndSyncIndex("step")}
-                      className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                      aria-label={t("examQuizLayoutOneByOne")}
+                      title={t("examQuizLayoutOneByOne")}
+                      className={`inline-flex items-center justify-center rounded-md px-2 py-1.5 transition-colors ${
                         layoutMode === "step"
                           ? "bg-background text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       <SquareStack className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-                      {t("examQuizLayoutOneByOne")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setLayoutModeAndSyncIndex("scroll")}
-                      className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                      aria-label={t("examQuizLayoutScroll")}
+                      title={t("examQuizLayoutScroll")}
+                      className={`inline-flex items-center justify-center rounded-md px-2 py-1.5 transition-colors ${
                         layoutMode === "scroll"
                           ? "bg-background text-foreground shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       <Scroll className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-                      {t("examQuizLayoutScroll")}
                     </button>
                   </div>
                 </div>

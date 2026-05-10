@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Link, Redirect, useRoute } from "wouter";
 import DashboardLayout from "src/components/DashboardLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
@@ -66,42 +67,61 @@ export default function DashboardThematicTopicProgress() {
 
   const startHref = `/dashboard/learn/exam-tests/quiz/topics?topic=${encodeURIComponent(topicId)}`;
 
+  const thematicListHref = "/dashboard/learn/thematic-tests";
+
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        <PanelPageHeader title={t("dashboardLearnThematicTests")} subtitle="Թեմայի առաջընթաց" className="mb-4" />
+        <div className="mb-3">
+          <Link href={thematicListHref}>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={t("dashboardThematicTopicBack")}
+              title={t("dashboardThematicTopicBack")}
+            >
+              <ArrowLeft className="w-4 h-4" aria-hidden />
+            </Button>
+          </Link>
+        </div>
+        <PanelPageHeader title={t("dashboardLearnThematicTests")} subtitle={t("dashboardThematicTopicSubtitle")} className="mb-4" />
 
         <Card className="rounded-xl border border-border p-5">
           {loading ? (
-            <p className="text-sm text-muted-foreground">Բեռնվում է թեմայի առաջընթացը…</p>
+            <p className="text-sm text-muted-foreground">{t("dashboardThematicTopicLoading")}</p>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground mb-2">Ընդամենը հարցեր: {progress.totalQuestions}</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                {t("dashboardThematicTopicTotalQuestions")}: {progress.totalQuestions}
+              </p>
               <div className="space-y-2 mb-4">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => setActiveFilter("unanswered")}
-                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-sm text-left hover:bg-muted"
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-sm font-normal h-auto"
                 >
-                  <span>Չլրացված հարցեր</span>
+                  <span>{t("dashboardThematicTopicUnansweredQuestions")}</span>
                   <span>{progress.unansweredCount}</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => setActiveFilter("correct")}
-                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-sm text-left hover:bg-muted"
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-sm font-normal h-auto"
                 >
-                  <span>Ճիշտ պատասխաններ</span>
+                  <span>{t("dashboardThematicTopicCorrectAnswers")}</span>
                   <span>{progress.correctCount}</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() => setActiveFilter("wrong")}
-                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-sm text-left hover:bg-muted"
+                  className="flex w-full items-center justify-between rounded-md px-2 py-1 text-sm font-normal h-auto"
                 >
-                  <span>Սխալ պատասխաններ</span>
+                  <span>{t("dashboardThematicTopicWrongAnswers")}</span>
                   <span>{progress.wrongCount}</span>
-                </button>
+                </Button>
               </div>
 
               <div className="h-1.5 w-full rounded-full bg-accent mb-2">
@@ -111,7 +131,11 @@ export default function DashboardThematicTopicProgress() {
 
               <div className="flex flex-col sm:flex-row gap-2">
                 <Link href={startHref} className="flex-1">
-                  <Button className="w-full">{progress.unansweredCount === progress.totalQuestions ? "Սկսել" : "Շարունակել"}</Button>
+                  <Button className="w-full">
+                    {progress.unansweredCount === progress.totalQuestions
+                      ? t("dashboardThematicTopicStart")
+                      : t("dashboardThematicTopicContinue")}
+                  </Button>
                 </Link>
                 <Button
                   variant="outline"
@@ -121,7 +145,7 @@ export default function DashboardThematicTopicProgress() {
                     window.location.href = startHref;
                   }}
                 >
-                  Սկսել նորից
+                  {t("dashboardThematicTopicStartOver")}
                 </Button>
               </div>
 
@@ -130,17 +154,17 @@ export default function DashboardThematicTopicProgress() {
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-sm font-medium">
                       {activeFilter === "unanswered"
-                        ? "Չլրացված հարցերի ցանկ"
+                        ? t("dashboardThematicTopicUnansweredList")
                         : activeFilter === "correct"
-                          ? "Ճիշտ պատասխանված հարցերի ցանկ"
-                          : "Սխալ պատասխանված հարցերի ցանկ"}
+                          ? t("dashboardThematicTopicCorrectList")
+                          : t("dashboardThematicTopicWrongList")}
                     </p>
                     <Button variant="ghost" size="sm" onClick={() => setActiveFilter(null)}>
-                      Փակել
+                      {t("dashboardThematicTopicCloseList")}
                     </Button>
                   </div>
                   {filteredQuestions.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Այս ցուցակում հարցեր չկան։</p>
+                    <p className="text-sm text-muted-foreground">{t("dashboardThematicTopicNoQuestions")}</p>
                   ) : (
                     <div className="max-h-72 space-y-2 overflow-auto pr-1">
                       {filteredQuestions.map((question, idx) => (

@@ -13,6 +13,54 @@ export interface ExamStats {
   activeSession: ActiveSession | null;
 }
 
+/** URL slot ids "1"–"11" for thematic chapters (see thematic dashboard cards). */
+export function isThematicSlotTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (!/^\d+$/.test(t)) return false;
+  const n = Number(t);
+  return n >= 1 && n <= 11;
+}
+
+/** Full / signs practice and ticketed exams under official exam flows. */
+export function isExamScopeTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (t === "exam-full" || t === "exam-signs") return true;
+  return /^exam-ticket-\d+$/.test(t);
+}
+
+/** Thematic practice: chapter slots, full-topic mix, and signs from the thematic entry. */
+export function isThematicScopeTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (t === "thematic-full" || t === "thematic-signs") return true;
+  return isThematicSlotTopicKey(t);
+}
+
+export type ExamProgressScope = "thematic" | "exam";
+
+export interface ScopedExamProgress {
+  passed: number;
+  failed: number;
+}
+
+/** Uses per-topic cumulative `questionResults` (not last-attempt-only aggregates). */
+export function getScopedExamProgress(stats: ExamStats, scope: ExamProgressScope): ScopedExamProgress {
+  const pred = scope === "thematic" ? isThematicScopeTopicKey : isExamScopeTopicKey;
+  let passed = 0;
+  let failed = 0;
+  for (const [topicId, ts] of Object.entries(stats.topicStats)) {
+    if (!pred(topicId)) continue;
+    passed += Math.max(0, ts.correct);
+    failed += Math.max(0, ts.wrong);
+  }
+  return { passed, failed };
+}
+
+export function progressPercentPassed(passed: number, totalQuestions: number): number {
+  if (totalQuestions <= 0) return 0;
+  const capped = Math.min(passed, totalQuestions);
+  return Math.min(100, Number(((capped / totalQuestions) * 100).toFixed(1)));
+}
+
 export interface TopicStats {
   answered: number;
   correct: number;
@@ -48,6 +96,19 @@ export interface StoredTopicStats {
   lastCorrect: number;
   lastAnswered: number;
   questionResults: Record<string, boolean>;
+  questionAnswers?: Record<
+    string,
+    {
+      questionId: string;
+      selectedAnswerId: number;
+      isCorrect: boolean;
+      answeredAt: number;
+    }
+  >;
+  currentQuestionIndex?: number;
+  totalQuestions?: number;
+  completedAt?: number | null;
+  updatedAt?: number;
 }
 
 export interface StoredExamStats {
@@ -316,4 +377,169 @@ export function resetTopicProgress(topicId: string): void {
     .catch(() => {
       /* offline */
     });
+}
+
+export type TopicProgressSnapshot = {
+  topicId: string;
+  totalQuestions: number;
+  currentQuestionIndex: number;
+  answeredQuestions: Record<
+    string,
+    {
+      questionId: string;
+      selectedAnswerId: number;
+      isCorrect: boolean;
+      answeredAt: number;
+    }
+  >;
+  correctCount: number;
+  wrongCount: number;
+  unansweredCount: number;
+  completedAt: number | null;
+  updatedAt: number;
+};
+
+function emptyTopicSnapshot(topicId: string, questionIds: readonly string[]): TopicProgressSnapshot {
+  return {
+    topicId: topicId.trim(),
+    totalQuestions: questionIds.length,
+    currentQuestionIndex: 0,
+    answeredQuestions: {},
+    correctCount: 0,
+    wrongCount: 0,
+    unansweredCount: questionIds.length,
+    completedAt: null,
+    updatedAt: Date.now(),
+  };
+}
+
+export async function fetchTopicProgressSnapshot(
+  topicId: string,
+  questionIds: readonly string[],
+): Promise<TopicProgressSnapshot> {
+  const tid = topicId.trim();
+  const sid = getCurrentStudentId();
+  if (!sid || !tid) return emptyTopicSnapshot(tid, questionIds);
+  const q = questionIds.map((id) => id.trim()).filter(Boolean).join(",");
+  try {
+    const snapshot = await vivaApiJson<TopicProgressSnapshot>(
+      `/students/${encodeURIComponent(sid)}/exam-stats/topic/${encodeURIComponent(tid)}/progress?questionIds=${encodeURIComponent(q)}`,
+    );
+    const stored = readStoredStats();
+    const topic = stored.topics[tid] ?? {
+      attempts: 0,
+      bestPct: 0,
+      lastPct: 0,
+      bestCorrect: 0,
+      bestAnswered: 0,
+      lastCorrect: 0,
+      lastAnswered: 0,
+      questionResults: {},
+    };
+    const questionAnswers = snapshot.answeredQuestions ?? {};
+    const questionResults: Record<string, boolean> = {};
+    for (const [qid, row] of Object.entries(questionAnswers)) questionResults[qid] = Boolean(row.isCorrect);
+    persistLocal(
+      {
+        ...stored,
+        topics: {
+          ...stored.topics,
+          [tid]: {
+            ...topic,
+            questionAnswers,
+            questionResults,
+            totalQuestions: snapshot.totalQuestions,
+            currentQuestionIndex: snapshot.currentQuestionIndex,
+            completedAt: snapshot.completedAt,
+            updatedAt: snapshot.updatedAt,
+          },
+        },
+      },
+      { skipRemote: true },
+    );
+    return snapshot;
+  } catch {
+    return emptyTopicSnapshot(tid, questionIds);
+  }
+}
+
+export function upsertTopicAnswerProgress(input: {
+  topicId: string;
+  questionIds: string[];
+  questionId: string;
+  selectedAnswerId: number;
+  currentQuestionIndex: number;
+}): TopicProgressSnapshot {
+  const topicId = input.topicId.trim();
+  const sid = getCurrentStudentId();
+  const empty = emptyTopicSnapshot(topicId, input.questionIds);
+  if (!sid || !topicId) return empty;
+  void vivaApiJson<TopicProgressSnapshot>(`/students/${encodeURIComponent(sid)}/exam-stats/topic/progress`, {
+    method: "PUT",
+    body: {
+      topicId,
+      questionIds: input.questionIds,
+      questionId: input.questionId,
+      selectedAnswerId: input.selectedAnswerId,
+      currentQuestionIndex: Math.max(0, input.currentQuestionIndex),
+    },
+  })
+    .then((snapshot) => {
+      const stored = readStoredStats();
+      const topic = stored.topics[topicId] ?? {
+        attempts: 0,
+        bestPct: 0,
+        lastPct: 0,
+        bestCorrect: 0,
+        bestAnswered: 0,
+        lastCorrect: 0,
+        lastAnswered: 0,
+        questionResults: {},
+      };
+      const questionAnswers = snapshot.answeredQuestions ?? {};
+      const questionResults: Record<string, boolean> = {};
+      for (const [qid, row] of Object.entries(questionAnswers)) questionResults[qid] = Boolean(row.isCorrect);
+      persistLocal(
+        {
+          ...stored,
+          topics: {
+            ...stored.topics,
+            [topicId]: {
+              ...topic,
+              questionAnswers,
+              questionResults,
+              totalQuestions: snapshot.totalQuestions,
+              currentQuestionIndex: snapshot.currentQuestionIndex,
+              completedAt: snapshot.completedAt,
+              updatedAt: snapshot.updatedAt,
+            },
+          },
+        },
+        { skipRemote: true },
+      );
+    })
+    .catch(() => {
+      /* offline */
+    });
+  return empty;
+}
+
+export function saveTopicCurrentQuestionIndex(
+  topicId: string,
+  questionIds: string[],
+  currentQuestionIndex: number,
+): void {
+  const tid = topicId.trim();
+  const sid = getCurrentStudentId();
+  if (!sid || !tid) return;
+  void vivaApiJson<TopicProgressSnapshot>(`/students/${encodeURIComponent(sid)}/exam-stats/topic/index`, {
+    method: "PUT",
+    body: {
+      topicId: tid,
+      questionIds,
+      currentQuestionIndex: Math.max(0, currentQuestionIndex),
+    },
+  }).catch(() => {
+    /* offline */
+  });
 }

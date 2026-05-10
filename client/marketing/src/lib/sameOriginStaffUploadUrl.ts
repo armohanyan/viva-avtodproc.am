@@ -1,6 +1,7 @@
-const SAFE_UPLOAD_PATH = /^\/upload\/[a-z0-9._-]+$/i;
+const SAFE_UPLOAD_PATH = /^\/upload\/(?:[a-z0-9._-]+\/)*[a-z0-9._-]+$/i;
 
 function safeStaffUploadPathname(pathname: string): string | null {
+  if (pathname.includes("..")) return null;
   return SAFE_UPLOAD_PATH.test(pathname) ? pathname : null;
 }
 

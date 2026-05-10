@@ -13,7 +13,13 @@ import {
 } from "src/data/thematicTopics";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { Reveal } from "src/lib/motion";
-import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
+import {
+  getExamStats,
+  getScopedExamProgress,
+  progressPercentPassed,
+  subscribeExamStatsChanged,
+  type ExamStats,
+} from "src/lib/examStats";
 import { vivaApiJson } from "src/lib/vivaApi";
 
 export default function DashboardThematicTests() {
@@ -103,10 +109,11 @@ export default function DashboardThematicTests() {
   }, []);
 
   const totalQuestions = useMemo(() => topics.reduce((sum, topic) => sum + topic.total, 0), [topics]);
-  const progressPct = useMemo(() => {
-    if (totalQuestions <= 0) return 0;
-    return Math.min(100, Number(((stats.answered / totalQuestions) * 100).toFixed(1)));
-  }, [stats.answered, totalQuestions]);
+  const scoped = useMemo(() => getScopedExamProgress(stats, "thematic"), [stats]);
+  const progressPct = useMemo(
+    () => progressPercentPassed(scoped.passed, totalQuestions),
+    [scoped.passed, totalQuestions],
+  );
 
   return (
     <DashboardLayout>
@@ -134,13 +141,13 @@ export default function DashboardThematicTests() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-accent/40 p-3">
               <p className="text-emerald-600 font-semibold text-sm">
-                {stats.correct} / {totalQuestions}
+                {scoped.passed} / {totalQuestions}
               </p>
               <p className="text-xs text-muted-foreground">{t("examTestsPositiveResult")}</p>
             </div>
             <div className="rounded-lg bg-accent/40 p-3">
               <p className="text-rose-500 font-semibold text-sm">
-                {stats.wrong} / {totalQuestions}
+                {scoped.failed} / {totalQuestions}
               </p>
               <p className="text-xs text-muted-foreground">{t("examTestsNegativeResult")}</p>
             </div>

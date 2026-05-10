@@ -4,7 +4,7 @@ export const DASHBOARD_NAV_LINKS: readonly DashboardNavigationLink[] = [
   { href: "/dashboard", translationKey: "dashboard" },
   { href: "/dashboard/progress", translationKey: "dashboardNavProgress" },
   { href: "/dashboard/lessons", translationKey: "dashboardNavLessons" },
-  { href: "/dashboard/learn", translationKey: "learn" },
+  { href: "/dashboard/learn/thematic-tests", translationKey: "learn" },
   { href: "/dashboard/services", translationKey: "dashboardNavServices" },
   {
     href: "/dashboard/bookings",

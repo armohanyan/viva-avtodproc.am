@@ -48,7 +48,7 @@ export default function DashboardLayout({ children }: Props) {
 
 	const iconByPath = {
 		"/dashboard": LayoutDashboard,
-		"/dashboard/learn": BookOpen,
+		"/dashboard/learn/thematic-tests": BookOpen,
 		"/dashboard/services": Briefcase,
 		"/dashboard/lessons": CalendarDays,
 		"/dashboard/progress": LineChart,
@@ -73,6 +73,7 @@ export default function DashboardLayout({ children }: Props) {
 
 	const nav: NavRow[] = DASHBOARD_NAV_LINKS.map((link) => {
 		const icon = iconByPath[link.href as keyof typeof iconByPath];
+
 		if (link.children?.length) {
 			return {
 				type: "group" as const,
@@ -122,7 +123,7 @@ export default function DashboardLayout({ children }: Props) {
 	}, [location, t]);
 
 	const isNavActive = (href: string) => {
-		if (href === "/dashboard/learn") {
+		if (href === "/dashboard/learn/thematic-tests") {
 			return location.startsWith("/dashboard/learn") || location.startsWith("/dashboard/exam-tests");
 		}
 		return location === href;

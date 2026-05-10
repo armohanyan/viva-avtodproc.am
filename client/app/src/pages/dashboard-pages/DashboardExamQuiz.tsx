@@ -9,12 +9,11 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
 import {
   addExamAttempt,
-  clearActiveSession,
   fetchTopicProgressSnapshot,
   resetTopicProgress,
   saveTopicCurrentQuestionIndex,
@@ -52,7 +51,13 @@ export default function DashboardExamQuiz() {
   const ticketIndex =
     ticketParam != null && /^\d+$/.test(ticketParam) ? Number.parseInt(ticketParam, 10) : null;
   const useExamTicket = mode === "full" && ticketIndex !== null;
-  const topicId = useExamTicket ? `exam-ticket-${ticketIndex}` : topicParam || "5";
+  const topicId = useExamTicket
+    ? `exam-ticket-${ticketIndex}`
+    : mode === "full" && !useExamTicket
+      ? "exam-full"
+      : mode === "signs"
+        ? "exam-signs"
+        : topicParam || "exam-full";
   const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
   const topicBackHref = thematicTopicId
     ? `/dashboard/learn/thematic-tests/topic/${encodeURIComponent(thematicTopicId)}`
@@ -107,6 +112,8 @@ export default function DashboardExamQuiz() {
     return selectQuestionsForMode(mode, pool);
   }, [mode, round, thematicTopicId, pool, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex]);
   const topicQuestionIds = useMemo(() => questions.map((q) => q.id), [questions]);
+  // Only modes with a stable question set can be resumed across sessions; shuffled modes (signs, ad-hoc full) cannot.
+  const resumable = mode === "topics" || useExamTicket;
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -115,7 +122,7 @@ export default function DashboardExamQuiz() {
   const [layoutMode, setLayoutMode] = useState<QuizLayoutMode>("step");
 
   useEffect(() => {
-    if (mode !== "topics" || questions.length === 0) return;
+    if (!resumable || questions.length === 0) return;
     let mounted = true;
     void fetchTopicProgressSnapshot(topicId, topicQuestionIds).then((snapshot) => {
       if (!mounted) return;
@@ -129,7 +136,7 @@ export default function DashboardExamQuiz() {
     return () => {
       mounted = false;
     };
-  }, [mode, topicId, topicQuestionIds, questions, round]);
+  }, [resumable, topicId, topicQuestionIds, questions, round]);
 
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
@@ -234,9 +241,9 @@ export default function DashboardExamQuiz() {
   }, [questions]);
 
   useEffect(() => {
-    if (mode !== "topics" || questions.length === 0 || finished) return;
+    if (!resumable || questions.length === 0 || finished) return;
     saveTopicCurrentQuestionIndex(topicId, topicQuestionIds, index);
-  }, [mode, topicId, topicQuestionIds, index, finished, questions.length]);
+  }, [resumable, topicId, topicQuestionIds, index, finished, questions.length]);
 
   useEffect(() => {
     if (finished || layoutMode !== "step") return;
@@ -257,7 +264,7 @@ export default function DashboardExamQuiz() {
       next[qIdx] = optionIdx;
       return next;
     });
-    if (mode === "topics" && questions[qIdx]) {
+    if (resumable && questions[qIdx]) {
       const q = questions[qIdx];
       upsertTopicAnswerProgress({
         topicId,
@@ -281,7 +288,7 @@ export default function DashboardExamQuiz() {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
-    if (mode === "topics") {
+    if (resumable) {
       const q = questions[index];
       upsertTopicAnswerProgress({
         topicId,
@@ -303,7 +310,7 @@ export default function DashboardExamQuiz() {
     const nextAnswers = [...answers];
     nextAnswers[index] = selected;
     setAnswers(nextAnswers);
-    if (mode === "topics" && selected !== null) {
+    if (resumable && selected !== null) {
       const q = questions[index];
       upsertTopicAnswerProgress({
         topicId,
@@ -312,7 +319,7 @@ export default function DashboardExamQuiz() {
         selectedAnswerId: selected,
         currentQuestionIndex: Math.max(0, index - 1),
       });
-    } else if (mode === "topics") {
+    } else if (resumable) {
       saveTopicCurrentQuestionIndex(topicId, topicQuestionIds, Math.max(0, index - 1));
     }
     setIndex((i) => Math.max(0, i - 1));
@@ -337,8 +344,8 @@ export default function DashboardExamQuiz() {
     if (timedExam && !finished) {
       if (!window.confirm(t("examQuizExitConfirm"))) return;
     }
+    // Preserve the active session and per-question answers so the learner can resume from the list later.
     discardSessionRef.current = true;
-    clearActiveSession();
     setLocation(effectiveBackHref);
   };
 
@@ -519,8 +526,15 @@ export default function DashboardExamQuiz() {
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={requestExit}>
-              {t("examQuizBackToList")}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground"
+              onClick={requestExit}
+              aria-label={t("examQuizBackToList")}
+              title={t("examQuizBackToList")}
+            >
+              <ArrowLeft className="w-4 h-4" aria-hidden />
             </Button>
             <Link href={`${mode === "topics" ? "/dashboard/learn/thematic-tests/question" : `${backHref}/question`}/${q.id}`}>
               <Button variant="outline" size="icon" aria-label={t("questionDetailOpenAction")} title={t("questionDetailOpenAction")}>
@@ -535,26 +549,28 @@ export default function DashboardExamQuiz() {
               <button
                 type="button"
                 onClick={() => setLayoutModeAndSyncIndex("step")}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                aria-label={t("examQuizLayoutOneByOne")}
+                title={t("examQuizLayoutOneByOne")}
+                className={`inline-flex items-center justify-center rounded-md px-2 py-1.5 transition-colors ${
                   layoutMode === "step"
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <SquareStack className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-                {t("examQuizLayoutOneByOne")}
               </button>
               <button
                 type="button"
                 onClick={() => setLayoutModeAndSyncIndex("scroll")}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                aria-label={t("examQuizLayoutScroll")}
+                title={t("examQuizLayoutScroll")}
+                className={`inline-flex items-center justify-center rounded-md px-2 py-1.5 transition-colors ${
                   layoutMode === "scroll"
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Scroll className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-                {t("examQuizLayoutScroll")}
               </button>
             </div>
           </div>

@@ -48,7 +48,11 @@ const DEFAULT_OWNER_DESCRIPTION: LocalizedText = {
 };
 
 const SITE_LANGS: Array<keyof LocalizedText> = ["am", "ru", "en"];
-const SITE_LANG_LABEL: Record<keyof LocalizedText, string> = { am: "Հայերեն", ru: "Ռուսերեն", en: "Անգլերեն" };
+const SITE_LANG_LABEL_KEY: Record<keyof LocalizedText, TranslationKey> = {
+  am: "langArmenian",
+  ru: "langRussian",
+  en: "langEnglish",
+};
 const EMPTY_LOCALIZED: LocalizedText = { am: "", ru: "", en: "" };
 
 function normalizeStats(stats: MarketingAdminBundle["stats"]): MarketingAdminBundle["stats"] {
@@ -252,7 +256,7 @@ export default function AdminMarketing() {
   const uploadMarketingImage = async (file: File | undefined, onSuccess: (url: string) => void) => {
     if (!file) return;
     if (file.size > MARKETING_IMAGE_MAX_BYTES) {
-      showToast("Image is too large (max 800KB).", "error");
+      showToast(t("adminMarketingImageTooLarge"), "error");
       return;
     }
     try {
@@ -376,7 +380,7 @@ export default function AdminMarketing() {
           <TabsTrigger value="stats">{t("adminMarketingStatsSection")}</TabsTrigger>
           <TabsTrigger value="testimonials">{t("adminMarketingTestimonialsSection")}</TabsTrigger>
           <TabsTrigger value="contact">{t("adminMarketingContactSection")}</TabsTrigger>
-          <TabsTrigger value="website">Կայքի բովանդակություն</TabsTrigger>
+          <TabsTrigger value="website">{t("adminMarketingWebsiteSection")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="stats">
@@ -531,12 +535,12 @@ export default function AdminMarketing() {
         <TabsContent value="website">
           <form onSubmit={saveContact} className="max-w-3xl space-y-5 rounded-xl border border-border bg-card p-6">
             <div className="space-y-2">
-              <Label>Գլխավոր էջի հերո ֆոնի նկար</Label>
+              <Label>{t("adminMarketingHeroBgLabel")}</Label>
               {homeHeroBackgroundImage ? (
-                <img src={homeHeroBackgroundImage} alt="Գլխավոր էջի հերո ֆոն" className="h-36 w-full rounded-lg object-cover border border-border bg-muted" />
+                <img src={homeHeroBackgroundImage} alt={t("adminMarketingHeroBgAlt")} className="h-36 w-full rounded-lg object-cover border border-border bg-muted" />
               ) : (
                 <div className="h-24 rounded-lg border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
-                  Բեռնված հերո նկար չկա։ Կօգտագործվի լռելյայն ֆոնը։
+                  {t("adminMarketingHeroBgEmpty")}
                 </div>
               )}
               <div className="flex gap-2">
@@ -551,17 +555,17 @@ export default function AdminMarketing() {
                   }}
                 />
                 <Button type="button" variant="outline" onClick={() => setHomeHeroBackgroundImage("")}>
-                  Հեռացնել
+                  {t("adminMarketingRemoveImage")}
                 </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Գլխավոր էջի ներածական վերնագիր</Label>
+              <Label>{t("adminMarketingHomeIntroTitleLabel")}</Label>
               <div className="grid gap-3 sm:grid-cols-3">
                 {SITE_LANGS.map((langKey) => (
                   <div key={`homeIntroTitle-${langKey}`} className={localizedInputClass}>
-                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                     <Input
                       className="h-10"
                       value={homeIntroTitle[langKey]}
@@ -572,11 +576,11 @@ export default function AdminMarketing() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Գլխավոր էջի ներածական նկարագրություն</Label>
+              <Label>{t("adminMarketingHomeIntroDescriptionLabel")}</Label>
               <div className="grid gap-3 sm:grid-cols-3">
                 {SITE_LANGS.map((langKey) => (
                   <div key={`homeIntroDescription-${langKey}`} className={localizedInputClass}>
-                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                     <textarea
                       className={cn(textareaClass, "min-h-[120px]")}
                       value={homeIntroDescription[langKey]}
@@ -588,12 +592,12 @@ export default function AdminMarketing() {
             </div>
 
             <div className="space-y-2">
-              <Label>Հիմնադրի լուսանկար (օգտագործվում է «Գլխավոր» և «Մեր մասին» էջերում)</Label>
+              <Label>{t("adminMarketingOwnerPhotoLabel")}</Label>
               {ownerPhoto ? (
-                <img src={ownerPhoto} alt="Հիմնադիր" className="h-36 w-36 rounded-2xl object-cover border border-border bg-muted" />
+                <img src={ownerPhoto} alt={t("adminMarketingOwnerPhotoAlt")} className="h-36 w-36 rounded-2xl object-cover border border-border bg-muted" />
               ) : (
                 <div className="h-24 rounded-lg border border-dashed border-border bg-muted/30 flex items-center justify-center text-sm text-muted-foreground">
-                  Հիմնադրի լուսանկար բեռնված չէ։
+                  {t("adminMarketingOwnerPhotoEmpty")}
                 </div>
               )}
               <div className="flex gap-2">
@@ -608,17 +612,17 @@ export default function AdminMarketing() {
                   }}
                 />
                 <Button type="button" variant="outline" onClick={() => setOwnerPhoto("")}>
-                  Հեռացնել
+                  {t("adminMarketingRemoveImage")}
                 </Button>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Հիմնադրի անուն</Label>
+              <Label>{t("adminMarketingOwnerNameLabel")}</Label>
               <div className="grid gap-3 sm:grid-cols-3">
                 {SITE_LANGS.map((langKey) => (
                   <div key={`ownerName-${langKey}`} className={localizedInputClass}>
-                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                     <Input
                       className="h-10"
                       value={ownerName[langKey]}
@@ -629,11 +633,11 @@ export default function AdminMarketing() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Հիմնադրի պաշտոն</Label>
+              <Label>{t("adminMarketingOwnerPositionLabel")}</Label>
               <div className="grid gap-3 sm:grid-cols-3">
                 {SITE_LANGS.map((langKey) => (
                   <div key={`ownerPosition-${langKey}`} className={localizedInputClass}>
-                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                     <Input
                       className="h-10"
                       value={ownerPosition[langKey]}
@@ -644,11 +648,11 @@ export default function AdminMarketing() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Հիմնադրի ուղերձ</Label>
+              <Label>{t("adminMarketingOwnerDescriptionLabel")}</Label>
               <div className="grid gap-3 sm:grid-cols-3">
                 {SITE_LANGS.map((langKey) => (
                   <div key={`ownerDescription-${langKey}`} className={localizedInputClass}>
-                    <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                    <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                     <textarea
                       className={cn(textareaClass, "min-h-[120px]")}
                       value={ownerDescription[langKey]}
@@ -660,7 +664,7 @@ export default function AdminMarketing() {
             </div>
 
             <Button type="submit" className="bg-primary text-primary-foreground">
-              Պահպանել կայքի բովանդակությունը
+              {t("adminMarketingSaveWebsite")}
             </Button>
           </form>
         </TabsContent>
@@ -692,7 +696,7 @@ export default function AdminMarketing() {
             <div className="mt-1 grid gap-3 sm:grid-cols-3">
               {SITE_LANGS.map((langKey) => (
                 <div key={`testimonial-author-${langKey}`} className={localizedInputClass}>
-                  <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                  <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                   <Input
                     className="h-10"
                     value={tmDraft.authorName[langKey]}
@@ -712,7 +716,7 @@ export default function AdminMarketing() {
             <div className="mt-1 grid gap-3 sm:grid-cols-3">
               {SITE_LANGS.map((langKey) => (
                 <div key={`testimonial-quote-${langKey}`} className={localizedInputClass}>
-                  <Label className="text-xs text-muted-foreground">{SITE_LANG_LABEL[langKey]}</Label>
+                  <Label className="text-xs text-muted-foreground">{t(SITE_LANG_LABEL_KEY[langKey])}</Label>
                   <textarea
                     className={cn(textareaClass, "min-h-[120px]")}
                     value={tmDraft.quote[langKey]}

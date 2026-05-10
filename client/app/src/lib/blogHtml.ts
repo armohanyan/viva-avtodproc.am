@@ -83,8 +83,8 @@ export function sanitizeCoverImageUrl(url: string | null | undefined): string | 
       return null;
     }
   }
-  /** Same-origin files saved under the API static `/upload` route (e.g. dev proxy). */
-  if (t.startsWith("/upload/") && /^\/upload\/[a-z0-9._-]+$/i.test(t)) {
+  /** Same-origin files under the API `/upload` static route (staff images, exam question images). */
+  if (t.startsWith("/upload/") && !t.includes("..") && /^\/upload\/(?:[a-z0-9._-]+\/)*[a-z0-9._-]+$/i.test(t)) {
     return t;
   }
   return null;

@@ -13,6 +13,56 @@ export interface ExamStats {
   activeSession: ActiveSession | null;
 }
 
+/** URL slot ids "1"–"11" for thematic chapters (see thematic dashboard cards). */
+export function isThematicSlotTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (!/^\d+$/.test(t)) return false;
+  const n = Number(t);
+  return n >= 1 && n <= 11;
+}
+
+/** Full / signs practice and ticketed exams under official exam flows. */
+export function isExamScopeTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (t === "exam-full" || t === "exam-signs") return true;
+  return /^exam-ticket-\d+$/.test(t);
+}
+
+/** Thematic practice: chapter slots, full-topic mix, and signs from the thematic entry. */
+export function isThematicScopeTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (t === "thematic-full" || t === "thematic-signs") return true;
+  return isThematicSlotTopicKey(t);
+}
+
+export type ExamProgressScope = "thematic" | "exam";
+
+export interface ScopedExamProgress {
+  /** Distinct questions answered correctly (sum of per-topic correct counts in scope). */
+  passed: number;
+  /** Distinct questions answered incorrectly in scope. */
+  failed: number;
+}
+
+/** Uses per-topic cumulative `questionResults` (not last-attempt-only aggregates). */
+export function getScopedExamProgress(stats: ExamStats, scope: ExamProgressScope): ScopedExamProgress {
+  const pred = scope === "thematic" ? isThematicScopeTopicKey : isExamScopeTopicKey;
+  let passed = 0;
+  let failed = 0;
+  for (const [topicId, ts] of Object.entries(stats.topicStats)) {
+    if (!pred(topicId)) continue;
+    passed += Math.max(0, ts.correct);
+    failed += Math.max(0, ts.wrong);
+  }
+  return { passed, failed };
+}
+
+export function progressPercentPassed(passed: number, totalQuestions: number): number {
+  if (totalQuestions <= 0) return 0;
+  const capped = Math.min(passed, totalQuestions);
+  return Math.min(100, Number(((capped / totalQuestions) * 100).toFixed(1)));
+}
+
 export interface TopicStats {
   answered: number;
   correct: number;
