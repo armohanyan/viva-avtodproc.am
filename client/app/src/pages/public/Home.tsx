@@ -433,7 +433,7 @@ export default function Home() {
                   ))}
                 </div>
                 <p className="text-foreground/80 text-sm leading-relaxed mb-6">
-                  "{testimonials[activeTestimonial]!.text}"
+                  &ldquo;{testimonials[activeTestimonial]!.text}&rdquo;
                 </p>
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-semibold">

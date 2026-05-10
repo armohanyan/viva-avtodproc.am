@@ -10,6 +10,7 @@
     "dev:app": "npm run dev -w app",
     "build:marketing": "npm run build -w marketing",
     "build:app": "npm run build -w app",
-    "build:all": "npm run build:marketing && npm run build:app"
+    "build:all": "npm run build:marketing && npm run build:app",
+    "lint": "npm run lint -w marketing && npm run lint -w app"
   }
 }

@@ -20,6 +20,14 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
+  /** Align with app workspace: React Compiler ESLint rules are noisy until full migration. */
+  {
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/purity": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

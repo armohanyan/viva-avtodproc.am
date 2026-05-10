@@ -11,6 +11,8 @@
     "build:panel": "npm run build -w app --prefix client",
     "build": "npm run build:backend && npm run build:web",
     "build:all": "npm run build:backend && npm run build:web && npm run build:panel",
+    "lint:client": "npm run lint --prefix client",
+    "ci": "npm run build:backend && npm run lint:client && npm run build:web && npm run build:panel",
     "start:backend": "npm run start --prefix backend",
     "typecheck:backend": "npm run typecheck --prefix backend",
     "sync:exam-questions": "npm run sync:exam-questions --prefix backend --"

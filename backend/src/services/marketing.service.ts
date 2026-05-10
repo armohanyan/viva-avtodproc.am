@@ -49,7 +49,7 @@ export type MarketingSiteContentDto = {
 
 export type MarketingPublicBundle = {
   stats: { key: string; value: string }[];
-  testimonials: { id: number; authorName: string; quote: string; rating: number }[];
+  testimonials: { id: number; authorName: LocalizedTextDto; quote: LocalizedTextDto; rating: number }[];
   contact: MarketingContactDto;
   footer: MarketingFooterDto;
   social: MarketingSocialDto;

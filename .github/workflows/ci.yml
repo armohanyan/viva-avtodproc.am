@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Backend install and build
+        working-directory: backend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Client workspaces install
+        working-directory: client
+        run: npm install
+
+      # Mirrors repo-local checks: lint both workspaces, then production builds (same order as `npm run ci` sans duplicate backend build).
+      - name: Client lint and builds
+        run: |
+          npm run lint:client
+          npm run build:web
+          npm run build:panel

@@ -90,7 +90,7 @@ export default class StudentEntitlementsService {
 
       return {
         packages: orders.map((o) => {
-          const pkg = o.getDataValue('package') as Package;
+          const pkg = (o as PackageOrder & { package: Package }).package;
           const rows = byOrder.get(o.id) ?? [];
           const byType = new Map(rows.map((r) => [r.lessonType, r] as const));
           const practical = byType.get('practical');
@@ -103,7 +103,7 @@ export default class StudentEntitlementsService {
             packageId: pkg.id,
             packageName: pkg.name,
             tier: tierFromPackage(pkg),
-            purchasedAt: dateIso(o.createdAt),
+            purchasedAt: dateIso(o.paidAt ?? (o as PackageOrder & { createdAt?: Date | null }).createdAt),
             status: String(o.status ?? 'active'),
             practicalTotal: Number(practical?.totalIncluded ?? 0),
             practicalUsed: Number(practical?.bookedCount ?? 0),

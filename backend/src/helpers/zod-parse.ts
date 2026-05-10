@@ -1,10 +1,12 @@
-import type { ZodSchema, ZodType, ZodTypeDef } from 'zod';
+import type { ZodTypeAny } from 'zod';
+import type { z } from 'zod';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { InputValidationError } = ErrorsUtil;
 
-export function parseBody<T>(schema: ZodSchema<T>, body: unknown): T {
+/** Parsed output type (defaults/coercion applied), not Zod input inference. */
+export function parseBody<S extends ZodTypeAny>(schema: S, body: unknown): z.output<S> {
   const r = schema.safeParse(body);
   if (!r.success) {
     const msg = r.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
@@ -13,7 +15,7 @@ export function parseBody<T>(schema: ZodSchema<T>, body: unknown): T {
   return r.data;
 }
 
-export function parseQuery<T>(schema: ZodType<T, ZodTypeDef, unknown>, query: unknown): T {
+export function parseQuery<S extends ZodTypeAny>(schema: S, query: unknown): z.output<S> {
   const r = schema.safeParse(query);
   if (!r.success) {
     const msg = r.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');
@@ -22,7 +24,7 @@ export function parseQuery<T>(schema: ZodType<T, ZodTypeDef, unknown>, query: un
   return r.data;
 }
 
-export function parseParams<T>(schema: ZodType<T, ZodTypeDef, unknown>, params: unknown): T {
+export function parseParams<S extends ZodTypeAny>(schema: S, params: unknown): z.output<S> {
   const r = schema.safeParse(params);
   if (!r.success) {
     const msg = r.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ');

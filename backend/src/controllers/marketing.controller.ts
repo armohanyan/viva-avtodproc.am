@@ -152,11 +152,13 @@ export default class MarketingController {
   static async updateTestimonial(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(testimonialUpdateSchema, req.body);
-      const row = await MarketingService.updateTestimonial(Number(req.params.id), {
-        ...body,
-        ...(body.authorName !== undefined ? { authorName: normalizeLocalizedTextInput(body.authorName) } : {}),
-        ...(body.quote !== undefined ? { quote: normalizeLocalizedTextInput(body.quote) } : {}),
-      });
+      const patch: Parameters<typeof MarketingService.updateTestimonial>[1] = {};
+      if (body.rating !== undefined) patch.rating = body.rating;
+      if (body.sortOrder !== undefined) patch.sortOrder = body.sortOrder;
+      if (body.published !== undefined) patch.published = body.published;
+      if (body.authorName !== undefined) patch.authorName = normalizeLocalizedTextInput(body.authorName);
+      if (body.quote !== undefined) patch.quote = normalizeLocalizedTextInput(body.quote);
+      const row = await MarketingService.updateTestimonial(Number(req.params.id), patch);
       if (!row) {
         return next(new ResourceNotFoundError('Testimonial not found', HttpStatusCodesUtil.NOT_FOUND));
       }
