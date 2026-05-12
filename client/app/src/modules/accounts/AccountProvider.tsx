@@ -9,7 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import { setAccessTokenInMemory } from "src/lib/accessTokenMemory";
-import { clearRefreshCookieBestEffort, tryRefreshAccessToken } from "src/lib/authSession";
+import { clearRefreshCookieAwait, tryRefreshAccessToken } from "src/lib/authSession";
+import { joinAppPath } from "src/lib/navigation/crossApp";
+import { resolvedViteMarketingOrigin } from "src/lib/navigation/viteMarketingOrigin";
 import type { AccountSessionUser, AccountType } from "./account.types";
 import {
 	ACCOUNT_SESSION_STORAGE_KEY,
@@ -115,7 +117,15 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
   const signOut = useCallback(() => {
     clearAccountSession();
     setUser(null);
-    clearRefreshCookieBestEffort();
+    void (async () => {
+      await clearRefreshCookieAwait();
+      const marketing = resolvedViteMarketingOrigin();
+      if (marketing) {
+        window.location.replace(joinAppPath(marketing, "/"));
+        return;
+      }
+      window.location.replace("/login");
+    })();
   }, []);
 
   const defaultHomePath = user ? defaultHomePathForAccountType(user.accountType) : "/dashboard";

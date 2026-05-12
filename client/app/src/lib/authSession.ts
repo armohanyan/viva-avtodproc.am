@@ -23,9 +23,17 @@ function authRefreshUrl(): string {
  * Clears the httpOnly refresh cookie on the server (best-effort). Use after local session is cleared
  * so the browser does not keep a valid refresh token without a matching client session.
  */
-export function clearRefreshCookieBestEffort(): void {
+export async function clearRefreshCookieAwait(): Promise<void> {
 	if (typeof window === "undefined") return;
-	void fetch(authV1Url("/auth/logout"), { method: "POST", credentials: "include" });
+	try {
+		await fetch(authV1Url("/auth/logout"), { method: "POST", credentials: "include" });
+	} catch {
+		/* ignore */
+	}
+}
+
+export function clearRefreshCookieBestEffort(): void {
+	void clearRefreshCookieAwait();
 }
 
 export type RefreshAttempt = "ok" | "failed" | "rate_limited";

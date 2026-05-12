@@ -9,6 +9,10 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [react(), tailwind()],
+		build: {
+			outDir: path.resolve(__dirname, "../dist"),
+			emptyOutDir: true,
+		},
 		resolve: {
 			alias: {
 				src: path.resolve(__dirname, "./src"),

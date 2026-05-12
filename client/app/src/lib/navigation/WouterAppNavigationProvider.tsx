@@ -16,7 +16,7 @@ export function WouterAppNavigationProvider({ children }: { children: ReactNode 
   );
 
   const panelBaseUrl = "";
-  const marketingBaseUrl = useMemo(() => resolvedViteMarketingOrigin(), []);
+  const marketingBaseUrl = resolvedViteMarketingOrigin();
 
   const panelHref = useCallback((path: string) => joinAppPath(panelBaseUrl, path), [panelBaseUrl]);
   const marketingHref = useCallback((path: string) => joinAppPath(marketingBaseUrl, path), [marketingBaseUrl]);
