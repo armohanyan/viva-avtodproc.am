@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useLang, type Lang } from "src/lib/i18n";
+import { resolveAppShell } from "src/lib/navigation/appShell";
 
 /**
  * Admin/super-admin and instructor UIs are Armenian-only. When the user enters these routes,
@@ -12,11 +13,8 @@ export function SyncStaffPanelLanguage(): null {
   const { lang, setLang } = useLang();
   const savedLangRef = useRef<Lang | null>(null);
   const langRef = useRef(lang);
-  const isStaffRoute =
-    location.startsWith("/admin") ||
-    location.startsWith("/super-admin") ||
-    location.startsWith("/superadmin") ||
-    location.startsWith("/instructor");
+  const shell = resolveAppShell(location);
+  const isStaffRoute = shell === "admin" || shell === "instructor";
 
   useLayoutEffect(() => {
     langRef.current = lang;

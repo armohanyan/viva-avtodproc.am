@@ -1,13 +1,16 @@
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useMemo } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useRouter } from "wouter";
 import { AppNavigationProvider, type AppNavigationValue } from "src/lib/navigation/AppNavigationContext";
 import { joinAppPath } from "src/lib/navigation/crossApp";
 import { resolvedViteMarketingOrigin } from "src/lib/navigation/viteMarketingOrigin";
 import { WouterMarketingNavLink } from "src/lib/navigation/WouterMarketingNavLink";
+import { fullBrowserPathFromRouter } from "src/lib/wouterFullPath";
 
 export function WouterAppNavigationProvider({ children }: { children: ReactNode }): ReactElement {
-  const [pathname, setLocation] = useLocation();
+  const router = useRouter();
+  const [loc, setLocation] = useLocation();
+  const pathname = useMemo(() => fullBrowserPathFromRouter(router, loc), [router, loc]);
   const navigate = useCallback(
     (href: string) => {
       setLocation(href);

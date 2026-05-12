@@ -1,4 +1,5 @@
 import type { AccountType } from "./account.types";
+import { resolveAppShell } from "src/lib/navigation/appShell";
 
 export function defaultHomePathForAccountType(accountType: AccountType): string {
   switch (accountType) {
@@ -24,9 +25,10 @@ export function isStaffAccountType(accountType: AccountType): boolean {
 /** After login, only follow `redirect` when it matches the signed-in account's panel. */
 export function isSafePanelRedirect(path: string, accountType: AccountType): boolean {
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("://")) return false;
-  if (path.startsWith("/admin")) return accountType === "super_admin" || accountType === "admin";
-  if (path.startsWith("/instructor")) return accountType === "instructor";
-  if (path.startsWith("/dashboard")) return accountType === "student";
+  const shell = resolveAppShell(path);
+  if (shell === "admin") return accountType === "super_admin" || accountType === "admin";
+  if (shell === "instructor") return accountType === "instructor";
+  if (shell === "student") return accountType === "student";
   return false;
 }
 

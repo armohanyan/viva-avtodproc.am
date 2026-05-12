@@ -2,6 +2,7 @@ import type { ExamQuestion } from "src/data/examSampleQuestions";
 import type { AccountType } from "src/types/auth.types";
 import type { PaginatedList } from "src/types/pagination.types";
 import { vivaApiJson } from "src/lib/vivaApi";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 
 export type ExamQuestionComment = {
   id: number;
@@ -29,6 +30,7 @@ type ExamQuestionDto = {
 };
 
 function mapDto(q: ExamQuestionDto): ExamQuestion {
+  const image = sameOriginStaffUploadUrl(q.imageUrl ?? null);
   return {
     id: q.id,
     text: q.text,
@@ -37,7 +39,7 @@ function mapDto(q: ExamQuestionDto): ExamQuestion {
     correctIndex: q.correctIndex,
     category: q.category,
     topicId: q.topicId,
-    imageUrl: q.imageUrl ?? undefined,
+    imageUrl: image ?? undefined,
   };
 }
 

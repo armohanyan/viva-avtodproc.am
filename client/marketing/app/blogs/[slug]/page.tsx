@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import BlogPost from "src/views/public/BlogPost";
 import { fetchBlogBySlugApi, fetchPublishedBlogSlugsApi } from "src/lib/blogsApi";
-import { getRequestSeoLang } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -12,10 +11,10 @@ export async function generateStaticParams(): Promise<{ slug: string }[]> {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const lang = await getRequestSeoLang();
   const post = await fetchBlogBySlugApi(slug);
   if (!post) {
-    return { title: lang === "am" ? "Բլոգի գրառում" : lang === "ru" ? "Пост блога" : "Blog post" };
+    /** Avoid `cookies()` / `headers()` here: this route is SSG (`generateStaticParams`) and that triggers `DYNAMIC_SERVER_USAGE` in production. */
+    return { title: "Blog post | Վիվա Ավտոդպրոց" };
   }
   return {
     title: post.title,

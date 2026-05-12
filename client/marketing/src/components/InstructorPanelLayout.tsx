@@ -26,6 +26,7 @@ import {
 import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
 import NotificationBell from "src/components/NotificationBell";
+import { pathHasPrefix } from "src/lib/navigation/appShell";
 
 interface Props {
 	children: ReactNode;
@@ -57,7 +58,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 		signOut();
 	};
 
-	const headerTitle = location.startsWith("/instructor/notifications")
+	const headerTitle = pathHasPrefix(location, "/instructor/notifications")
 		? t("notifications")
 		: nav.find((n) => n.href === location)?.label || t("instructorDashboardTitle");
 

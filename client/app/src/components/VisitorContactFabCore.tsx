@@ -15,6 +15,7 @@ import { apiFetch, apiV1Path, getApiErrorMessage } from "src/lib/api";
 import { cn } from "src/lib/utils";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
+import { resolveAppShell } from "src/lib/navigation/appShell";
 
 function digitsOnly(s: string): string {
   return s.replace(/\D/g, "");
@@ -28,14 +29,7 @@ function whatsappUrl(e164Digits: string, message: string): string | null {
 }
 
 function shouldHideFab(pathname: string): boolean {
-  return (
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/super-admin") ||
-    pathname.startsWith("/superadmin") ||
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/instructor") ||
-    pathname.startsWith("/auth")
-  );
+  return resolveAppShell(pathname) !== "marketing";
 }
 
 export type VisitorContactFabCoreProps = {

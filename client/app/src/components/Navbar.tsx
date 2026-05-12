@@ -13,6 +13,7 @@ import { ADMIN_NAV_LINKS, adminNavAllowedForUser } from "src/modules/admin/admin
 import { useAccount } from "src/modules/accounts";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { cn } from "src/lib/utils";
+import { pathHasPrefix, resolveAppShell } from "src/lib/navigation/appShell";
 
 type AdminNavEntry =
   | { kind: "header"; label: string; entryKey: string }
@@ -25,9 +26,10 @@ export default function Navbar() {
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
 
-  const isAdmin = location.startsWith("/admin") || location.startsWith("/super-admin") || location.startsWith("/superadmin");
-  const isInstructor = location.startsWith("/instructor");
-  const isDashboard = location.startsWith("/dashboard");
+  const shell = resolveAppShell(location);
+  const isAdmin = shell === "admin";
+  const isInstructor = shell === "instructor";
+  const isDashboard = shell === "student";
 
   const navLinks = PUBLIC_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
   const publicRootLinks = navLinks.filter((link) => link.href === "/" || link.href === "/about" || link.href === "/contact");
@@ -36,7 +38,7 @@ export default function Navbar() {
     (link) => link.href === "/thematic-questions" || link.href === "/instructors",
   );
   const blogNav = navLinks.find((link) => link.href === "/blogs");
-  const blogNavActive = location === "/blogs" || location.startsWith("/blogs/");
+  const blogNavActive = pathHasPrefix(location, "/blogs");
 
   const dashLinks = DASHBOARD_NAV_LINKS.map((link) => ({ href: link.href, label: t(link.translationKey) }));
 
@@ -83,15 +85,15 @@ export default function Navbar() {
   const isPublic = !isDashboard && !isAdmin && !isInstructor;
   const panelLinkActive = (href: string) =>
     isAdmin && href === "/admin/learn"
-      ? location === href || location.startsWith("/admin/learn/")
+      ? pathHasPrefix(location, "/admin/learn")
       : isAdmin && href === "/admin/students"
-        ? location === href || location.startsWith("/admin/students/")
+        ? pathHasPrefix(location, "/admin/students")
         : href === "/dashboard/learn/thematic-tests"
-          ? location.startsWith("/dashboard/learn") || location.startsWith("/dashboard/exam-tests")
+          ? pathHasPrefix(location, "/dashboard/learn") || pathHasPrefix(location, "/dashboard/exam-tests")
           : location === href;
   const isOfferActive = offerLinks.some((link) => location === link.href);
   const learnLinkActive = (href: string) =>
-    location === href || (href === "/thematic-questions" && location.startsWith("/thematic-questions"));
+    location === href || (href === "/thematic-questions" && pathHasPrefix(location, "/thematic-questions"));
 
   const isLearnActive = learnLinks.some((link) => learnLinkActive(link.href));
   const mobilePublicLinks = navLinks.map((link) => ({

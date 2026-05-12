@@ -62,7 +62,7 @@ export default function ExamTests() {
         const topicSlotId = String(i + 1);
         const totalFromMeta = (thematicCardQuestionIds[i] ?? []).length;
         const total = topicId === "5" && totalFromMeta === 0 && colorTopicCountFallback != null ? colorTopicCountFallback : totalFromMeta;
-        const isFree = topicSlotId === "11";
+        const isFree = topicSlotId === "1";
         const titleFromMeta = thematicCardTitles[i]?.trim() ?? "";
         const fallbackTitle = t(THEMATIC_TOPIC_TITLE_KEYS[i] as TranslationKey);
 
