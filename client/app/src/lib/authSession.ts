@@ -1,6 +1,5 @@
 import { API_V1_PREFIX } from "src/constants/api.constants";
 import { getApiBaseUrl } from "src/lib/apiBaseUrl";
-import { memoryAccessTokenLooksValid } from "src/lib/accessTokenMemory";
 import { saveAccountSession } from "src/modules/accounts/account.session";
 import type { AccountSessionUser, AccountType } from "src/modules/accounts/account.types";
 
@@ -44,14 +43,15 @@ let refreshChain: Promise<RefreshAttempt> | null = null;
  * Uses httpOnly refresh cookie; on success stores a new access token in memory and user snapshot in
  * localStorage (never persists the access token to localStorage).
  *
- * Coalesces concurrent callers onto one refresh request. If the in-memory access token is already
- * valid, skips the network call so parallel 401 retries do not rotate the refresh cookie repeatedly.
+ * Coalesces concurrent callers onto one refresh request.
+ *
+ * Important: this is used after the API already returned **401**. Returning `"ok"` without hitting
+ * the refresh endpoint would make `apiFetch` retry the same Bearer token, get 401 again, and then
+ * revoke the client session — e.g. right after MFA when the server rejects the access JWT for a
+ * reason the client `exp` check does not reflect.
  */
 export async function tryRefreshAccessToken(): Promise<RefreshAttempt> {
 	if (typeof window === "undefined") return "failed";
-	if (memoryAccessTokenLooksValid(45)) {
-		return "ok";
-	}
 	if (refreshChain) {
 		return refreshChain;
 	}
