@@ -12,6 +12,14 @@
 export type AppShell = "marketing" | "admin" | "instructor" | "student" | "auth";
 
 const ADMIN_FIRST_SEGMENTS = new Set(["admin", "super-admin", "superadmin"]);
+const AUTH_FIRST_SEGMENTS = new Set([
+  "auth",
+  "login",
+  "register",
+  "forgot-password",
+  "setup-password",
+  "reset-password",
+]);
 
 /** Path only, trimmed trailing slashes, leading `/`, query stripped. */
 export function normalizeClientPathname(pathname: string | null | undefined): string {
@@ -37,7 +45,7 @@ function firstSegment(pathname: string | null | undefined): string | null {
 export function resolveAppShell(pathname: string | null | undefined): AppShell {
   const seg = firstSegment(pathname);
   if (!seg) return "marketing";
-  if (seg === "auth") return "auth";
+  if (AUTH_FIRST_SEGMENTS.has(seg)) return "auth";
   if (ADMIN_FIRST_SEGMENTS.has(seg)) return "admin";
   if (seg === "dashboard") return "student";
   if (seg === "instructor") return "instructor";

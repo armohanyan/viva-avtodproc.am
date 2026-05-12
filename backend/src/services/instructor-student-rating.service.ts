@@ -1,4 +1,4 @@
-import { QueryTypes } from 'sequelize';
+import { QueryTypes, type Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import { Booking, InstructorProfile, InstructorStudentRating, User } from '../models';
 import ErrorsUtil from '../utils/errors.util';
@@ -36,7 +36,10 @@ function bookingIsUpcoming(dateIso: string, status: string, todayIso: string): b
 }
 
 export default class InstructorStudentRatingService {
-  static async aggregatesForInstructors(instructorIds: readonly number[]): Promise<Map<number, InstructorRatingAgg>> {
+  static async aggregatesForInstructors(
+    instructorIds: readonly number[],
+    transaction?: Transaction,
+  ): Promise<Map<number, InstructorRatingAgg>> {
     const out = new Map<number, InstructorRatingAgg>();
     if (instructorIds.length === 0) return out;
     const uniq = [...new Set(instructorIds)];
@@ -46,7 +49,7 @@ export default class InstructorStudentRatingService {
        FROM instructor_student_ratings
        WHERE instructor_user_id IN (${placeholders})
        GROUP BY instructor_user_id`,
-      { replacements: uniq, type: QueryTypes.SELECT },
+      { replacements: uniq, type: QueryTypes.SELECT, transaction },
     );
     for (const r of rows) {
       const avg = Number.parseFloat(String(r.avgStars));
@@ -60,14 +63,14 @@ export default class InstructorStudentRatingService {
     return InstructorStudentRating.count({ where: { instructorUserId } });
   }
 
-  static async syncProfileRatingFromReviews(instructorUserId: number): Promise<void> {
-    const agg = (await this.aggregatesForInstructors([instructorUserId])).get(instructorUserId);
+  static async syncProfileRatingFromReviews(instructorUserId: number, transaction?: Transaction): Promise<void> {
+    const agg = (await this.aggregatesForInstructors([instructorUserId], transaction)).get(instructorUserId);
     if (!agg || agg.count === 0) {
-      await InstructorProfile.update({ rating: 5 }, { where: { userId: instructorUserId } });
+      await InstructorProfile.update({ rating: 5 }, { where: { userId: instructorUserId }, transaction });
       return;
     }
     const rounded = Math.min(5, Math.max(0, Math.round(agg.avg * 10) / 10));
-    await InstructorProfile.update({ rating: rounded }, { where: { userId: instructorUserId } });
+    await InstructorProfile.update({ rating: rounded }, { where: { userId: instructorUserId }, transaction });
   }
 
   static async listPendingForStudent(studentUserId: number): Promise<PendingInstructorRatingDto[]> {
@@ -201,13 +204,14 @@ export default class InstructorStudentRatingService {
     await this.syncProfileRatingFromReviews(instructorUserId);
   }
 
-  static async removeAllForStudent(studentUserId: number): Promise<void> {
+  static async removeAllForStudent(studentUserId: number, transaction?: Transaction): Promise<void> {
     const rows = await InstructorStudentRating.findAll({
       where: { studentUserId },
       attributes: ['instructorUserId'],
+      transaction,
     });
     const instructorIds = [...new Set(rows.map((r) => r.instructorUserId))];
-    await InstructorStudentRating.destroy({ where: { studentUserId } });
-    await Promise.all(instructorIds.map((id) => this.syncProfileRatingFromReviews(id)));
+    await InstructorStudentRating.destroy({ where: { studentUserId }, transaction });
+    await Promise.all(instructorIds.map((id) => this.syncProfileRatingFromReviews(id, transaction)));
   }
 }

@@ -1,5 +1,26 @@
 import { Op } from 'sequelize';
-import { Branch, OAuthAccount, Package, StudentProfile, User } from '../models';
+import { sequelize } from '../database/sequelize';
+import {
+  AdminMfaChallenge,
+  Booking,
+  BookingSlot,
+  Branch,
+  ExamQuestionBookmark,
+  ExamQuestionComment,
+  FinanceTransaction,
+  Notification,
+  OAuthAccount,
+  Package,
+  PackageLessonBalance,
+  PackageOrder,
+  RefreshToken,
+  StudentExamStats,
+  StudentExtraPractical,
+  StudentInvitation,
+  StudentProfile,
+  TheoryCohortEnrollment,
+  User,
+} from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import InstructorStudentRatingService from './instructor-student-rating.service';
@@ -353,9 +374,46 @@ export default class StudentAdminService {
   }
 
   static async remove(userId: number): Promise<boolean> {
-    await InstructorStudentRatingService.removeAllForStudent(userId);
-    const p = await StudentProfile.destroy({ where: { userId } });
-    const u = await User.destroy({ where: { id: userId } });
-    return p > 0 && u > 0;
+    const user = await User.findByPk(userId, { attributes: ['id', 'accountType'] });
+    if (!user || user.accountType !== 'student') {
+      return false;
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      const bookings = await Booking.findAll({
+        where: { studentUserId: userId },
+        attributes: ['id'],
+        transaction,
+      });
+      const bookingIds = bookings.map((b) => b.id).filter((id): id is number => typeof id === 'number');
+      if (bookingIds.length > 0) {
+        await FinanceTransaction.update(
+          { bookingId: null },
+          { where: { bookingId: { [Op.in]: bookingIds } }, transaction },
+        );
+        await BookingSlot.destroy({ where: { bookingId: { [Op.in]: bookingIds } }, transaction });
+      }
+      await Booking.destroy({ where: { studentUserId: userId }, transaction });
+      await TheoryCohortEnrollment.destroy({ where: { studentUserId: userId }, transaction });
+      await PackageLessonBalance.destroy({ where: { studentUserId: userId }, transaction });
+      await PackageOrder.destroy({ where: { studentUserId: userId }, transaction });
+      await InstructorStudentRatingService.removeAllForStudent(userId, transaction);
+      await StudentProfile.destroy({ where: { userId }, transaction });
+      await OAuthAccount.destroy({ where: { userId }, transaction });
+      await RefreshToken.destroy({ where: { userId }, transaction });
+      await StudentInvitation.destroy({ where: { userId }, transaction });
+      await StudentExamStats.destroy({ where: { userId }, transaction });
+      await StudentExtraPractical.destroy({ where: { userId }, transaction });
+      await ExamQuestionBookmark.destroy({ where: { userId }, transaction });
+      await ExamQuestionComment.destroy({ where: { userId }, transaction });
+      await Notification.destroy({ where: { recipientUserId: userId }, transaction });
+      await AdminMfaChallenge.destroy({ where: { userId }, transaction });
+      const deletedUsers = await User.destroy({ where: { id: userId, accountType: 'student' }, transaction });
+      if (deletedUsers === 0) {
+        throw new Error('Student user was not deleted');
+      }
+    });
+
+    return true;
   }
 }
