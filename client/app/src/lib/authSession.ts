@@ -39,6 +39,64 @@ export type RefreshAttempt = "ok" | "failed" | "rate_limited";
 
 let refreshChain: Promise<RefreshAttempt> | null = null;
 
+function sleep(ms: number): Promise<void> {
+	return new Promise((r) => setTimeout(r, ms));
+}
+
+async function postRefreshAndApplySession(): Promise<RefreshAttempt> {
+	let res: Response;
+	try {
+		res = await fetch(authRefreshUrl(), { method: "POST", credentials: "include" });
+	} catch {
+		await sleep(300);
+		try {
+			res = await fetch(authRefreshUrl(), { method: "POST", credentials: "include" });
+		} catch {
+			return "failed";
+		}
+	}
+
+	const text = await res.text();
+
+	if (res.status === 429) {
+		return "rate_limited";
+	}
+	if (!res.ok) {
+		return "failed";
+	}
+
+	let data: {
+		accessToken?: string;
+		user?: {
+			id: string | number;
+			email: string;
+			name: string;
+			accountType: string;
+			hasPassword?: boolean;
+		};
+	};
+	try {
+		data = JSON.parse(text) as typeof data;
+	} catch {
+		return "failed";
+	}
+
+	if (!data.accessToken || !data.user || !isAccountType(data.user.accountType)) {
+		return "failed";
+	}
+
+	const next: AccountSessionUser = {
+		id: String(data.user.id),
+		email: data.user.email,
+		name: data.user.name,
+		accountType: data.user.accountType,
+		accessToken: data.accessToken,
+		...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
+	};
+	saveAccountSession(next);
+	return "ok";
+}
+
 /**
  * Uses httpOnly refresh cookie; on success stores a new access token in memory and user snapshot in
  * localStorage (never persists the access token to localStorage).
@@ -57,43 +115,7 @@ export async function tryRefreshAccessToken(): Promise<RefreshAttempt> {
 	}
 	refreshChain = (async (): Promise<RefreshAttempt> => {
 		try {
-			const res = await fetch(authRefreshUrl(), { method: "POST", credentials: "include" });
-			const text = await res.text();
-
-			if (res.status === 429) {
-				return "rate_limited";
-			}
-			if (!res.ok) {
-				return "failed";
-			}
-
-			const data = JSON.parse(text) as {
-				accessToken?: string;
-				user?: {
-					id: string | number;
-					email: string;
-					name: string;
-					accountType: string;
-					hasPassword?: boolean;
-				};
-			};
-
-			if (!data.accessToken || !data.user || !isAccountType(data.user.accountType)) {
-				return "failed";
-			}
-
-			const next: AccountSessionUser = {
-				id: String(data.user.id),
-				email: data.user.email,
-				name: data.user.name,
-				accountType: data.user.accountType,
-				accessToken: data.accessToken,
-				...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
-			};
-			saveAccountSession(next);
-			return "ok";
-		} catch {
-			return "failed";
+			return await postRefreshAndApplySession();
 		} finally {
 			refreshChain = null;
 		}

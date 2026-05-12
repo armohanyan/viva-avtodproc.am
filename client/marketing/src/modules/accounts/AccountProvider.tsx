@@ -57,6 +57,14 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
         const refreshOutcome = await tryRefreshAccessToken();
         if (!cancelled && refreshOutcome === "ok") {
           u = loadAccountSession();
+        } else if (
+          !cancelled &&
+          refreshOutcome === "failed" &&
+          u &&
+          !u.accessToken
+        ) {
+          clearAccountSession();
+          u = null;
         }
       }
       if (!cancelled) {

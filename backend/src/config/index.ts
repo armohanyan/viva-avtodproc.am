@@ -33,6 +33,7 @@ const rawEnvSchema = z.object({
   ACCESS_TOKEN_ACTIVE_TIME: z.string().optional(),
   REFRESH_TOKEN_ACTIVE_TIME: z.string().optional(),
   API_PUBLIC_URL: z.string().optional(),
+  AUTH_REFRESH_COOKIE_CROSS_SITE: z.string().optional(),
   PANEL_DEFAULT_ORIGIN: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -71,7 +72,12 @@ const mysqlPort = (() => {
 const isProduction = raw.NODE_ENV === 'production';
 const exposeErrorDetails = !isProduction || raw.EXPOSE_ERROR_DETAILS === '1';
 
-const apiPublicUrl = (raw.API_PUBLIC_URL?.trim() || `http://127.0.0.1:${raw.PORT}`).replace(/\/+$/, '');
+/**
+ * Public API base (OAuth redirect_uri host, links in emails, etc.).
+ * Use the same hostname you open in the browser for the panel (e.g. `localhost` not `127.0.0.1`)
+ * so httpOnly refresh cookies match across OAuth callback and `/api` calls.
+ */
+const apiPublicUrl = (raw.API_PUBLIC_URL?.trim() || `http://localhost:${raw.PORT}`).replace(/\/+$/, '');
 /** Default matches Vite dev (`client`); Docker/production should set `PANEL_DEFAULT_ORIGIN` explicitly. */
 const panelDefaultOrigin = (raw.PANEL_DEFAULT_ORIGIN?.trim() || 'http://localhost:5173').replace(/\/+$/, '');
 
@@ -113,6 +119,8 @@ const config = {
       raw.JWT_REFRESH_SECRET || raw.JWT_ACCESS_SECRET || 'viva-dev-jwt-refresh-change-me',
     ACCESS_TOKEN_ACTIVE_TIME: raw.ACCESS_TOKEN_ACTIVE_TIME || '15m',
     REFRESH_TOKEN_ACTIVE_TIME: raw.REFRESH_TOKEN_ACTIVE_TIME || '7d',
+    /** Refresh cookie uses SameSite=None; Secure (required for credentialed cross-site fetches). */
+    REFRESH_COOKIE_CROSS_SITE: raw.AUTH_REFRESH_COOKIE_CROSS_SITE === '1',
     OAUTH: {
       google: {
         clientId: raw.OAUTH_GOOGLE_CLIENT_ID?.trim(),
