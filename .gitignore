@@ -41,9 +41,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# Uploads / local runtime (API)
-upload/
-
 # Misc
 *.tgz
 .eslintcache
