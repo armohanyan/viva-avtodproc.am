@@ -17,8 +17,9 @@ export function adminNavAllowedForUser(
 /** Sidebar order: overview → day-to-day ops → people & programs → catalog → locations → money → content → access control */
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
-  { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/bookings", translationKey: "bookings" },
+  { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
+  { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/students", translationKey: "adminSidebarStudents" },
   {
     href: "/admin/learn",

@@ -25,3 +25,44 @@ export function formatShortDateFromIso(iso: string, lang: Lang): string {
     year: "numeric",
   });
 }
+
+/** Armenian month abbreviations (print / admin; avoids OS locale fallback). */
+const ARMENIAN_MONTHS_SHORT = [
+  "հնվ",
+  "փտվ",
+  "մրտ",
+  "ապր",
+  "մյս",
+  "հնս",
+  "հլս",
+  "օգս",
+  "սպտ",
+  "հկտ",
+  "նմբ",
+  "դեկ",
+] as const;
+
+/** YYYY-MM-DD → e.g. `15 մյս 2026` (always Armenian, independent of OS locale). */
+export function formatShortDateArmenian(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [ys, ms, ds] = iso.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  const d = Number(ds);
+  const month = ARMENIAN_MONTHS_SHORT[m - 1];
+  if (!month || !Number.isFinite(y) || !Number.isFinite(d)) return iso;
+  return `${d} ${month} ${y}`;
+}
+
+/** Date/time for print headers (Armenian labels; uses {@link formatShortDateArmenian} for the date part). */
+export function formatDateTimeArmenian(date: Date): string {
+  const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${formatShortDateArmenian(iso)}, ${h}:${min}`;
+}
+
+export function formatArmenianDateRange(startIso: string, endIso: string): string {
+  if (startIso === endIso) return formatShortDateArmenian(startIso);
+  return `${formatShortDateArmenian(startIso)} – ${formatShortDateArmenian(endIso)}`;
+}
