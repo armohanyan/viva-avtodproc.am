@@ -5,6 +5,7 @@ import { Button } from "src/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
+import { useOptionalPanelFocusMode } from "src/components/panel/PanelFocusModeContext";
 
 export type PanelShellSidebarContext = {
 	/** Close the mobile drawer after navigation. */
@@ -59,8 +60,13 @@ export function PanelShell({
 }: PanelShellProps) {
 	const { t } = useLang();
 	const [location] = useLocation();
+	const focusMode = useOptionalPanelFocusMode()?.active ?? false;
 	const [open, setOpen] = useState(false);
 	const mainRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (focusMode) setOpen(false);
+	}, [focusMode]);
 
 	useEffect(() => {
 		mainRef.current?.scrollTo(0, 0);
@@ -72,9 +78,10 @@ export function PanelShell({
 		typeof headerTrailing === "function" ? headerTrailing(ctx) : headerTrailing;
 
 	return (
-		<div className="flex h-[100dvh] overflow-hidden bg-background">
-			<aside className={asideClass[sidebarSurface]}>{renderSidebar(ctx)}</aside>
-			<div className="flex flex-col flex-1 min-w-0 min-h-0 lg:pl-64">
+		<div className="fixed inset-0 flex h-[100dvh] overflow-hidden bg-background">
+			{!focusMode ? <aside className={asideClass[sidebarSurface]}>{renderSidebar(ctx)}</aside> : null}
+			<div className={cn("flex flex-col flex-1 min-w-0 min-h-0", !focusMode && "lg:pl-64")}>
+				{!focusMode ? (
 				<header className="bg-card border-b border-border px-3 sm:px-6 min-h-14 h-14 sm:h-16 sm:min-h-16 flex items-center justify-between gap-2 shrink-0 z-20">
 					<div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
 						<Sheet open={open} onOpenChange={setOpen}>
@@ -118,9 +125,13 @@ export function PanelShell({
 					</div>
 					<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">{trailing}</div>
 				</header>
+				) : null}
 				<main
 					ref={mainRef}
-					className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 pb-[max(1rem,env(safe-area-inset-bottom,0px))]"
+					className={cn(
+						"flex-1 min-h-0 overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom,0px))]",
+						focusMode ? "p-3 sm:p-5" : "p-4 sm:p-6",
+					)}
 				>
 					{children}
 				</main>

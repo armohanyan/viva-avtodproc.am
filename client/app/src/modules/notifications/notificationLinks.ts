@@ -10,7 +10,7 @@ export function notificationTargetHref(panel: NotificationPanel, n: Notification
     return "/admin/notifications";
   }
   if (panel === "instructor") {
-    if (n.entityType === "booking") return "/instructor/my-lessons";
+    if (n.entityType === "booking") return "/instructor/class-schedule";
     return "/instructor/notifications";
   }
   if (n.entityType === "booking") return "/dashboard/bookings";

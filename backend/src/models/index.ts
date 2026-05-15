@@ -13,6 +13,7 @@ import { ExamQuestionBookmark } from './exam-question-bookmark.model';
 import { ExamQuestionComment } from './exam-question-comment.model';
 import { ExamQuestion } from './exam-question.model';
 import { ExamQuestionMeta } from './exam-question-meta.model';
+import { FinanceExpense } from './finance-expense.model';
 import { FinanceTransaction } from './finance-transaction.model';
 import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
@@ -121,6 +122,9 @@ User.hasMany(InstructorStudentRating, { foreignKey: 'instructorUserId', sourceKe
 
 FinanceTransaction.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
+User.hasMany(FinanceExpense, { foreignKey: 'createdByUserId', sourceKey: 'id' });
+FinanceExpense.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 export {
   Blog,
   BookedCall,
@@ -134,6 +138,7 @@ export {
   ExamQuestionComment,
   ExamQuestion,
   ExamQuestionMeta,
+  FinanceExpense,
   FinanceTransaction,
   FleetCar,
   FleetCarInstructor,
@@ -533,6 +538,54 @@ async function ensureCarExpensesDropPaymentColumns(): Promise<void> {
   if (have.has('method')) {
     await sequelize.query('ALTER TABLE `car_expenses` DROP COLUMN `method`');
   }
+}
+
+async function ensureCarExpensesTitleColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'car_expenses'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) return;
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'car_expenses' AND COLUMN_NAME = 'title'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) return;
+  await sequelize.query('ALTER TABLE `car_expenses` ADD COLUMN `title` VARCHAR(255) NULL AFTER `car_id`');
+}
+
+async function ensureFinanceExpensesTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_expenses'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  await sequelize.query(`
+    CREATE TABLE \`finance_expenses\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`title\` VARCHAR(255) NOT NULL,
+      \`amount\` INT UNSIGNED NOT NULL,
+      \`date\` DATE NOT NULL,
+      \`purpose\` ENUM('branch_rent','salary','other') NOT NULL,
+      \`related_entity_type\` ENUM('branch','instructor') NULL,
+      \`related_entity_id\` VARCHAR(64) NULL,
+      \`expense_subtype\` VARCHAR(255) NULL,
+      \`custom_purpose_text\` VARCHAR(512) NULL,
+      \`notes\` TEXT NULL,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      KEY \`finance_expenses_date_idx\` (\`date\`),
+      CONSTRAINT \`finance_expenses_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 /** Adds `bookings.paid_at` / `bookings.hold_expires_at` when tables predate Sequelize fields. */
@@ -1606,6 +1659,8 @@ export async function syncModels(): Promise<void> {
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
   await ensureCarExpensesDropPaymentColumns();
+  await ensureCarExpensesTitleColumn();
+  await ensureFinanceExpensesTable();
   await ensureBookingsPaymentColumns();
   await ensureBookingsHoldExtensionCountColumn();
   await ensureBookingsMultiSlotColumns();

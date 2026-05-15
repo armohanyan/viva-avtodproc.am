@@ -53,6 +53,16 @@ export type ClassScheduleResponse = {
   };
 };
 
+export type ClassScheduleInstructorItemDto = Omit<
+  ClassScheduleItemDto,
+  'instructor' | 'totalPriceAmd'
+>;
+
+export type ClassScheduleInstructorResponse = {
+  items: ClassScheduleInstructorItemDto[];
+  meta: ClassScheduleResponse['meta'];
+};
+
 type BookingRow = Booking & {
   student: User;
   instructor: User | null;
@@ -426,6 +436,22 @@ export default class ClassScheduleService {
     return {
       items: occurrences,
       meta: { view, startDate: start, endDate: end, total: occurrences.length },
+    };
+  }
+
+  static async listForInstructor(
+    instructorUserId: number,
+    query: ClassScheduleQuery,
+  ): Promise<ClassScheduleInstructorResponse> {
+    const scoped: ClassScheduleQuery = {
+      ...query,
+      instructorId: String(instructorUserId),
+      studentId: undefined,
+    };
+    const { items, meta } = await this.listForAdmin(scoped);
+    return {
+      items: items.map(({ instructor: _instructor, totalPriceAmd: _price, ...rest }) => rest),
+      meta,
     };
   }
 }

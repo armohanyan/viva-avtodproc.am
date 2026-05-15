@@ -5,6 +5,7 @@ import { autoIncrementPk, fkUnsignedInt } from './auto-id';
 export class CarExpense extends Model<InferAttributes<CarExpense>, InferCreationAttributes<CarExpense>> {
   declare id: CreationOptional<number>;
   declare carId: number;
+  declare title: CreationOptional<string | null>;
   declare amount: number;
   declare date: string;
   declare purpose: string;
@@ -15,6 +16,7 @@ CarExpense.init(
   {
     id: autoIncrementPk(),
     carId: fkUnsignedInt(),
+    title: { type: DataTypes.STRING(255), allowNull: true, defaultValue: null },
     amount: { type: DataTypes.INTEGER, allowNull: false },
     date: { type: DataTypes.DATEONLY, allowNull: false },
     purpose: { type: DataTypes.STRING(255), allowNull: false },

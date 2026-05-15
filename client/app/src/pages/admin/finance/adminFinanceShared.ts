@@ -63,6 +63,23 @@ export function financeOutcomeTotalInRange(
   return sum;
 }
 
+/** Ledger expenses in range, excluding customer booking refunds (operating costs only). */
+export function financeOperatingExpenseTotalInRange(
+  transactions: readonly FinanceTx[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): number {
+  let sum = 0;
+  for (const tx of transactions) {
+    if ((tx.entryType ?? "income") !== "expense" || tx.status !== "completed") continue;
+    if (tx.expenseKind === "booking_refund") continue;
+    const d = new Date(tx.createdAt);
+    if (d < rangeStart || d > rangeEnd) continue;
+    sum += tx.grossAmd;
+  }
+  return sum;
+}
+
 /** Completed `booking_refund` expense rows in range (money returned to customers). */
 export function bookingRefundExpenseCompletedInRange(
   transactions: readonly FinanceTx[],

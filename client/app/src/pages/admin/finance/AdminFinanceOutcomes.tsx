@@ -8,29 +8,181 @@ import { Button } from "src/components/ui/button";
 import { AppModal } from "src/components/AppModal";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
-import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
+import { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Landmark, Plus, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import { branchNameById, useBranches } from "src/modules/branches";
-import type { CarExpense } from "src/modules/cars";
+import { useBranches } from "src/modules/branches";
 import { useFleetCars } from "src/modules/cars";
-import {
-  formatAmd,
-  monthRange,
-  outcomesBreakdownInRange,
-  type FinanceTx,
-  type TxChannel,
-  type TxMethod,
-} from "./adminFinanceShared";
+import { useInstructors } from "src/modules/instructors/useInstructors";
+import type { AdminExpensePurpose, AdminFinanceExpense, CreateAdminFinanceExpenseBody } from "src/types/admin-finance-expense.types";
+import { formatAmd, monthRange } from "./adminFinanceShared";
 import {
   FLEET_EXPENSE_PURPOSE_DROPDOWN_AM,
   FLEET_EXPENSE_PURPOSE_OTHER_AM,
   purposeFormFromStored,
   purposeFromPurposeForm,
 } from "./fleetExpensePurposeAm";
+import { EXPENSE_ENTITY_OTHER_AM, EXPENSE_PURPOSE_OPTIONS } from "./expensePurposeAm";
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+type ExpenseFormState = {
+  title: string;
+  amount: string;
+  date: string;
+  purpose: AdminExpensePurpose | "";
+  carId: string;
+  carSubtype: string;
+  carSubtypeCustom: string;
+  branchId: string;
+  branchCustom: string;
+  instructorId: string;
+  instructorCustom: string;
+  customPurposeText: string;
+  notes: string;
+};
+
+function emptyForm(): ExpenseFormState {
+  return {
+    title: "",
+    amount: "",
+    date: todayIso(),
+    purpose: "",
+    carId: "",
+    carSubtype: "",
+    carSubtypeCustom: "",
+    branchId: "",
+    branchCustom: "",
+    instructorId: "",
+    instructorCustom: "",
+    customPurposeText: "",
+    notes: "",
+  };
+}
+
+function formFromExpense(row: AdminFinanceExpense): ExpenseFormState {
+  const base: ExpenseFormState = {
+    title: row.title,
+    amount: String(row.amount),
+    date: row.date.slice(0, 10),
+    purpose: row.purpose,
+    carId: "",
+    carSubtype: "",
+    carSubtypeCustom: "",
+    branchId: "",
+    branchCustom: "",
+    instructorId: "",
+    instructorCustom: "",
+    customPurposeText: row.customPurposeText ?? "",
+    notes: row.notes ?? "",
+  };
+  if (row.purpose === "car" && row.relatedEntityId) {
+    base.carId = row.relatedEntityId;
+    if (row.expenseSubtype === FLEET_EXPENSE_PURPOSE_OTHER_AM) {
+      base.carSubtype = FLEET_EXPENSE_PURPOSE_OTHER_AM;
+      base.carSubtypeCustom = row.customPurposeText ?? "";
+    } else if (row.expenseSubtype) {
+      base.carSubtype = row.expenseSubtype;
+    } else {
+      const { choice, custom } = purposeFormFromStored(row.title);
+      base.carSubtype = choice;
+      base.carSubtypeCustom = custom;
+    }
+  }
+  if (row.purpose === "branch_rent") {
+    if (row.relatedEntityId && row.relatedEntityId !== EXPENSE_ENTITY_OTHER_AM) {
+      base.branchId = row.relatedEntityId;
+    } else {
+      base.branchId = EXPENSE_ENTITY_OTHER_AM;
+      base.branchCustom = row.customPurposeText ?? row.relatedEntityLabel ?? "";
+    }
+  }
+  if (row.purpose === "salary") {
+    if (row.relatedEntityId && row.relatedEntityId !== EXPENSE_ENTITY_OTHER_AM) {
+      base.instructorId = row.relatedEntityId;
+    } else {
+      base.instructorId = EXPENSE_ENTITY_OTHER_AM;
+      base.instructorCustom = row.customPurposeText ?? row.relatedEntityLabel ?? "";
+    }
+  }
+  if (row.purpose === "other") {
+    base.customPurposeText = row.customPurposeText ?? "";
+  }
+  return base;
+}
+
+function buildCreateBody(form: ExpenseFormState): CreateAdminFinanceExpenseBody | null {
+  const title = form.title.trim();
+  const amount = Math.round(Number.parseFloat(form.amount.replace(",", ".")));
+  const date = form.date.slice(0, 10);
+  const purpose = form.purpose;
+  const notes = form.notes.trim() || null;
+
+  if (!title || !purpose || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  const base: CreateAdminFinanceExpenseBody = { title, amount, date, purpose, notes };
+
+  if (purpose === "car") {
+    if (!form.carId) return null;
+    if (!form.carSubtype) return null;
+    if (form.carSubtype === FLEET_EXPENSE_PURPOSE_OTHER_AM && !form.carSubtypeCustom.trim()) return null;
+    const purposeText = purposeFromPurposeForm(form.carSubtype, form.carSubtypeCustom);
+    if (!purposeText) return null;
+    return {
+      ...base,
+      relatedEntityType: "car",
+      relatedEntityId: form.carId,
+      expenseSubtype: form.carSubtype,
+      customPurposeText: form.carSubtype === FLEET_EXPENSE_PURPOSE_OTHER_AM ? form.carSubtypeCustom.trim() : null,
+    };
+  }
+
+  if (purpose === "branch_rent") {
+    if (!form.branchId) return null;
+    if (form.branchId === EXPENSE_ENTITY_OTHER_AM && !form.branchCustom.trim()) return null;
+    return {
+      ...base,
+      relatedEntityType: "branch",
+      relatedEntityId: form.branchId,
+      customPurposeText: form.branchId === EXPENSE_ENTITY_OTHER_AM ? form.branchCustom.trim() : null,
+    };
+  }
+
+  if (purpose === "salary") {
+    if (!form.instructorId) return null;
+    if (form.instructorId === EXPENSE_ENTITY_OTHER_AM && !form.instructorCustom.trim()) return null;
+    return {
+      ...base,
+      relatedEntityType: "instructor",
+      relatedEntityId: form.instructorId,
+      customPurposeText: form.instructorId === EXPENSE_ENTITY_OTHER_AM ? form.instructorCustom.trim() : null,
+    };
+  }
+
+  if (!form.customPurposeText.trim()) return null;
+  return { ...base, customPurposeText: form.customPurposeText.trim() };
+}
+
+function relatedDisplay(row: AdminFinanceExpense): string {
+  if (row.relatedEntityLabel?.trim()) return row.relatedEntityLabel;
+  if (row.purpose === "other" && row.customPurposeText?.trim()) return row.customPurposeText;
+  return "—";
+}
+
+function purposeTypeDisplay(row: AdminFinanceExpense): string {
+  if (row.purpose === "car" && row.expenseSubtype) {
+    if (row.expenseSubtype === FLEET_EXPENSE_PURPOSE_OTHER_AM && row.customPurposeText) {
+      return `${row.purposeLabel} Â· ${row.customPurposeText}`;
+    }
+    return `${row.purposeLabel} Â· ${row.expenseSubtype}`;
+  }
+  return row.purposeLabel;
+}
 
 export default function AdminFinanceOutcomes() {
   const addFormId = useId();
@@ -38,425 +190,426 @@ export default function AdminFinanceOutcomes() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
-  const { cars, expenses, addExpense, updateExpense, removeExpense } = useFleetCars();
+  const { cars } = useFleetCars();
+  const { instructors } = useInstructors();
+
   const [search, setSearch] = useState("");
-  const [manualSearch, setManualSearch] = useState("");
-  const [carFilter, setCarFilter] = useState<string>("all");
-  const [editRow, setEditRow] = useState<CarExpense | null>(null);
-  const [newRow, setNewRow] = useState({
-    carId: "",
-    amount: "",
-    date: new Date().toISOString().slice(0, 10),
-    purposeChoice: "",
-    purposeCustom: "",
-    note: "",
-  });
-  const [editPurposeChoice, setEditPurposeChoice] = useState("");
-  const [editPurposeCustom, setEditPurposeCustom] = useState("");
-  const [manualExpenses, setManualExpenses] = useState<FinanceTx[]>([]);
-  const [manualEditRow, setManualEditRow] = useState<FinanceTx | null>(null);
-  const [manualEditForm, setManualEditForm] = useState({
-    employeeName: "",
-    description: "",
-    branchId: "1",
-    units: "",
-    unitRateAmd: "",
-    grossAmd: "",
-    datetimeLocal: new Date().toISOString().slice(0, 16),
-  });
-  const [manualExpenseForm, setManualExpenseForm] = useState({
-    employeeName: "",
-    description: "",
-    branchId: "1",
-    channel: "office" as TxChannel,
-    method: "cash" as TxMethod,
-    units: "",
-    unitRateAmd: "",
-    grossAmd: "",
-    datetimeLocal: new Date().toISOString().slice(0, 16),
-  });
+  const [expenses, setExpenses] = useState<AdminFinanceExpense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState<ExpenseFormState>(emptyForm);
+  const [editRow, setEditRow] = useState<AdminFinanceExpense | null>(null);
+  const [editForm, setEditForm] = useState<ExpenseFormState>(emptyForm);
 
-  const plateByCarId = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of cars) m.set(String(c.id), c.plate);
-    return m;
-  }, [cars]);
+  const refreshExpenses = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await vivaApiJson<AdminFinanceExpense[]>("/admin/finance/expenses");
+      setExpenses(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setExpenses([]);
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
 
-  const sorted = useMemo(() => {
-    return [...expenses].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  }, [expenses]);
+  useEffect(() => {
+    void refreshExpenses();
+  }, [refreshExpenses]);
+
+  useEffect(() => {
+    if (!editRow) return;
+    setEditForm(formFromExpense(editRow));
+  }, [editRow?.id]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return sorted.filter((e) => {
-      const plate = plateByCarId.get(String(e.carId)) ?? String(e.carId);
-      const hay = [plate, e.purpose, e.note ?? "", e.date].join(" ").toLowerCase();
-      const matchQ = !q || hay.includes(q);
-      const matchCar = carFilter === "all" || String(e.carId) === carFilter;
-      return matchQ && matchCar;
-    });
-  }, [sorted, search, carFilter, plateByCarId]);
-
-  const monthStats = useMemo(() => {
-    const { start, end } = monthRange();
-    const fleet = outcomesBreakdownInRange(expenses, start, end).reduce((s, r) => s + r.total, 0);
-    const manual = manualExpenses
-      .filter((tx) => tx.status === "completed")
-      .filter((tx) => {
-        const d = new Date(tx.createdAt);
-        return d >= start && d <= end;
-      })
-      .reduce((sum, tx) => sum + tx.grossAmd, 0);
-    return { fleet, manual, total: fleet + manual };
-  }, [expenses, manualExpenses]);
-
-  const manualFiltered = useMemo(() => {
-    const q = manualSearch.trim().toLowerCase();
-    return manualExpenses.filter((tx) => {
+    return expenses.filter((row) => {
       const hay = [
-        tx.id,
-        tx.customer,
-        tx.employeeName ?? "",
-        tx.description,
-        tx.expenseKind ?? "",
-        tx.status,
-        tx.unitRateAmd ?? "",
-        tx.units ?? "",
-        tx.grossAmd,
-        branchNameById(branches, tx.branchId),
+        row.title,
+        row.purposeLabel,
+        row.expenseSubtype ?? "",
+        row.customPurposeText ?? "",
+        row.relatedEntityLabel ?? "",
+        row.notes ?? "",
+        row.createdByAdminName ?? "",
+        row.date,
+        String(row.amount),
       ]
         .join(" ")
         .toLowerCase();
       return !q || hay.includes(q);
     });
-  }, [manualExpenses, manualSearch, branches]);
+  }, [expenses, search]);
 
-  const refreshManualExpenses = useCallback(async () => {
-    try {
-      const rows = await vivaApiJson<FinanceTx[]>("/finance/transactions");
-      const normalized = Array.isArray(rows) ? rows : [];
-      setManualExpenses(normalized.filter((x) => (x.entryType ?? "income") === "expense"));
-    } catch (e) {
-      setManualExpenses([]);
-      showToast(getApiErrorMessage(e), "error");
-    }
-  }, [showToast]);
+  const monthTotal = useMemo(() => {
+    const { start, end } = monthRange();
+    return expenses
+      .filter((row) => {
+        const d = new Date(`${row.date}T12:00:00`);
+        return d >= start && d <= end;
+      })
+      .reduce((s, row) => s + row.amount, 0);
+  }, [expenses]);
 
-  useEffect(() => {
-    void refreshManualExpenses();
-  }, [refreshManualExpenses]);
+  const activeInstructors = useMemo(
+    () => instructors.filter((i) => i.status === "active"),
+    [instructors],
+  );
 
-  useEffect(() => {
-    if (!editRow) {
-      setEditPurposeChoice("");
-      setEditPurposeCustom("");
-      return;
-    }
-    const { choice, custom } = purposeFormFromStored(editRow.purpose);
-    setEditPurposeChoice(choice);
-    setEditPurposeCustom(custom);
-  }, [editRow?.id, editRow?.purpose]);
-
-  const handleAdd = async (e: React.FormEvent) => {
+  const submitAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRow.carId) {
-      showToast(t("adminFinanceOutcomePickCar"), "error");
-      return;
-    }
-    const amount = Number.parseFloat(newRow.amount.replace(",", "."));
-    if (!newRow.purposeChoice || Number.isNaN(amount) || amount <= 0) {
+    const body = buildCreateBody(addForm);
+    if (!body) {
       showToast(t("fillRequired"), "error");
       return;
     }
-    if (newRow.purposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM && !newRow.purposeCustom.trim()) {
-      showToast(t("fillRequired"), "error");
-      return;
+    try {
+      await vivaApiJson("/admin/finance/expenses", { method: "POST", body });
+      setAddOpen(false);
+      setAddForm(emptyForm());
+      showToast(t("adminFinanceOutcomeSavedToast"), "success");
+      await refreshExpenses();
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
     }
-    const purpose = purposeFromPurposeForm(newRow.purposeChoice, newRow.purposeCustom);
-    if (!purpose) {
-      showToast(t("fillRequired"), "error");
-      return;
-    }
-    await addExpense({
-      carId: newRow.carId,
-      amount: Math.round(amount),
-      date: newRow.date.slice(0, 10),
-      purpose,
-      note: newRow.note.trim() || undefined,
-    });
-    setNewRow({
-      carId: newRow.carId,
-      amount: "",
-      date: new Date().toISOString().slice(0, 10),
-      purposeChoice: "",
-      purposeCustom: "",
-      note: "",
-    });
-    showToast(t("fleetExpenseCreatedToast"), "success");
   };
 
-  const saveEdit = async (ev: React.FormEvent) => {
-    ev.preventDefault();
+  const submitEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!editRow) return;
-    const amount = Number.parseFloat(String(editRow.amount).replace(",", "."));
-    if (!editPurposeChoice || Number.isNaN(amount) || amount <= 0) {
+    const body = buildCreateBody(editForm);
+    if (!body) {
       showToast(t("fillRequired"), "error");
       return;
     }
-    if (editPurposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM && !editPurposeCustom.trim()) {
-      showToast(t("fillRequired"), "error");
-      return;
+    try {
+      await vivaApiJson(`/admin/finance/expenses/${encodeURIComponent(editRow.id)}`, {
+        method: "PATCH",
+        body,
+      });
+      setEditRow(null);
+      showToast(t("fleetExpenseSavedToast"), "success");
+      await refreshExpenses();
+    } catch (err) {
+      showToast(getApiErrorMessage(err), "error");
     }
-    const purpose = purposeFromPurposeForm(editPurposeChoice, editPurposeCustom);
-    if (!purpose) {
-      showToast(t("fillRequired"), "error");
-      return;
-    }
-    await updateExpense(editRow.id, {
-      amount: Math.round(amount),
-      date: editRow.date.slice(0, 10),
-      purpose,
-      note: editRow.note?.trim() || undefined,
-    });
-    setEditRow(null);
-    showToast(t("fleetExpenseSavedToast"), "success");
   };
 
   const handleDelete = useCallback(
-    async (id: string) => {
-      await removeExpense(id);
-      showToast(t("fleetExpenseDeletedToast"), "success");
+    async (row: AdminFinanceExpense) => {
+      try {
+        await vivaApiJson(`/admin/finance/expenses/${encodeURIComponent(row.id)}`, { method: "DELETE" });
+        showToast(t("fleetExpenseDeletedToast"), "success");
+        await refreshExpenses();
+      } catch (err) {
+        showToast(getApiErrorMessage(err), "error");
+      }
     },
-    [removeExpense, showToast],
+    [refreshExpenses, showToast, t],
   );
 
-  const submitManualExpense = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const units = manualExpenseForm.units.trim() ? Number.parseFloat(manualExpenseForm.units.replace(",", ".")) : NaN;
-    const unitRateAmd = manualExpenseForm.unitRateAmd.trim()
-      ? Number.parseFloat(manualExpenseForm.unitRateAmd.replace(",", "."))
-      : NaN;
-    const fallbackGross = manualExpenseForm.grossAmd.trim()
-      ? Number.parseFloat(manualExpenseForm.grossAmd.replace(",", "."))
-      : NaN;
-    const hasRateCalc = Number.isFinite(units) && Number.isFinite(unitRateAmd) && units > 0 && unitRateAmd > 0;
-    const grossAmd = hasRateCalc ? Math.round(units * unitRateAmd) : Math.round(fallbackGross);
-    if (!manualExpenseForm.description.trim() || !Number.isFinite(grossAmd) || grossAmd <= 0) {
-      showToast(t("fillRequired"), "error");
-      return;
+  const renderConditionalFields = (form: ExpenseFormState, setForm: (updater: (prev: ExpenseFormState) => ExpenseFormState) => void) => {
+    if (form.purpose === "car") {
+      return (
+        <>
+          <FormField label={`${t("fleetColPlate")} *`}>
+            <select
+              required
+              value={form.carId}
+              onChange={(e) => setForm((f) => ({ ...f, carId: e.target.value }))}
+              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">{t("adminFinanceOutcomePickCar")}</option>
+              {cars.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.plate}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label={`${t("adminFinanceExpenseSubtypeLabel")} *`}>
+            <select
+              required
+              value={form.carSubtype}
+              onChange={(e) => {
+                const v = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  carSubtype: v,
+                  carSubtypeCustom: v === FLEET_EXPENSE_PURPOSE_OTHER_AM ? f.carSubtypeCustom : "",
+                }));
+              }}
+              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">{t("adminFinancePurposePick")}</option>
+              {FLEET_EXPENSE_PURPOSE_DROPDOWN_AM.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          {form.carSubtype === FLEET_EXPENSE_PURPOSE_OTHER_AM ? (
+            <FormField label={`${t("adminFinancePurposeOtherLabel")} *`} className="sm:col-span-2">
+              <Input
+                value={form.carSubtypeCustom}
+                onChange={(e) => setForm((f) => ({ ...f, carSubtypeCustom: e.target.value }))}
+                className="h-10"
+                placeholder={t("adminFinancePurposeOtherHint")}
+              />
+            </FormField>
+          ) : null}
+        </>
+      );
     }
-    try {
-      await vivaApiJson("/finance/transactions", {
-        method: "POST",
-        body: {
-          createdAt: new Date(manualExpenseForm.datetimeLocal).toISOString(),
-          customer: manualExpenseForm.employeeName.trim() || t("financeDefaultOperatingExpenseCustomer"),
-          email: "",
-          description: manualExpenseForm.description.trim(),
-          branchId: Number(manualExpenseForm.branchId) || 1,
-          channel: manualExpenseForm.channel,
-          method: manualExpenseForm.method,
-          grossAmd,
-          feeAmd: 0,
-          status: "completed",
-          providerRef: "—",
-          source: "manual",
-          entryType: "expense",
-          expenseKind: hasRateCalc ? "hourly_rate" : "other",
-          employeeName: manualExpenseForm.employeeName.trim() || null,
-          ...(hasRateCalc ? { units, unitRateAmd: Math.round(unitRateAmd) } : {}),
-        },
-      });
-      setManualExpenseForm({
-        employeeName: "",
-        description: "",
-        branchId: manualExpenseForm.branchId,
-        channel: "office",
-        method: "cash",
-        units: "",
-        unitRateAmd: "",
-        grossAmd: "",
-        datetimeLocal: new Date().toISOString().slice(0, 16),
-      });
-      showToast(t("adminFinanceOutcomeSavedToast"), "success");
-      await refreshManualExpenses();
-    } catch (err) {
-      showToast(getApiErrorMessage(err), "error");
+
+    if (form.purpose === "branch_rent") {
+      return (
+        <FormField label={`${t("adminColBranch")} *`} className="sm:col-span-2">
+          <select
+            required
+            value={form.branchId}
+            onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
+            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+          >
+            <option value="">{t("financeSelectBranchPlaceholder")}</option>
+            {branches.map((b) => (
+              <option key={b.id} value={String(b.id)}>
+                {b.name}
+              </option>
+            ))}
+            <option value={EXPENSE_ENTITY_OTHER_AM}>{EXPENSE_ENTITY_OTHER_AM}</option>
+          </select>
+          {form.branchId === EXPENSE_ENTITY_OTHER_AM ? (
+            <Input
+              className="h-10 mt-2"
+              value={form.branchCustom}
+              onChange={(e) => setForm((f) => ({ ...f, branchCustom: e.target.value }))}
+              placeholder={t("adminFinanceExpenseBranchOtherHint")}
+            />
+          ) : null}
+        </FormField>
+      );
     }
+
+    if (form.purpose === "salary") {
+      return (
+        <FormField label={`${t("adminFinanceExpenseInstructorLabel")} *`} className="sm:col-span-2">
+          <select
+            required
+            value={form.instructorId}
+            onChange={(e) => setForm((f) => ({ ...f, instructorId: e.target.value }))}
+            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+          >
+            <option value="">{t("adminFinanceExpensePickInstructor")}</option>
+            {activeInstructors.map((ins) => (
+              <option key={ins.id} value={String(ins.id)}>
+                {ins.name}
+              </option>
+            ))}
+            <option value={EXPENSE_ENTITY_OTHER_AM}>{EXPENSE_ENTITY_OTHER_AM}</option>
+          </select>
+          {form.instructorId === EXPENSE_ENTITY_OTHER_AM ? (
+            <Input
+              className="h-10 mt-2"
+              value={form.instructorCustom}
+              onChange={(e) => setForm((f) => ({ ...f, instructorCustom: e.target.value }))}
+              placeholder={t("adminFinanceExpenseInstructorOtherHint")}
+            />
+          ) : null}
+        </FormField>
+      );
+    }
+
+    if (form.purpose === "other") {
+      return (
+        <FormField label={`${t("adminFinanceExpenseCustomPurposeLabel")} *`} className="sm:col-span-2">
+          <Input
+            value={form.customPurposeText}
+            onChange={(e) => setForm((f) => ({ ...f, customPurposeText: e.target.value }))}
+            className="h-10"
+            placeholder={t("adminFinanceExpenseCustomPurposeHint")}
+          />
+        </FormField>
+      );
+    }
+
+    return null;
   };
 
-  const startManualEdit = (tx: FinanceTx) => {
-    setManualEditRow(tx);
-    setManualEditForm({
-      employeeName: tx.employeeName ?? "",
-      description: tx.description,
-      branchId: String(tx.branchId),
-      units: tx.units != null ? String(tx.units) : "",
-      unitRateAmd: tx.unitRateAmd != null ? String(tx.unitRateAmd) : "",
-      grossAmd: String(tx.grossAmd),
-      datetimeLocal: new Date(tx.createdAt).toISOString().slice(0, 16),
-    });
-  };
-
-  const submitManualEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualEditRow) return;
-    const units = manualEditForm.units.trim() ? Number.parseFloat(manualEditForm.units.replace(",", ".")) : NaN;
-    const unitRateAmd = manualEditForm.unitRateAmd.trim()
-      ? Number.parseFloat(manualEditForm.unitRateAmd.replace(",", "."))
-      : NaN;
-    const grossAmdInput = manualEditForm.grossAmd.trim()
-      ? Number.parseFloat(manualEditForm.grossAmd.replace(",", "."))
-      : NaN;
-    const hasRateCalc = Number.isFinite(units) && Number.isFinite(unitRateAmd) && units > 0 && unitRateAmd > 0;
-    const grossAmd = hasRateCalc ? Math.round(units * unitRateAmd) : Math.round(grossAmdInput);
-    if (!manualEditForm.description.trim() || !Number.isFinite(grossAmd) || grossAmd <= 0) {
-      showToast(t("fillRequired"), "error");
-      return;
-    }
-    try {
-      await vivaApiJson(`/finance/transactions/${manualEditRow.id}`, {
-        method: "PATCH",
-        body: {
-          createdAt: new Date(manualEditForm.datetimeLocal).toISOString(),
-          customer: manualEditForm.employeeName.trim() || t("financeDefaultOperatingExpenseCustomer"),
-          description: manualEditForm.description.trim(),
-          branchId: Number(manualEditForm.branchId) || 1,
-          grossAmd,
-          expenseKind: hasRateCalc ? "hourly_rate" : "other",
-          employeeName: manualEditForm.employeeName.trim() || null,
-          units: hasRateCalc ? units : null,
-          unitRateAmd: hasRateCalc ? Math.round(unitRateAmd) : null,
-        },
-      });
-      setManualEditRow(null);
-      showToast(t("fleetExpenseSavedToast"), "success");
-      await refreshManualExpenses();
-    } catch (err) {
-      showToast(getApiErrorMessage(err), "error");
-    }
-  };
-
-  const handleManualDelete = async (tx: FinanceTx) => {
-    try {
-      await vivaApiJson(`/finance/transactions/${tx.id}`, { method: "DELETE" });
-      showToast(t("fleetExpenseDeletedToast"), "success");
-      await refreshManualExpenses();
-    } catch (err) {
-      showToast(getApiErrorMessage(err), "error");
-    }
-  };
+  const renderExpenseForm = (
+    formId: string,
+    form: ExpenseFormState,
+    setForm: (updater: (prev: ExpenseFormState) => ExpenseFormState) => void,
+    onSubmit: (e: React.FormEvent) => void,
+  ) => (
+    <form id={formId} onSubmit={onSubmit} className="space-y-3">
+      <FormField label={`${t("adminFinanceExpenseColTitle")} *`}>
+        <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} className="h-10" />
+      </FormField>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormField label={`${t("fleetExpenseColAmount")} *`}>
+          <Input
+            inputMode="decimal"
+            value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            className="h-10"
+            placeholder="0"
+          />
+        </FormField>
+        <FormField label={`${t("fleetExpenseColDate")} *`}>
+          <Input type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} className="h-10" />
+        </FormField>
+      </div>
+      <FormField label={`${t("adminFinanceExpenseColPurposeType")} *`}>
+        <select
+          required
+          value={form.purpose}
+          onChange={(e) => {
+            const purpose = e.target.value as AdminExpensePurpose | "";
+            setForm(() => ({ ...emptyForm(), title: form.title, amount: form.amount, date: form.date, notes: form.notes, purpose }));
+          }}
+          className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
+        >
+          <option value="">{t("adminFinanceExpensePickPurpose")}</option>
+          {EXPENSE_PURPOSE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      <FormField className="sm:col-span-2">{renderConditionalFields(form, setForm)}</FormField>
+      <FormField label={t("fleetExpenseColNote")}>
+        <textarea
+          value={form.notes}
+          onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          rows={3}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm min-h-[4.5rem]"
+        />
+      </FormField>
+    </form>
+  );
 
   return (
     <AdminLayout>
-      <PanelPageHeader icon={Landmark} title={t("adminFinanceOutcomesTitle")} subtitle={t("adminFinanceOutcomesSubtitle")} />
+      <PanelPageHeader
+        icon={Landmark}
+        title={t("adminFinanceOutcomesTitle")}
+        subtitle={t("adminFinanceOutcomesUnifiedSubtitle")}
+        actions={
+          <Button
+            onClick={() => {
+              setAddForm(emptyForm());
+              setAddOpen(true);
+            }}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            {t("adminFinanceOutcomeAddTitle")}
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="p-5 border-border">
-          <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiFleet")}</p>
-          <p className="text-lg font-bold tabular-nums">{formatAmd(monthStats.fleet)}</p>
-        </Card>
-        <Card className="p-5 border-border">
-          <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiManual")}</p>
-          <p className="text-lg font-bold tabular-nums">{formatAmd(monthStats.manual)}</p>
-        </Card>
-        <Card className="p-5 border-border">
-          <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiTotal")}</p>
-          <p className="text-lg font-bold tabular-nums">{formatAmd(monthStats.total)}</p>
-        </Card>
-      </div>
+      <Card className="p-5 border-border mb-8">
+        <p className="text-xs text-muted-foreground mb-1">{t("adminFinanceOutcomeKpiTotal")}</p>
+        <p className="text-lg font-bold tabular-nums">{formatAmd(monthTotal)}</p>
+      </Card>
 
-      <Card className="border-border overflow-hidden min-w-0 mb-8">
-        <div className="p-5 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomesFleetLedgerTitle")}</h3>
+      <Card className="border-border overflow-hidden min-w-0">
+        <div className="p-5 border-b border-border">
+          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomesLedgerTitle")}</h3>
         </div>
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
-            filename="admin-finance-outcomes.csv"
+            filename="admin-finance-expenses.csv"
             headers={[
-              t("fleetExpenseColDate"),
-              t("fleetColPlate"),
-              t("fleetExpenseColPurpose"),
+              t("adminFinanceExpenseColTitle"),
+              t("adminFinanceExpenseColPurposeType"),
               t("fleetExpenseColAmount"),
+              t("fleetExpenseColDate"),
+              t("adminFinanceExpenseColRelated"),
               t("fleetExpenseColNote"),
+              t("adminFinanceExpenseColCreatedBy"),
             ]}
-            rows={filtered.map((ex) => [
-              ex.date,
-              plateByCarId.get(String(ex.carId)) ?? String(ex.carId),
-              ex.purpose,
-              String(ex.amount),
-              ex.note ?? "—",
+            rows={filtered.map((row) => [
+              row.title,
+              purposeTypeDisplay(row),
+              String(row.amount),
+              row.date,
+              relatedDisplay(row),
+              row.notes ?? "—",
+              row.createdByAdminName ?? "—",
             ])}
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[42rem]">
+          <table className="w-full text-sm min-w-[56rem]">
             <thead className="bg-muted/40">
               <tr>
-                <TableColumnHeaderWithFilter title={t("fleetExpenseColDate")} />
-                <TableColumnHeaderWithFilter
-                  title={t("fleetColPlate")}
-                  filter={
-                    <TableColumnFilter
-                      value={carFilter}
-                      onChange={setCarFilter}
-                      ariaLabel={t("filterByCar")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...cars.map((c) => ({ value: String(c.id), label: c.plate })),
-                      ]}
-                    />
-                  }
-                />
-                <TableColumnHeaderWithFilter title={t("fleetExpenseColPurpose")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceExpenseColTitle")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceExpenseColPurposeType")} />
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColAmount")} />
+                <TableColumnHeaderWithFilter title={t("fleetExpenseColDate")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceExpenseColRelated")} />
                 <TableColumnHeaderWithFilter title={t("fleetExpenseColNote")} />
+                <TableColumnHeaderWithFilter title={t("adminFinanceExpenseColCreatedBy")} />
                 <TableColumnHeaderWithFilter title={t("actions")} />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {t("redirecting")}
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {t("tableNoMatches")}
                   </td>
                 </tr>
               ) : (
-                filtered.map((ex) => (
+                filtered.map((row) => (
                   <AdminTableRowContextMenu
-                    key={ex.id}
+                    key={row.id}
                     actions={[
-                      { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => setEditRow({ ...ex }) },
+                      { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => setEditRow(row) },
                       {
                         kind: "item",
                         id: "delete",
                         label: t("delete"),
                         icon: Trash2,
                         destructive: true,
-                        onClick: () => void handleDelete(ex.id),
+                        onClick: () => void handleDelete(row),
                       },
                     ]}
                   >
                     <tr className="hover:bg-muted/30">
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{ex.date}</td>
-                      <td className="px-4 py-3 font-medium whitespace-nowrap">{plateByCarId.get(String(ex.carId)) ?? ex.carId}</td>
-                      <td className="px-4 py-3 max-w-[14rem]">{ex.purpose}</td>
-                      <td className="px-4 py-3 font-medium tabular-nums whitespace-nowrap">{formatAmd(Math.abs(ex.amount))}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-sm max-w-[12rem] truncate" title={ex.note}>
-                        {ex.note ?? "—"}
+                      <td className="px-4 py-3 font-medium max-w-[14rem]">{row.title}</td>
+                      <td className="px-4 py-3 max-w-[16rem] text-muted-foreground">{purposeTypeDisplay(row)}</td>
+                      <td className="px-4 py-3 font-medium tabular-nums whitespace-nowrap">{formatAmd(row.amount)}</td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{row.date}</td>
+                      <td className="px-4 py-3 max-w-[14rem]">{relatedDisplay(row)}</td>
+                      <td className="px-4 py-3 text-muted-foreground text-sm max-w-[12rem] truncate" title={row.notes ?? undefined}>
+                        {row.notes ?? "—"}
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{row.createdByAdminName ?? "—"}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <AdminTableRowActions
                           toolbarOnly
                           actions={[
-                            { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => setEditRow({ ...ex }) },
+                            { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => setEditRow(row) },
                             {
                               kind: "item",
                               id: "delete",
                               label: t("delete"),
                               icon: Trash2,
                               destructive: true,
-                              onClick: () => void handleDelete(ex.id),
+                              onClick: () => void handleDelete(row),
                             },
                           ]}
                         />
@@ -473,208 +626,30 @@ export default function AdminFinanceOutcomes() {
         </div>
       </Card>
 
-      <Card className="p-5 sm:p-6 border-border border-dashed">
-        <div className="flex items-center gap-2 mb-4">
-          <Plus className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomeAddTitle")}</h3>
-        </div>
-        <form id={addFormId} onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetColPlate")} *</label>
-            <select
-              value={newRow.carId}
-              onChange={(e) => setNewRow((r) => ({ ...r, carId: e.target.value }))}
-              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              required
-            >
-              <option value="">{t("adminFinanceOutcomePickCar")}</option>
-              {cars.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.plate}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
-            <Input
-              inputMode="decimal"
-              value={newRow.amount}
-              onChange={(e) => setNewRow((r) => ({ ...r, amount: e.target.value }))}
-              className="h-10"
-              placeholder="0"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColDate")} *</label>
-            <Input type="date" value={newRow.date} onChange={(e) => setNewRow((r) => ({ ...r, date: e.target.value }))} className="h-10" />
-          </div>
-          <div className="sm:col-span-2 lg:col-span-2">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColPurpose")} *</label>
-            <select
-              required
-              value={newRow.purposeChoice}
-              onChange={(e) => {
-                const v = e.target.value;
-                setNewRow((r) => ({
-                  ...r,
-                  purposeChoice: v,
-                  purposeCustom: v === FLEET_EXPENSE_PURPOSE_OTHER_AM ? r.purposeCustom : "",
-                }));
-              }}
-              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-            >
-              <option value="">{t("adminFinancePurposePick")}</option>
-              {FLEET_EXPENSE_PURPOSE_DROPDOWN_AM.map((label) => (
-                <option key={label} value={label}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {newRow.purposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM ? (
-            <div className="sm:col-span-2 lg:col-span-4">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinancePurposeOtherLabel")}</label>
-              <Input
-                value={newRow.purposeCustom}
-                onChange={(e) => setNewRow((r) => ({ ...r, purposeCustom: e.target.value }))}
-                className="h-10"
-                placeholder={t("adminFinancePurposeOtherHint")}
-              />
-            </div>
-          ) : null}
-          <div className="sm:col-span-2 lg:col-span-4">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColNote")}</label>
-            <Input value={newRow.note} onChange={(e) => setNewRow((r) => ({ ...r, note: e.target.value }))} className="h-10" />
-          </div>
-          <div className="sm:col-span-2 flex items-end">
-            <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground w-full sm:w-auto">
-              {t("fleetAddExpense")}
+      <AppModal
+        open={addOpen}
+        onOpenChange={(o) => !o && setAddOpen(false)}
+        title={t("adminFinanceOutcomeAddTitle")}
+        contentClassName="max-w-lg"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setAddOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" form={addFormId} className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
+              {t("save")}
             </Button>
           </div>
-        </form>
-      </Card>
-
-      <Card className="border-border overflow-hidden min-w-0 mt-6 mb-8">
-        <div className="p-5 border-b border-border">
-          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomesManualLedgerTitle")}</h3>
-        </div>
-        <DataTableToolbar value={manualSearch} onChange={setManualSearch} placeholder={`${t("search")}…`} />
-        <AdminTableScroll>
-          <table className="w-full text-sm min-w-[58rem]">
-            <thead className="bg-muted/40">
-              <tr>
-                <TableColumnHeaderWithFilter title={t("tableColId")} />
-                <TableColumnHeaderWithFilter title={t("financeColDateTime")} />
-                <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeEmployeeVendor")} />
-                <TableColumnHeaderWithFilter title={t("financeColProduct")} />
-                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
-                <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeUnits")} />
-                <TableColumnHeaderWithFilter title={t("adminFinanceOutcomeRateAmd")} />
-                <TableColumnHeaderWithFilter title={t("fleetExpenseColAmount")} />
-                <TableColumnHeaderWithFilter title={t("actions")} />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {manualFiltered.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    {t("tableNoMatches")}
-                  </td>
-                </tr>
-              ) : (
-                manualFiltered.map((tx) => (
-                  <AdminTableRowContextMenu
-                    key={tx.id}
-                    actions={[
-                      { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => startManualEdit(tx) },
-                      {
-                        kind: "item",
-                        id: "delete",
-                        label: t("delete"),
-                        icon: Trash2,
-                        destructive: true,
-                        onClick: () => void handleManualDelete(tx),
-                      },
-                    ]}
-                  >
-                    <tr className="hover:bg-muted/30">
-                      <td className="px-4 py-3 text-muted-foreground text-xs font-mono">{tx.id}</td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(tx.createdAt).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-foreground">{tx.employeeName || tx.customer || "—"}</td>
-                      <td className="px-4 py-3 max-w-[16rem]">{tx.description}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{branchNameById(branches, tx.branchId)}</td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.units ?? "—"}</td>
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{tx.unitRateAmd != null ? formatAmd(tx.unitRateAmd) : "—"}</td>
-                      <td className="px-4 py-3 font-medium tabular-nums">{formatAmd(tx.grossAmd)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <AdminTableRowActions
-                          toolbarOnly
-                          actions={[
-                            { kind: "item", id: "edit", label: t("edit"), icon: Edit2, onClick: () => startManualEdit(tx) },
-                            {
-                              kind: "item",
-                              id: "delete",
-                              label: t("delete"),
-                              icon: Trash2,
-                              destructive: true,
-                              onClick: () => void handleManualDelete(tx),
-                            },
-                          ]}
-                        />
-                      </td>
-                    </tr>
-                  </AdminTableRowContextMenu>
-                ))
-              )}
-            </tbody>
-          </table>
-        </AdminTableScroll>
-      </Card>
-
-      <Card className="p-5 sm:p-6 border-border border-dashed mt-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Plus className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-foreground">{t("adminFinanceOutcomeFormManualTitle")}</h3>
-        </div>
-        <form onSubmit={submitManualExpense} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeEmployeeVendor")}</label>
-            <Input value={manualExpenseForm.employeeName} onChange={(e) => setManualExpenseForm((r) => ({ ...r, employeeName: e.target.value }))} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColProduct")} *</label>
-            <Input value={manualExpenseForm.description} onChange={(e) => setManualExpenseForm((r) => ({ ...r, description: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColDateTime")} *</label>
-            <Input type="datetime-local" value={manualExpenseForm.datetimeLocal} onChange={(e) => setManualExpenseForm((r) => ({ ...r, datetimeLocal: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeUnits")}</label>
-            <Input value={manualExpenseForm.units} onChange={(e) => setManualExpenseForm((r) => ({ ...r, units: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeRateAmd")}</label>
-            <Input value={manualExpenseForm.unitRateAmd} onChange={(e) => setManualExpenseForm((r) => ({ ...r, unitRateAmd: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
-            <Input value={manualExpenseForm.grossAmd} onChange={(e) => setManualExpenseForm((r) => ({ ...r, grossAmd: e.target.value }))} placeholder={t("adminFinanceOutcomeAmountHint")} />
-          </div>
-          <div className="sm:col-span-2 flex items-end">
-            <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              {t("adminFinanceOutcomeSaveExpense")}
-            </Button>
-          </div>
-        </form>
-      </Card>
+        }
+      >
+        {renderExpenseForm(addFormId, addForm, setAddForm, submitAdd)}
+      </AppModal>
 
       <AppModal
         open={!!editRow}
         onOpenChange={(o) => !o && setEditRow(null)}
         title={t("fleetEditExpense")}
-        contentClassName="max-w-md"
+        contentClassName="max-w-lg"
         footer={
           editRow ? (
             <div className="flex gap-3">
@@ -688,126 +663,26 @@ export default function AdminFinanceOutcomes() {
           ) : null
         }
       >
-        {editRow && (
-          <form id={editFormId} onSubmit={saveEdit} className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
-              <Input
-                inputMode="decimal"
-                value={Number.isFinite(editRow.amount) ? String(editRow.amount) : ""}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const n = Number.parseFloat(raw.replace(",", "."));
-                  setEditRow({ ...editRow, amount: raw.trim() === "" || Number.isNaN(n) ? 0 : n });
-                }}
-                className="h-10"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColDate")} *</label>
-              <Input type="date" value={editRow.date} onChange={(e) => setEditRow({ ...editRow, date: e.target.value })} className="h-10" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColPurpose")} *</label>
-              <select
-                required
-                value={editPurposeChoice}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setEditPurposeChoice(v);
-                  if (v !== FLEET_EXPENSE_PURPOSE_OTHER_AM) setEditPurposeCustom("");
-                }}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              >
-                <option value="">{t("adminFinancePurposePick")}</option>
-                {FLEET_EXPENSE_PURPOSE_DROPDOWN_AM.map((label) => (
-                  <option key={label} value={label}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {editPurposeChoice === FLEET_EXPENSE_PURPOSE_OTHER_AM ? (
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinancePurposeOtherLabel")}</label>
-                <Input
-                  value={editPurposeCustom}
-                  onChange={(e) => setEditPurposeCustom(e.target.value)}
-                  className="h-10"
-                  placeholder={t("adminFinancePurposeOtherHint")}
-                />
-              </div>
-            ) : null}
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColNote")}</label>
-              <Input value={editRow.note ?? ""} onChange={(e) => setEditRow({ ...editRow, note: e.target.value })} className="h-10" />
-            </div>
-            <p className="text-xs text-muted-foreground">{t("adminFinanceOutcomeFleetNote")}</p>
-          </form>
-        )}
-      </AppModal>
-
-      <AppModal
-        open={!!manualEditRow}
-        onOpenChange={(o) => !o && setManualEditRow(null)}
-        title={t("edit")}
-        contentClassName="max-w-md"
-        footer={
-          manualEditRow ? (
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setManualEditRow(null)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" form="manual-expense-edit-form" className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("save")}
-              </Button>
-            </div>
-          ) : null
-        }
-      >
-        {manualEditRow ? (
-          <form id="manual-expense-edit-form" onSubmit={submitManualEdit} className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeEmployeeVendor")}</label>
-              <Input value={manualEditForm.employeeName} onChange={(e) => setManualEditForm((r) => ({ ...r, employeeName: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColProduct")} *</label>
-              <Input value={manualEditForm.description} onChange={(e) => setManualEditForm((r) => ({ ...r, description: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")} *</label>
-              <Input type="datetime-local" value={manualEditForm.datetimeLocal} onChange={(e) => setManualEditForm((r) => ({ ...r, datetimeLocal: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColBranch")} *</label>
-              <select
-                value={manualEditForm.branchId}
-                onChange={(e) => setManualEditForm((r) => ({ ...r, branchId: e.target.value }))}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={String(b.id)}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeUnits")}</label>
-              <Input value={manualEditForm.units} onChange={(e) => setManualEditForm((r) => ({ ...r, units: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminFinanceOutcomeRateAmd")}</label>
-              <Input value={manualEditForm.unitRateAmd} onChange={(e) => setManualEditForm((r) => ({ ...r, unitRateAmd: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("fleetExpenseColAmount")} *</label>
-              <Input value={manualEditForm.grossAmd} onChange={(e) => setManualEditForm((r) => ({ ...r, grossAmd: e.target.value }))} />
-            </div>
-          </form>
-        ) : null}
+        {editRow ? renderExpenseForm(editFormId, editForm, setEditForm, submitEdit) : null}
       </AppModal>
     </AdminLayout>
   );
 }
+
+function FormField({
+  label,
+  children,
+  className,
+}: {
+  label?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      {label ? <label className="block text-sm font-medium text-muted-foreground mb-1">{label}</label> : null}
+      {children}
+    </div>
+  );
+}
+

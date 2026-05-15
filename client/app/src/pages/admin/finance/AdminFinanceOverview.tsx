@@ -3,11 +3,11 @@ import { useLang, type TranslationKey } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Landmark, TrendingUp, ArrowDownRight, Wallet, Undo2 } from "lucide-react";
+import { Landmark, TrendingUp, ArrowDownRight, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import type { CarExpense } from "src/modules/cars";
+import type { AdminFinanceExpense } from "src/types/admin-finance-expense.types";
 import {
   type FinanceTx,
   type FinanceOverviewPeriod,
@@ -17,7 +17,6 @@ import {
   monthStartsInRange,
   monthRange,
   grossCompletedInRange,
-  financeOutcomeTotalInRange,
   expensesTotalInRange,
   totalRefundMoneyInRange,
 } from "./adminFinanceShared";
@@ -74,7 +73,7 @@ export default function AdminFinanceOverview() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [transactions, setTransactions] = useState<FinanceTx[]>([]);
-  const [expenses, setExpenses] = useState<CarExpense[]>([]);
+  const [expenses, setExpenses] = useState<AdminFinanceExpense[]>([]);
   const [bookings, setBookings] = useState<AdminBookingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<FinanceOverviewPeriod>("1m");
@@ -84,7 +83,7 @@ export default function AdminFinanceOverview() {
     try {
       const [txs, ex, bks] = await Promise.all([
         vivaApiJson<FinanceTx[]>("/finance/transactions"),
-        vivaApiJson<CarExpense[]>("/fleet/expenses"),
+        vivaApiJson<AdminFinanceExpense[]>("/admin/finance/expenses"),
         vivaApiJson<AdminBookingRow[]>("/bookings"),
       ]);
       setTransactions(
@@ -112,13 +111,12 @@ export default function AdminFinanceOverview() {
 
   const locale = localeFromLang(lang);
 
-  const { grossTotal, expenseTotal, netTotal, refundMoneyTotal, monthLabels, incomeByMonth, expensesByMonth } =
+  const { grossTotal, expenseTotal, refundMoneyTotal, monthLabels, incomeByMonth, expensesByMonth } =
     useMemo(() => {
     const n = financePeriodMonthCount(period);
     const { start: rangeStartInner, end: rangeEndInner } = rollingCalendarMonthsRange(n);
     const gross = grossCompletedInRange(transactions, rangeStartInner, rangeEndInner);
-    const txOutcomes = financeOutcomeTotalInRange(transactions, rangeStartInner, rangeEndInner);
-    const exp = expensesTotalInRange(expenses, rangeStartInner, rangeEndInner) + txOutcomes;
+    const exp = expensesTotalInRange(expenses, rangeStartInner, rangeEndInner);
     const refundMoney = totalRefundMoneyInRange(transactions, rangeStartInner, rangeEndInner);
     const months = monthStartsInRange(rangeStartInner, rangeEndInner);
     const income: number[] = [];
@@ -128,12 +126,11 @@ export default function AdminFinanceOverview() {
       const { start, end } = monthRange(ms);
       labels.push(monthChartLabel(ms, locale));
       income.push(grossCompletedInRange(transactions, start, end));
-      expM.push(expensesTotalInRange(expenses, start, end) + financeOutcomeTotalInRange(transactions, start, end));
+      expM.push(expensesTotalInRange(expenses, start, end));
     }
     return {
       grossTotal: gross,
       expenseTotal: exp,
-      netTotal: gross - exp,
       refundMoneyTotal: refundMoney,
       monthLabels: labels,
       incomeByMonth: income,
@@ -329,7 +326,7 @@ export default function AdminFinanceOverview() {
         actions={periodSelect}
       />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
         <Card className="p-5 border-border">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -366,19 +363,6 @@ export default function AdminFinanceOverview() {
             </div>
             <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center shrink-0">
               <ArrowDownRight className="w-5 h-5 text-amber-700 dark:text-amber-400" />
-            </div>
-          </div>
-        </Card>
-        <Card className="p-5 border-border">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground mb-1 leading-snug">{t("adminFinanceKpiNetFlowMonth")}</p>
-              <p className="text-lg font-bold text-foreground tabular-nums break-words">
-                {loading ? "…" : formatAmd(netTotal)}
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center shrink-0">
-              <Wallet className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
             </div>
           </div>
         </Card>

@@ -107,10 +107,10 @@ export default function InstructorDashboard() {
 				<div className="flex items-center justify-between gap-4 mb-4">
 					<h3 className="font-semibold text-foreground">{t("instructorKpiUpcomingTitle")}</h3>
 					<Link
-						href="/instructor/my-lessons"
+						href="/instructor/class-schedule"
 						className="text-sm font-medium text-primary inline-flex items-center gap-1 hover:underline"
 					>
-						{t("instructorNavMyLessons")} <ArrowRight className="w-4 h-4" />
+						{t("instructorClassSchedule")} <ArrowRight className="w-4 h-4" />
 					</Link>
 				</div>
 				<div className="space-y-3">

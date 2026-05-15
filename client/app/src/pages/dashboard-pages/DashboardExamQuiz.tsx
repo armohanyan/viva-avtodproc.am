@@ -9,7 +9,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { ArrowLeft, CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleHelp, MessageSquare, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
 import {
@@ -23,6 +23,12 @@ import {
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
+import ExamQuizFocusModeButton from "src/components/exam/ExamQuizFocusModeButton";
+import {
+  usePanelFocusMode,
+  usePanelFocusModeCleanupOnUnmount,
+} from "src/components/panel/PanelFocusModeContext";
+import { cn } from "src/lib/utils";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -33,7 +39,17 @@ function isExamMode(s: string): s is ExamQuizMode {
 }
 
 export default function DashboardExamQuiz() {
+  return (
+    <DashboardLayout>
+      <DashboardExamQuizView />
+    </DashboardLayout>
+  );
+}
+
+function DashboardExamQuizView() {
   const { t, lang } = useLang();
+  const { active: focusMode, toggle: toggleFocusMode } = usePanelFocusMode();
+  usePanelFocusModeCleanupOnUnmount();
   const [, setLocation] = useLocation();
   const [learnMatch, learnParams] = useRoute("/dashboard/learn/exam-tests/quiz/:mode");
   const [legacyMatch, legacyParams] = useRoute("/dashboard/exam-tests/quiz/:mode");
@@ -355,24 +371,20 @@ export default function DashboardExamQuiz() {
 
   if (quizLoading) {
     return (
-      <DashboardLayout>
-        <div className="max-w-lg mx-auto text-center py-12">
-          <p className="text-muted-foreground mb-4">{t("examQuizLoading")}</p>
-        </div>
-      </DashboardLayout>
+      <div className="max-w-lg mx-auto text-center py-12">
+        <p className="text-muted-foreground mb-4">{t("examQuizLoading")}</p>
+      </div>
     );
   }
 
   if (questions.length === 0) {
     return (
-      <DashboardLayout>
-        <div className="max-w-lg mx-auto text-center py-12">
-          <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-          <Link href={effectiveBackHref}>
-            <Button variant="outline">{t("examQuizBackToList")}</Button>
-          </Link>
-        </div>
-      </DashboardLayout>
+      <div className="max-w-lg mx-auto text-center py-12">
+        <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
+        <Link href={effectiveBackHref}>
+          <Button variant="outline">{t("examQuizBackToList")}</Button>
+        </Link>
+      </div>
     );
   }
 
@@ -380,8 +392,7 @@ export default function DashboardExamQuiz() {
     const total = questions.length;
     const pct = Math.round((correctCount / total) * 100);
     return (
-      <DashboardLayout>
-        <div className="max-w-lg mx-auto">
+        <div className={cn("mx-auto w-full", focusMode ? "max-w-4xl" : "max-w-lg")}>
           <Reveal delay={0.06}>
             <Card className="p-8 border-border text-center">
               <h2 className="text-2xl font-bold text-foreground mb-2">{t("examQuizResultsTitle")}</h2>
@@ -474,29 +485,25 @@ export default function DashboardExamQuiz() {
             })}
           </div>
         </div>
-      </DashboardLayout>
     );
   }
 
   const q = questions[index];
   if (!q) {
     return (
-      <DashboardLayout>
-        <div className="max-w-lg mx-auto text-center py-12">
-          <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
-          <Link href={effectiveBackHref}>
-            <Button variant="outline">{t("examQuizBackToList")}</Button>
-          </Link>
-        </div>
-      </DashboardLayout>
+      <div className="max-w-lg mx-auto text-center py-12">
+        <p className="text-muted-foreground mb-4">{t("examQuizNoQuestions")}</p>
+        <Link href={effectiveBackHref}>
+          <Button variant="outline">{t("examQuizBackToList")}</Button>
+        </Link>
+      </div>
     );
   }
 
   const current = getQuestionInLang(q, lang);
 
   return (
-    <DashboardLayout>
-      <div className="max-w-2xl mx-auto">
+      <div className={cn("mx-auto w-full", focusMode ? "max-w-4xl" : "max-w-2xl")}>
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
           <p className="text-sm text-muted-foreground">
             {layoutMode === "step" ? (
@@ -538,9 +545,10 @@ export default function DashboardExamQuiz() {
             </Button>
             <Link href={`${mode === "topics" ? "/dashboard/learn/thematic-tests/question" : `${backHref}/question`}/${q.id}`}>
               <Button variant="outline" size="icon" aria-label={t("questionDetailOpenAction")} title={t("questionDetailOpenAction")}>
-                <ExternalLink className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4" />
               </Button>
             </Link>
+            <ExamQuizFocusModeButton active={focusMode} onToggle={toggleFocusMode} />
             <div
               role="group"
               aria-label={t("examQuizLayoutModeLabel")}
@@ -738,6 +746,5 @@ export default function DashboardExamQuiz() {
           </>
         )}
       </div>
-    </DashboardLayout>
   );
 }

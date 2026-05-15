@@ -16,6 +16,7 @@ export type FleetCarDto = {
 export type CarExpenseDto = {
   id: number;
   carId: number;
+  title?: string;
   amount: number;
   date: string;
   purpose: string;
@@ -57,6 +58,7 @@ export default class FleetService {
     return rows.map((e) => ({
       id: e.id,
       carId: e.carId,
+      title: e.title?.trim() || undefined,
       amount: e.amount,
       date: typeof e.date === 'string' ? e.date : String(e.date).slice(0, 10),
       purpose: e.purpose,
@@ -106,6 +108,7 @@ export default class FleetService {
   static async addExpense(input: Omit<CarExpenseDto, 'id'>): Promise<CarExpenseDto> {
     const row = await CarExpense.create({
       carId: input.carId,
+      title: input.title?.trim() || null,
       amount: input.amount,
       date: input.date,
       purpose: input.purpose,
@@ -114,6 +117,7 @@ export default class FleetService {
     return {
       id: row.id,
       carId: row.carId,
+      title: row.title?.trim() || undefined,
       amount: row.amount,
       date: typeof row.date === 'string' ? row.date : String(row.date).slice(0, 10),
       purpose: row.purpose,
@@ -125,6 +129,7 @@ export default class FleetService {
     id: number,
     patch: Partial<{
       carId: number;
+      title: string | null;
       amount: number;
       date: string;
       purpose: string;

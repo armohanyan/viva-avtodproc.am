@@ -13,7 +13,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { ArrowLeft, CheckCircle2, CircleHelp, ExternalLink, Scroll, SquareStack, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleHelp, MessageSquare, Scroll, SquareStack, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import {
   addExamAttempt,
@@ -27,6 +27,8 @@ import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
+import ExamQuizFocusModeButton from "src/components/exam/ExamQuizFocusModeButton";
+import { cn } from "src/lib/utils";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -78,10 +80,15 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
   const timedExam = mode === "full";
 
+  const [focusMode, setFocusMode] = useState(false);
   const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
     () => defaultExamQuestionMeta().examCardQuestionIds,
   );
   const [examMetaReady, setExamMetaReady] = useState(true);
+
+  useEffect(() => {
+    return () => setFocusMode(false);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -369,10 +376,20 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <section className="py-12 px-4">
-        <div className="max-w-2xl mx-auto">
+    <div
+      className={cn(
+        "min-h-[100dvh] bg-background flex flex-col",
+        focusMode && "h-[100dvh] overflow-hidden",
+      )}
+    >
+      {!focusMode ? <Navbar /> : null}
+      <section
+        className={cn(
+          "flex-1 min-h-0 px-4",
+          focusMode ? "overflow-y-auto py-3 sm:py-5" : "py-12",
+        )}
+      >
+        <div className={cn("mx-auto w-full", focusMode ? "max-w-4xl" : "max-w-2xl")}>
           {quizLoading ? (
             <div className="max-w-lg mx-auto text-center py-12">
               <p className="text-muted-foreground mb-4">{t("examQuizLoading")}</p>
@@ -532,9 +549,13 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                       aria-label={t("questionDetailOpenAction")}
                       title={t("questionDetailOpenAction")}
                     >
-                      <ExternalLink className="w-4 h-4" />
+                      <MessageSquare className="w-4 h-4" />
                     </Button>
                   </MarketingLink>
+                  <ExamQuizFocusModeButton
+                    active={focusMode}
+                    onToggle={() => setFocusMode((v) => !v)}
+                  />
                   <div
                     role="group"
                     aria-label={t("examQuizLayoutModeLabel")}
@@ -738,7 +759,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
           )}
         </div>
       </section>
-      <Footer />
+      {!focusMode ? <Footer /> : null}
     </div>
   );
 }
@@ -777,9 +798,6 @@ export default function ExamQuiz({ mode: modeProp, examListPath }: ExamQuizProps
       return <ExamQuizRedirect target={examListPath} />;
     }
     return <ExamQuizRunner mode={m} listPath={examListPath} />;
-  }
-  if (typeof window === "undefined") {
-    return null;
   }
   return <ExamQuizWouter />;
 }

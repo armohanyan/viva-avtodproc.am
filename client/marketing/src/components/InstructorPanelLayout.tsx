@@ -5,12 +5,12 @@ import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
 	LayoutDashboard,
-	BookOpen,
 	GraduationCap,
 	Car,
 	User,
 	LogOut,
 	Settings,
+	CalendarDays,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { INSTRUCTOR_NAV_LINKS } from "src/modules/instructor/instructor.consts";
@@ -41,7 +41,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 	const iconByPath = {
 		"/instructor/dashboard": LayoutDashboard,
 		"/instructor/students": GraduationCap,
-		"/instructor/my-lessons": BookOpen,
+		"/instructor/class-schedule": CalendarDays,
 		"/instructor/cars": Car,
 		"/instructor/profile": User,
 	} as const;

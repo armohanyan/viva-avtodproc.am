@@ -45,6 +45,9 @@ const rawEnvSchema = z.object({
   OAUTH_APPLE_PRIVATE_KEY: z.string().optional(),
   BREVO_API_KEY: z.string().optional(),
   SENDER_EMAIL: z.string().optional(),
+  EMAIL_LOGO_URL: z.string().optional(),
+  EMAIL_SUPPORT_EMAIL: z.string().optional(),
+  EMAIL_COMPANY_NAME: z.string().optional(),
 });
 
 function parseCorsOrigins(primary?: string, fallback?: string): CorsOptions['origin'] {
@@ -141,6 +144,10 @@ const config = {
   MAIL: {
     BREVO_API_KEY: raw.BREVO_API_KEY?.trim() || '',
     SENDER_EMAIL: raw.SENDER_EMAIL?.trim() || '',
+    /** Absolute HTTPS URL for the logo image in transactional emails (required in production). */
+    LOGO_URL: raw.EMAIL_LOGO_URL?.trim() || '',
+    SUPPORT_EMAIL: raw.EMAIL_SUPPORT_EMAIL?.trim() || 'support@viva.am',
+    COMPANY_NAME: raw.EMAIL_COMPANY_NAME?.trim() || 'Viva',
   },
 };
 

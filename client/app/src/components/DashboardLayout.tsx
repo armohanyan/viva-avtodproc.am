@@ -33,6 +33,7 @@ import { initialsFromName } from "src/components/panel/initialsFromName";
 import { cn } from "src/lib/utils";
 import { absWouterHref, fullBrowserPathFromRouter } from "src/lib/wouterFullPath";
 import NotificationBell from "src/components/NotificationBell";
+import { PanelFocusModeProvider } from "src/components/panel/PanelFocusModeContext";
 
 interface Props {
 	children: ReactNode;
@@ -137,6 +138,7 @@ export default function DashboardLayout({ children }: Props) {
 	};
 
 	return (
+		<PanelFocusModeProvider>
 		<PanelShell
 			sidebarSurface="card"
 			headerTitle={headerTitle}
@@ -258,5 +260,6 @@ export default function DashboardLayout({ children }: Props) {
 		>
 			{children}
 		</PanelShell>
+		</PanelFocusModeProvider>
 	);
 }

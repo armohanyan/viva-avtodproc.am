@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, Loader2, MessageSquare, Send, Share2, Trash2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, Loader2, MessageSquare, Send, Share2, Trash2 } from "lucide-react";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
@@ -206,7 +206,14 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
         <Card className="p-6 text-center">
           <p className="text-sm text-muted-foreground mb-4">{questionError || t("questionDetailNotFound")}</p>
           <Link href={backHref}>
-            <Button variant="outline">{t("examQuizBackToList")}</Button>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={t("examQuizBackToList")}
+              title={t("examQuizBackToList")}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
           </Link>
         </Card>
       </div>
@@ -217,7 +224,15 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <Link href={backHref}>
-          <Button variant="ghost" size="sm">{t("examQuizBackToList")}</Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground"
+            aria-label={t("examQuizBackToList")}
+            title={t("examQuizBackToList")}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
         </Link>
         {savedHref ? (
           <Link href={savedHref}>
