@@ -6,6 +6,7 @@ import { BookedCall } from './booked-call.model';
 import { Booking } from './booking.model';
 import { BookingSlot } from './booking-slot.model';
 import { Branch } from './branch.model';
+import { BranchScheduleRule } from './branch-schedule-rule.model';
 import { CarExpense } from './car-expense.model';
 import { City } from './city.model';
 import { ContactRequest } from './contact-request.model';
@@ -41,6 +42,8 @@ import { AdminMfaChallenge } from './admin-mfa-challenge.model';
 
 City.hasMany(Branch, { foreignKey: 'cityId', sourceKey: 'id' });
 Branch.belongsTo(City, { foreignKey: 'cityId', targetKey: 'id' });
+Branch.hasMany(BranchScheduleRule, { foreignKey: 'branchId', sourceKey: 'id' });
+BranchScheduleRule.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
 User.hasOne(InstructorProfile, { foreignKey: 'userId', sourceKey: 'id', as: 'instructorProfile' });
 InstructorProfile.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'user' });
@@ -131,6 +134,7 @@ export {
   Booking,
   BookingSlot,
   Branch,
+  BranchScheduleRule,
   CarExpense,
   City,
   ContactRequest,

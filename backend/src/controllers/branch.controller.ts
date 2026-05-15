@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../helpers';
 import BranchService from '../services/branch.service';
+import BranchScheduleService from '../services/branch-schedule.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -36,6 +37,24 @@ export default class BranchController {
     try {
       const rows = await BranchService.list();
       SuccessHandlerUtil.handleList(res, next, rows.map(toBranchJson));
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** Resolved branch hours for booking calendars (DB rules → workHours text → default 09:00–18:00). */
+  static async bookingSchedule(req: Request, res: Response, next: NextFunction) {
+    try {
+      const branchId = Number(req.params.id);
+      if (!Number.isFinite(branchId) || branchId <= 0) {
+        return next(new ResourceNotFoundError('Branch not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const exists = await BranchScheduleService.branchExists(branchId);
+      if (!exists) {
+        return next(new ResourceNotFoundError('Branch not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const rules = await BranchScheduleService.resolveEffectiveRulesForBranch(branchId);
+      SuccessHandlerUtil.handleList(res, next, rules);
     } catch (e) {
       next(e);
     }

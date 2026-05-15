@@ -13,17 +13,26 @@ import InstructorCard from "src/components/InstructorCard";
 import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
 import {
   isSlotBlockedByAvailabilityRules,
-  isSlotInPastDate,
   normalizeAvailabilityBlocksFromApi,
 } from "src/modules/instructors/instructorAvailability";
+import {
+  type BranchScheduleRule,
+  branchScheduleBlockReason,
+  defaultBranchScheduleRules,
+  hourlySlotStartsForBranchDate,
+  hourlySlotStartsForBranchDates,
+  isSlotBlockedByBranchScheduleRules,
+  isSlotDateBeforeToday,
+  isSlotStartInPast,
+  normalizeBranchScheduleFromApi,
+  type SlotUnavailabilityReason,
+} from "src/modules/booking/booking-slot.util";
+import { yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
+import { TooltipProvider } from "src/components/ui/tooltip";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
-
-const timeSlots = [
-  "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00",
-];
 
 export type LessonBookingPayload = {
   instructorUserId: string;
@@ -40,10 +49,11 @@ export type LessonBookingPayload = {
 
 type SlotStatus = "available" | "unavailable" | "mine";
 
-function todayIsoLocal(): string {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
-}
+type SlotCellMeta = {
+  status: SlotStatus;
+  reason: SlotUnavailabilityReason | null;
+  outsideBranchDayHours: boolean;
+};
 
 /** Monday 00:00 local of the ISO week containing `from`. */
 function startOfIsoWeekMonday(from: Date): Date {
@@ -220,6 +230,10 @@ export default function LessonBookingCalendar({
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [busySlots, setBusySlots] = useState<InstructorBusySlot[]>([]);
   const [blocksLoading, setBlocksLoading] = useState(false);
+  const [branchScheduleRules, setBranchScheduleRules] = useState<BranchScheduleRule[]>(() =>
+    defaultBranchScheduleRules(),
+  );
+  const [branchScheduleLoading, setBranchScheduleLoading] = useState(false);
   /** When `adminSuppressSummaryCard`, avoid duplicate `onBookingConfirmed` / clear loops. */
   const lastAdminAutoSyncKeyRef = useRef<string | null>(null);
   /** After instructor changes, skip one admin auto-sync pass (selection is still from the previous id). */
@@ -279,6 +293,35 @@ export default function LessonBookingCalendar({
       cancelled = true;
     };
   }, [selectedInstructorId, weekOffset, busySlotsRefreshKey, ignoreBusyBookingId]);
+
+  useEffect(() => {
+    const bid = branchId.trim();
+    if (!bid) {
+      setBranchScheduleRules(defaultBranchScheduleRules());
+      setBranchScheduleLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      setBranchScheduleLoading(true);
+      try {
+        const rules = await vivaApiJson<unknown>(
+          `/branches/${encodeURIComponent(bid)}/booking-schedule`,
+        );
+        if (!cancelled) {
+          setBranchScheduleRules(normalizeBranchScheduleFromApi(rules));
+        }
+      } catch {
+        if (!cancelled) setBranchScheduleRules(defaultBranchScheduleRules());
+      } finally {
+        if (!cancelled) setBranchScheduleLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
 
   useEffect(() => {
     if (mode !== "student" || !studentUserId) {
@@ -447,9 +490,20 @@ export default function LessonBookingCalendar({
   }, [mode, studentUserId, studentPaySession?.holdExpiresAt, studentPaySession?.id, serverPaidConfirmed, showToast, t]);
 
   const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
+  const weekDateIsos = useMemo(() => days.map((d) => fmt(d)), [days]);
+  const yerevanToday = useMemo(() => yerevanTodayIso(), [weekOffset, countdownTick]);
+
+  const branchHoursByDate = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const dateIso of weekDateIsos) {
+      map.set(dateIso, new Set(hourlySlotStartsForBranchDate(dateIso, branchScheduleRules)));
+    }
+    return map;
+  }, [weekDateIsos, branchScheduleRules]);
 
   const visibleTimeSlots = useMemo(() => {
-    return timeSlots.filter((time) => {
+    const base = hourlySlotStartsForBranchDates(weekDateIsos, branchScheduleRules);
+    return base.filter((time) => {
       const q = slotSearch.trim();
       if (q && !time.replace(":", "").toLowerCase().includes(q.toLowerCase()) && !time.toLowerCase().includes(q.toLowerCase())) {
         return false;
@@ -459,7 +513,7 @@ export default function LessonBookingCalendar({
       if (periodFilter === "afternoon" && hour < 12) return false;
       return true;
     });
-  }, [slotSearch, periodFilter]);
+  }, [weekDateIsos, branchScheduleRules, slotSearch, periodFilter]);
 
   const adminSelectedKeys = useMemo(() => {
     const s = new Set<string>();
@@ -495,22 +549,74 @@ export default function LessonBookingCalendar({
     return s;
   }, [busySlots, mode, studentUserId]);
 
-  const getStatus = useCallback(
-    (time: string, dateIso: string): SlotStatus => {
-      const today = todayIsoLocal();
-      const key = `${dateIso}\t${padSlot(time)}`;
-      if (blocksLoading) return "unavailable";
-      if (isSlotInPastDate(dateIso, today)) return "unavailable";
-      if (mode === "student" && studentUserId && mySlotKeys.has(key)) return "mine";
-      if (busyOccupiedKeys.has(key)) return "unavailable";
-      if (isSlotBlockedByAvailabilityRules(dateIso, time, availabilityBlocks)) return "unavailable";
-      if (mode === "student" && studentUserId && pendingBookingBlocksNew) return "unavailable";
-      return "available";
+  const resolveSlotCell = useCallback(
+    (time: string, dateIso: string): SlotCellMeta => {
+      const slot = padSlot(time);
+      const dayHours = branchHoursByDate.get(dateIso.slice(0, 10));
+      const outsideBranchDayHours = dayHours != null && !dayHours.has(slot);
+      if (outsideBranchDayHours) {
+        return { status: "unavailable", reason: "outside_hours", outsideBranchDayHours: true };
+      }
+
+      const key = `${dateIso}\t${slot}`;
+      if (blocksLoading || branchScheduleLoading) {
+        return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
+      }
+      if (isSlotDateBeforeToday(dateIso, yerevanToday) || isSlotStartInPast(dateIso, slot)) {
+        return { status: "unavailable", reason: "past", outsideBranchDayHours: false };
+      }
+
+      const branchReason = branchScheduleBlockReason(dateIso, slot, branchScheduleRules);
+      if (branchReason === "branch_closed") {
+        return { status: "unavailable", reason: "branch_closed", outsideBranchDayHours: false };
+      }
+      if (branchReason === "outside_hours" || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchScheduleRules)) {
+        return { status: "unavailable", reason: "outside_hours", outsideBranchDayHours: false };
+      }
+
+      if (mode === "student" && studentUserId && mySlotKeys.has(key)) {
+        return { status: "mine", reason: null, outsideBranchDayHours: false };
+      }
+      if (busyOccupiedKeys.has(key)) {
+        return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
+      }
+      if (isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks)) {
+        return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
+      }
+      if (mode === "student" && studentUserId && pendingBookingBlocksNew) {
+        return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
+      }
+      return { status: "available", reason: null, outsideBranchDayHours: false };
     },
-    [blocksLoading, mode, studentUserId, mySlotKeys, busyOccupiedKeys, availabilityBlocks, pendingBookingBlocksNew],
+    [
+      branchHoursByDate,
+      blocksLoading,
+      branchScheduleLoading,
+      yerevanToday,
+      branchScheduleRules,
+      mode,
+      studentUserId,
+      mySlotKeys,
+      busyOccupiedKeys,
+      availabilityBlocks,
+      pendingBookingBlocksNew,
+    ],
   );
 
-  const slotStyle = (status: SlotStatus, isSelected: boolean) => {
+  const slotUnavailableLabel = useCallback(
+    (reason: SlotUnavailabilityReason | null): string => {
+      if (reason === "past") return t("bookingSlotReasonPast");
+      if (reason === "outside_hours") return t("bookingSlotReasonOutsideHours");
+      if (reason === "branch_closed") return t("bookingSlotReasonBranchClosed");
+      return t("bookingSlotUnavailable");
+    },
+    [t],
+  );
+
+  const slotStyle = (status: SlotStatus, isSelected: boolean, outsideBranchDayHours: boolean) => {
+    if (outsideBranchDayHours) {
+      return "bg-transparent border-transparent cursor-default opacity-0 pointer-events-none";
+    }
     /** Booked “mine” must win over selection — `selected` is kept after confirm for the summary panel. */
     if (status === "mine") return "bg-primary/10 text-primary border-primary/20 cursor-default";
     if (isSelected) return "bg-primary text-primary-foreground border-primary";
@@ -518,7 +624,7 @@ export default function LessonBookingCalendar({
     return "bg-card text-muted-foreground border-border hover:border-primary/40 hover:bg-primary/10 cursor-pointer";
   };
 
-  const canClick = (status: SlotStatus) => status === "available";
+  const canClick = (meta: SlotCellMeta) => meta.status === "available" && !meta.outsideBranchDayHours;
 
   const selectedInstructorName = useMemo(
     () => instructors.find((i) => i.id === selectedInstructorId)?.name ?? "",
@@ -544,8 +650,8 @@ export default function LessonBookingCalendar({
     return Math.round(rate * selected.times.length);
   }, [mode, adminSlotPick, selected, selectedInstructorRecord]);
 
-  const toggleSlotSelection = (dateStr: string, time: string, status: SlotStatus) => {
-    if (!canClick(status)) return;
+  const toggleSlotSelection = (dateStr: string, time: string, meta: SlotCellMeta) => {
+    if (!canClick(meta)) return;
     const slot = padSlot(time);
     setConfirmed(false);
     setCreatedSummary(null);
@@ -815,7 +921,7 @@ export default function LessonBookingCalendar({
         </div>
       </div>
 
-      {blocksLoading ? (
+      {blocksLoading || branchScheduleLoading ? (
         <p className="text-xs text-muted-foreground mb-3">{t("instructorAvailabilityCalendarLoading")}</p>
       ) : null}
 
@@ -855,12 +961,23 @@ export default function LessonBookingCalendar({
             </tr>
           </thead>
           <tbody>
+            {visibleTimeSlots.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-6 text-center text-xs text-muted-foreground">
+                  {t("bookingNoSlotsInWeek")}
+                </td>
+              </tr>
+            ) : null}
             {visibleTimeSlots.map((time) => (
               <tr key={time} className="border-t border-border/50">
                 <td className="text-xs text-muted-foreground pr-4 py-1.5 font-medium">{time}</td>
                 {days.map((d, j) => {
                   const dateStr = fmt(d);
-                  const status = getStatus(time, dateStr);
+                  const cell = resolveSlotCell(time, dateStr);
+                  const tooltipLabel =
+                    cell.status === "unavailable" && cell.reason
+                      ? slotUnavailableLabel(cell.reason)
+                      : undefined;
                   const isSelected =
                     mode === "admin"
                       ? adminSelectedKeys.has(slotEntryKey(dateStr, time))
@@ -872,18 +989,26 @@ export default function LessonBookingCalendar({
                     <td key={j} className="py-1 px-1">
                       <div
                         role="button"
-                        tabIndex={0}
-                        aria-label={`${dateStr} ${time} ${status}`}
+                        tabIndex={cell.outsideBranchDayHours ? -1 : 0}
+                        aria-disabled={!canClick(cell)}
+                        aria-label={`${dateStr} ${time} ${cell.status}${tooltipLabel ? ` — ${tooltipLabel}` : ""}`}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            toggleSlotSelection(dateStr, time, status);
+                            toggleSlotSelection(dateStr, time, cell);
                           }
                         }}
-                        onClick={() => toggleSlotSelection(dateStr, time, status)}
-                        className={`h-8 rounded-md border text-xs text-center flex items-center justify-center transition-colors ${slotStyle(status, isSelected)}`}
+                        onClick={() => toggleSlotSelection(dateStr, time, cell)}
+                        title={tooltipLabel && !cell.outsideBranchDayHours ? tooltipLabel : undefined}
+                        className={`h-8 rounded-md border text-xs text-center flex items-center justify-center transition-colors ${slotStyle(cell.status, isSelected, cell.outsideBranchDayHours)}`}
                       >
-                        {status === "mine" ? t("mine") : status === "unavailable" ? "—" : ""}
+                        {cell.outsideBranchDayHours
+                          ? ""
+                          : cell.status === "mine"
+                            ? t("mine")
+                            : cell.status === "unavailable"
+                              ? "—"
+                              : ""}
                       </div>
                     </td>
                   );
@@ -913,6 +1038,7 @@ export default function LessonBookingCalendar({
   );
 
   return (
+    <TooltipProvider>
     <>
     <SimulatedAcbaPosDialog
       open={posDialogOpen}
@@ -1239,5 +1365,6 @@ export default function LessonBookingCalendar({
     </div>
     </div>
     </>
+    </TooltipProvider>
   );
 }

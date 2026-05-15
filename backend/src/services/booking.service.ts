@@ -17,7 +17,7 @@ import {
 } from '../models';
 import { BOOKING_CANCELLATION_REASON } from '../constants/booking-cancellation-reasons';
 import TheoryCohortService from './theory-cohort.service';
-import InstructorAvailabilityService from './instructor-availability.service';
+import BookingSlotValidationService from './booking-slot-validation.service';
 import FinanceService from './finance.service';
 import BookingNotificationService from './booking-notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
@@ -1224,20 +1224,12 @@ export default class BookingService {
     }
     const totalPriceAmd = hourly * sorted.length;
 
-    for (const slot of sorted) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-        input.instructorUserId,
-        dateIso,
-        slot,
-      );
-
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-    }
+    await BookingSlotValidationService.assertSlotsBookable({
+      branchId: input.branchId,
+      instructorUserId: input.instructorUserId,
+      dateIso,
+      slots: sorted,
+    });
 
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
     const today = todayIsoUtc();
@@ -1245,21 +1237,6 @@ export default class BookingService {
     try {
       const { row, coveredByPrepaidCredits, paymentRequiredNow, holdExpiresAt } = await sequelize.transaction(
         async (transaction) => {
-          for (const slot of sorted) {
-            const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-              input.instructorUserId,
-              dateIso,
-              slot,
-            );
-
-            if (unavailable) {
-              throw new InputValidationError(
-                'Instructor is not available at this time (day off, break, or outside work hours).',
-                HttpStatusCodesUtil.BAD_REQUEST,
-              );
-            }
-          }
-
           const creditAvailable = await StudentPracticalCreditsService.availableSlotCount(
             input.studentUserId,
             transaction,
@@ -1433,19 +1410,12 @@ export default class BookingService {
       throw new InputValidationError('Instructor hourly rate is not configured.', HttpStatusCodesUtil.BAD_REQUEST);
     }
     const totalPriceAmd = Math.round(hourly * sorted.length);
-    for (const slot of sorted) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-        input.instructorUserId,
-        dateIso,
-        slot,
-      );
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-    }
+    await BookingSlotValidationService.assertSlotsBookable({
+      branchId: input.branchId,
+      instructorUserId: input.instructorUserId,
+      dateIso,
+      slots: sorted,
+    });
     return BookingService.createPendingStudentPaidBooking({
       studentUserId: input.studentUserId,
       instructorUserId: input.instructorUserId,
@@ -1567,19 +1537,11 @@ export default class BookingService {
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
     const totalPriceAmd = Number.isFinite(hourly) ? hourly * entries.length : 0;
 
-    for (const e of entries) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-        instructorUserId,
-        e.dateIso,
-        e.time,
-      );
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-    }
+    await BookingSlotValidationService.assertSlotEntriesBookable({
+      branchId: input.branchId,
+      instructorUserId,
+      entries,
+    });
 
     const first = entries[0];
     const endTime = endTimeExclusiveForSlotEntries(entries);
@@ -1703,17 +1665,12 @@ export default class BookingService {
     const sorted = normalizeAndSortSlots([input.time]);
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
-    const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-      instructor.id,
+    await BookingSlotValidationService.assertSlotsBookable({
+      branchId: input.branchId,
+      instructorUserId: instructor.id,
       dateIso,
-      sorted[0],
-    );
-    if (unavailable) {
-      throw new InputValidationError(
-        'Instructor is not available at this time (day off, break, or outside work hours).',
-        HttpStatusCodesUtil.BAD_REQUEST,
-      );
-    }
+      slots: sorted,
+    });
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
     assertInstructorTeachesLessonType(profile, input.type);
@@ -1851,19 +1808,11 @@ export default class BookingService {
           }
           const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId }, transaction });
           assertInstructorTeachesLessonType(profile, opts.lessonType);
-          for (const e of opts.entries) {
-            const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-              instructorUserId,
-              e.dateIso,
-              e.time,
-            );
-            if (unavailable) {
-              throw new InputValidationError(
-                `${opts.lessonType}: slot ${e.dateIso} ${e.time} is no longer available for instructor.`,
-                HttpStatusCodesUtil.CONFLICT,
-              );
-            }
-          }
+          await BookingSlotValidationService.assertSlotEntriesBookable({
+            branchId: input.branchId,
+            instructorUserId,
+            entries: opts.entries,
+          });
           const prepaidMeta = await consumePackageLessonCreditsInTx({
             studentUserId: input.studentId,
             lessonType: opts.lessonType,
@@ -2016,37 +1965,16 @@ export default class BookingService {
           : 0;
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
-    for (const slot of sorted) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-        instructorUserId,
-        dateIso,
-        slot,
-      );
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-    }
+    await BookingSlotValidationService.assertSlotsBookable({
+      branchId,
+      instructorUserId,
+      dateIso,
+      slots: sorted,
+    });
 
     let newId = 0;
     try {
       await sequelize.transaction(async (transaction) => {
-        for (const slot of sorted) {
-          const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-            instructorUserId,
-            dateIso,
-            slot,
-          );
-          if (unavailable) {
-            throw new InputValidationError(
-              'Instructor is not available at this time (day off, break, or outside work hours).',
-              HttpStatusCodesUtil.BAD_REQUEST,
-            );
-          }
-        }
-
         const prepaidMeta =
           input.consumePackageCredits === true
             ? await consumePackageLessonCreditsInTx({
@@ -2214,19 +2142,13 @@ export default class BookingService {
           ? hourly * sorted.length
           : row.totalPriceAmd ?? null;
 
-    for (const slot of sorted) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-        instructorUserId,
-        dateIso,
-        slot,
-      );
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-    }
+    await BookingSlotValidationService.assertSlotsBookable({
+      branchId,
+      instructorUserId,
+      dateIso,
+      slots: sorted,
+      excludeBookingId: id,
+    });
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
@@ -2316,19 +2238,12 @@ export default class BookingService {
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
     const totalPriceAmd = Number.isFinite(hourly) ? hourly * entries.length : row.totalPriceAmd ?? null;
 
-    for (const e of entries) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-        instructorUserId,
-        e.dateIso,
-        e.time,
-      );
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-    }
+    await BookingSlotValidationService.assertSlotEntriesBookable({
+      branchId,
+      instructorUserId,
+      entries,
+      excludeBookingId: id,
+    });
 
     const first = entries[0];
     const endTime = endTimeExclusiveForSlotEntries(entries);
@@ -2453,17 +2368,14 @@ export default class BookingService {
     const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
     if (touchesSchedule && instructorUserId != null) {
-      const unavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+      const branchIdForValidation = patch.branchId !== undefined ? patch.branchId : row.branchId;
+      await BookingSlotValidationService.assertSlotsBookable({
+        branchId: branchIdForValidation,
         instructorUserId,
-        nextDateIso,
-        sorted[0],
-      );
-      if (unavailable) {
-        throw new InputValidationError(
-          'Instructor is not available at this time (day off, break, or outside work hours).',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
+        dateIso: nextDateIso,
+        slots: sorted,
+        excludeBookingId: id,
+      });
     }
 
     const profile =
