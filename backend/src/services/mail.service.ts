@@ -15,7 +15,7 @@ export { isTransactionalMailConfigured };
 function bookingTypeLabelHy(bookingType: string): string {
   const t = bookingType.trim().toLowerCase();
   if (t.includes('group') || t.includes('theory')) return 'Խմբային տեսություն';
-  if (t.includes('1:1') || t.includes('personal')) return '1:1 տեսություն';
+  if (t.includes('personal')) return 'Անհատական տեսական դաս';
   if (t.includes('practical')) return 'Պրակտիկ դաս';
   return bookingType || 'Դաս';
 }
@@ -97,7 +97,7 @@ function txFlowLabelHy(flow: TransactionLifecycleEmailData['flowLabel']): string
   if (flow === 'package') return 'Փաթեթ';
   if (flow === 'group') return 'Խմբային տեսություն';
   if (flow === 'practical') return 'Պրակտիկ';
-  if (flow === 'one_on_one') return '1:1';
+  if (flow === 'one_on_one') return 'Անհատական տեսական';
   return 'Գործարք';
 }
 

@@ -107,7 +107,7 @@ export function DashboardBookingsPackageTab() {
                   setLocation(absWouterHref("/dashboard/bookings/theory-personal"));
                 }}
               >
-                1:1 տեսական դաս
+                {t("bookingsSubnavTheoryPersonal")}
               </Button>
             ) : null}
           </DialogFooter>

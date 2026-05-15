@@ -9,7 +9,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { ArrowLeft, CheckCircle2, CircleHelp, MessageSquare, Scroll, SquareStack, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, MessageSquare, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useFullExamCountdown } from "src/lib/useFullExamCountdown";
 import {
@@ -23,7 +23,9 @@ import {
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
-import ExamQuizFocusModeButton from "src/components/exam/ExamQuizFocusModeButton";
+import ExamQuizToolbar from "src/components/exam/ExamQuizToolbar";
+import ExamQuizToolbarCommentsSlot from "src/components/exam/ExamQuizToolbarCommentsSlot";
+import { quizToolbarTouchTarget } from "src/components/exam/quizToolbarStyles";
 import {
   usePanelFocusMode,
   usePanelFocusModeCleanupOnUnmount,
@@ -504,9 +506,9 @@ function DashboardExamQuizView() {
 
   return (
       <div className={cn("mx-auto w-full", focusMode ? "max-w-4xl" : "max-w-2xl")}>
-        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
-          <p className="text-sm text-muted-foreground">
-            {layoutMode === "step" ? (
+        <ExamQuizToolbar
+          progress={
+            layoutMode === "step" ? (
               <>
                 {t("examQuizQuestion")} {index + 1} {t("examQuizOf")} {questions.length}
               </>
@@ -514,76 +516,49 @@ function DashboardExamQuizView() {
               <>
                 {t("examQuizScrollViewSubtitle")} ({questions.length})
               </>
-            )}
-          </p>
-          {countdownActive ? (
-            <div
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums lg:order-3 ${
-                isCritical
-                  ? "border-red-600/60 bg-red-500/10 text-red-800 dark:text-red-300"
-                  : isWarning
-                    ? "border-amber-600/50 bg-amber-500/10 text-amber-950 dark:text-amber-200"
-                    : "border-border bg-muted/50 text-foreground"
-              }`}
-              role="timer"
-              aria-live="polite"
-              aria-label={countdownFormatted}
-            >
-              <span>{countdownFormatted}</span>
-            </div>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground"
-              onClick={requestExit}
-              aria-label={t("examQuizBackToList")}
-              title={t("examQuizBackToList")}
-            >
-              <ArrowLeft className="w-4 h-4" aria-hidden />
-            </Button>
-            <Link href={`${mode === "topics" ? "/dashboard/learn/thematic-tests/question" : `${backHref}/question`}/${q.id}`}>
-              <Button variant="outline" size="icon" aria-label={t("questionDetailOpenAction")} title={t("questionDetailOpenAction")}>
-                <MessageSquare className="w-4 h-4" />
-              </Button>
-            </Link>
-            <ExamQuizFocusModeButton active={focusMode} onToggle={toggleFocusMode} />
-            <div
-              role="group"
-              aria-label={t("examQuizLayoutModeLabel")}
-              className="inline-flex shrink-0 rounded-lg border border-border bg-muted/40 p-0.5"
-            >
-              <button
-                type="button"
-                onClick={() => setLayoutModeAndSyncIndex("step")}
-                aria-label={t("examQuizLayoutOneByOne")}
-                title={t("examQuizLayoutOneByOne")}
-                className={`inline-flex items-center justify-center rounded-md px-2 py-1.5 transition-colors ${
-                  layoutMode === "step"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+            )
+          }
+          countdown={
+            countdownActive ? (
+              <div
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums",
+                  isCritical
+                    ? "border-red-600/60 bg-red-500/10 text-red-800 dark:text-red-300"
+                    : isWarning
+                      ? "border-amber-600/50 bg-amber-500/10 text-amber-950 dark:text-amber-200"
+                      : "border-border bg-muted/50 text-foreground",
+                )}
+                role="timer"
+                aria-live="polite"
+                aria-label={countdownFormatted}
               >
-                <SquareStack className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => setLayoutModeAndSyncIndex("scroll")}
-                aria-label={t("examQuizLayoutScroll")}
-                title={t("examQuizLayoutScroll")}
-                className={`inline-flex items-center justify-center rounded-md px-2 py-1.5 transition-colors ${
-                  layoutMode === "scroll"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                <span>{countdownFormatted}</span>
+              </div>
+            ) : undefined
+          }
+          onBack={requestExit}
+          commentsAction={
+            <ExamQuizToolbarCommentsSlot>
+              <Link
+                href={`${mode === "topics" ? "/dashboard/learn/thematic-tests/question" : `${backHref}/question`}/${q.id}`}
               >
-                <Scroll className="size-3.5 shrink-0 sm:size-4" aria-hidden />
-              </button>
-            </div>
-          </div>
-        </div>
-
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className={quizToolbarTouchTarget}
+                  aria-label={t("questionDetailOpenAction")}
+                >
+                  <MessageSquare className="size-4" aria-hidden />
+                </Button>
+              </Link>
+            </ExamQuizToolbarCommentsSlot>
+          }
+          focusMode={focusMode}
+          onFocusToggle={toggleFocusMode}
+          layoutMode={layoutMode}
+          onLayoutModeChange={setLayoutModeAndSyncIndex}
+        />
         {layoutMode === "step" ? (
           <Reveal delay={0.06}>
             <Card className="p-8 border-border">

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ArrowLeft, Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, Loader2, MessageSquare, Send, Share2, Trash2 } from "lucide-react";
+import ExamQuizToolbarIconButton from "src/components/exam/ExamQuizToolbarIconButton";
+import { quizToolbarToolGroup } from "src/components/exam/quizToolbarStyles";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
+import { TooltipProvider } from "src/components/ui/tooltip";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 import { useAccount } from "src/modules/accounts";
 import { useLang } from "src/lib/i18n";
@@ -18,6 +21,7 @@ import {
   type ExamQuestionComment,
 } from "src/lib/examQuestionEngagement";
 import { getQuestionInLang, type ExamQuestion } from "src/data/examSampleQuestions";
+import { cn } from "src/lib/utils";
 
 type Props = {
   questionId: string;
@@ -33,6 +37,7 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
   };
 
   const { t, lang } = useLang();
+  const [, setLocation] = useLocation();
   const { user } = useAccount();
   const { showToast } = useToast();
   const [question, setQuestion] = useState<ExamQuestion | null>(null);
@@ -205,16 +210,13 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
       <div className="max-w-3xl mx-auto py-10">
         <Card className="p-6 text-center">
           <p className="text-sm text-muted-foreground mb-4">{questionError || t("questionDetailNotFound")}</p>
-          <Link href={backHref}>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label={t("examQuizBackToList")}
-              title={t("examQuizBackToList")}
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-          </Link>
+          <ExamQuizToolbarIconButton
+            label={t("examQuizBackToList")}
+            variant="outline"
+            onClick={() => setLocation(backHref)}
+          >
+            <ArrowLeft className="size-4" aria-hidden />
+          </ExamQuizToolbarIconButton>
         </Card>
       </div>
     );
@@ -222,26 +224,27 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <Link href={backHref}>
-          <Button
+      <TooltipProvider delayDuration={300}>
+        <div className="mb-4 flex items-center gap-3">
+          <ExamQuizToolbarIconButton
+            label={t("examQuizBackToList")}
             variant="ghost"
-            size="icon"
-            className="text-muted-foreground"
-            aria-label={t("examQuizBackToList")}
-            title={t("examQuizBackToList")}
+            onClick={() => setLocation(backHref)}
           >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-        </Link>
-        {savedHref ? (
-          <Link href={savedHref}>
-            <Button variant="outline" size="icon" title={t("questionSavedListTitle")} aria-label={t("questionSavedListTitle")}>
-              <Bookmark className="w-4 h-4" />
-            </Button>
-          </Link>
-        ) : null}
-      </div>
+            <ArrowLeft className="size-4" aria-hidden />
+          </ExamQuizToolbarIconButton>
+          {savedHref ? (
+            <div className={quizToolbarToolGroup}>
+              <ExamQuizToolbarIconButton
+                label={t("questionSavedListTitle")}
+                onClick={() => setLocation(savedHref)}
+              >
+                <Bookmark className="size-4" aria-hidden />
+              </ExamQuizToolbarIconButton>
+            </div>
+          ) : null}
+        </div>
+      </TooltipProvider>
 
       <Card className="p-6 sm:p-8">
         <div className="flex flex-wrap items-center gap-2 mb-4">
