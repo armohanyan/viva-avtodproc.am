@@ -1,10 +1,17 @@
 import { Op, literal } from 'sequelize';
-import { Booking, BookingSlot, Branch, Package, PackageOrder, User } from '../models';
-import { normalizeBookingStatus } from './booking.service';
+import { Booking, BookingSlot, Branch, FleetCar, Package, PackageOrder, TheoryCohort, User } from '../models';
+import FleetService from './fleet.service';
+import {
+  hoursUntilLessonStart,
+  isRefundWindowForCancellation,
+  normalizeBookingStatus,
+} from './booking.service';
+import { isImmediatePaymentRequired } from '../utils/booking-payment-schedule.util';
+import { todayIsoUtc } from '../utils/calendar-month.util';
 
 const YEREVAN_TZ = 'Asia/Yerevan';
 
-export type ClassScheduleView = 'today' | 'week' | 'month' | 'custom';
+export type ClassScheduleView = 'today' | 'week' | 'month' | 'day' | 'custom';
 
 export type ClassScheduleQuery = {
   view?: string;
@@ -60,6 +67,21 @@ export type ClassScheduleInstructorItemDto = Omit<
 
 export type ClassScheduleInstructorResponse = {
   items: ClassScheduleInstructorItemDto[];
+  meta: ClassScheduleResponse['meta'];
+};
+
+export type StudentClassScheduleItemDto = Omit<ClassScheduleItemDto, 'student'> & {
+  car: { label: string; transmission: string } | null;
+  theoryCohort: { id: number; name: string } | null;
+  cancelRefundEligible: boolean;
+  paymentRequiredAt: string | null;
+  paymentRequiredNow: boolean;
+  holdExpiresAt: string | null;
+  hoursUntilLesson: number;
+};
+
+export type StudentClassScheduleResponse = {
+  items: StudentClassScheduleItemDto[];
   meta: ClassScheduleResponse['meta'];
 };
 
@@ -146,7 +168,12 @@ function resolveViewRange(query: ClassScheduleQuery): { view: ClassScheduleView;
   const today = yerevanTodayIso();
   const viewRaw = (query.view ?? 'today').trim().toLowerCase();
   const view: ClassScheduleView =
-    viewRaw === 'week' || viewRaw === 'month' || viewRaw === 'custom' ? viewRaw : 'today';
+    viewRaw === 'week' || viewRaw === 'month' || viewRaw === 'day' || viewRaw === 'custom' ? viewRaw : 'today';
+
+  if (view === 'day') {
+    const d = parseIsoDateOnly(query.startDate) ?? today;
+    return { view, start: d, end: d };
+  }
 
   if (view === 'custom') {
     const start = parseIsoDateOnly(query.startDate) ?? today;
@@ -223,6 +250,9 @@ function matchesLessonTypeFilter(lessonType: ClassScheduleLessonType, filter: st
   const f = filter.trim().toLowerCase();
   if (!f || f === 'all') return true;
   if (f === 'practical') return lessonType === 'practical';
+  if (f === 'theory_personal') return lessonType === 'theory_personal';
+  if (f === 'theory_group') return lessonType === 'theory';
+  // Admin / legacy: "theory" includes personal + group.
   if (f === 'theory') return lessonType === 'theory' || lessonType === 'theory_personal';
   return true;
 }
@@ -466,5 +496,114 @@ export default class ClassScheduleService {
       items: items.map(({ instructor: _instructor, totalPriceAmd: _price, ...rest }) => rest),
       meta,
     };
+  }
+
+  static async listForStudent(
+    studentUserId: number,
+    query: ClassScheduleQuery,
+  ): Promise<StudentClassScheduleResponse> {
+    const scoped: ClassScheduleQuery = {
+      ...query,
+      studentId: String(studentUserId),
+      instructorId: undefined,
+      search: undefined,
+      packageFilter: undefined,
+      branchId: undefined,
+    };
+    const { items, meta } = await this.listForAdmin(scoped, undefined);
+
+    const bookingIds = [...new Set(items.map((i) => i.bookingId))];
+    const bookingRows =
+      bookingIds.length === 0
+        ? []
+        : await Booking.findAll({
+            where: { id: { [Op.in]: bookingIds }, studentUserId },
+          });
+    const bookingById = new Map(bookingRows.map((b) => [b.id, b]));
+
+    const instructorIds = [
+      ...new Set(
+        bookingRows
+          .map((b) => b.instructorUserId)
+          .filter((id): id is number => id != null && Number.isFinite(id) && id > 0),
+      ),
+    ];
+    const carIdsByInstructor = await FleetService.listCarIdsByInstructorIds(instructorIds);
+    const allCarIds = [...new Set([...carIdsByInstructor.values()].flat())];
+    const fleetCars =
+      allCarIds.length === 0
+        ? []
+        : await FleetCar.findAll({ where: { id: { [Op.in]: allCarIds } } });
+    const carById = new Map(fleetCars.map((c) => [c.id, c]));
+
+    const cohortIds = new Set<number>();
+    for (const b of bookingRows) {
+      const prepaid = b.prepaidMeta as Record<string, unknown> | null;
+      const cid = Math.floor(Number(prepaid?.theoryCohortId) || 0);
+      if (cid > 0) cohortIds.add(cid);
+    }
+    const cohorts =
+      cohortIds.size === 0
+        ? []
+        : await TheoryCohort.findAll({
+            where: { id: { [Op.in]: [...cohortIds] } },
+            attributes: ['id', 'name'],
+          });
+    const cohortNameById = new Map(cohorts.map((c) => [c.id, c.name?.trim() || `Group #${c.id}`]));
+
+    const today = todayIsoUtc();
+
+    const studentItems: StudentClassScheduleItemDto[] = items.map((item) => {
+      const row = bookingById.get(item.bookingId);
+      const prepaid = (row?.prepaidMeta as Record<string, unknown> | null) ?? null;
+      const cohortId = Math.floor(Number(prepaid?.theoryCohortId) || 0);
+      const theoryCohort =
+        item.lessonType === 'theory' && cohortId > 0
+          ? { id: cohortId, name: cohortNameById.get(cohortId) ?? `Group #${cohortId}` }
+          : null;
+
+      let car: StudentClassScheduleItemDto['car'] = null;
+      if (item.lessonType === 'practical' && row?.instructorUserId) {
+        const fcIds = carIdsByInstructor.get(row.instructorUserId) ?? [];
+        const cars = fcIds.map((id) => carById.get(id)).filter((c): c is FleetCar => c != null);
+        if (cars.length > 0) {
+          const { car: label, transmission } = FleetService.derivePublicCarFields(cars);
+          car = { label, transmission };
+        }
+      }
+
+      const st = item.status;
+      const pendingCancel = item.cancellationRequestedAt != null;
+      const hoursLeft = hoursUntilLessonStart(item.date, item.startTime);
+      const cancelRefundEligible =
+        row != null &&
+        row.paidAt != null &&
+        (st === 'pending' || st === 'confirmed') &&
+        item.date >= today &&
+        !pendingCancel &&
+        isRefundWindowForCancellation(item.date, item.startTime);
+
+      const paymentReqRaw =
+        row?.paymentRequiredAt != null ? String(row.paymentRequiredAt).slice(0, 10) : null;
+      const paymentRequiredNow =
+        row != null &&
+        row.paidAt == null &&
+        (st === 'pending' || st === 'pending_payment') &&
+        isImmediatePaymentRequired(item.date, today);
+
+      const { student: _student, ...rest } = item;
+      return {
+        ...rest,
+        car,
+        theoryCohort,
+        cancelRefundEligible,
+        paymentRequiredAt: paymentReqRaw,
+        paymentRequiredNow,
+        holdExpiresAt: row?.holdExpiresAt ? new Date(row.holdExpiresAt).toISOString() : null,
+        hoursUntilLesson: Math.round(hoursLeft * 10) / 10,
+      };
+    });
+
+    return { items: studentItems, meta };
   }
 }
