@@ -17,6 +17,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, GraduationCap, CalendarPlus, Mail, BarChart3 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
+import AdminStudentProgressBlock from "src/components/AdminStudentProgressBlock";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
@@ -491,7 +492,7 @@ export default function AdminUsers() {
         open={!!editUser}
         onOpenChange={(o) => !o && setEditUser(null)}
         title={t("userDialogEditTitle")}
-        contentClassName="max-w-md max-h-[min(90vh,720px)]"
+        contentClassName="max-w-lg max-h-[min(90vh,720px)]"
         footer={
           editUser ? (
             <div className="flex flex-wrap gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:justify-end">
@@ -519,6 +520,7 @@ export default function AdminUsers() {
       >
         {editUser && (
             <form id={editUserFormId} onSubmit={handleEdit} className="space-y-3">
+              <AdminStudentProgressBlock studentUserId={Number(editUser.id)} />
               <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
                 <select value={editUser.branchId} onChange={e => setEditUser({ ...editUser, branchId: e.target.value })}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">

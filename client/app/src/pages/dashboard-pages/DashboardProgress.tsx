@@ -3,11 +3,13 @@ import { Link } from "wouter";
 import { LineChart } from "lucide-react";
 import DashboardLayout from "src/components/DashboardLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
+import LessonProgressBar from "src/components/LessonProgressBar";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import { useLang } from "src/lib/i18n";
+import { formatShortDateFromIso } from "src/lib/adminFormat";
 import { getExamStats, subscribeExamStatsChanged, type ExamStats } from "src/lib/examStats";
-import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
+import { useStudentProgress, type ProgressLessonSnapshot } from "src/modules/dashboard/useStudentProgress";
 import { loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 
 const EMPTY_STATS: ExamStats = {
@@ -22,16 +24,15 @@ const EMPTY_STATS: ExamStats = {
   activeSession: null,
 };
 
+function formatLessonWhen(snapshot: ProgressLessonSnapshot, lang: string): string {
+  const date = formatShortDateFromIso(snapshot.dateIso, lang);
+  const end = snapshot.endTime ? `–${snapshot.endTime}` : "";
+  return `${date} · ${snapshot.time}${end}`;
+}
+
 export default function DashboardProgress() {
-  const { t } = useLang();
-  const {
-    completedPracticalLessons,
-    practicalCreditsRemaining,
-    primaryTheoryTotal,
-    primaryTheoryUsed,
-    hasTheoryFromPackage,
-    ownedPackages,
-  } = useStudentEntitlements();
+  const { t, lang } = useLang();
+  const { progress, loading: progressLoading, error: progressError } = useStudentProgress({ self: true });
   const [totalQuestions, setTotalQuestions] = useState(0);
 
   useEffect(() => {
@@ -56,8 +57,7 @@ export default function DashboardProgress() {
     return Math.min(100, Number(((examStats.answered / totalQuestions) * 100).toFixed(1)));
   }, [examStats.answered, totalQuestions]);
 
-  const pkgUsed = ownedPackages.reduce((a, p) => a + p.practicalUsed, 0);
-  const pkgTotal = ownedPackages.reduce((a, p) => a + p.practicalTotal, 0);
+  const overall = progress?.overall;
 
   return (
     <DashboardLayout>
@@ -65,53 +65,106 @@ export default function DashboardProgress() {
         className="mb-6"
         icon={LineChart}
         title={t("dashboardProgressTitle")}
-        subtitle={t("dashboardProgressSubtitle")}
+        subtitle={t("dashboardProgressLearningSubtitle")}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 max-w-4xl mb-8">
-        <Card className="p-5 border-border">
-          <h2 className="text-sm font-semibold text-foreground mb-3">{t("dashboardProgressPracticalHeading")}</h2>
-          <dl className="space-y-2 text-sm text-muted-foreground">
-            <div className="flex justify-between gap-2">
-              <dt>{t("dashboardProgressPracticalUsed")}</dt>
-              <dd className="text-foreground font-medium tabular-nums">{completedPracticalLessons}</dd>
-            </div>
-            <div className="flex justify-between gap-2">
-              <dt>{t("dashboardProgressPracticalRemaining")}</dt>
-              <dd className="text-foreground font-medium tabular-nums">{practicalCreditsRemaining}</dd>
-            </div>
-            {pkgTotal > 0 ? (
-              <div className="flex justify-between gap-2 pt-1 border-t border-border/80 text-xs">
-                <dt>{t("bookingsCreditsPackagePart")}</dt>
-                <dd className="tabular-nums">
-                  {pkgUsed}/{pkgTotal}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
+      <div className="max-w-4xl space-y-6 mb-8">
+        <Card className="p-5 sm:p-6 border-border">
+          <h2 className="text-lg font-semibold text-foreground mb-1">{t("dashboardProgressOverallHeading")}</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            {progressLoading
+              ? t("loading")
+              : progressError
+                ? progressError
+                : overall && overall.totalLessons > 0
+                  ? `${overall.completedLessons} / ${overall.totalLessons} ${t("dashboardProgressOverallCount")} · ${overall.progressPercent}%`
+                  : t("dashboardProgressOverallEmpty")}
+          </p>
+          {overall && overall.totalLessons > 0 ? (
+            <LessonProgressBar
+              label={t("dashboardProgressAllLessons")}
+              completed={overall.completedLessons}
+              total={overall.totalLessons}
+              percent={overall.progressPercent}
+              remainingLabel={`${overall.remainingLessons} ${t("dashboardProgressRemainingCount")}`}
+              upcomingLabel={
+                overall.upcomingLessons > 0
+                  ? `${overall.upcomingLessons} ${t("dashboardProgressUpcomingCount")}`
+                  : undefined
+              }
+            />
+          ) : null}
         </Card>
 
-        <Card className="p-5 border-border">
-          <h2 className="text-sm font-semibold text-foreground mb-3">{t("dashboardProgressTheoryHeading")}</h2>
-          {hasTheoryFromPackage ? (
-            <dl className="space-y-2 text-sm text-muted-foreground">
-              <div className="flex justify-between gap-2">
-                <dt>{t("dashboardProgressTheoryCompleted")}</dt>
-                <dd className="text-foreground font-medium tabular-nums">
-                  {primaryTheoryUsed}/{primaryTheoryTotal}
-                </dd>
+        {progress ? (
+          <div className="grid gap-4">
+            <Card className="p-5 border-border">
+              <LessonProgressBar
+                label={t("dashboardProgressPracticalHeading")}
+                completed={progress.practical.completed}
+                total={progress.practical.total}
+                percent={progress.practical.progressPercent}
+                remainingLabel={`${progress.practical.remaining} ${t("dashboardProgressRemainingCount")}`}
+                upcomingLabel={
+                  progress.practical.upcoming > 0
+                    ? `${progress.practical.upcoming} ${t("dashboardProgressUpcomingCount")}`
+                    : undefined
+                }
+              />
+            </Card>
+            <Card className="p-5 border-border">
+              <LessonProgressBar
+                label={t("dashboardProgressPersonalTheoryHeading")}
+                completed={progress.personalTheory.completed}
+                total={progress.personalTheory.total}
+                percent={progress.personalTheory.progressPercent}
+                remainingLabel={`${progress.personalTheory.remaining} ${t("dashboardProgressRemainingCount")}`}
+                upcomingLabel={
+                  progress.personalTheory.upcoming > 0
+                    ? `${progress.personalTheory.upcoming} ${t("dashboardProgressUpcomingCount")}`
+                    : undefined
+                }
+              />
+            </Card>
+            <Card className="p-5 border-border">
+              <LessonProgressBar
+                label={t("dashboardProgressGroupTheoryHeading")}
+                completed={progress.groupTheory.completed}
+                total={progress.groupTheory.total}
+                percent={progress.groupTheory.progressPercent}
+                remainingLabel={`${progress.groupTheory.remaining} ${t("dashboardProgressRemainingCount")}`}
+                upcomingLabel={
+                  progress.groupTheory.upcoming > 0
+                    ? `${progress.groupTheory.upcoming} ${t("dashboardProgressUpcomingCount")}`
+                    : undefined
+                }
+              />
+            </Card>
+          </div>
+        ) : null}
+
+        {progress?.lastCompletedLesson || progress?.nextUpcomingLesson ? (
+          <Card className="p-5 border-border grid gap-3 sm:grid-cols-2 text-sm">
+            {progress.lastCompletedLesson ? (
+              <div>
+                <p className="text-muted-foreground mb-0.5">{t("dashboardProgressLastCompleted")}</p>
+                <p className="font-medium text-foreground">{progress.lastCompletedLesson.label}</p>
+                <p className="text-muted-foreground tabular-nums">
+                  {formatLessonWhen(progress.lastCompletedLesson, lang)}
+                </p>
               </div>
-              <div className="flex justify-between gap-2">
-                <dt>{t("dashboardProgressTheoryRemaining")}</dt>
-                <dd className="text-foreground font-medium tabular-nums">
-                  {Math.max(0, primaryTheoryTotal - primaryTheoryUsed)}
-                </dd>
+            ) : null}
+            {progress.nextUpcomingLesson ? (
+              <div>
+                <p className="text-muted-foreground mb-0.5">{t("dashboardProgressNextUpcoming")}</p>
+                <p className="font-medium text-foreground">{progress.nextUpcomingLesson.label}</p>
+                <p className="text-muted-foreground tabular-nums">
+                  {formatLessonWhen(progress.nextUpcomingLesson, lang)}
+                </p>
               </div>
-            </dl>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("dashboardProgressTheoryEmpty")}</p>
-          )}
-        </Card>
+            ) : null}
+          </Card>
+        ) : null}
       </div>
 
       <div className="max-w-4xl space-y-6">

@@ -21,6 +21,7 @@ import BookingSlotValidationService from './booking-slot-validation.service';
 import FinanceService from './finance.service';
 import BookingNotificationService from './booking-notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
+import LessonCompletionService from './lesson-completion.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil, LoggerUtil } from '../utils';
 import { todayIsoUtc } from '../utils/calendar-month.util';
@@ -687,6 +688,11 @@ async function finalizePracticalCancellationInTx(opts: {
     }
   }
 
+  const closedCompletionStatus =
+    row.lessonType === 'practical' || row.lessonType === 'theory_personal'
+      ? LessonCompletionService.completionStatusForClosedBooking(nextStatus)
+      : null;
+
   await row.update(
     {
       status: nextStatus,
@@ -694,6 +700,9 @@ async function finalizePracticalCancellationInTx(opts: {
       holdExtensionCount: 0,
       cancellationRequestedAt: null,
       prepaidMeta: null,
+      ...(closedCompletionStatus != null
+        ? { lessonCompletionStatus: closedCompletionStatus, lessonCompletedAt: new Date() }
+        : {}),
       ...(cancellationReason != null && cancellationReason.length > 0 ? { cancellationReason } : {}),
       ...(recordAutoCancelledAt ? { autoCancelledAt: new Date() } : {}),
     },
@@ -1021,7 +1030,18 @@ export default class BookingService {
       );
     }
 
-    await row.update({ lessonPassedSuccessfully: value });
+    const completionPatch =
+      value === false
+        ? { lessonPassedSuccessfully: value, lessonCompletionStatus: 'missed' as const, lessonCompletedAt: new Date() }
+        : value === true
+          ? {
+              lessonPassedSuccessfully: value,
+              lessonCompletionStatus: 'completed' as const,
+              lessonCompletedAt: new Date(),
+            }
+          : { lessonPassedSuccessfully: value, lessonCompletionStatus: 'scheduled' as const, lessonCompletedAt: null };
+
+    await row.update(completionPatch);
 
     const refreshed = await Booking.findByPk(bookingId, {
       include: [
@@ -1522,7 +1542,8 @@ export default class BookingService {
       totalPriceAmd,
       prepaidMeta: { theoryCohortId: cohort.id },
       createSlotRows: false,
-      tryConsumePackageCredits: true,
+      /** Group theory is always paid at cohort price; package credits do not apply. */
+      tryConsumePackageCredits: false,
     });
   }
 

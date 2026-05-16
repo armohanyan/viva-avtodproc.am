@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import { useLang } from "src/lib/i18n";
@@ -7,6 +7,9 @@ import { useToast } from "src/lib/toast";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { useAccount } from "src/modules/accounts";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
+import { useInstructors } from "src/modules/instructors/useInstructors";
+import { computeBookingTotalAmd } from "src/modules/admin/booking/useBookingPriceCalculator";
+import type { TheoryCohortOption } from "src/modules/admin/booking/types";
 
 type TheoryCohortRow = {
   id: number;
@@ -18,17 +21,37 @@ type TheoryCohortRow = {
   enrolled: number;
   status: string;
   priceAmd: number | null;
+  sessionStartTime: string | null;
+  sessionEndTime: string | null;
 };
 
 type CreateResponse = {
   id: number;
   totalPriceAmd: number;
+  status: string;
+  paymentRequiredNow: boolean;
+  coveredByPrepaidCredits?: boolean;
 };
+
+function cohortToOption(row: TheoryCohortRow): TheoryCohortOption {
+  return {
+    id: String(row.id),
+    name: row.name,
+    startDateIso: row.startDateIso,
+    branchId: "",
+    instructorName: row.instructorName,
+    status: row.status,
+    sessionStartTime: row.sessionStartTime,
+    sessionEndTime: row.sessionEndTime,
+    priceAmd: row.priceAmd,
+  };
+}
 
 export function DashboardBookingsTheoryGroupTab() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
+  const { instructors } = useInstructors();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<TheoryCohortRow[]>([]);
   const [payBusy, setPayBusy] = useState(false);
@@ -40,6 +63,27 @@ export function DashboardBookingsTheoryGroupTab() {
 
   const studentUserId =
     user?.accountType === "student" && typeof user.id === "number" ? String(user.id) : "";
+
+  const priceByCohortId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const row of rows) {
+      map.set(
+        row.id,
+        computeBookingTotalAmd({
+          flowKind: "theory_group",
+          instructors,
+          instructorName: "",
+          slotPick: null,
+          theoryCohortId: String(row.id),
+          theoryCohorts: [cohortToOption(row)],
+          selectedPackage: null,
+          packagePracticalSlots: null,
+          packageTheorySlots: null,
+        }),
+      );
+    }
+    return map;
+  }, [rows, instructors]);
 
   const refreshPendingGuard = useCallback(async () => {
     if (!studentUserId) {
@@ -91,9 +135,14 @@ export function DashboardBookingsTheoryGroupTab() {
       const res = await vivaApiJson<CreateResponse>(`/bookings/theory-groups/${encodeURIComponent(String(cohortId))}/book`, {
         method: "POST",
       });
-      setPendingBooking(res);
-      setPayDialogOpen(true);
+      if (res.paymentRequiredNow && !res.coveredByPrepaidCredits) {
+        setPendingBooking(res);
+        setPayDialogOpen(true);
+      } else {
+        showToast(t("bookingPaymentCompletedToast"), "success");
+      }
       await refreshPendingGuard();
+      await refresh();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
@@ -143,30 +192,33 @@ export function DashboardBookingsTheoryGroupTab() {
             </div>
           ) : null}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {rows.map((row) => (
-              <Card key={row.id} className="p-5 border-border space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="font-semibold text-foreground">{row.name}</h3>
-                  <span className="text-xs text-muted-foreground">
-                    {row.enrolled}/{row.seats}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground">{row.instructorName}</p>
-                <p className="text-xs text-muted-foreground">
-                  {row.startDateIso} - {row.endDateIso}
-                </p>
-                <p className="text-sm font-medium text-foreground">
-                  {(row.priceAmd ?? 0).toLocaleString(locale)} ֏
-                </p>
-                <Button
-                  className="w-full"
-                  disabled={pendingPaymentElsewhere}
-                  onClick={() => void onStartBooking(row.id)}
-                >
-                  {t("confirmBooking")}
-                </Button>
-              </Card>
-            ))}
+            {rows.map((row) => {
+              const displayPrice = priceByCohortId.get(row.id) ?? 0;
+              return (
+                <Card key={row.id} className="p-5 border-border space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-semibold text-foreground">{row.name}</h3>
+                    <span className="text-xs text-muted-foreground">
+                      {row.enrolled}/{row.seats}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{row.instructorName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {row.startDateIso} - {row.endDateIso}
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {t("cohortGroupPriceAmdLabel")}: {displayPrice.toLocaleString(locale)} ֏
+                  </p>
+                  <Button
+                    className="w-full"
+                    disabled={pendingPaymentElsewhere}
+                    onClick={() => void onStartBooking(row.id)}
+                  >
+                    {t("confirmBooking")}
+                  </Button>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}

@@ -35,6 +35,12 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
    * Instructors (assigned booking) and staff (admin / super_admin) may update the same field.
    */
   declare lessonPassedSuccessfully: CreationOptional<boolean | null>;
+  /**
+   * Lesson delivery lifecycle (`scheduled`, `completed`, `missed`, …) — separate from booking `status`.
+   */
+  declare lessonCompletionStatus: CreationOptional<string | null>;
+  /** When the lesson was marked completed or missed (auto or manual). */
+  declare lessonCompletedAt: CreationOptional<Date | null>;
   /** Package / extra practical credits used for this booking; restored on cancellation. */
   declare prepaidMeta: CreationOptional<Record<string, unknown> | null>;
   /**
@@ -71,6 +77,8 @@ Booking.init(
     confirmationEmailSentAt: { type: DataTypes.DATE, allowNull: true },
     cancellationRequestedAt: { type: DataTypes.DATE, allowNull: true },
     lessonPassedSuccessfully: { type: DataTypes.BOOLEAN, allowNull: true },
+    lessonCompletionStatus: { type: DataTypes.STRING(32), allowNull: true, defaultValue: 'scheduled' },
+    lessonCompletedAt: { type: DataTypes.DATE, allowNull: true },
     prepaidMeta: { type: DataTypes.JSON, allowNull: true },
     paymentStatus: { type: DataTypes.STRING(16), allowNull: true },
     paymentRequiredAt: { type: DataTypes.DATEONLY, allowNull: true },

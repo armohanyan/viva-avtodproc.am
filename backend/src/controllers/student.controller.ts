@@ -4,6 +4,7 @@ import { parseBody, parseParams, resolveBranchIdFilter, verifyAccessToken } from
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
+import StudentProgressService from '../services/student-progress.service';
 import StudentExamStatsService, {
   studentExamActiveSessionSchema,
   studentExamAttemptSchema,
@@ -90,6 +91,38 @@ const instructorFieldsPatchSchema = z
   });
 
 const MAX_EXAM_STATS_JSON_CHARS = 480_000;
+
+function assertStudentSelfOrStaffAccess(req: Request, studentId: number, next: NextFunction): boolean {
+  const token = readBearerToken(req);
+  if (!token) {
+    next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+    return false;
+  }
+  let payload: ReturnType<typeof verifyAccessToken>;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+    return false;
+  }
+  if (payload.accountType === 'student') {
+    const uid = Number(payload.sub);
+    if (!Number.isFinite(uid) || uid <= 0 || uid !== studentId) {
+      next(new PermissionError('You can only access your own progress', HttpStatusCodesUtil.FORBIDDEN));
+      return false;
+    }
+    return true;
+  }
+  if (
+    payload.accountType === 'admin' ||
+    payload.accountType === 'super_admin' ||
+    payload.accountType === 'instructor'
+  ) {
+    return true;
+  }
+  next(new PermissionError('Access denied', HttpStatusCodesUtil.FORBIDDEN));
+  return false;
+}
 
 function assertStudentSelfAccess(req: Request, studentId: number, next: NextFunction): boolean {
   const token = readBearerToken(req);
@@ -251,6 +284,53 @@ export default class StudentController {
       const { id } = parseParams(studentIdParamsSchema, req.params);
       const data = await StudentEntitlementsService.get(id);
 
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async progress(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = parseParams(studentIdParamsSchema, req.params);
+      if (!assertStudentSelfOrStaffAccess(req, id, next)) return;
+
+      const data = await StudentProgressService.getForStudent(id);
+      if (!data) {
+        return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+
+      res.status(200).json(data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async progressSelf(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = readBearerToken(req);
+      if (!token) {
+        return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      let payload: ReturnType<typeof verifyAccessToken>;
+      try {
+        payload = verifyAccessToken(token);
+      } catch {
+        return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      if (payload.accountType !== 'student') {
+        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      }
+      const uid = Number(payload.sub);
+      if (!Number.isFinite(uid) || uid <= 0) {
+        return next(new PermissionError('Invalid student account', HttpStatusCodesUtil.FORBIDDEN));
+      }
+
+      const data = await StudentProgressService.getForStudent(uid);
       if (!data) {
         return next(new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND));
       }

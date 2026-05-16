@@ -4,6 +4,7 @@ import NotificationService from './notification.service';
 import LoggerUtil from '../utils/logger.util';
 import BookingNotificationService from './booking-notification.service';
 import BookingService from './booking.service';
+import LessonCompletionService from './lesson-completion.service';
 import { todayIsoUtc } from '../utils/calendar-month.util';
 import { shouldAutoCancelUnpaidAfterPaymentDeadline } from '../utils/booking-payment-schedule.util';
 
@@ -21,6 +22,9 @@ export default class BookingCronService {
     paymentRemindersSent: number;
     autoCancelledUnpaidReserved: number;
     upcomingLessonRemindersCreated: number;
+    bookingsMarkedCompleted: number;
+    bookingsMarkedMissed: number;
+    cohortSessionsMarkedCompleted: number;
   }> {
     const [legacyNormalized] = await Booking.update(
       { status: 'pending' },
@@ -84,6 +88,8 @@ export default class BookingCronService {
 
     const remindersCreated = upcomingLessonRemindersCreated + paymentRemindersSent;
 
+    const lessonCompletion = await LessonCompletionService.markDueLessonsCompleted();
+
     if (paymentRemindersSent > 0 || autoCancelledUnpaidReserved > 0) {
       LoggerUtil.info(
         `Booking cron: payment reminders ${paymentRemindersSent}; auto-cancelled unpaid reserved ${autoCancelledUnpaidReserved}`,
@@ -100,6 +106,9 @@ export default class BookingCronService {
       paymentRemindersSent,
       autoCancelledUnpaidReserved,
       upcomingLessonRemindersCreated,
+      bookingsMarkedCompleted: lessonCompletion.bookingsMarkedCompleted,
+      bookingsMarkedMissed: lessonCompletion.bookingsMarkedMissed,
+      cohortSessionsMarkedCompleted: lessonCompletion.cohortSessionsMarkedCompleted,
     };
   }
 }

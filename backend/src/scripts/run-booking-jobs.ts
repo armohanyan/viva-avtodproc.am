@@ -14,6 +14,11 @@ async function main() {
     `run-booking-jobs: ${JSON.stringify({
       ...result,
       lessonReminders: result.upcomingLessonRemindersCreated,
+      lessonCompletion: {
+        bookingsCompleted: result.bookingsMarkedCompleted,
+        bookingsMissed: result.bookingsMarkedMissed,
+        cohortSessionsCompleted: result.cohortSessionsMarkedCompleted,
+      },
     })}`,
   );
   process.exit(0);

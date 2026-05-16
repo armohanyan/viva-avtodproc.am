@@ -1012,6 +1012,42 @@ async function ensureBookingsLessonPassedSuccessfullyColumn(): Promise<void> {
   }
 }
 
+async function ensureBookingsLessonCompletionColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+
+  let cols = await bookingTableColumnNames();
+
+  if (!cols.has('lesson_completion_status')) {
+    await sequelize.query(
+      "ALTER TABLE `bookings` ADD COLUMN `lesson_completion_status` VARCHAR(32) NULL DEFAULT 'scheduled'",
+    );
+    cols = await bookingTableColumnNames();
+  }
+
+  if (!cols.has('lesson_completed_at')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `lesson_completed_at` DATETIME NULL');
+    cols = await bookingTableColumnNames();
+  }
+
+  await sequelize.query(`
+    UPDATE \`bookings\`
+    SET \`lesson_completion_status\` = 'scheduled'
+    WHERE \`lesson_completion_status\` IS NULL
+      AND \`status\` IN ('confirmed', 'pending_payment', 'completed', 'pending', 'pending_prebook')
+      AND \`lesson_type\` IN ('practical', 'theory_personal')
+  `);
+}
+
 async function ensureBookingsPrepaidMetaColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -1772,6 +1808,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsConfirmationEmailSentAtColumn();
   await ensureBookingsCancellationRequestedAtColumn();
   await ensureBookingsLessonPassedSuccessfullyColumn();
+  await ensureBookingsLessonCompletionColumns();
   await ensureBookingsPrepaidMetaColumn();
   await ensureBookingsMeetLinkColumn();
   await ensureNotificationsTable();

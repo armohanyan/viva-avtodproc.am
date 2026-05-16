@@ -15,7 +15,7 @@ function startBookingCronIfEnabled(): void {
     return;
   }
   const raw = Number(process.env.BOOKING_CRON_INTERVAL_MS);
-  const ms = Number.isFinite(raw) && raw >= 30_000 ? raw : 300_000;
+  const ms = Number.isFinite(raw) && raw >= 30_000 ? raw : 3_600_000;
   const tick = () => {
     void BookingCronService.runDueJobs().catch((err) =>
       LoggerUtil.error(`Booking cron: ${err instanceof Error ? err.message : String(err)}`),
