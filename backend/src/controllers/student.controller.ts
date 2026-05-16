@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseParams, verifyAccessToken } from '../helpers';
+import { parseBody, parseParams, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
@@ -153,7 +153,8 @@ export default class StudentController {
         return;
       }
 
-      const data = await StudentAdminService.list();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await StudentAdminService.list(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

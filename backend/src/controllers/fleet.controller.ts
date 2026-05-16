@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
+import { parseBody, resolveBranchIdFilter } from '../helpers';
 import FleetService from '../services/fleet.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
@@ -32,18 +32,20 @@ const expenseSchema = z.object({
 const expenseUpdateSchema = expenseSchema.partial();
 
 export default class FleetController {
-  static async listCars(_req: Request, res: Response, next: NextFunction) {
+  static async listCars(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await FleetService.listCars();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await FleetService.listCars(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);
     }
   }
 
-  static async listExpenses(_req: Request, res: Response, next: NextFunction) {
+  static async listExpenses(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await FleetService.listExpenses();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await FleetService.listExpenses(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

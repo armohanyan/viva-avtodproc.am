@@ -75,8 +75,11 @@ function toDto(c: TheoryCohort, enrolled: number): TheoryCohortDto {
 }
 
 export default class TheoryCohortService {
-  static async list(): Promise<TheoryCohortDto[]> {
-    const cohorts = await TheoryCohort.findAll({ order: [['startDateIso', 'DESC']] });
+  static async list(branchId?: number): Promise<TheoryCohortDto[]> {
+    const cohorts = await TheoryCohort.findAll({
+      ...(branchId !== undefined ? { where: { branchId } } : {}),
+      order: [['startDateIso', 'DESC']],
+    });
     const out: TheoryCohortDto[] = [];
     for (const c of cohorts) {
       out.push(toDto(c, await enrolledCount(c.id)));

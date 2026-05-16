@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { formatShortDateFromIso, localeForLang } from "src/lib/adminFormat";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { Button } from "src/components/ui/button";
 import {
 	hasLessonWindowEnded,
@@ -109,6 +110,7 @@ function lessonTypeLabelKey(type: string): TranslationKey {
 }
 
 export default function AdminDashboard() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const [, setLocation] = useLocation();
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -230,7 +232,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     void loadDashboard();
-  }, [loadDashboard]);
+  }, [loadDashboard, branchFilterRevision]);
 
   const kpiStats = useMemo(() => {
     const todayY = yerevanTodayIso();

@@ -933,8 +933,9 @@ export default class BookingService {
     };
   }
 
-  static async listAdmin(): Promise<BookingAdminDto[]> {
+  static async listAdmin(branchId?: number): Promise<BookingAdminDto[]> {
     const rows = await Booking.findAll({
+      ...(branchId !== undefined ? { where: { branchId } } : {}),
       include: [
         { model: User, as: 'instructor', required: false, attributes: ['name'] },
         { model: User, as: 'student', required: true, attributes: ['id'] },

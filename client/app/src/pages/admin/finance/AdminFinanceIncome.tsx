@@ -17,6 +17,7 @@ import { useToast } from "src/lib/toast";
 import AdminStudentSearchSelect from "src/components/admin/AdminStudentSearchSelect";
 import { useAdminStudentsMini } from "src/modules/admin/useAdminStudents";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import {
   type FinanceTx,
   type ManualFormShape,
@@ -39,6 +40,7 @@ import { FINANCE_INCOME_PREFILL } from "./adminFinancePrefill";
 type ManualForm = ManualFormShape;
 
 export default function AdminFinanceIncome() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const manualTxFormId = useId();
   /** Captured once on first client render so StrictMode does not double-apply prefills. */
   const prefillSearchRef = useRef<string | null>(null);
@@ -52,7 +54,6 @@ export default function AdminFinanceIncome() {
   const [transactions, setTransactions] = useState<FinanceTx[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [branchFilter, setBranchFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | TxStatus>("all");
   const [manualOpen, setManualOpen] = useState(false);
   const [manualForm, setManualForm] = useState<ManualForm>(() => ({
@@ -92,7 +93,7 @@ export default function AdminFinanceIncome() {
 
   useEffect(() => {
     void refreshTransactions();
-  }, [refreshTransactions]);
+  }, [refreshTransactions, branchFilterRevision]);
 
   const resetManualForm = useCallback((defaultBranchId: string) => {
     setManualForm({
@@ -246,11 +247,10 @@ export default function AdminFinanceIncome() {
         .join(" ")
         .toLowerCase();
       const matchSearch = !q || hay.includes(q);
-      const matchBranch = branchFilter === "all" || tx.branchId === branchFilter;
       const matchStatus = statusFilter === "all" || tx.status === statusFilter;
-      return matchSearch && matchBranch && matchStatus;
+      return matchSearch && matchStatus;
     });
-  }, [search, branchFilter, statusFilter, branches, t, transactions]);
+  }, [search, statusFilter, branches, t, transactions]);
 
   const breakdownRows = useMemo(() => {
     const { start, end } = monthRange();
@@ -399,20 +399,7 @@ export default function AdminFinanceIncome() {
                 <TableColumnHeaderWithFilter title={t("accountsColEmail")} />
                 <TableColumnHeaderWithFilter title={t("financeColProduct")} />
                 <TableColumnHeaderWithFilter title={t("financeColBooking")} />
-                <TableColumnHeaderWithFilter
-                  title={t("adminColBranch")}
-                  filter={
-                    <TableColumnFilter
-                      value={branchFilter}
-                      onChange={setBranchFilter}
-                      ariaLabel={t("filterByBranch")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...branches.map((b) => ({ value: b.id, label: b.name })),
-                      ]}
-                    />
-                  }
-                />
+                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
                 <TableColumnHeaderWithFilter title={t("financeColChannel")} />
                 <TableColumnHeaderWithFilter title={t("financeColMethod")} />
                 <TableColumnHeaderWithFilter title={t("financeColGross")} />

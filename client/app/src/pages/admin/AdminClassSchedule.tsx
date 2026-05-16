@@ -25,8 +25,7 @@ import {
 	type ClassSchedulePrintRow,
 } from "src/modules/admin/classSchedule/printClassSchedule";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import { branchOptionLabel, useBranches } from "src/modules/branches";
-import { cityNameById, useCities } from "src/modules/cities";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import {
 	yerevanAddCalendarDays,
@@ -175,10 +174,9 @@ function enumerateIsoDates(start: string, end: string): string[] {
 }
 
 export default function AdminClassSchedule() {
+	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
 	const { t, lang } = useLang();
 	const { showToast } = useToast();
-	const { branches } = useBranches();
-	const { cities } = useCities();
 	const { instructors } = useInstructors();
 
 	const [view, setView] = useState<ScheduleView>("today");
@@ -189,7 +187,6 @@ export default function AdminClassSchedule() {
 	const [lessonType, setLessonType] = useState("all");
 	const [instructorId, setInstructorId] = useState("");
 	const [studentId, setStudentId] = useState("");
-	const [branchId, setBranchId] = useState("");
 	const [status, setStatus] = useState("all");
 	const [packageFilter, setPackageFilter] = useState("all");
 	const [search, setSearch] = useState("");
@@ -206,7 +203,7 @@ export default function AdminClassSchedule() {
 		void vivaApiJson<StudentMini[]>("/students")
 			.then((rows) => setStudents(Array.isArray(rows) ? rows : []))
 			.catch(() => setStudents([]));
-	}, []);
+	}, [branchFilterRevision]);
 
 	const queryString = useMemo(() => {
 		const p = new URLSearchParams();
@@ -226,12 +223,11 @@ export default function AdminClassSchedule() {
 		if (lessonType !== "all") p.set("lessonType", lessonType);
 		if (instructorId) p.set("instructorId", instructorId);
 		if (studentId) p.set("studentId", studentId);
-		if (branchId) p.set("branchId", branchId);
 		if (status !== "all") p.set("status", status);
 		if (packageFilter !== "all") p.set("packageFilter", packageFilter);
 		if (search.trim()) p.set("search", search.trim());
 		return p.toString();
-	}, [view, customStart, customEnd, anchorIso, lessonType, instructorId, studentId, branchId, status, packageFilter, search]);
+	}, [view, customStart, customEnd, anchorIso, lessonType, instructorId, studentId, status, packageFilter, search]);
 
 	const load = useCallback(async () => {
 		setLoading(true);
@@ -249,7 +245,7 @@ export default function AdminClassSchedule() {
 
 	useEffect(() => {
 		void load();
-	}, [load]);
+	}, [load, branchFilterRevision]);
 
 	const items = data?.items ?? [];
 	const meta = data?.meta;
@@ -456,23 +452,6 @@ export default function AdminClassSchedule() {
 								{students.map((s) => (
 									<option key={s.id} value={s.id}>
 										{s.name}
-									</option>
-								))}
-							</select>
-						</div>
-						<div>
-							<label className="text-xs font-medium text-muted-foreground mb-1 block">
-								{t("adminClassScheduleFiltersBranch")}
-							</label>
-							<select
-								value={branchId}
-								onChange={(e) => setBranchId(e.target.value)}
-								className="w-full h-9 rounded-lg border border-input bg-background px-2 text-sm"
-							>
-								<option value="">{t("accountsFilterAll")}</option>
-								{branches.map((b) => (
-									<option key={b.id} value={b.id}>
-										{branchOptionLabel(b, cityNameById(cities, b.cityId))}
 									</option>
 								))}
 							</select>

@@ -1,5 +1,6 @@
 import { API_V1_PREFIX } from "src/constants/api.constants";
 import { apiFetch, apiJson, getApiErrorMessage, type ApiJsonInit } from "src/lib/api";
+import { appendAdminBranchQuery } from "src/modules/admin/adminBranchFilter";
 import { loadAccountSession } from "src/modules/accounts/account.session";
 
 function v1Path(suffix: string): string {
@@ -21,13 +22,17 @@ function withAuthHeaders(init: ApiJsonInit = {}): ApiJsonInit {
 	return { ...init, headers };
 }
 
+function withAdminBranchQuery(suffix: string): string {
+	return appendAdminBranchQuery(suffix);
+}
+
 /** `fetch` to `/api/v1/...` with optional Bearer token from the saved session. */
 export function vivaApiFetch(suffix: string, init: ApiJsonInit = {}): Promise<Response> {
-	return apiFetch(v1Path(suffix), withAuthHeaders(init));
+	return apiFetch(v1Path(withAdminBranchQuery(suffix)), withAuthHeaders(init));
 }
 
 export async function vivaApiJson<T>(suffix: string, init: ApiJsonInit = {}): Promise<T> {
-	return apiJson<T>(v1Path(suffix), withAuthHeaders(init));
+	return apiJson<T>(v1Path(withAdminBranchQuery(suffix)), withAuthHeaders(init));
 }
 
 export { getApiErrorMessage };

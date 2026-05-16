@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import {
   type FinanceLedgerPeriod,
   type FinanceTx,
@@ -38,6 +39,7 @@ function txInRange(tx: FinanceTx, start: Date, end: Date): boolean {
 }
 
 export default function AdminFinanceTransactions() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -68,7 +70,7 @@ export default function AdminFinanceTransactions() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, branchFilterRevision]);
 
   const { start, end } = useMemo(() => ledgerPeriodRange(period), [period]);
   const locale = localeFromLang(lang);

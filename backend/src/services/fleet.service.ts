@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { CarExpense, FleetCar, FleetCarInstructor, User } from '../models';
+import { CarExpense, FleetCar, FleetCarInstructor, InstructorBranch, User } from '../models';
 
 export type FleetCarDto = {
   id: number;
@@ -48,12 +48,51 @@ async function carToDto(car: FleetCar): Promise<FleetCarDto> {
 }
 
 export default class FleetService {
-  static async listCars(): Promise<FleetCarDto[]> {
+  static async listCars(branchId?: number): Promise<FleetCarDto[]> {
+    if (branchId !== undefined) {
+      const branchLinks = await InstructorBranch.findAll({
+        where: { branchId },
+        attributes: ['instructorUserId'],
+      });
+      const instructorUserIds = [...new Set(branchLinks.map((l) => l.instructorUserId))];
+      if (instructorUserIds.length === 0) return [];
+      const carLinks = await FleetCarInstructor.findAll({
+        where: { instructorUserId: { [Op.in]: instructorUserIds } },
+        attributes: ['carId'],
+      });
+      const carIds = [...new Set(carLinks.map((l) => l.carId))];
+      if (carIds.length === 0) return [];
+      const cars = await FleetCar.findAll({
+        where: { id: { [Op.in]: carIds } },
+        order: [['plate', 'ASC']],
+      });
+      return Promise.all(cars.map((c) => carToDto(c)));
+    }
+
     const cars = await FleetCar.findAll({ order: [['plate', 'ASC']] });
     return Promise.all(cars.map((c) => carToDto(c)));
   }
 
-  static async listExpenses(): Promise<CarExpenseDto[]> {
+  static async listExpenses(branchId?: number): Promise<CarExpenseDto[]> {
+    if (branchId !== undefined) {
+      const cars = await this.listCars(branchId);
+      const carIds = cars.map((c) => c.id);
+      if (carIds.length === 0) return [];
+      const rows = await CarExpense.findAll({
+        where: { carId: { [Op.in]: carIds } },
+        order: [['date', 'DESC']],
+      });
+      return rows.map((e) => ({
+        id: e.id,
+        carId: e.carId,
+        title: e.title?.trim() || undefined,
+        amount: e.amount,
+        date: typeof e.date === 'string' ? e.date : String(e.date).slice(0, 10),
+        purpose: e.purpose,
+        note: e.note ?? undefined,
+      }));
+    }
+
     const rows = await CarExpense.findAll({ order: [['date', 'DESC']] });
     return rows.map((e) => ({
       id: e.id,

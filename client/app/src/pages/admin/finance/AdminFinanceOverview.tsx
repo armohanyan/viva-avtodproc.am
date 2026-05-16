@@ -6,6 +6,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Landmark, TrendingUp, ArrowDownRight, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useToast } from "src/lib/toast";
 import type { AdminFinanceExpense } from "src/types/admin-finance-expense.types";
 import {
@@ -70,6 +71,7 @@ function bookingDateInRange(dateIso: string, rangeStart: Date, rangeEnd: Date): 
 }
 
 export default function AdminFinanceOverview() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [transactions, setTransactions] = useState<FinanceTx[]>([]);
@@ -107,7 +109,7 @@ export default function AdminFinanceOverview() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, branchFilterRevision]);
 
   const locale = localeFromLang(lang);
 

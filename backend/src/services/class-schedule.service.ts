@@ -237,8 +237,9 @@ function matchesPackageFilter(item: ClassScheduleItemDto, filter: string): boole
 }
 
 export default class ClassScheduleService {
-  static async listForAdmin(query: ClassScheduleQuery): Promise<ClassScheduleResponse> {
+  static async listForAdmin(query: ClassScheduleQuery, branchId?: number): Promise<ClassScheduleResponse> {
     const { view, start, end } = resolveViewRange(query);
+    const branchIdFilter = branchId ?? Math.floor(Number(query.branchId) || 0);
 
     const slotRows = await BookingSlot.findAll({
       attributes: ['bookingId'],
@@ -246,14 +247,26 @@ export default class ClassScheduleService {
       group: ['bookingId'],
       raw: true,
     });
-    const slotBookingIds = slotRows
+    let slotBookingIds = slotRows
       .map((r) => Number((r as { bookingId: number }).bookingId))
       .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (branchIdFilter > 0 && slotBookingIds.length > 0) {
+      const branchSlotBookings = await Booking.findAll({
+        where: { id: { [Op.in]: slotBookingIds }, branchId: branchIdFilter },
+        attributes: ['id'],
+        raw: true,
+      });
+      slotBookingIds = branchSlotBookings
+        .map((r) => Number((r as { id: number }).id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+    }
 
     const legacyRows = await Booking.findAll({
       attributes: ['id'],
       where: {
         dateIso: { [Op.between]: [start, end] },
+        ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
         [Op.and]: literal(
           'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)',
         ),
@@ -268,7 +281,10 @@ export default class ClassScheduleService {
     }
 
     const rows = (await Booking.findAll({
-      where: { id: { [Op.in]: bookingIds } },
+      where: {
+        id: { [Op.in]: bookingIds },
+        ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
+      },
       include: [
         { model: User, as: 'student', required: true, attributes: ['id', 'name', 'phone', 'email'] },
         { model: User, as: 'instructor', required: false, attributes: ['id', 'name'] },
@@ -313,7 +329,6 @@ export default class ClassScheduleService {
 
     const instructorIdFilter = Math.floor(Number(query.instructorId) || 0);
     const studentIdFilter = Math.floor(Number(query.studentId) || 0);
-    const branchIdFilter = Math.floor(Number(query.branchId) || 0);
     const statusFilter = (query.status ?? '').trim().toLowerCase();
     const searchQ = (query.search ?? '').trim().toLowerCase();
     const lessonTypeFilter = query.lessonType ?? 'all';
@@ -332,8 +347,6 @@ export default class ClassScheduleService {
 
       if (instructorIdFilter > 0 && row.instructorUserId !== instructorIdFilter) continue;
       if (studentIdFilter > 0 && row.studentUserId !== studentIdFilter) continue;
-      if (branchIdFilter > 0 && row.branchId !== branchIdFilter) continue;
-
       const student = row.student;
       const instructor = row.instructor;
       const branchRow = row.Branch;

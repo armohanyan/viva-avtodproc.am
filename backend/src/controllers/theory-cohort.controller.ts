@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
+import { parseBody, resolveBranchIdFilter } from '../helpers';
 import TheoryCohortService from '../services/theory-cohort.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
@@ -36,9 +36,10 @@ const enrollSchema = z.object({
 });
 
 export default class TheoryCohortController {
-  static async list(_req: Request, res: Response, next: NextFunction) {
+  static async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await TheoryCohortService.list();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await TheoryCohortService.list(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

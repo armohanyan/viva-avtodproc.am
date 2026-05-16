@@ -14,6 +14,7 @@ import { Landmark, Plus, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useBranches } from "src/modules/branches";
 import { useFleetCars } from "src/modules/cars";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -185,6 +186,7 @@ function purposeTypeDisplay(row: AdminFinanceExpense): string {
 }
 
 export default function AdminFinanceOutcomes() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const addFormId = useId();
   const editFormId = useId();
   const { t } = useLang();
@@ -216,7 +218,7 @@ export default function AdminFinanceOutcomes() {
 
   useEffect(() => {
     void refreshExpenses();
-  }, [refreshExpenses]);
+  }, [refreshExpenses, branchFilterRevision]);
 
   useEffect(() => {
     if (!editRow) return;

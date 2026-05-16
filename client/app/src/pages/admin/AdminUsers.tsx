@@ -19,6 +19,7 @@ import { useLocation, useSearch } from "wouter";
 import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -71,6 +72,7 @@ function adminBookingHref(opts: { studentId: string; branchId: string | number |
 }
 
 export default function AdminUsers() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const editUserFormId = useId();
   const addUserFormId = useId();
   const [, setLocation] = useLocation();
@@ -142,7 +144,7 @@ export default function AdminUsers() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, branchFilterRevision]);
 
   useEffect(() => {
     const p = new URLSearchParams(urlSearch);
@@ -152,7 +154,6 @@ export default function AdminUsers() {
   }, [urlSearch, setLocation]);
   const [search, setSearch] = useState("");
   const [instructorFilter, setInstructorFilter] = useState("all");
-  const [branchFilter, setBranchFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -174,8 +175,7 @@ export default function AdminUsers() {
     const hay = [u.id, u.name, u.email, u.phone, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel, String(u.skillRating), u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")].join(" ").toLowerCase();
     const matchesSearch = !q || hay.includes(q);
     const matchesInstructor = instructorFilter === "all" || u.instructor === instructorFilter;
-    const matchesBranch = branchFilter === "all" || u.branchId === branchFilter;
-    return matchesSearch && matchesInstructor && matchesBranch;
+    return matchesSearch && matchesInstructor;
   });
 
   const userStatusLabel = (s: string) => {
@@ -348,20 +348,7 @@ export default function AdminUsers() {
                 <TableColumnHeaderWithFilter title={t("name")} />
                 <TableColumnHeaderWithFilter title={t("email")} />
                 <TableColumnHeaderWithFilter title={t("phone")} />
-                <TableColumnHeaderWithFilter
-                  title={t("adminColBranch")}
-                  filter={
-                    <TableColumnFilter
-                      value={branchFilter}
-                      onChange={setBranchFilter}
-                      ariaLabel={t("filterByBranch")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...branches.map((b) => ({ value: b.id, label: b.name })),
-                      ]}
-                    />
-                  }
-                />
+                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
                 <TableColumnHeaderWithFilter
                   title={t("cohortColInstructor")}
                   filter={

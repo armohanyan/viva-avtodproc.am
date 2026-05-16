@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getApiErrorMessage } from "src/lib/api";
 import { vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 
 export type AdminStudentMini = { id: string; name: string; email: string };
 
@@ -20,6 +21,7 @@ export type UseAdminStudentsMiniOptions = {
 };
 
 export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) {
+	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
 	const { enrollmentStatus = "active" } = options;
 	const [students, setStudents] = useState<AdminStudentMini[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -45,7 +47,7 @@ export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) 
 
 	useEffect(() => {
 		void refresh();
-	}, [refresh]);
+	}, [refresh, branchFilterRevision]);
 
 	return { students, loading, error, refresh };
 }

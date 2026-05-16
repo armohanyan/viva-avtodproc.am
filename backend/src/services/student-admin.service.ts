@@ -146,9 +146,10 @@ export default class StudentAdminService {
       .filter((row): row is AdminStudentRow => row != null);
   }
 
-  static async list(): Promise<AdminStudentRow[]> {
+  static async list(branchId?: number): Promise<AdminStudentRow[]> {
     await this.ensureProfilesForStudents();
     const rows = await StudentProfile.findAll({
+      ...(branchId !== undefined ? { where: { branchId } } : {}),
       include: [
         { model: User, as: 'studentAccount', required: true },
         { model: Package, as: 'package', required: false },

@@ -1,6 +1,6 @@
 import type { NextFunction, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
+import { parseBody, resolveBranchIdFilter } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import AdminFinanceExpenseService from '../services/admin-finance-expense.service';
 import { SuccessHandlerUtil } from '../utils';
@@ -22,9 +22,10 @@ const updateSchema = createSchema.partial().refine((obj) => Object.keys(obj).len
 });
 
 export default class AdminFinanceExpenseController {
-  static async list(_req: StaffRequest, res: Response, next: NextFunction) {
+  static async list(req: StaffRequest, res: Response, next: NextFunction) {
     try {
-      const data = await AdminFinanceExpenseService.list();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await AdminFinanceExpenseService.list(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

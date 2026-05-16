@@ -107,14 +107,21 @@ export default function InstructorCard({
               {t("lessonPrice")}: <CountUpText value={instructor.hourlyPrice} /> ֏ / {t("perHour")}
             </span>
           </div>
+          {instructor.car && (
           <div className="min-w-0 flex items-center gap-1.5">
             <Car className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span className="break-words">{instructor.car}</span>
           </div>
+          )
+          }
+
+          {instructor.transmission && (
           <div className="flex items-center gap-1.5">
             <Gauge className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span>{instructor.transmission}</span>
           </div>
+          )
+          }
           <div className={`flex items-center gap-1.5 ${compact ? "" : "col-span-2"}`}>
             <CalendarDays className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span>

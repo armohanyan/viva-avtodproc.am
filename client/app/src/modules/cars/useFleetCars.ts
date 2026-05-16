@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import type { CarExpense, FleetCar } from "./car.types";
 import { expenseMatchesMonth, sumExpenses } from "./fleet.utils";
 
@@ -8,6 +9,7 @@ function newId(prefix: string) {
 }
 
 export function useFleetCars() {
+	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
 	const [cars, setCars] = useState<FleetCar[]>([]);
 	const [expenses, setExpenses] = useState<CarExpense[]>([]);
 
@@ -27,7 +29,7 @@ export function useFleetCars() {
 
 	useEffect(() => {
 		void refresh();
-	}, [refresh]);
+	}, [refresh, branchFilterRevision]);
 
 	const persistCars = useCallback((updater: (prev: FleetCar[]) => FleetCar[]) => {
 		setCars((prev) => updater(prev));

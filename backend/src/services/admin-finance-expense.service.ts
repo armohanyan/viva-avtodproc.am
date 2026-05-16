@@ -92,17 +92,31 @@ async function adminNameByUserId(userId: number | null | undefined): Promise<str
 }
 
 export default class AdminFinanceExpenseService {
-  static async list(): Promise<AdminFinanceExpenseDto[]> {
+  static async list(branchId?: number): Promise<AdminFinanceExpenseDto[]> {
+    const txWhere = {
+      entryType: 'expense' as const,
+      source: 'manual' as const,
+      expenseKind: { [Op.ne]: 'booking_refund' as const },
+      ...(branchId !== undefined ? { branchId } : {}),
+    };
+
+    const fleetCarsForBranch =
+      branchId !== undefined ? await FleetService.listCars(branchId) : await FleetService.listCars();
+    const fleetCarIds = fleetCarsForBranch.map((c) => c.id);
+
     const [cars, branches, carRows, txRows, feRows] = await Promise.all([
       FleetCar.findAll({ attributes: ['id', 'plate'], order: [['plate', 'ASC']] }),
       Branch.findAll({ attributes: ['id', 'name'], order: [['name', 'ASC']] }),
-      CarExpense.findAll({ order: [['date', 'DESC'], ['id', 'DESC']] }),
+      fleetCarIds.length === 0 && branchId !== undefined
+        ? Promise.resolve([])
+        : CarExpense.findAll({
+            ...(branchId !== undefined && fleetCarIds.length > 0
+              ? { where: { carId: { [Op.in]: fleetCarIds } } }
+              : {}),
+            order: [['date', 'DESC'], ['id', 'DESC']],
+          }),
       FinanceTransaction.findAll({
-        where: {
-          entryType: 'expense',
-          source: 'manual',
-          expenseKind: { [Op.ne]: 'booking_refund' },
-        },
+        where: txWhere,
         order: [['createdAt', 'DESC']],
       }),
       FinanceExpense.findAll({ order: [['date', 'DESC'], ['id', 'DESC']] }),
@@ -194,7 +208,18 @@ export default class AdminFinanceExpenseService {
       });
     }
 
-    for (const fe of feRows) {
+    const filteredFeRows =
+      branchId !== undefined
+        ? feRows.filter((fe) => {
+            if (fe.relatedEntityType === 'branch' && fe.relatedEntityId) {
+              const bid = Number(fe.relatedEntityId);
+              return Number.isFinite(bid) && bid === branchId;
+            }
+            return fe.purpose === 'branch_rent';
+          })
+        : feRows;
+
+    for (const fe of filteredFeRows) {
       let relatedLabel: string | null = null;
       if (fe.relatedEntityType === 'branch' && fe.relatedEntityId) {
         if (fe.relatedEntityId === OTHER_ENTITY_AM || fe.customPurposeText) {

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 
@@ -55,6 +56,7 @@ const statusColor: Record<string, string> = {
 };
 
 export default function AdminCohorts() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const editCohortFormId = useId();
   const addCohortFormId = useId();
   const { t, lang } = useLang();
@@ -111,10 +113,9 @@ export default function AdminCohorts() {
 
   useEffect(() => {
     void refreshCohorts();
-  }, [refreshCohorts]);
+  }, [refreshCohorts, branchFilterRevision]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [branchFilter, setBranchFilter] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editCohort, setEditCohort] = useState<Cohort | null>(null);
   const [studentsDialogCohort, setStudentsDialogCohort] = useState<Cohort | null>(null);
@@ -259,10 +260,9 @@ export default function AdminCohorts() {
       const hay = [c.id, c.name, c.instructorName, c.startDateIso, c.endDateIso, timePart, period, c.status, c.meetLink, branchLabel].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchBranch = branchFilter === "all" || c.branchId === branchFilter;
-      return matchSearch && matchStatus && matchBranch;
+      return matchSearch && matchStatus;
     });
-  }, [branches, cohorts, search, statusFilter, branchFilter, lang]);
+  }, [branches, cohorts, search, statusFilter, lang]);
 
   const cohortStatusLabel = (s: string) => {
     if (s === "active") return t("active");
@@ -332,20 +332,7 @@ export default function AdminCohorts() {
             <thead className="bg-muted/40">
               <tr>
                 <TableColumnHeaderWithFilter title={t("tableColId")} />
-                <TableColumnHeaderWithFilter
-                  title={t("adminColBranch")}
-                  filter={
-                    <TableColumnFilter
-                      value={branchFilter}
-                      onChange={setBranchFilter}
-                      ariaLabel={t("filterByBranch")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...branches.map((b) => ({ value: b.id, label: b.name })),
-                      ]}
-                    />
-                  }
-                />
+                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
                 <TableColumnHeaderWithFilter title={t("name")} />
                 <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
                 <TableColumnHeaderWithFilter title={t("cohortColPeriod")} />

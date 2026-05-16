@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, verifyAccessToken } from '../helpers';
+import { parseBody, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import FinanceService from '../services/finance.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -102,9 +102,10 @@ export default class FinanceController {
     }
   }
 
-  static async list(_req: Request, res: Response, next: NextFunction) {
+  static async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await FinanceService.list();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await FinanceService.list(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

@@ -83,8 +83,21 @@ function toDto(
 }
 
 export default class InstructorService {
-  static async list(includeInviteEligibility = false): Promise<InstructorDto[]> {
+  static async list(includeInviteEligibility = false, branchId?: number): Promise<InstructorDto[]> {
+    let branchInstructorUserIds: number[] | undefined;
+    if (branchId !== undefined) {
+      const branchLinks = await InstructorBranch.findAll({
+        where: { branchId },
+        attributes: ['instructorUserId'],
+      });
+      branchInstructorUserIds = [...new Set(branchLinks.map((l) => l.instructorUserId))];
+      if (branchInstructorUserIds.length === 0) return [];
+    }
+
     const profiles = await InstructorProfile.findAll({
+      ...(branchInstructorUserIds !== undefined
+        ? { where: { userId: { [Op.in]: branchInstructorUserIds } } }
+        : {}),
       include: [{ model: User, as: 'user', required: true }],
     });
     const instructorUserIds = profiles.map((p) => p.userId);

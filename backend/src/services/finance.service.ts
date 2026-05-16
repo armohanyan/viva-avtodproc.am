@@ -139,8 +139,11 @@ export default class FinanceService {
     });
   }
 
-  static async list(): Promise<FinanceTxDto[]> {
-    const rows = await FinanceTransaction.findAll({ order: [['createdAt', 'DESC']] });
+  static async list(branchId?: number): Promise<FinanceTxDto[]> {
+    const rows = await FinanceTransaction.findAll({
+      ...(branchId !== undefined ? { where: { branchId } } : {}),
+      order: [['createdAt', 'DESC']],
+    });
     return rows.map(toDto);
   }
 

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseParams, parseQuery } from '../helpers';
+import { parseBody, parseParams, parseQuery, resolveBranchIdFilter } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import BookingService from '../services/booking.service';
 import InstructorAvailabilityService from '../services/instructor-availability.service';
@@ -65,7 +65,8 @@ export default class InstructorController {
     try {
       const staff = (req as StaffRequest).staff;
       const enrichInvite = Boolean(staff);
-      const data = await InstructorService.list(enrichInvite);
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await InstructorService.list(enrichInvite, branchId);
 
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {

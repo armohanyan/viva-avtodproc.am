@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { resolveBranchIdFilter } from '../helpers';
 import ClassScheduleService, { type ClassScheduleQuery } from '../services/class-schedule.service';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import ErrorsUtil from '../utils/errors.util';
@@ -44,7 +45,8 @@ function instructorUserIdFromRequest(req: Request): number {
 export default class ClassScheduleController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await ClassScheduleService.listForAdmin(queryFromRequest(req));
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await ClassScheduleService.listForAdmin(queryFromRequest(req), branchId);
       SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);

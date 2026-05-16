@@ -31,6 +31,7 @@ import CheckoutSummary, { type CheckoutSummaryLines } from "src/modules/admin/bo
 import { useBookingPriceCalculator, type BookingPriceInput } from "src/modules/admin/booking/useBookingPriceCalculator";
 import { validateAdminBookingAdd } from "src/modules/admin/booking/useBookingValidation";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
@@ -208,6 +209,7 @@ function theoryCohortSelectSuffix(c: TheoryCohortOption): string {
 }
 
 export default function AdminBookings() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const editBookingFormId = useId();
   const addBookingFormId = useId();
   const [, setLocation] = useLocation();
@@ -251,10 +253,9 @@ export default function AdminBookings() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, branchFilterRevision]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [branchFilter, setBranchFilter] = useState("all");
   const [lessonTypeFilter, setLessonTypeFilter] = useState<"all" | "practical" | "theory" | "theory_personal">("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [staffCancellationDialog, setStaffCancellationDialog] = useState<
@@ -1020,11 +1021,10 @@ export default function AdminBookings() {
             : statusFilter === "pending"
               ? canon === "pending" || canon === "pending_payment"
               : canon === statusFilter;
-      const matchBranch = branchFilter === "all" || b.branchId === branchFilter;
       const matchLessonType = lessonTypeFilter === "all" || b.type === lessonTypeFilter;
-      return matchSearch && matchStatus && matchBranch && matchLessonType;
+      return matchSearch && matchStatus && matchLessonType;
     });
-  }, [bookings, search, statusFilter, branchFilter, lessonTypeFilter, branches, lang, studentLabel]);
+  }, [bookings, search, statusFilter, lessonTypeFilter, branches, lang, studentLabel]);
 
   useEffect(() => {
     if (!editBooking) {
@@ -1556,20 +1556,7 @@ export default function AdminBookings() {
               <tr>
                 <TableColumnHeaderWithFilter title={t("tableColId")} />
                 <TableColumnHeaderWithFilter title={t("bookingColStudent")} />
-                <TableColumnHeaderWithFilter
-                  title={t("adminColBranch")}
-                  filter={
-                    <TableColumnFilter
-                      value={branchFilter}
-                      onChange={setBranchFilter}
-                      ariaLabel={t("filterByBranch")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        ...branches.map((b) => ({ value: b.id, label: b.name })),
-                      ]}
-                    />
-                  }
-                />
+                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
                 <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
                 <TableColumnHeaderWithFilter title={t("date")} />
                 <TableColumnHeaderWithFilter title={t("bookingColTime")} />

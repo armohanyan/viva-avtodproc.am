@@ -40,6 +40,8 @@ import { useAccount } from "src/modules/accounts";
 import { PanelShell } from "src/components/panel/PanelShell";
 import { initialsFromName } from "src/components/panel/initialsFromName";
 import NotificationBell from "src/components/NotificationBell";
+import AdminBranchFilterSelect from "src/components/admin/AdminBranchFilterSelect";
+import { AdminBranchFilterProvider } from "src/modules/admin/AdminBranchFilterProvider";
 
 interface Props {
 	children: ReactNode;
@@ -264,11 +266,13 @@ export default function AdminLayout({ children }: Props) {
 	}, [location, t, adminNavLabels]);
 
 	return (
+		<AdminBranchFilterProvider>
 		<PanelShell
 			sidebarSurface="hero"
 			headerTitle={headerTitle}
 			headerTrailing={({ closeMobileNav }) => (
 				<>
+					<AdminBranchFilterSelect />
 					<ThemeToggle />
 					<NotificationBell listHref="/admin/notifications" panel="admin" onNavigate={closeMobileNav} />
 					<DropdownMenu>
@@ -322,5 +326,6 @@ export default function AdminLayout({ children }: Props) {
 		>
 			{children}
 		</PanelShell>
+		</AdminBranchFilterProvider>
 	);
 }

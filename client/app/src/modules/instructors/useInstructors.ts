@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { Instructor } from "src/data/instructors";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 
 export function useInstructors() {
+	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
 	const [instructors, setInstructors] = useState<Instructor[]>([]);
 	const [loading, setLoading] = useState(true);
 
@@ -31,7 +33,7 @@ export function useInstructors() {
 
 	useEffect(() => {
 		void refresh();
-	}, [refresh]);
+	}, [refresh, branchFilterRevision]);
 
 	return { instructors, loading, refresh, setInstructors };
 }

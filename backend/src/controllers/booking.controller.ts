@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, verifyAccessToken } from '../helpers';
+import { parseBody, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import BookingService from '../services/booking.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
@@ -250,7 +250,8 @@ export default class BookingController {
         return;
       }
 
-      const data = await BookingService.listAdmin();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await BookingService.listAdmin(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);
