@@ -49,6 +49,8 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare autoCancelledAt: CreationOptional<Date | null>;
   /** Structured reason for cancellation when applicable (e.g. missed payment deadline). */
   declare cancellationReason: CreationOptional<string | null>;
+  /** Online meeting URL for personal theory lessons (`theory_personal`). */
+  declare meetLink: CreationOptional<string | null>;
 }
 
 Booking.init(
@@ -75,6 +77,7 @@ Booking.init(
     paymentReminderSentAt: { type: DataTypes.DATE, allowNull: true },
     autoCancelledAt: { type: DataTypes.DATE, allowNull: true },
     cancellationReason: { type: DataTypes.STRING(64), allowNull: true },
+    meetLink: { type: DataTypes.STRING(512), allowNull: true, defaultValue: null },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

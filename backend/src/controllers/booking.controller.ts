@@ -31,6 +31,7 @@ const createBodySchema = z.object({
     .optional(),
   consumePackageCredits: z.boolean().optional(),
   packageOrderId: z.coerce.number().int().positive().optional(),
+  meetLink: z.union([z.string().max(512), z.null(), z.literal('')]).optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {

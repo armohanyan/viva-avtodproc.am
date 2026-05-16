@@ -7,7 +7,6 @@ import {
   Branch,
   ExamQuestionBookmark,
   ExamQuestionComment,
-  FinanceTransaction,
   Notification,
   OAuthAccount,
   Package,
@@ -23,6 +22,7 @@ import {
 } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+import FinanceService from './finance.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 
 const { ConflictError } = ErrorsUtil;
@@ -387,11 +387,8 @@ export default class StudentAdminService {
         transaction,
       });
       const bookingIds = bookings.map((b) => b.id).filter((id): id is number => typeof id === 'number');
+      await FinanceService.deleteAllForStudentUser(userId, transaction);
       if (bookingIds.length > 0) {
-        await FinanceTransaction.update(
-          { bookingId: null },
-          { where: { bookingId: { [Op.in]: bookingIds } }, transaction },
-        );
         await BookingSlot.destroy({ where: { bookingId: { [Op.in]: bookingIds } }, transaction });
       }
       await Booking.destroy({ where: { studentUserId: userId }, transaction });

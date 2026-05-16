@@ -14,9 +14,11 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import { Plus, Edit2, Trash2, Calendar, School, ChevronLeft, ChevronRight, Mail } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Instructor } from "src/data/instructors";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
@@ -41,6 +43,8 @@ type InstructorForm = Pick<
 >;
 
 type FleetCarRow = { id: number; plate: string; make: string; model: string };
+
+const INSTRUCTOR_AVATAR_MAX_BYTES = 800 * 1024;
 
 const createNewInstructorDraft = (): InstructorForm => ({
   name: "",
@@ -156,6 +160,8 @@ function weekDayShortHeaders(locale: string): string[] {
 export default function AdminInstructors() {
   const editInstructorFormId = useId();
   const addInstructorFormId = useId();
+  const editInstructorAvatarFileRef = useRef<HTMLInputElement | null>(null);
+  const addInstructorAvatarFileRef = useRef<HTMLInputElement | null>(null);
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
@@ -165,6 +171,27 @@ export default function AdminInstructors() {
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [fleetCars, setFleetCars] = useState<FleetCarRow[]>([]);
   const [invitingId, setInvitingId] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const applyUploadedInstructorAvatar = useCallback(
+    async (file: File | undefined, onUrl: (url: string) => void) => {
+      if (!file) return;
+      if (file.size > INSTRUCTOR_AVATAR_MAX_BYTES) {
+        showToast(t("adminExamQuestionsImageTooLarge"), "error");
+        return;
+      }
+      setUploadingAvatar(true);
+      try {
+        const uploadedUrl = await uploadStaffImageFile(file);
+        onUrl(sameOriginStaffUploadUrl(uploadedUrl) ?? uploadedUrl);
+      } catch (err) {
+        showToast(getApiErrorMessage(err), "error");
+      } finally {
+        setUploadingAvatar(false);
+      }
+    },
+    [showToast, t],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -197,6 +224,7 @@ export default function AdminInstructors() {
           ? data.map((i) => ({
               ...i,
               id: String(i.id),
+              imageSrc: sameOriginStaffUploadUrl(i.imageSrc ?? null) ?? i.imageSrc ?? "/logo.svg",
               studentRatingCount: typeof i.studentRatingCount === "number" ? i.studentRatingCount : 0,
               /** API uses numeric ids; branch options and validation use strings (see useBranches). */
               availableBranchIds: (i.availableBranchIds ?? []).map(String),
@@ -794,15 +822,39 @@ export default function AdminInstructors() {
         {editIns && (
           <form id={editInstructorFormId} onSubmit={handleEdit} className="space-y-3">
               <div>
-                <div className="flex items-center gap-4">
-                  <img
-                    src={editIns.imageSrc}
-                    alt=""
-                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted shrink-0"
-                    onError={(e) => {
-                      e.currentTarget.src = "/logo.svg";
-                    }}
-                  />
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center gap-2 shrink-0">
+                    <img
+                      src={editIns.imageSrc}
+                      alt=""
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted"
+                      onError={(e) => {
+                        e.currentTarget.src = "/logo.svg";
+                      }}
+                    />
+                    <input
+                      ref={editInstructorAvatarFileRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        await applyUploadedInstructorAvatar(file, (url) =>
+                          updateEdit(editIns.id, { imageSrc: url }),
+                        );
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingAvatar}
+                      onClick={() => editInstructorAvatarFileRef.current?.click()}
+                    >
+                      {uploadingAvatar ? t("loading") : t("adminExamQuestionsImagePickFile")}
+                    </Button>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor={`${editInstructorFormId}-name`}>
                       {t("name")}
@@ -940,15 +992,37 @@ export default function AdminInstructors() {
       >
         <form id={addInstructorFormId} onSubmit={handleAdd} className="space-y-3">
               <div>
-                <div className="flex items-center gap-4">
-                  <img
-                    src={newIns.imageSrc}
-                    alt=""
-                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted shrink-0"
-                    onError={(e) => {
-                      e.currentTarget.src = "/logo.svg";
-                    }}
-                  />
+                <div className="flex items-start gap-4">
+                  <div className="flex flex-col items-center gap-2 shrink-0">
+                    <img
+                      src={newIns.imageSrc}
+                      alt=""
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted"
+                      onError={(e) => {
+                        e.currentTarget.src = "/logo.svg";
+                      }}
+                    />
+                    <input
+                      ref={addInstructorAvatarFileRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        await applyUploadedInstructorAvatar(file, (url) => setNewIns((p) => ({ ...p, imageSrc: url })));
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uploadingAvatar}
+                      onClick={() => addInstructorAvatarFileRef.current?.click()}
+                    >
+                      {uploadingAvatar ? t("loading") : t("adminExamQuestionsImagePickFile")}
+                    </Button>
+                  </div>
                   <div className="flex-1 min-w-0">
                     <label className="block text-sm font-medium text-muted-foreground mb-1" htmlFor={`${addInstructorFormId}-name`}>
                       {t("name")} *

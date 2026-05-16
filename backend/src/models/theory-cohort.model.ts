@@ -18,6 +18,12 @@ export class TheoryCohort extends Model<InferAttributes<TheoryCohort>, InferCrea
   declare sessionEndTime: string | null;
   /** Fixed course price for the group (AMD). When null, booking total falls back to instructor hourly × slot hours. */
   declare priceAmd: CreationOptional<number | null>;
+  /** Comma-separated weekday indices Mon=0 … Sun=6. */
+  declare lessonWeekdays: string;
+  /** Planned number of class sessions to generate. */
+  declare totalLessons: number;
+  /** Resolved instructor user id for sessions and calendar. */
+  declare instructorUserId: number | null;
 }
 
 TheoryCohort.init(
@@ -34,6 +40,9 @@ TheoryCohort.init(
     sessionStartTime: { type: DataTypes.STRING(5), allowNull: true, defaultValue: null },
     sessionEndTime: { type: DataTypes.STRING(5), allowNull: true, defaultValue: null },
     priceAmd: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, defaultValue: null },
+    lessonWeekdays: { type: DataTypes.STRING(32), allowNull: false, defaultValue: '' },
+    totalLessons: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false, defaultValue: 0 },
+    instructorUserId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true, defaultValue: null },
   },
   { sequelize, tableName: 'theory_cohorts', modelName: 'TheoryCohort' },
 );

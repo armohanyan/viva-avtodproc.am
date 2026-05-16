@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, resolveBranchIdFilter } from '../helpers';
 import TheoryCohortService from '../services/theory-cohort.service';
+import TheoryCohortSessionService from '../services/theory-cohort-session.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -27,9 +28,21 @@ const createSchema = z.object({
   sessionEndTime: optionalSessionTime,
   /** Whole-group price (AMD); omit or null to derive from instructor hourly at booking time. */
   priceAmd: z.union([z.coerce.number().int().min(0), z.null()]).optional(),
+  lessonWeekdays: z.array(z.coerce.number().int().min(0).max(6)).optional(),
+  totalLessons: z.coerce.number().int().min(0).optional(),
+  instructorUserId: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
 });
 
 const updateSchema = createSchema.partial();
+
+const previewSchema = z.object({
+  startDateIso: z.string().min(1),
+  endDateIso: z.string().min(1),
+  lessonWeekdays: z.array(z.coerce.number().int().min(0).max(6)).min(1),
+  sessionStartTime: z.string().regex(HM, 'Time must be HH:MM (24h)'),
+  sessionEndTime: z.string().regex(HM, 'Time must be HH:MM (24h)'),
+  totalLessons: z.coerce.number().int().positive(),
+});
 
 const enrollSchema = z.object({
   studentUserId: z.coerce.number().int().positive(),
@@ -100,6 +113,26 @@ export default class TheoryCohortController {
       if (data === null) {
         return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async previewSessions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(previewSchema, req.body);
+      const data = TheoryCohortService.previewSessions(body);
+      SuccessHandlerUtil.handleList(res, next, data.sessions);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listSessions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const cohortId = Number(req.params.id);
+      const data = await TheoryCohortSessionService.listByCohort(cohortId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

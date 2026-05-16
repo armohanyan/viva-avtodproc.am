@@ -33,6 +33,7 @@ import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
 import { TheoryCohortEnrollment } from './theory-cohort-enrollment.model';
+import { TheoryCohortSession } from './theory-cohort-session.model';
 import { User } from './user.model';
 import { RefreshToken } from './refresh-token.model';
 import { OAuthAccount } from './oauth-account.model';
@@ -94,6 +95,8 @@ FleetCarInstructor.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 
 TheoryCohort.hasMany(TheoryCohortEnrollment, { foreignKey: 'cohortId', sourceKey: 'id' });
 TheoryCohortEnrollment.belongsTo(TheoryCohort, { foreignKey: 'cohortId', targetKey: 'id' });
 TheoryCohortEnrollment.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+TheoryCohort.hasMany(TheoryCohortSession, { foreignKey: 'cohortId', sourceKey: 'id', as: 'sessions' });
+TheoryCohortSession.belongsTo(TheoryCohort, { foreignKey: 'cohortId', targetKey: 'id', as: 'cohort' });
 
 User.hasMany(StudentExtraPractical, { foreignKey: 'userId', sourceKey: 'id' });
 StudentExtraPractical.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
@@ -166,6 +169,7 @@ export {
   StudentProfile,
   TheoryCohort,
   TheoryCohortEnrollment,
+  TheoryCohortSession,
   User,
 };
 
@@ -1031,6 +1035,30 @@ async function ensureBookingsPrepaidMetaColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `prepaid_meta` JSON NULL');
 }
 
+/** Online meeting URL for personal theory (`theory_personal`) bookings. */
+async function ensureBookingsMeetLinkColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'meet_link'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `meet_link` VARCHAR(512) NULL DEFAULT NULL');
+}
+
 /**
  * Lets staff delete an instructor user while keeping booking rows: null `instructor_user_id` and
  * `ON DELETE SET NULL` on the FK to `users`.
@@ -1535,6 +1563,72 @@ async function ensureTheoryCohortSessionTimeColumns(): Promise<void> {
 }
 
 /** Fixed group-theory course price (AMD); null = use instructor hourly × hours when booking. */
+/** `lesson_weekdays`, `total_lessons`, `instructor_user_id` on theory cohorts. */
+async function ensureTheoryCohortScheduleFields(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const addCol = async (column: string, ddl: string) => {
+    const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts' AND COLUMN_NAME = ?`,
+      { replacements: [column], type: QueryTypes.SELECT },
+    );
+    if (colRows.length > 0) return;
+    await sequelize.query(`ALTER TABLE \`theory_cohorts\` ADD COLUMN ${ddl}`);
+  };
+  await addCol('lesson_weekdays', '`lesson_weekdays` VARCHAR(32) NOT NULL DEFAULT \'\'');
+  await addCol('total_lessons', '`total_lessons` INT UNSIGNED NOT NULL DEFAULT 0');
+  await addCol('instructor_user_id', '`instructor_user_id` INT UNSIGNED NULL DEFAULT NULL');
+}
+
+async function ensureTheoryCohortSessionsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohort_sessions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length > 0) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table theory_cohort_sessions …');
+  await sequelize.query(`
+    CREATE TABLE \`theory_cohort_sessions\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`cohort_id\` INT UNSIGNED NOT NULL,
+      \`branch_id\` INT UNSIGNED NOT NULL,
+      \`instructor_user_id\` INT UNSIGNED NULL DEFAULT NULL,
+      \`date_iso\` DATE NOT NULL,
+      \`start_time\` VARCHAR(5) NOT NULL,
+      \`end_time\` VARCHAR(5) NOT NULL,
+      \`lesson_index\` INT UNSIGNED NOT NULL,
+      \`status\` VARCHAR(32) NOT NULL DEFAULT 'scheduled',
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      UNIQUE KEY \`uq_theory_cohort_session_slot\` (\`cohort_id\`, \`date_iso\`, \`start_time\`),
+      KEY \`idx_theory_cohort_session_order\` (\`cohort_id\`, \`lesson_index\`),
+      KEY \`idx_theory_cohort_session_date\` (\`date_iso\`),
+      KEY \`idx_theory_cohort_session_branch_date\` (\`branch_id\`, \`date_iso\`),
+      KEY \`idx_theory_cohort_session_instructor_date\` (\`instructor_user_id\`, \`date_iso\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Table theory_cohort_sessions created.');
+}
+
 async function ensureTheoryCohortPriceAmdColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -1653,6 +1747,8 @@ export async function syncModels(): Promise<void> {
   await ensureInstructorProfilesDropRedundantDisplayColumns();
   await ensureTheoryCohortsDropScheduleColumn();
   await ensureTheoryCohortSessionTimeColumns();
+  await ensureTheoryCohortScheduleFields();
+  await ensureTheoryCohortSessionsTable();
   await ensureTheoryCohortPriceAmdColumn();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
@@ -1677,6 +1773,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsCancellationRequestedAtColumn();
   await ensureBookingsLessonPassedSuccessfullyColumn();
   await ensureBookingsPrepaidMetaColumn();
+  await ensureBookingsMeetLinkColumn();
   await ensureNotificationsTable();
   await ensureNotificationsTypeEnumValues();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();

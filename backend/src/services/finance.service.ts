@@ -1,4 +1,4 @@
-import { Transaction, col, fn, where as sqlWhere, type Transaction as SequelizeTransaction } from 'sequelize';
+import { Op, Transaction, col, fn, where as sqlWhere, type Transaction as SequelizeTransaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import type {
   FinanceTxChannel,
@@ -159,6 +159,75 @@ export default class FinanceService {
       order: [['createdAt', 'DESC']],
     });
     return rows.map(toDto);
+  }
+
+  /**
+   * Removes finance rows for a deleted student: matches account email (same as `listForStudentUser`)
+   * and any rows still linked to the student's bookings, including refund expense children.
+   */
+  static async deleteAllForStudentUser(
+    userId: number,
+    transaction?: SequelizeTransaction,
+  ): Promise<void> {
+    const user = await User.findByPk(userId, {
+      attributes: ['id', 'accountType', 'email'],
+      transaction,
+    });
+    if (!user || user.accountType !== 'student') {
+      return;
+    }
+
+    const bookings = await Booking.findAll({
+      where: { studentUserId: userId },
+      attributes: ['id'],
+      transaction,
+    });
+    const bookingIds = bookings.map((b) => b.id).filter((id): id is number => typeof id === 'number');
+
+    const email = user.email.trim().toLowerCase();
+    const orConditions: Array<ReturnType<typeof sqlWhere> | { bookingId: { [Op.in]: number[] } }> = [];
+    if (bookingIds.length > 0) {
+      orConditions.push({ bookingId: { [Op.in]: bookingIds } });
+    }
+    if (email.length > 0) {
+      orConditions.push(sqlWhere(fn('LOWER', col('email')), email));
+    }
+    if (orConditions.length === 0) {
+      return;
+    }
+
+    const primaryRows = await FinanceTransaction.findAll({
+      where: { [Op.or]: orConditions },
+      attributes: ['id'],
+      transaction,
+    });
+    const ids = new Set(primaryRows.map((r) => r.id));
+
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      if (ids.size === 0) {
+        break;
+      }
+      const linked = await FinanceTransaction.findAll({
+        where: { relatedPaymentTransactionId: { [Op.in]: [...ids] } },
+        attributes: ['id'],
+        transaction,
+      });
+      for (const row of linked) {
+        if (!ids.has(row.id)) {
+          ids.add(row.id);
+          expanded = true;
+        }
+      }
+    }
+
+    if (ids.size > 0) {
+      await FinanceTransaction.destroy({
+        where: { id: { [Op.in]: [...ids] } },
+        transaction,
+      });
+    }
   }
 
   static async create(input: {

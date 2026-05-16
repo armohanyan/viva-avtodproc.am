@@ -1,5 +1,16 @@
 import { Op, literal } from 'sequelize';
-import { Booking, BookingSlot, Branch, FleetCar, Package, PackageOrder, TheoryCohort, User } from '../models';
+import {
+  Booking,
+  BookingSlot,
+  Branch,
+  FleetCar,
+  Package,
+  PackageOrder,
+  TheoryCohort,
+  TheoryCohortEnrollment,
+  TheoryCohortSession,
+  User,
+} from '../models';
 import FleetService from './fleet.service';
 import {
   hoursUntilLessonStart,
@@ -30,6 +41,15 @@ export type ClassScheduleLessonType = 'practical' | 'theory' | 'theory_personal'
 export type ClassScheduleBookingType = 'single' | 'package' | 'group' | 'personal_theory';
 export type ClassSchedulePaymentStatus = 'paid' | 'free' | 'pending' | 'not_required';
 
+export type ClassScheduleTheoryCohortMeta = {
+  id: number;
+  name: string;
+  lessonIndex: number;
+  totalLessons: number;
+  enrolledCount: number;
+  sessionId: number;
+};
+
 export type ClassScheduleItemDto = {
   id: string;
   bookingId: number;
@@ -48,6 +68,11 @@ export type ClassScheduleItemDto = {
   cancellationRequestedAt: string | null;
   lessonPassedSuccessfully: boolean | null;
   totalPriceAmd: number | null;
+  sourceType: 'booking' | 'cohort_session';
+  sourceId: number;
+  theoryCohort: ClassScheduleTheoryCohortMeta | null;
+  /** Online meeting URL (personal theory on booking, group theory on cohort). */
+  meetLink: string | null;
 };
 
 export type ClassScheduleResponse = {
@@ -70,9 +95,9 @@ export type ClassScheduleInstructorResponse = {
   meta: ClassScheduleResponse['meta'];
 };
 
-export type StudentClassScheduleItemDto = Omit<ClassScheduleItemDto, 'student'> & {
+export type StudentClassScheduleItemDto = Omit<ClassScheduleItemDto, 'student' | 'theoryCohort'> & {
   car: { label: string; transmission: string } | null;
-  theoryCohort: { id: number; name: string } | null;
+  theoryCohort: { id: number; name: string; lessonIndex: number; totalLessons: number } | null;
   cancelRefundEligible: boolean;
   paymentRequiredAt: string | null;
   paymentRequiredNow: boolean;
@@ -266,6 +291,44 @@ function matchesPackageFilter(item: ClassScheduleItemDto, filter: string): boole
   return true;
 }
 
+function cohortIdFromPrepaid(prepaid: Record<string, unknown> | null): number {
+  return Math.floor(Number(prepaid?.theoryCohortId) || 0);
+}
+
+function scheduleMeetLinkOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length > 0 ? s : null;
+}
+
+/** Cohorts this student belongs to via enrollment and/or active group-theory booking. */
+async function resolveStudentGroupCohortIds(studentUserId: number): Promise<number[]> {
+  const ids = new Set<number>();
+
+  const enrollments = await TheoryCohortEnrollment.findAll({
+    where: { studentUserId },
+    attributes: ['cohortId'],
+  });
+  for (const e of enrollments) {
+    if (e.cohortId > 0) ids.add(e.cohortId);
+  }
+
+  const groupBookings = await Booking.findAll({
+    where: {
+      studentUserId,
+      lessonType: 'theory',
+      status: { [Op.notIn]: ['cancelled', 'canceled', 'rejected', 'deleted'] },
+    },
+    attributes: ['prepaidMeta'],
+  });
+  for (const row of groupBookings) {
+    const cid = cohortIdFromPrepaid((row.prepaidMeta as Record<string, unknown> | null) ?? null);
+    if (cid > 0) ids.add(cid);
+  }
+
+  return [...ids];
+}
+
 export default class ClassScheduleService {
   static async listForAdmin(query: ClassScheduleQuery, branchId?: number): Promise<ClassScheduleResponse> {
     const { view, start, end } = resolveViewRange(query);
@@ -306,11 +369,8 @@ export default class ClassScheduleService {
     const legacyIds = legacyRows.map((r) => Number(r.id)).filter((id) => Number.isFinite(id) && id > 0);
 
     const bookingIds = [...new Set([...slotBookingIds, ...legacyIds])];
-    if (bookingIds.length === 0) {
-      return { items: [], meta: { view, startDate: start, endDate: end, total: 0 } };
-    }
 
-    const rows = (await Booking.findAll({
+    const rows = bookingIds.length === 0 ? [] : ((await Booking.findAll({
       where: {
         id: { [Op.in]: bookingIds },
         ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
@@ -331,7 +391,7 @@ export default class ClassScheduleService {
         ['time', 'ASC'],
         ['id', 'ASC'],
       ],
-    })) as BookingRow[];
+    })) as BookingRow[]);
 
     const packageOrderIds = new Set<number>();
     for (const row of rows) {
@@ -365,6 +425,24 @@ export default class ClassScheduleService {
     const packageFilter = query.packageFilter ?? 'all';
 
     const occurrences: ClassScheduleItemDto[] = [];
+
+    const cohortIdsForMeet = new Set<number>();
+    for (const row of rows) {
+      if (row.lessonType === 'theory') {
+        const cid = cohortIdFromPrepaid((row.prepaidMeta as Record<string, unknown> | null) ?? null);
+        if (cid > 0) cohortIdsForMeet.add(cid);
+      }
+    }
+    const cohortMeetRows =
+      cohortIdsForMeet.size === 0
+        ? []
+        : await TheoryCohort.findAll({
+            where: { id: { [Op.in]: [...cohortIdsForMeet] } },
+            attributes: ['id', 'meetLink'],
+          });
+    const cohortMeetById = new Map(
+      cohortMeetRows.map((c) => [c.id, scheduleMeetLinkOrNull(c.meetLink)]),
+    );
 
     for (const row of rows) {
       const lessonType = row.lessonType as ClassScheduleLessonType;
@@ -434,6 +512,7 @@ export default class ClassScheduleService {
         if (occ.date < start || occ.date > end) continue;
 
         const endTime = computeEndTime(occ.startTime, row.endTime ?? null);
+        const cohortIdFromBooking = Math.floor(Number(prepaid?.theoryCohortId) || 0);
         const item: ClassScheduleItemDto = {
           id: `${row.id}:${occ.date}:${occ.startTime}`,
           bookingId: row.id,
@@ -463,6 +542,25 @@ export default class ClassScheduleService {
           cancellationRequestedAt,
           lessonPassedSuccessfully,
           totalPriceAmd: row.totalPriceAmd ?? null,
+          sourceType: 'booking',
+          sourceId: row.id,
+          theoryCohort:
+            lessonType === 'theory' && cohortIdFromBooking > 0
+              ? {
+                  id: cohortIdFromBooking,
+                  name: '',
+                  lessonIndex: 0,
+                  totalLessons: 0,
+                  enrolledCount: 0,
+                  sessionId: 0,
+                }
+              : null,
+          meetLink:
+            lessonType === 'theory_personal'
+              ? scheduleMeetLinkOrNull(row.meetLink)
+              : lessonType === 'theory' && cohortIdFromBooking > 0
+                ? cohortMeetById.get(cohortIdFromBooking) ?? null
+                : null,
         };
 
         if (!matchesPackageFilter(item, packageFilter)) continue;
@@ -470,16 +568,197 @@ export default class ClassScheduleService {
       }
     }
 
-    occurrences.sort((a, b) => {
+    const cohortSessionItems = await this.buildCohortSessionItems({
+      start,
+      end,
+      branchIdFilter,
+      instructorIdFilter,
+      studentIdFilter,
+      statusFilter,
+      lessonTypeFilter,
+      searchQ,
+    });
+
+    const cohortIdsWithSessions = new Set(
+      cohortSessionItems.map((i) => i.theoryCohort?.id).filter((id): id is number => id != null && id > 0),
+    );
+
+    const bookingItemsFiltered = occurrences.filter((item) => {
+      if (item.bookingType !== 'group') return true;
+      const cid = item.theoryCohort?.id ?? 0;
+      if (cid > 0 && cohortIdsWithSessions.has(cid)) return false;
+      return true;
+    });
+
+    const merged = [...bookingItemsFiltered, ...cohortSessionItems];
+    merged.sort((a, b) => {
       const d = a.date.localeCompare(b.date);
       if (d !== 0) return d;
       return a.startTime.localeCompare(b.startTime);
     });
 
     return {
-      items: occurrences,
-      meta: { view, startDate: start, endDate: end, total: occurrences.length },
+      items: merged,
+      meta: { view, startDate: start, endDate: end, total: merged.length },
     };
+  }
+
+  private static async buildCohortSessionItems(opts: {
+    start: string;
+    end: string;
+    branchIdFilter: number;
+    instructorIdFilter: number;
+    studentIdFilter: number;
+    statusFilter: string;
+    lessonTypeFilter: string;
+    searchQ: string;
+  }): Promise<ClassScheduleItemDto[]> {
+    const f = opts.lessonTypeFilter.trim().toLowerCase();
+    if (f && f !== 'all' && f !== 'theory' && f !== 'theory_group') {
+      return [];
+    }
+
+    let cohortIdsForStudent: number[] | null = null;
+    if (opts.studentIdFilter > 0) {
+      cohortIdsForStudent = await resolveStudentGroupCohortIds(opts.studentIdFilter);
+      if (cohortIdsForStudent.length === 0) return [];
+    }
+
+    const sessionWhere: Record<string, unknown> = {
+      dateIso: { [Op.between]: [opts.start, opts.end] },
+    };
+    if (opts.branchIdFilter > 0) sessionWhere.branchId = opts.branchIdFilter;
+    if (opts.instructorIdFilter > 0) sessionWhere.instructorUserId = opts.instructorIdFilter;
+    if (cohortIdsForStudent) sessionWhere.cohortId = { [Op.in]: cohortIdsForStudent };
+
+    const sessions = await TheoryCohortSession.findAll({
+      where: sessionWhere,
+      order: [
+        ['dateIso', 'ASC'],
+        ['startTime', 'ASC'],
+      ],
+    });
+    if (sessions.length === 0) return [];
+
+    const cohortIds = [...new Set(sessions.map((s) => s.cohortId))];
+    const cohorts = await TheoryCohort.findAll({
+      where: { id: { [Op.in]: cohortIds } },
+      attributes: ['id', 'name', 'instructorName', 'meetLink'],
+    });
+    const cohortById = new Map(cohorts.map((c) => [c.id, c]));
+
+    const branchIds = [...new Set(sessions.map((s) => s.branchId))];
+    const branches =
+      branchIds.length > 0
+        ? await Branch.findAll({ where: { id: { [Op.in]: branchIds } }, attributes: ['id', 'name', 'mapUrl', 'phone'] })
+        : [];
+    const branchById = new Map(branches.map((b) => [b.id, b]));
+
+    const instructorIds = [
+      ...new Set(
+        sessions
+          .map((s) => s.instructorUserId)
+          .filter((id): id is number => id != null && Number.isFinite(id) && id > 0),
+      ),
+    ];
+    const instructors =
+      instructorIds.length > 0
+        ? await User.findAll({ where: { id: { [Op.in]: instructorIds } }, attributes: ['id', 'name'] })
+        : [];
+    const instructorById = new Map(instructors.map((i) => [i.id, i]));
+
+    const enrollmentCounts = await TheoryCohortEnrollment.findAll({
+      where: { cohortId: { [Op.in]: cohortIds } },
+      attributes: ['cohortId'],
+      raw: true,
+    });
+    const enrolledByCohort = new Map<number, number>();
+    for (const row of enrollmentCounts) {
+      const cid = Number((row as { cohortId: number }).cohortId);
+      enrolledByCohort.set(cid, (enrolledByCohort.get(cid) ?? 0) + 1);
+    }
+
+    const totalLessonsByCohort = new Map<number, number>();
+    for (const cid of cohortIds) {
+      const c = cohortById.get(cid);
+      const total = Math.max(
+        c ? Math.floor(Number(c.totalLessons) || 0) : 0,
+        await TheoryCohortSession.count({ where: { cohortId: cid } }),
+      );
+      totalLessonsByCohort.set(cid, total);
+    }
+
+    const out: ClassScheduleItemDto[] = [];
+    for (const s of sessions) {
+      const status = String(s.status ?? 'scheduled').trim().toLowerCase();
+      if (opts.statusFilter && opts.statusFilter !== 'all' && status !== opts.statusFilter) continue;
+
+      const cohort = cohortById.get(s.cohortId);
+      if (!cohort) continue;
+      const cohortName = cohort.name?.trim() || `Group #${s.cohortId}`;
+      const instructor = s.instructorUserId ? instructorById.get(s.instructorUserId) : null;
+      const instructorName = instructor?.name?.trim() || cohort.instructorName?.trim() || '';
+      const branchRow = branchById.get(s.branchId);
+      const enrolledCount = enrolledByCohort.get(s.cohortId) ?? 0;
+      const totalLessons = totalLessonsByCohort.get(s.cohortId) ?? 0;
+
+      const studentLabel =
+        opts.studentIdFilter > 0
+          ? (await User.findByPk(opts.studentIdFilter, { attributes: ['name'] }))?.name?.trim() || 'Student'
+          : `Group: ${cohortName}`;
+
+      if (opts.searchQ) {
+        const hay = `${cohortName} ${instructorName} ${studentLabel}`.toLowerCase();
+        if (!hay.includes(opts.searchQ)) continue;
+      }
+
+      const date = dateIsoString(s.dateIso);
+      const startTime = normalizeTimeHHMM(String(s.startTime));
+      const endTime = normalizeTimeHHMM(String(s.endTime));
+
+      out.push({
+        id: `gc:${s.id}`,
+        bookingId: 0,
+        lessonType: 'theory',
+        bookingType: 'group',
+        status,
+        date,
+        startTime,
+        endTime,
+        student: {
+          id: opts.studentIdFilter > 0 ? opts.studentIdFilter : 0,
+          name: studentLabel,
+          phone: null,
+        },
+        instructor: {
+          id: s.instructorUserId ?? null,
+          name: instructorName,
+        },
+        branch: {
+          id: s.branchId,
+          name: branchRow?.name?.trim() || `Branch #${s.branchId}`,
+          address: branchRow?.mapUrl?.trim() || branchRow?.phone?.trim() || '',
+        },
+        package: null,
+        payment: { status: 'not_required' },
+        notes: '',
+        cancellationRequestedAt: null,
+        lessonPassedSuccessfully: status === 'completed' ? true : null,
+        totalPriceAmd: null,
+        sourceType: 'cohort_session',
+        sourceId: s.id,
+        theoryCohort: {
+          id: s.cohortId,
+          name: cohortName,
+          lessonIndex: s.lessonIndex,
+          totalLessons,
+          enrolledCount,
+          sessionId: s.id,
+        },
+        meetLink: scheduleMeetLinkOrNull(cohort.meetLink),
+      });
+    }
+    return out;
   }
 
   static async listForInstructor(
@@ -512,7 +791,13 @@ export default class ClassScheduleService {
     };
     const { items, meta } = await this.listForAdmin(scoped, undefined);
 
-    const bookingIds = [...new Set(items.map((i) => i.bookingId))];
+    const bookingIds = [
+      ...new Set(
+        items
+          .map((i) => i.bookingId)
+          .filter((id): id is number => Number.isFinite(id) && id > 0),
+      ),
+    ];
     const bookingRows =
       bookingIds.length === 0
         ? []
@@ -520,6 +805,13 @@ export default class ClassScheduleService {
             where: { id: { [Op.in]: bookingIds }, studentUserId },
           });
     const bookingById = new Map(bookingRows.map((b) => [b.id, b]));
+
+    /** Group sessions use bookingId 0 — always keep; bookings must belong to this student. */
+    const visibleItems = items.filter(
+      (item) =>
+        item.sourceType === 'cohort_session' ||
+        (item.bookingId > 0 && bookingById.has(item.bookingId)),
+    );
 
     const instructorIds = [
       ...new Set(
@@ -536,10 +828,9 @@ export default class ClassScheduleService {
         : await FleetCar.findAll({ where: { id: { [Op.in]: allCarIds } } });
     const carById = new Map(fleetCars.map((c) => [c.id, c]));
 
-    const cohortIds = new Set<number>();
-    for (const b of bookingRows) {
-      const prepaid = b.prepaidMeta as Record<string, unknown> | null;
-      const cid = Math.floor(Number(prepaid?.theoryCohortId) || 0);
+    const cohortIds = new Set<number>(await resolveStudentGroupCohortIds(studentUserId));
+    for (const item of visibleItems) {
+      const cid = item.theoryCohort?.id ?? 0;
       if (cid > 0) cohortIds.add(cid);
     }
     const cohorts =
@@ -553,14 +844,31 @@ export default class ClassScheduleService {
 
     const today = todayIsoUtc();
 
-    const studentItems: StudentClassScheduleItemDto[] = items.map((item) => {
-      const row = bookingById.get(item.bookingId);
+    const studentItems: StudentClassScheduleItemDto[] = visibleItems.map((item) => {
+      const row = item.bookingId > 0 ? bookingById.get(item.bookingId) : undefined;
       const prepaid = (row?.prepaidMeta as Record<string, unknown> | null) ?? null;
-      const cohortId = Math.floor(Number(prepaid?.theoryCohortId) || 0);
+      const cohortMeta = item.theoryCohort;
       const theoryCohort =
-        item.lessonType === 'theory' && cohortId > 0
-          ? { id: cohortId, name: cohortNameById.get(cohortId) ?? `Group #${cohortId}` }
-          : null;
+        item.lessonType === 'theory' && cohortMeta && cohortMeta.id > 0
+          ? {
+              id: cohortMeta.id,
+              name: cohortMeta.name || (cohortNameById.get(cohortMeta.id) ?? `Group #${cohortMeta.id}`),
+              lessonIndex: cohortMeta.lessonIndex,
+              totalLessons: cohortMeta.totalLessons,
+            }
+          : item.lessonType === 'theory' && cohortMeta == null
+            ? (() => {
+                const cohortId = Math.floor(Number(prepaid?.theoryCohortId) || 0);
+                return cohortId > 0
+                  ? {
+                      id: cohortId,
+                      name: cohortNameById.get(cohortId) ?? `Group #${cohortId}`,
+                      lessonIndex: 0,
+                      totalLessons: 0,
+                    }
+                  : null;
+              })()
+            : null;
 
       let car: StudentClassScheduleItemDto['car'] = null;
       if (item.lessonType === 'practical' && row?.instructorUserId) {
@@ -604,6 +912,9 @@ export default class ClassScheduleService {
       };
     });
 
-    return { items: studentItems, meta };
+    return {
+      items: studentItems,
+      meta: { ...meta, total: studentItems.length },
+    };
   }
 }

@@ -39,6 +39,21 @@ function theoryCohortAllowsNewBookings(status: unknown): boolean {
   return THEORY_COHORT_OPEN_FOR_BOOKING.has(String(status ?? '').trim().toLowerCase());
 }
 
+function meetLinkOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length > 0 ? s.slice(0, 512) : null;
+}
+
+function meetLinkPatchForLessonType(
+  lessonType: string,
+  meetLink: unknown | undefined,
+): { meetLink?: string | null } {
+  if (meetLink === undefined) return {};
+  if (lessonType !== 'theory_personal') return { meetLink: null };
+  return { meetLink: meetLinkOrNull(meetLink) };
+}
+
 /** Group theory: use cohort fixed `priceAmd` when set; otherwise instructor hourly × number of slot hours. */
 function totalPriceAmdForTheoryCohortBooking(cohort: TheoryCohort, hourly: number, slotCount: number): number {
   const raw = cohort.getDataValue('priceAmd') as number | null | undefined;
@@ -113,6 +128,7 @@ export type BookingAdminDto = {
   paymentStatus?: string | null;
   paymentRequiredAt?: string | null;
   cancellationReason?: string | null;
+  meetLink?: string | null;
 };
 
 /** Canonical booking row statuses (DB + API). */
@@ -152,6 +168,7 @@ export type StudentBookingDto = {
   paymentRequiredAt?: string | null;
   /** True when the lesson is within the pay-horizon and payment has not been captured yet. */
   paymentRequiredNow?: boolean;
+  meetLink?: string | null;
 };
 
 /** Result of POST /bookings/:id/cancel-student for student bookings. */
@@ -173,6 +190,7 @@ export type InstructorBookingDto = {
   branchId: number;
   /** `null` = not set; instructor or staff may update the same field. */
   lessonPassedSuccessfully: boolean | null;
+  meetLink?: string | null;
 };
 
 export type StudentMultiSlotBookingDto = {
@@ -930,6 +948,7 @@ export default class BookingService {
       paymentStatus: b.paymentStatus ?? null,
       paymentRequiredAt: b.paymentRequiredAt ? String(b.paymentRequiredAt).slice(0, 10) : null,
       cancellationReason: b.cancellationReason ?? null,
+      meetLink: meetLinkOrNull(b.meetLink),
     };
   }
 
@@ -1135,6 +1154,7 @@ export default class BookingService {
         paymentStatus: ps ?? undefined,
         paymentRequiredAt: paymentReqRaw,
         paymentRequiredNow,
+        meetLink: b.lessonType === 'theory_personal' ? meetLinkOrNull(b.meetLink) : null,
       };
     });
   }
@@ -1517,6 +1537,7 @@ export default class BookingService {
     branchId: number;
     consumePackageCredits?: boolean;
     packageOrderId?: number;
+    meetLink?: string | null;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -1575,6 +1596,7 @@ export default class BookingService {
             holdExpiresAt: null,
             prepaidMeta,
             ...(prepaidMeta ? { paymentStatus: 'paid' as const } : {}),
+            ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
           },
           { transaction },
         );
@@ -1610,6 +1632,7 @@ export default class BookingService {
     slotEntries?: readonly { dateIso: string; time: string }[];
     consumePackageCredits?: boolean;
     packageOrderId?: number;
+    meetLink?: string | null;
   }): Promise<BookingAdminDto | null> {
     const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? []);
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
@@ -1629,6 +1652,7 @@ export default class BookingService {
         branchId: input.branchId,
         consumePackageCredits: input.consumePackageCredits,
         packageOrderId: input.packageOrderId,
+        meetLink: input.meetLink,
       });
     }
 
@@ -1653,6 +1677,7 @@ export default class BookingService {
         theoryCohortId: input.theoryCohortId,
         consumePackageCredits: input.consumePackageCredits,
         packageOrderId: input.packageOrderId,
+        meetLink: input.meetLink,
       });
     }
 
@@ -1692,6 +1717,7 @@ export default class BookingService {
             totalPriceAmd,
             lessonType: input.type,
             status: input.status,
+            ...meetLinkPatchForLessonType(input.type, input.meetLink),
           },
           { transaction },
         );
@@ -1885,6 +1911,7 @@ export default class BookingService {
     theoryCohortId?: number;
     consumePackageCredits?: boolean;
     packageOrderId?: number;
+    meetLink?: string | null;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
     const sorted = normalizeAndSortSlots(input.slots);
@@ -1976,7 +2003,7 @@ export default class BookingService {
     let newId = 0;
     try {
       await sequelize.transaction(async (transaction) => {
-        const prepaidMeta =
+        let prepaidMeta: Record<string, unknown> | null =
           input.consumePackageCredits === true
             ? await consumePackageLessonCreditsInTx({
                 studentUserId: input.studentId,
@@ -1986,6 +2013,9 @@ export default class BookingService {
                 transaction,
               })
             : null;
+        if (input.lessonType === 'theory' && input.theoryCohortId != null && Number.isFinite(input.theoryCohortId)) {
+          prepaidMeta = { ...(prepaidMeta ?? {}), theoryCohortId: input.theoryCohortId };
+        }
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -2001,6 +2031,7 @@ export default class BookingService {
             holdExpiresAt: null,
             prepaidMeta,
             ...(prepaidMeta ? { paymentStatus: 'paid' as const } : {}),
+            ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
           },
           { transaction },
         );
@@ -2205,6 +2236,7 @@ export default class BookingService {
       type: 'practical' | 'theory' | 'theory_personal';
       status: string;
       branchId: number;
+      meetLink?: string | null;
     }>;
     lessonType: 'practical' | 'theory_personal';
     entries: AdminSlotEntry[];
@@ -2264,6 +2296,7 @@ export default class BookingService {
             ...(patch.type !== undefined ? { lessonType: patch.type } : {}),
             ...(patch.status !== undefined ? { status: patch.status } : {}),
             branchId,
+            ...meetLinkPatchForLessonType(lessonType, patch.meetLink),
           },
           { transaction },
         );
@@ -2304,6 +2337,7 @@ export default class BookingService {
       slots?: readonly string[];
       theoryCohortId?: number;
       slotEntries?: readonly { dateIso: string; time: string }[];
+      meetLink?: string | null;
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
@@ -2404,6 +2438,7 @@ export default class BookingService {
             ...(patch.type !== undefined ? { lessonType: patch.type } : {}),
             ...(patch.status !== undefined ? { status: patch.status } : {}),
             ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
+            ...meetLinkPatchForLessonType(effectiveType, patch.meetLink),
           },
           { transaction },
         );

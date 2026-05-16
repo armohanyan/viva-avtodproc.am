@@ -35,6 +35,7 @@ import {
 	Loader2,
 	MapPin,
 	User,
+	Video,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -161,12 +162,44 @@ export default function StudentLessonsCalendar({ className }: Props) {
 						<div className="font-medium text-foreground truncate tabular-nums">
 							{displayTime(item.startTime)}–{displayTime(item.endTime)}
 						</div>
-						<div className="truncate text-muted-foreground">{t(lessonTypeKey(item.lessonType))}</div>
+						<div className="truncate text-muted-foreground">
+							{item.lessonType === "theory" && item.theoryCohort?.name
+								? item.theoryCohort.name
+								: t(lessonTypeKey(item.lessonType))}
+							{item.theoryCohort && item.theoryCohort.lessonIndex > 0 && item.theoryCohort.totalLessons > 0
+								? ` · ${item.theoryCohort.lessonIndex}/${item.theoryCohort.totalLessons}`
+								: ""}
+						</div>
 						{!compact ? (
 							<>
 								<div className="truncate text-muted-foreground text-[11px]">{item.instructor.name || "—"}</div>
 								<div className="truncate text-muted-foreground text-[11px]">{item.branch.name}</div>
 							</>
+						) : null}
+						{item.meetLink?.trim() &&
+						(item.lessonType === "theory_personal" || item.lessonType === "theory") ? (
+							<span
+								role="link"
+								tabIndex={0}
+								className={cn(
+									"inline-flex items-center gap-0.5 text-primary hover:underline truncate max-w-full",
+									compact ? "text-[10px] mt-0.5" : "text-[11px] mt-0.5",
+								)}
+								onClick={(e) => {
+									e.stopPropagation();
+									window.open(item.meetLink!.trim(), "_blank", "noopener,noreferrer");
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										e.stopPropagation();
+										window.open(item.meetLink!.trim(), "_blank", "noopener,noreferrer");
+									}
+								}}
+							>
+								<Video className="h-3 w-3 shrink-0" aria-hidden />
+								{compact ? null : t("meetLink")}
+							</span>
 						) : null}
 					</div>
 				</div>
@@ -431,6 +464,14 @@ export default function StudentLessonsCalendar({ className }: Props) {
 								<>
 									<dt className="text-muted-foreground">{t("dashboardLessonsColGroup")}</dt>
 									<dd>{detail.theoryCohort.name}</dd>
+									{detail.theoryCohort.lessonIndex > 0 && detail.theoryCohort.totalLessons > 0 ? (
+										<>
+											<dt className="text-muted-foreground">{t("dashboardLessonsSessionNumber")}</dt>
+											<dd className="tabular-nums">
+												{detail.theoryCohort.lessonIndex} / {detail.theoryCohort.totalLessons}
+											</dd>
+										</>
+									) : null}
 								</>
 							) : null}
 
@@ -441,6 +482,18 @@ export default function StudentLessonsCalendar({ className }: Props) {
 								</>
 							) : null}
 						</dl>
+
+						{detail.meetLink?.trim() ? (
+							<Button
+								type="button"
+								variant="outline"
+								className="w-full gap-2"
+								onClick={() => window.open(detail.meetLink!.trim(), "_blank", "noopener,noreferrer")}
+							>
+								<Video className="h-4 w-4 shrink-0" aria-hidden />
+								{t("meetLink")}
+							</Button>
+						) : null}
 
 						{(detail.lessonType === "practical" || detail.lessonType === "theory_personal") &&
 						(detail.cancelRefundEligible || detail.paymentRequiredNow) ? (

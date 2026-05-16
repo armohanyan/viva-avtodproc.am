@@ -42,6 +42,7 @@ import {
 	Loader2,
 	Printer,
 	RefreshCw,
+	Video,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -66,6 +67,17 @@ type ClassScheduleItem = {
 	cancellationRequestedAt: string | null;
 	lessonPassedSuccessfully: boolean | null;
 	totalPriceAmd: number | null;
+	meetLink?: string | null;
+	sourceType?: "booking" | "cohort_session";
+	sourceId?: number;
+	theoryCohort?: {
+		id: number;
+		name: string;
+		lessonIndex: number;
+		totalLessons: number;
+		enrolledCount: number;
+		sessionId: number;
+	} | null;
 };
 
 type ClassScheduleResponse = {
@@ -363,6 +375,31 @@ export default function AdminClassSchedule() {
 				<div className="truncate text-muted-foreground">{item.student.name}</div>
 				{!compact && item.instructor.name ? (
 					<div className="truncate text-xs text-muted-foreground">{item.instructor.name}</div>
+				) : null}
+				{item.meetLink?.trim() &&
+				(item.lessonType === "theory_personal" || item.lessonType === "theory") ? (
+					<span
+						role="link"
+						tabIndex={0}
+						className={cn(
+							"inline-flex items-center gap-0.5 text-primary hover:underline truncate max-w-full",
+							compact ? "text-[10px] mt-0.5" : "text-xs mt-0.5",
+						)}
+						onClick={(e) => {
+							e.stopPropagation();
+							window.open(item.meetLink!.trim(), "_blank", "noopener,noreferrer");
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === " ") {
+								e.preventDefault();
+								e.stopPropagation();
+								window.open(item.meetLink!.trim(), "_blank", "noopener,noreferrer");
+							}
+						}}
+					>
+						<Video className="h-3 w-3 shrink-0" aria-hidden />
+						{compact ? null : t("meetLink")}
+					</span>
 				) : null}
 			</button>
 	);
@@ -810,6 +847,26 @@ export default function AdminClassSchedule() {
 									<dd>{detail.totalPriceAmd.toLocaleString(locale)} AMD</dd>
 								</>
 							) : null}
+							{detail.theoryCohort ? (
+								<>
+									<dt className="text-muted-foreground">{t("dashboardLessonsColGroup")}</dt>
+									<dd>{detail.theoryCohort.name}</dd>
+									{detail.theoryCohort.lessonIndex > 0 ? (
+										<>
+											<dt className="text-muted-foreground">{t("dashboardLessonsSessionNumber")}</dt>
+											<dd className="tabular-nums">
+												{detail.theoryCohort.lessonIndex} / {detail.theoryCohort.totalLessons}
+											</dd>
+										</>
+									) : null}
+									{detail.theoryCohort.enrolledCount > 0 ? (
+										<>
+											<dt className="text-muted-foreground">{t("adminClassScheduleEnrolledCount")}</dt>
+											<dd className="tabular-nums">{detail.theoryCohort.enrolledCount}</dd>
+										</>
+									) : null}
+								</>
+							) : null}
 							{detail.notes ? (
 								<>
 									<dt className="text-muted-foreground">{t("adminClassScheduleNotes")}</dt>
@@ -817,6 +874,17 @@ export default function AdminClassSchedule() {
 								</>
 							) : null}
 						</div>
+						{detail.meetLink?.trim() ? (
+							<Button
+								type="button"
+								variant="outline"
+								className="w-full gap-2 mt-4"
+								onClick={() => window.open(detail.meetLink!.trim(), "_blank", "noopener,noreferrer")}
+							>
+								<Video className="h-4 w-4 shrink-0" aria-hidden />
+								{t("meetLink")}
+							</Button>
+						) : null}
 					</dl>
 				) : null}
 			</AppModal>

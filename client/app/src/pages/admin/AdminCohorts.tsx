@@ -24,6 +24,7 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import CohortScheduleFields, { type CohortScheduleFormSlice } from "src/modules/admin/cohorts/CohortScheduleFields";
 
 type Cohort = {
   id: string;
@@ -39,6 +40,10 @@ type Cohort = {
   sessionStartTime: string | null;
   sessionEndTime: string | null;
   priceAmd: number | null;
+  lessonWeekdays: number[];
+  totalLessons: number;
+  instructorUserId: string | null;
+  generatedSessionCount: number;
 };
 
 type CohortStudentRow = {
@@ -83,6 +88,10 @@ export default function AdminCohorts() {
           sessionStartTime: string | null;
           sessionEndTime: string | null;
           priceAmd?: number | null;
+          lessonWeekdays?: number[];
+          totalLessons?: number;
+          instructorUserId?: number | null;
+          generatedSessionCount?: number;
         }[]
       >("/theory-cohorts");
       setCohorts(
@@ -102,6 +111,14 @@ export default function AdminCohorts() {
               sessionEndTime: row.sessionEndTime ?? null,
               priceAmd:
                 typeof row.priceAmd === "number" && Number.isFinite(row.priceAmd) ? row.priceAmd : null,
+              lessonWeekdays: Array.isArray(row.lessonWeekdays) ? row.lessonWeekdays : [],
+              totalLessons: typeof row.totalLessons === "number" ? row.totalLessons : 0,
+              instructorUserId:
+                row.instructorUserId != null && Number.isFinite(row.instructorUserId)
+                  ? String(row.instructorUserId)
+                  : null,
+              generatedSessionCount:
+                typeof row.generatedSessionCount === "number" ? row.generatedSessionCount : 0,
             }))
           : [],
       );
@@ -128,11 +145,14 @@ export default function AdminCohorts() {
     endDateIso: "",
     seats: 15,
     instructorName: instructorNames[0] ?? "",
+    instructorUserId: instructors[0]?.id ?? "",
     meetLink: "",
     branchId: "",
     sessionStartTime: "",
     sessionEndTime: "",
     priceAmd: "",
+    lessonWeekdays: [0, 2, 4] as number[],
+    totalLessons: 10,
   });
 
   const handleDelete = async () => {
@@ -168,6 +188,9 @@ export default function AdminCohorts() {
             editCohort.priceAmd === null || editCohort.priceAmd === undefined
               ? null
               : Math.max(0, Math.round(Number(editCohort.priceAmd))),
+          lessonWeekdays: editCohort.lessonWeekdays,
+          totalLessons: editCohort.totalLessons,
+          instructorUserId: editCohort.instructorUserId ? Number(editCohort.instructorUserId) : null,
         },
       });
       setEditCohort(null);
@@ -203,6 +226,9 @@ export default function AdminCohorts() {
           sessionStartTime: newCohort.sessionStartTime?.trim() || null,
           sessionEndTime: newCohort.sessionEndTime?.trim() || null,
           priceAmd,
+          lessonWeekdays: newCohort.lessonWeekdays,
+          totalLessons: newCohort.totalLessons,
+          instructorUserId: newCohort.instructorUserId ? Number(newCohort.instructorUserId) : null,
         },
       });
       setAddOpen(false);
@@ -212,11 +238,14 @@ export default function AdminCohorts() {
         endDateIso: "",
         seats: 15,
         instructorName: instructorNames[0] ?? "",
+        instructorUserId: instructors[0]?.id ?? "",
         meetLink: "",
         branchId: branches[0]?.id ?? "",
         sessionStartTime: "",
         sessionEndTime: "",
         priceAmd: "",
+        lessonWeekdays: [0, 2, 4],
+        totalLessons: 10,
       });
       showToast(t("cohortCreatedToast"), "success");
       await refreshCohorts();
@@ -468,7 +497,15 @@ export default function AdminCohorts() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
                 <select
                   value={editCohort.instructorName}
-                  onChange={(e) => setEditCohort({ ...editCohort, instructorName: e.target.value })}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    const inst = instructors.find((i) => i.name === name);
+                    setEditCohort({
+                      ...editCohort,
+                      instructorName: name,
+                      instructorUserId: inst?.id ?? editCohort.instructorUserId,
+                    });
+                  }}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   {instructorNames.map((name) => (
@@ -508,6 +545,24 @@ export default function AdminCohorts() {
                   />
                 </div>
               </div>
+              <CohortScheduleFields
+                lang={lang}
+                value={{
+                  startDateIso: editCohort.startDateIso,
+                  endDateIso: editCohort.endDateIso,
+                  sessionStartTime: editCohort.sessionStartTime ?? "",
+                  sessionEndTime: editCohort.sessionEndTime ?? "",
+                  lessonWeekdays: editCohort.lessonWeekdays,
+                  totalLessons: editCohort.totalLessons,
+                }}
+                onChange={(patch) =>
+                  setEditCohort({
+                    ...editCohort,
+                    ...(patch.lessonWeekdays !== undefined ? { lessonWeekdays: patch.lessonWeekdays } : {}),
+                    ...(patch.totalLessons !== undefined ? { totalLessons: patch.totalLessons } : {}),
+                  })
+                }
+              />
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("seats")}</label>
                 <Input
@@ -645,7 +700,15 @@ export default function AdminCohorts() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
               <select
                 value={newCohort.instructorName}
-                onChange={(e) => setNewCohort({ ...newCohort, instructorName: e.target.value })}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const inst = instructors.find((i) => i.name === name);
+                  setNewCohort({
+                    ...newCohort,
+                    instructorName: name,
+                    instructorUserId: inst?.id ?? newCohort.instructorUserId,
+                  });
+                }}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 {instructorNames.map((name) => (
@@ -685,6 +748,18 @@ export default function AdminCohorts() {
                 />
               </div>
             </div>
+            <CohortScheduleFields
+              lang={lang}
+              value={{
+                startDateIso: newCohort.startDateIso,
+                endDateIso: newCohort.endDateIso,
+                sessionStartTime: newCohort.sessionStartTime,
+                sessionEndTime: newCohort.sessionEndTime,
+                lessonWeekdays: newCohort.lessonWeekdays,
+                totalLessons: newCohort.totalLessons,
+              }}
+              onChange={(patch) => setNewCohort({ ...newCohort, ...patch })}
+            />
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("seats")}</label>
               <Input

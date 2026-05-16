@@ -73,6 +73,7 @@ type Booking = {
   status: string;
   branchId: string;
   cancellationRequestedAt?: string | null;
+  meetLink?: string | null;
 };
 
 type StudentPackageOrderBalance = {
@@ -632,6 +633,7 @@ export default function AdminBookings() {
         type: "practical",
         status: "confirmed",
         branchId: pickBranch,
+        meetLink: null,
       };
       setAddFlowKind("practical");
       setAddPackageId("");
@@ -1231,6 +1233,9 @@ export default function AdminBookings() {
               ...(editBooking.type === "practical" || editBooking.type === "theory_personal"
                 ? { instructorName: pick.instructor || editBooking.instructorName }
                 : { theoryCohortId: Number(editTheoryCohortId) }),
+              ...(editBooking.type === "theory_personal"
+                ? { meetLink: editBooking.meetLink?.trim() || null }
+                : {}),
             }
           : {
               studentId: editBooking.studentId,
@@ -1398,6 +1403,7 @@ export default function AdminBookings() {
                 status: draft.status,
                 branchId: Number(draft.branchId),
                 slots: pick.times,
+                meetLink: draft.meetLink?.trim() || null,
                 ...arbitrary,
               }
             : {
@@ -1950,6 +1956,17 @@ export default function AdminBookings() {
                 ) : null}
                 {editBooking.type === "theory_personal" ? (
                   <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>
+                    <Input
+                      value={editBooking.meetLink ?? ""}
+                      onChange={(e) => setEditBooking({ ...editBooking, meetLink: e.target.value })}
+                      placeholder={t("cohortPlaceholderMeetLink")}
+                      className="h-10"
+                    />
+                  </div>
+                ) : null}
+                {editBooking.type === "theory_personal" ? (
+                  <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("examTestsTopicsHeading")}</label>
                     <MultiSelectDropdown
                       options={thematicTitles.map((title) => ({ value: title, label: title }))}
@@ -2230,6 +2247,18 @@ export default function AdminBookings() {
                           setSlotPick(null);
                         }}
                       />
+                    ) : null}
+
+                    {addFlowKind === "theory_personal" ? (
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>
+                        <Input
+                          value={draft.meetLink ?? ""}
+                          onChange={(e) => setDraft({ ...draft, meetLink: e.target.value })}
+                          placeholder={t("cohortPlaceholderMeetLink")}
+                          className="h-10"
+                        />
+                      </div>
                     ) : null}
 
                     {addFlowKind === "theory_personal" ? (

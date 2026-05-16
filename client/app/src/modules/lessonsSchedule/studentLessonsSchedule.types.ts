@@ -22,12 +22,15 @@ export type StudentScheduleItem = {
 	lessonPassedSuccessfully: boolean | null;
 	totalPriceAmd: number | null;
 	car: { label: string; transmission: string } | null;
-	theoryCohort: { id: number; name: string } | null;
+	theoryCohort: { id: number; name: string; lessonIndex: number; totalLessons: number } | null;
+	sourceType?: "booking" | "cohort_session";
+	sourceId?: number;
 	cancelRefundEligible: boolean;
 	paymentRequiredAt: string | null;
 	paymentRequiredNow: boolean;
 	holdExpiresAt: string | null;
 	hoursUntilLesson: number;
+	meetLink: string | null;
 };
 
 export type StudentScheduleResponse = {
