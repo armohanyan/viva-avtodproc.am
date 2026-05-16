@@ -959,6 +959,8 @@ const en = {
   instructorPanelBadge: "Instructor",
   instructorDashboardTitle: "Instructor dashboard",
   instructorNavStudents: "Students",
+  instructorClassSchedule: "Class Schedule",
+  instructorClassSchedulePageSubtitle: "View and filter your scheduled lessons by day, week, month, or custom range.",
   instructorNavMyLessons: "My lessons",
   instructorMyLessonsPageSubtitle:
     "Today's and tomorrow's lessons. After a slot's scheduled end (Armenia time), mark whether the lesson passed or not — the same record is used on the admin dashboard.",
@@ -2420,6 +2422,8 @@ const ru: typeof en = {
   instructorPanelBadge: "Инструктор",
   instructorDashboardTitle: "Панель инструктора",
   instructorNavStudents: "Студенты",
+  instructorClassSchedule: "Расписание занятий",
+  instructorClassSchedulePageSubtitle: "Просмотр и фильтрация ваших занятий по дню, неделе, месяцу или произвольному периоду.",
   instructorNavMyLessons: "Мои уроки",
   instructorMyLessonsPageSubtitle:
     "Уроки сегодня и завтра. После окончания слота по времени Армении отметьте, прошёл ли урок — та же запись, что и в панели администратора.",
@@ -3880,6 +3884,8 @@ const am: typeof en = {
   instructorPanelBadge: "Դասավանդող",
   instructorDashboardTitle: "Դասավանդողի վահանակ",
   instructorNavStudents: "Ուսանողներ",
+  instructorClassSchedule: "Դասերի ժամանակացույց",
+  instructorClassSchedulePageSubtitle: "Ձեր դասերի ցանկը՝ ըստ օրվա, շաբաթվա, ամսվա կամ ընտրած ժամանակահատվածի։",
   instructorNavMyLessons: "Իմ դասերը",
   instructorMyLessonsPageSubtitle:
     "Այսօրվա և վաղվա դասերը։ Ժամանակահատվածի ավարտից հետո (Հայաստանի ժամով) նշեք՝ դասը հաջող է անցել, թե ոչ․ նույն դաշտն է, ինչ ադմինի վահանակում։",

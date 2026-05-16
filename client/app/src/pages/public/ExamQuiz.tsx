@@ -554,8 +554,8 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                 focusMode={focusMode}
                 onFocusToggle={() => setFocusMode((v) => !v)}
                 layoutMode={layoutMode}
-                </div>
-              </div>
+                onLayoutModeChange={setLayoutModeAndSyncIndex}
+              />
               {layoutMode === "step" ? (
                 <Reveal delay={0.06}>
                   <Card className="p-8 border-border">
