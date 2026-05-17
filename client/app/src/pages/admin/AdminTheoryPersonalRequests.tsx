@@ -11,6 +11,7 @@ import { useLang } from "src/lib/i18n";
 import { localeForLang } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { filterInstructorsServingBranches } from "src/modules/instructors/instructor-booking";
 
@@ -46,6 +47,7 @@ function statusBadgeClass(status: RequestStatus): string {
 }
 
 export default function AdminTheoryPersonalRequests(): JSX.Element {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { instructors } = useInstructors();
@@ -70,7 +72,7 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, branchFilterRevision]);
 
   const calendarInstructors = useMemo(() => {
     if (!bookingRow) return [];

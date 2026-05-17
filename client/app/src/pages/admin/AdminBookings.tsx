@@ -63,6 +63,10 @@ import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { ApiRequestError } from "src/lib/api";
 import { parseThemesFromBookingSearch } from "src/modules/admin/theoryPersonalRequestBooking";
 
+function studentIdMatches(a: string | number, b: string | number): boolean {
+  return String(a) === String(b);
+}
+
 type OpenAddOptions = {
   studentId?: string;
   branchId?: string;
@@ -260,8 +264,10 @@ export default function AdminBookings() {
       setBookings(Array.isArray(bk) ? bk : []);
       const m: Record<string, string> = {};
       if (Array.isArray(st)) {
-        setStudentsMini(st.map((r) => ({ id: r.id, name: r.name, email: r.email })));
-        for (const r of st) m[r.id] = r.name;
+        setStudentsMini(
+          st.map((r) => ({ id: String(r.id), name: r.name, email: r.email })),
+        );
+        for (const r of st) m[String(r.id)] = r.name;
       } else {
         setStudentsMini([]);
       }
@@ -743,8 +749,8 @@ export default function AdminBookings() {
     (opts?: OpenAddOptions) => {
       const flow: AdminBookingFlowKind = opts?.flow ?? "practical";
       const pickStudent =
-        opts?.studentId && studentsMini.some((s) => s.id === opts.studentId)
-          ? opts.studentId
+        opts?.studentId && studentsMini.some((s) => studentIdMatches(s.id, opts.studentId!))
+          ? String(opts.studentId)
           : (studentsMini[0]?.id ?? "");
       const pickBranch =
         opts?.branchId && branches.some((b) => b.id === opts.branchId)
@@ -810,6 +816,7 @@ export default function AdminBookings() {
     const branchQ = p.get("branch")?.trim() ?? "";
     const flowQ = p.get("flow")?.trim() as AdminBookingFlowKind | "";
     const instructorQ = p.get("instructor")?.trim() ?? "";
+    const instructorNameQ = p.get("instructorName")?.trim() ?? "";
     const themesQ = p.get("themes")?.trim() ?? "";
     const theoryRequestQ = p.get("theoryRequest")?.trim() ?? "";
     const isTheoryPersonalIntent = flowQ === "theory_personal" && Boolean(theoryRequestQ || studentQ);
@@ -822,7 +829,7 @@ export default function AdminBookings() {
     if ((studentQ || isTheoryPersonalIntent) && studentsMini.length === 0) return;
     if (instructorQ && instructors.length === 0) return;
 
-    const studentOk = !studentQ || studentsMini.some((s) => s.id === studentQ);
+    const studentOk = !studentQ || studentsMini.some((s) => studentIdMatches(s.id, studentQ));
     if (!wantNew && studentQ && studentsMini.length > 0 && !studentOk) {
       consumedBookingIntentSearch.current = raw;
       setLocation("/admin/bookings", { replace: true });
@@ -842,6 +849,7 @@ export default function AdminBookings() {
       ...(validBranch ? { branchId: validBranch } : {}),
       ...(validFlow ? { flow: validFlow } : {}),
       ...(instructorQ ? { instructorUserId: instructorQ } : {}),
+      ...(instructorNameQ ? { instructorName: instructorNameQ } : {}),
       ...(themesQ ? { theoryThemeTitles: parseThemesFromBookingSearch(themesQ) } : {}),
       ...(theoryRequestQ ? { theoryRequestId: theoryRequestQ } : {}),
     });

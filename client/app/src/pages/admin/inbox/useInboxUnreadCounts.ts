@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 
 export type InboxUnreadCounts = {
   theoryPersonal: number;
@@ -14,6 +15,7 @@ const EMPTY: InboxUnreadCounts = {
 };
 
 export function useInboxUnreadCounts() {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const [counts, setCounts] = useState<InboxUnreadCounts>(EMPTY);
 
   const refresh = useCallback(async () => {
@@ -35,7 +37,7 @@ export function useInboxUnreadCounts() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, branchFilterRevision]);
 
   return { counts, refresh };
 }

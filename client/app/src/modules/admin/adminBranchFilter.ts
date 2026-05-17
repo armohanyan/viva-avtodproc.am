@@ -13,6 +13,7 @@ const BRANCH_FILTER_PATH_PREFIXES = [
 	"/instructors",
 	"/fleet/cars",
 	"/fleet/expenses",
+	"/personal-theory-lesson-requests",
 ] as const;
 
 let adminPanelActive = false;

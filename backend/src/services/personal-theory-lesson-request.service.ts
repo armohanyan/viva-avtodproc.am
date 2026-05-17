@@ -12,6 +12,7 @@ import { Notification } from '../models/notification.model';
 import BookingNotificationService from './booking-notification.service';
 import BookingService from './booking.service';
 import NotificationService from './notification.service';
+import { branchIdWhere } from '../helpers';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
@@ -236,8 +237,10 @@ export default class PersonalTheoryLessonRequestService {
     );
   }
 
-  static async listForStaff(): Promise<PersonalTheoryLessonRequestDto[]> {
+  static async listForStaff(branchId?: number): Promise<PersonalTheoryLessonRequestDto[]> {
+    const branchFilter = branchIdWhere(branchId);
     const rows = await PersonalTheoryLessonRequest.findAll({
+      ...(branchFilter ? { where: branchFilter } : {}),
       order: [['createdAt', 'DESC']],
     });
     const users = await loadUsersForRows(rows);

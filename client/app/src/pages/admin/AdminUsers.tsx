@@ -16,6 +16,8 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, GraduationCap, CalendarPlus, Mail, BarChart3 } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
+import { adminBookingsHrefFromStudent } from "src/modules/admin/theoryPersonalRequestBooking";
+import { absWouterHref } from "src/lib/wouterFullPath";
 import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
 import AdminStudentProgressBlock from "src/components/AdminStudentProgressBlock";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
@@ -65,11 +67,14 @@ const statusColor: Record<string, string> = {
   inactive: "bg-slate-100 text-slate-500",
 };
 
-function adminBookingHref(opts: { studentId: string; branchId: string | number | null | undefined }) {
-  const p = new URLSearchParams({ student: String(opts.studentId) });
-  const branch = String(opts.branchId ?? "").trim();
-  if (branch) p.set("branch", branch);
-  return `/admin/bookings?${p.toString()}`;
+function studentBookingHref(u: Pick<User, "id" | "branchId" | "instructor">): string {
+  return absWouterHref(
+    adminBookingsHrefFromStudent({
+      studentId: u.id,
+      branchId: u.branchId,
+      instructorName: u.instructor,
+    }),
+  );
 }
 
 export default function AdminUsers() {
@@ -382,7 +387,7 @@ export default function AdminUsers() {
                       kind: "link",
                       id: "book",
                       label: t("adminStudentBookLesson"),
-                      href: adminBookingHref({ studentId: u.id, branchId: u.branchId }),
+                      href: studentBookingHref(u),
                       icon: CalendarPlus,
                     },
                     ...(u.inviteEligible
@@ -445,7 +450,7 @@ export default function AdminUsers() {
                             kind: "link",
                             id: "book",
                             label: t("adminStudentBookLesson"),
-                            href: adminBookingHref({ studentId: u.id, branchId: u.branchId }),
+                            href: studentBookingHref(u),
                             icon: CalendarPlus,
                           },
                           ...(u.inviteEligible
@@ -504,7 +509,7 @@ export default function AdminUsers() {
                 variant="secondary"
                 className="min-w-0 flex-1 sm:flex-none gap-2"
                 onClick={() => {
-                  setLocation(adminBookingHref({ studentId: editUser.id, branchId: editUser.branchId }));
+                  setLocation(studentBookingHref(editUser));
                   setEditUser(null);
                 }}
               >

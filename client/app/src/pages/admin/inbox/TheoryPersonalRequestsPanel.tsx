@@ -7,6 +7,7 @@ import { useLang } from "src/lib/i18n";
 import { localeForLang } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { adminBookingsHrefFromTheoryPersonalRequest } from "src/modules/admin/theoryPersonalRequestBooking";
 import { absWouterHref } from "src/lib/wouterFullPath";
@@ -34,6 +35,7 @@ type Props = {
 };
 
 export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
@@ -58,7 +60,7 @@ export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, branchFilterRevision]);
 
   const statusLabel = (status: TheoryPersonalRequestRow["status"]): string => {
     const map: Record<TheoryPersonalRequestRow["status"], string> = {

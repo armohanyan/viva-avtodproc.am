@@ -3,7 +3,6 @@ import { Reveal } from "src/lib/motion";
 import InstructorCard from "src/components/InstructorCard";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import { TheoryPersonalRequestModal } from "src/components/booking/TheoryPersonalRequestModal";
-import StudentTheoryPersonalBookingsPanel from "src/components/dashboard/StudentTheoryPersonalBookingsPanel";
 import StudentTheoryPersonalRequestsPanel from "src/components/dashboard/StudentTheoryPersonalRequestsPanel";
 import { Card } from "src/components/ui/card";
 import { branchOptionLabel, branchesInCity, useBranches } from "src/modules/branches";
@@ -77,7 +76,6 @@ export function DashboardBookingsTheoryPersonalTab() {
 
   return (
     <>
-      <StudentTheoryPersonalBookingsPanel />
       <StudentTheoryPersonalRequestsPanel />
       <Reveal delay={0.06}>
         <h2 className="text-base font-semibold text-foreground mb-3">{t("bookingsTheoryPersonalNewRequestTitle")}</h2>

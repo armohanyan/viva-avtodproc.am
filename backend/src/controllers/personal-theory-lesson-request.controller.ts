@@ -1,7 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
-import { verifyAccessToken } from '../helpers';
+import { parseBody, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import PersonalTheoryLessonRequestService from '../services/personal-theory-lesson-request.service';
 import { SuccessHandlerUtil } from '../utils';
@@ -93,9 +92,10 @@ export default class PersonalTheoryLessonRequestController {
     }
   }
 
-  static async listForStaff(_req: Request, res: Response, next: NextFunction) {
+  static async listForStaff(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await PersonalTheoryLessonRequestService.listForStaff();
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await PersonalTheoryLessonRequestService.listForStaff(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);
