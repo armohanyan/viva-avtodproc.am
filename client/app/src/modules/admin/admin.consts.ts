@@ -20,6 +20,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/bookings", translationKey: "bookings" },
   { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
   { href: "/admin/notifications", translationKey: "notifications" },
+  { href: "/admin/inbox", translationKey: "adminInbox" },
   { href: "/admin/students", translationKey: "adminSidebarStudents" },
   {
     href: "/admin/learn",
@@ -47,8 +48,6 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
       { href: "/admin/finance/outcomes", translationKey: "adminFinanceOutcomesNav" },
     ],
   },
-  { href: "/admin/contact-requests", translationKey: "adminContactRequests" },
-  { href: "/admin/booked-calls", translationKey: "adminBookedCalls" },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/cars", translationKey: "adminSidebarCars", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/branches", translationKey: "adminSidebarBranches" },

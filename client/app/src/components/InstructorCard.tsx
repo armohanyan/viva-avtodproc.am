@@ -14,6 +14,10 @@ type Props = {
   pickerMode?: boolean;
   isPicked?: boolean;
   onPick?: () => void;
+  /** Theory 1:1 request flow: show send-request CTA instead of slot picker. */
+  requestMode?: boolean;
+  onRequest?: () => void;
+  requestDisabled?: boolean;
   imageHeightClassName?: string;
   /** Tighter typography and spacing (e.g. horizontal picker strip). */
   compact?: boolean;
@@ -26,6 +30,9 @@ export default function InstructorCard({
   pickerMode = false,
   isPicked = false,
   onPick,
+  requestMode = false,
+  onRequest,
+  requestDisabled = false,
   imageHeightClassName,
   compact = false,
   className,
@@ -130,7 +137,20 @@ export default function InstructorCard({
           </div>
         </div>
 
-        {pickerMode && onPick ? (
+        {requestMode && onRequest ? (
+          <div className={compact ? "mt-auto shrink-0 pt-2" : "mt-4"}>
+            <Button
+              type="button"
+              className={`w-full bg-primary hover:bg-primary/90 text-primary-foreground ${compact ? "h-8 text-xs" : ""}`}
+              size="sm"
+              onClick={onRequest}
+              disabled={requestDisabled}
+            >
+              {t("theoryPersonalSendRequest")}
+            </Button>
+          </div>
+        ) : null}
+        {pickerMode && onPick && !requestMode ? (
           <div className={compact ? "mt-auto shrink-0 pt-2" : "mt-4"}>
             <Button
               type="button"
@@ -142,7 +162,7 @@ export default function InstructorCard({
             </Button>
           </div>
         ) : null}
-        {showBookButton && !pickerMode && (
+        {showBookButton && !pickerMode && !requestMode && (
           <div className="mt-4">
             <a href={panelHref("/register")}>
               <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" size="sm">

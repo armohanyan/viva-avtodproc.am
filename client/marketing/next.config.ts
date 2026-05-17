@@ -60,6 +60,7 @@ const nextConfig: NextConfig = {
     config.resolve.alias = {
       ...config.resolve.alias,
       src: path.resolve(__dirname, "./src"),
+      "src/pages/admin": path.resolve(__dirname, "../app/src/pages/admin"),
     };
     return config;
   },
@@ -67,6 +68,7 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
     resolveAlias: {
       src: path.resolve(__dirname, "./src"),
+      "src/pages/admin": path.resolve(__dirname, "../app/src/pages/admin"),
     },
   },
   /**

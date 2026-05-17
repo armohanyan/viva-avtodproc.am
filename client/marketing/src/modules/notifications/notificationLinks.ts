@@ -7,6 +7,7 @@ export function notificationTargetHref(panel: NotificationPanel, n: Notification
     if (n.entityType === "booking") return "/admin/bookings";
     if (n.entityType === "contact_request") return "/admin/contact-requests";
     if (n.entityType === "booked_call") return "/admin/booked-calls";
+    if (n.entityType === "theory_personal_lesson_request") return "/admin/theory-personal-requests";
     return "/admin/notifications";
   }
   if (panel === "instructor") {

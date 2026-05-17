@@ -61,6 +61,17 @@ import {
 import { BOOKING_STATUS_BADGE_CLASS } from "src/constants/booking.constants";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { ApiRequestError } from "src/lib/api";
+import { parseThemesFromBookingSearch } from "src/modules/admin/theoryPersonalRequestBooking";
+
+type OpenAddOptions = {
+  studentId?: string;
+  branchId?: string;
+  flow?: AdminBookingFlowKind;
+  instructorUserId?: string;
+  instructorName?: string;
+  theoryThemeTitles?: string[];
+  theoryRequestId?: string;
+};
 
 type StudentRow = { id: string; name: string; email?: string };
 
@@ -729,7 +740,8 @@ export default function AdminBookings() {
   }, [editBooking]);
 
   const openAdd = useCallback(
-    (opts?: { studentId?: string; branchId?: string }) => {
+    (opts?: OpenAddOptions) => {
+      const flow: AdminBookingFlowKind = opts?.flow ?? "practical";
       const pickStudent =
         opts?.studentId && studentsMini.some((s) => s.id === opts.studentId)
           ? opts.studentId
@@ -738,35 +750,57 @@ export default function AdminBookings() {
         opts?.branchId && branches.some((b) => b.id === opts.branchId)
           ? opts.branchId
           : (branches[0]?.id ?? "");
+
+      const resolveInstructorName = (): string => {
+        if (opts?.instructorName?.trim()) return opts.instructorName.trim();
+        if (opts?.instructorUserId) {
+          const match = instructors.find((i) => String(i.id) === String(opts.instructorUserId));
+          if (match?.name) return match.name;
+        }
+        if (flow === "theory_personal") {
+          const branchScoped = filterInstructorsServingBranches(
+            instructors.filter((i) => i.status === "active" && i.teachesTheory),
+            pickBranch ? [pickBranch] : [],
+          );
+          return branchScoped[0]?.name ?? "";
+        }
+        return defaultPracticalInstructorName;
+      };
+
+      const lessonType: Booking["type"] =
+        flow === "theory_group" ? "theory" : flow === "theory_personal" ? "theory_personal" : "practical";
+
       const newDraft: Booking = {
         id: "",
         studentId: pickStudent,
-        instructorName: defaultPracticalInstructorName,
+        instructorName: resolveInstructorName(),
         dateIso: todayIsoDate(),
         time: "10:00",
-        type: "practical",
+        type: lessonType,
         status: "confirmed",
         branchId: pickBranch,
         meetLink: null,
       };
-      setAddFlowKind("practical");
+      setAddFlowKind(flow);
       setAddPackageId("");
       setAddPackagePracticalSlotPick(null);
       setAddPackageTheoryInstructorName("");
       setAddPackageTheorySlotPick(null);
       setAddPracticalLessonType("");
-      setAddTheoryThemeTitles([]);
+      setAddTheoryThemeTitles(opts?.theoryThemeTitles?.length ? [...opts.theoryThemeTitles] : []);
       setSlotPick(null);
       setTheoryCohortId("");
+      pendingTheoryRequestIdRef.current = opts?.theoryRequestId?.trim() ? opts.theoryRequestId.trim() : null;
       setDraft(newDraft);
       setAddPayment(defaultPaymentFields());
       setBookingModalTab("booking");
       setAddOpen(true);
     },
-    [branches, defaultPracticalInstructorName, studentsMini],
+    [branches, defaultPracticalInstructorName, instructors, studentsMini],
   );
 
   const consumedBookingIntentSearch = useRef<string | null>(null);
+  const pendingTheoryRequestIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const raw = bookingIntentSearch || "";
@@ -774,13 +808,19 @@ export default function AdminBookings() {
     const wantNew = p.get("new") === "1";
     const studentQ = p.get("student")?.trim() ?? "";
     const branchQ = p.get("branch")?.trim() ?? "";
+    const flowQ = p.get("flow")?.trim() as AdminBookingFlowKind | "";
+    const instructorQ = p.get("instructor")?.trim() ?? "";
+    const themesQ = p.get("themes")?.trim() ?? "";
+    const theoryRequestQ = p.get("theoryRequest")?.trim() ?? "";
+    const isTheoryPersonalIntent = flowQ === "theory_personal" && Boolean(theoryRequestQ || studentQ);
 
-    if (!wantNew && !studentQ) {
+    if (!wantNew && !studentQ && !isTheoryPersonalIntent) {
       consumedBookingIntentSearch.current = null;
       return;
     }
     if (consumedBookingIntentSearch.current === raw) return;
-    if (studentQ && studentsMini.length === 0) return;
+    if ((studentQ || isTheoryPersonalIntent) && studentsMini.length === 0) return;
+    if (instructorQ && instructors.length === 0) return;
 
     const studentOk = !studentQ || studentsMini.some((s) => s.id === studentQ);
     if (!wantNew && studentQ && studentsMini.length > 0 && !studentOk) {
@@ -791,15 +831,22 @@ export default function AdminBookings() {
 
     const validStudent = studentQ && studentOk ? studentQ : "";
     const validBranch = branchQ && branches.some((b) => b.id === branchQ) ? branchQ : "";
+    const validFlow =
+      flowQ === "practical" || flowQ === "theory_group" || flowQ === "package" || flowQ === "theory_personal"
+        ? flowQ
+        : undefined;
 
     consumedBookingIntentSearch.current = raw;
-    openAdd(
-      validStudent
-        ? { studentId: validStudent, ...(validBranch ? { branchId: validBranch } : {}) }
-        : undefined,
-    );
+    openAdd({
+      ...(validStudent ? { studentId: validStudent } : {}),
+      ...(validBranch ? { branchId: validBranch } : {}),
+      ...(validFlow ? { flow: validFlow } : {}),
+      ...(instructorQ ? { instructorUserId: instructorQ } : {}),
+      ...(themesQ ? { theoryThemeTitles: parseThemesFromBookingSearch(themesQ) } : {}),
+      ...(theoryRequestQ ? { theoryRequestId: theoryRequestQ } : {}),
+    });
     setLocation("/admin/bookings", { replace: true });
-  }, [bookingIntentSearch, branches, openAdd, setLocation, studentsMini]);
+  }, [bookingIntentSearch, branches, instructors, openAdd, setLocation, studentsMini]);
 
   useEffect(() => {
     const raw = bookingIntentSearch || "";
@@ -1564,7 +1611,24 @@ export default function AdminBookings() {
             bookingStatus: draft.status,
           });
         }
+        const theoryRequestId = pendingTheoryRequestIdRef.current;
+        if (
+          addFlowKind === "theory_personal" &&
+          theoryRequestId &&
+          Number.isFinite(bookingIdNum) &&
+          bookingIdNum > 0
+        ) {
+          try {
+            await vivaApiJson(`/personal-theory-lesson-requests/${theoryRequestId}/link-booking`, {
+              method: "POST",
+              body: { bookingId: bookingIdNum },
+            });
+          } catch (linkErr) {
+            showToast(getApiErrorMessage(linkErr), "error");
+          }
+        }
       }
+      pendingTheoryRequestIdRef.current = null;
       setAddOpen(false);
       setDraft(null);
       setBookingModalTab("booking");
@@ -2196,6 +2260,7 @@ export default function AdminBookings() {
         onOpenChange={(o) => {
           setAddOpen(o);
           if (!o) {
+            pendingTheoryRequestIdRef.current = null;
             setDraft(null);
             setBookingModalTab("booking");
             setAddFlowKind("practical");

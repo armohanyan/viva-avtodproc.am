@@ -64,6 +64,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/notifications": Bell,
 		"/admin/contact-requests": Mail,
 		"/admin/booked-calls": PhoneCall,
+		"/admin/theory-personal-requests": Calendar,
 		"/admin/learn": School,
 		"/admin/learn/groups": Users,
 		"/admin/instructors": Car,

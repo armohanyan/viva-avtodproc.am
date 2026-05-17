@@ -11,92 +11,20 @@ import { useMemo, useState } from "react";
 import { cn } from "src/lib/utils";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
+import { StudentBookingCancelDialog } from "src/components/dashboard/StudentBookingCancelDialog";
+import {
+  formatTimeRange,
+  fullDateLabel,
+  localeFromLang,
+  statusBadgeClass,
+  statusExplainKey,
+  statusLabel,
+  studentUpcomingRowShowsActions,
+  type StudentBookingCancelResponse,
+} from "src/components/dashboard/studentBookingDisplay";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
-
-type StudentPracticalCancelResponse =
-  | { outcome: "pending_admin"; cancellationRequestedAt: string }
-  | { outcome: "immediate"; status: string; refundIssued: boolean };
-
-function localeFromLang(lang: "en" | "ru" | "am") {
-  if (lang === "am") return "hy-AM";
-  if (lang === "ru") return "ru-RU";
-  return "en-US";
-}
-
-function fullDateLabel(dateIso: string, locale: string) {
-  const d = new Date(`${dateIso}T12:00:00`);
-  return d.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
-}
-
-function formatTimeRange(time: string, endTime: string | null | undefined) {
-  if (endTime == null || endTime === "") return time;
-  return `${time}–${endTime}`;
-}
-
-function statusLabel(booking: StudentDemoBooking, t: (k: TranslationKey) => string) {
-  if (
-    booking.cancellationRequestedAt &&
-    (booking.status === "confirmed" || booking.status === "pending" || booking.status === "pending_payment")
-  ) {
-    return t("bookingStatusCancellationPendingLabel");
-  }
-  switch (booking.status) {
-    case "confirmed":
-      return t("confirmed");
-    case "pending":
-      return t("pending");
-    case "pending_payment":
-      return t("pending_payment");
-    case "cancelled":
-      return t("cancelled");
-    case "refunded":
-      return t("refunded");
-  }
-}
-
-function statusExplainKey(booking: StudentDemoBooking): TranslationKey {
-  if (
-    booking.cancellationRequestedAt &&
-    (booking.status === "confirmed" || booking.status === "pending" || booking.status === "pending_payment")
-  ) {
-    return "bookingStatusExplainCancellationPending";
-  }
-  switch (booking.status) {
-    case "confirmed":
-      return "bookingStatusExplainConfirmed";
-    case "pending":
-      return "bookingStatusExplainPending";
-    case "pending_payment":
-      return booking.paymentRequiredNow ? "bookingStatusExplainPendingPaymentDue" : "bookingStatusExplainPendingPaymentReserved";
-    case "cancelled":
-      return "bookingStatusExplainCancelled";
-    case "refunded":
-      return "bookingStatusExplainRefunded";
-  }
-}
-
-function statusBadgeClass(booking: StudentDemoBooking) {
-  if (
-    booking.cancellationRequestedAt &&
-    (booking.status === "confirmed" || booking.status === "pending" || booking.status === "pending_payment")
-  ) {
-    return "bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100";
-  }
-  const status = booking.status;
-  if (status === "confirmed") return "bg-primary/10 text-primary";
-  if (status === "pending" || status === "pending_payment") return "bg-accent text-muted-foreground";
-  if (status === "cancelled") return "bg-destructive/10 text-destructive";
-  if (status === "refunded") return "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200";
-  return "bg-accent text-muted-foreground";
-}
-
-/** Upcoming rows where the student may cancel or (if applicable) complete payment — matches backend `cancelPracticalStudentBooking` lesson types. */
-function studentUpcomingRowShowsActions(b: StudentDemoBooking, todayIso: string): boolean {
-  return (b.status === "pending" || b.status === "pending_payment" || b.status === "confirmed") && b.dateIso >= todayIso;
-}
 
 function isPracticalLesson(b: StudentDemoBooking): boolean {
   return b.lessonTypeKey === "lessonTypePractical";
@@ -121,7 +49,7 @@ export function DashboardBookingsListTab() {
     const b = cancelTarget;
     setBusyId(b.id);
     try {
-      const data = await vivaApiJson<StudentPracticalCancelResponse>(
+      const data = await vivaApiJson<StudentBookingCancelResponse>(
         `/bookings/${encodeURIComponent(String(b.id))}/cancel-student`,
         { method: "POST" },
       );
@@ -204,97 +132,15 @@ export function DashboardBookingsListTab() {
           return completePaymentFor(payPosTarget);
         }}
       />
-      <Dialog
-        open={cancelTarget !== null}
+      <StudentBookingCancelDialog
+        booking={cancelTarget}
+        locale={locale}
+        busy={cancelTarget != null && busyId === cancelTarget.id}
         onOpenChange={(open) => {
           if (!open) setCancelTarget(null);
         }}
-      >
-        <DialogContent
-          showCloseButton
-          className={cn(
-            "gap-0 overflow-hidden p-0 sm:max-w-md",
-            "w-[min(100%,calc(100vw-1.5rem))] max-h-[min(90dvh,40rem)]",
-            "border-border bg-card text-card-foreground shadow-xl",
-            "rounded-xl",
-          )}
-        >
-          <div
-            className={cn(
-              "border-b border-border bg-gradient-to-b from-primary/[0.06] to-transparent",
-              "px-4 pb-4 pt-5 sm:px-6 sm:pb-5 sm:pt-6",
-            )}
-          >
-            <DialogHeader className="space-y-0 text-left sm:text-left">
-              <DialogTitle className="text-balance pr-10 text-base font-semibold tracking-tight text-foreground sm:text-lg">
-                {t("bookingsCancelDialogTitle")}
-              </DialogTitle>
-            </DialogHeader>
-            <DialogDescription asChild>
-              <div className="mt-4 space-y-4 text-left text-sm leading-relaxed">
-                {cancelTarget?.cancelRefundEligible ? (
-                  <p className="text-muted-foreground">{t("bookingsCancelAdminPathConfirm")}</p>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="inline-flex w-fit max-w-full items-center rounded-md border border-destructive/25 bg-destructive/10 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-destructive">
-                      {t("bookingsCancelLateWarningTitle")}
-                    </p>
-                    <p className="text-muted-foreground">{t("bookingsCancelLateWarningBody")}</p>
-                  </div>
-                )}
-                {cancelTarget ? (
-                  <div className="rounded-lg border border-border bg-background/80 p-3 shadow-inner sm:p-4 dark:bg-background/40">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {t("bookingsTableColDate")} · {t("bookingsTableColTime")}
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-foreground tabular-nums">
-                      {fullDateLabel(cancelTarget.dateIso, locale)}
-                      <span className="text-muted-foreground"> · </span>
-                      {formatTimeRange(cancelTarget.time, cancelTarget.endTime)}
-                    </p>
-                    <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {t("bookingsTableColInstructor")}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-foreground">{cancelTarget.instructor}</p>
-                    {typeof cancelTarget.hoursUntilLesson === "number" && cancelTarget.hoursUntilLesson >= 0 ? (
-                      <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground tabular-nums">
-                        {t("bookingsCancelHoursUntilLesson")}: {cancelTarget.hoursUntilLesson.toFixed(1)}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </DialogDescription>
-          </div>
-          <div className="flex flex-col gap-2 px-4 py-4 sm:px-6 sm:py-4">
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-10 h-auto w-full border-border bg-background/80 py-2 whitespace-normal break-words text-center"
-              onClick={() => setCancelTarget(null)}
-            >
-              {t("bookingsCancelDialogDismiss")}
-            </Button>
-            <Button
-              type="button"
-              variant={cancelTarget?.cancelRefundEligible ? "default" : "destructive"}
-              className={cn(
-                "min-h-10 h-auto w-full py-2 shadow-sm whitespace-normal break-words text-center",
-                !cancelTarget?.cancelRefundEligible &&
-                  "dark:bg-destructive dark:text-white dark:hover:bg-destructive/90 dark:focus-visible:ring-destructive/30",
-              )}
-              disabled={cancelTarget != null && busyId === cancelTarget.id}
-              onClick={() => void confirmCancelBooking()}
-            >
-              {cancelTarget != null && busyId === cancelTarget.id
-                ? t("loading")
-                : cancelTarget?.cancelRefundEligible
-                  ? t("bookingsCancelDialogConfirmRequest")
-                  : t("bookingsCancelDialogConfirmLate")}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        onConfirm={() => void confirmCancelBooking()}
+      />
 
       <Reveal delay={0.05}>
         <h2 className="text-base font-semibold text-foreground mb-3">{t("bookingsMyBookingsTitle")}</h2>

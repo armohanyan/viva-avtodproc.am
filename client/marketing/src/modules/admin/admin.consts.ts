@@ -48,6 +48,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   },
   { href: "/admin/contact-requests", translationKey: "adminContactRequests" },
   { href: "/admin/booked-calls", translationKey: "adminBookedCalls" },
+  { href: "/admin/theory-personal-requests", translationKey: "adminTheoryPersonalRequests" },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/cars", translationKey: "adminSidebarCars", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/branches", translationKey: "adminSidebarBranches" },

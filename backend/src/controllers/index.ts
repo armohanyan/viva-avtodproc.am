@@ -12,6 +12,7 @@ export { default as InstructorController } from './instructor.controller';
 export { default as MarketingController } from './marketing.controller';
 export { default as NotificationController } from './notification.controller';
 export { default as PackageController } from './package.controller';
+export { default as PersonalTheoryLessonRequestController } from './personal-theory-lesson-request.controller';
 export { default as StudentController } from './student.controller';
 export { default as UserController } from './user.controller';
 export { default as UploadController } from './upload.controller';

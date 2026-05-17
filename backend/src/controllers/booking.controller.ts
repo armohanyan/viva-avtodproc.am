@@ -305,16 +305,16 @@ export default class BookingController {
         const studentUserId = requireStudentUserId(req, next);
         if (studentUserId === undefined) return;
 
-        const rowResult =
-          body.bookingType === 'theory_personal'
-            ? await BookingService.createTheoryPersonalFromStudentSlotSelection({
-                studentUserId,
-                instructorUserId,
-                dateIso: body.date,
-                slots: body.slots,
-                branchId: body.branchId,
-              })
-            : await BookingService.createFromStudentSlotSelection({
+        if (body.bookingType === 'theory_personal') {
+          return next(
+            new InputValidationError(
+              'Personal theory lessons must be requested through the lesson request flow.',
+              HttpStatusCodesUtil.BAD_REQUEST,
+            ),
+          );
+        }
+
+        const rowResult = await BookingService.createFromStudentSlotSelection({
                 studentUserId,
                 instructorUserId,
                 dateIso: body.date,

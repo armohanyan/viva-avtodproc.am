@@ -27,6 +27,7 @@ import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
 import { Notification, NOTIFICATION_TYPES } from './notification.model';
 import { Package } from './package.model';
+import { PersonalTheoryLessonRequest } from './personal-theory-lesson-request.model';
 import { PackageLessonBalance } from './package-lesson-balance.model';
 import { PackageOrder } from './package-order.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
@@ -90,6 +91,12 @@ InstructorScheduleRule.belongsTo(User, { foreignKey: 'instructorUserId', targetK
 Booking.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
 Booking.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
 Booking.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+
+PersonalTheoryLessonRequest.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+PersonalTheoryLessonRequest.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+PersonalTheoryLessonRequest.belongsTo(User, { foreignKey: 'handledByAdminId', targetKey: 'id', as: 'handledByAdmin' });
+PersonalTheoryLessonRequest.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+PersonalTheoryLessonRequest.belongsTo(Booking, { foreignKey: 'bookedLessonId', targetKey: 'id', as: 'bookedLesson' });
 
 Booking.hasMany(BookingSlot, { foreignKey: 'bookingId', sourceKey: 'id', as: 'slotClaims' });
 BookingSlot.belongsTo(Booking, { foreignKey: 'bookingId', targetKey: 'id', as: 'booking' });
@@ -179,6 +186,7 @@ export {
   AdminMfaChallenge,
   OAuthAccount,
   Package,
+  PersonalTheoryLessonRequest,
   RefreshToken,
   StudentInvitation,
   StudentExamStats,
@@ -1270,7 +1278,8 @@ async function ensureNotificationsTypeEnumValues(): Promise<void> {
     return;
   }
   const columnType = col[0]!.COLUMN_TYPE;
-  if (columnType.includes('BOOKING_REFUNDED') && columnType.includes('BOOKING_REFUND_INVITATION')) {
+  const missingType = NOTIFICATION_TYPES.some((v) => !columnType.includes(v));
+  if (!missingType) {
     return;
   }
   const literals = NOTIFICATION_TYPES.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ');
@@ -1905,4 +1914,43 @@ export async function syncModels(): Promise<void> {
   await ensureNotificationsTypeEnumValues();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
   await ensureStudentExamStatsTable();
+  await ensurePersonalTheoryLessonRequestsTable();
+}
+
+async function ensurePersonalTheoryLessonRequestsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'personal_theory_lesson_requests'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length > 0) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table personal_theory_lesson_requests …');
+  await sequelize.query(`
+    CREATE TABLE \`personal_theory_lesson_requests\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`student_user_id\` INT UNSIGNED NOT NULL,
+      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`branch_id\` INT UNSIGNED NOT NULL,
+      \`note\` TEXT NULL,
+      \`selected_themes\` JSON NULL,
+      \`status\` ENUM('pending', 'contacted', 'booked', 'cancelled') NOT NULL DEFAULT 'pending',
+      \`booked_lesson_id\` INT UNSIGNED NULL,
+      \`handled_by_admin_id\` INT UNSIGNED NULL,
+      \`contacted_at\` DATETIME NULL,
+      \`cancelled_at\` DATETIME NULL,
+      \`booked_at\` DATETIME NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`personal_theory_lesson_requests_student_status\` (\`student_user_id\`, \`status\`),
+      KEY \`personal_theory_lesson_requests_instructor_status\` (\`instructor_user_id\`, \`status\`),
+      KEY \`personal_theory_lesson_requests_status_created\` (\`status\`, \`created_at\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }
