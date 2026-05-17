@@ -136,6 +136,12 @@ function paymentDescriptionLine(b: Pick<Booking, "type" | "dateIso" | "id">): st
   return b.id ? `${typeEn} lesson ${b.dateIso} · #${b.id}` : `${typeEn} lesson ${b.dateIso}`;
 }
 
+function packagePaymentDescriptionLine(pkgName: string, studentId: string, students: StudentRow[]): string {
+  const { name } = studentContact(students, studentId);
+  const label = pkgName.trim() || "Package";
+  return name.trim() ? `Package: ${label} — ${name.trim()}` : `Package: ${label}`;
+}
+
 function studentContact(students: StudentRow[], studentId: string): { name: string; email: string } {
   const s = students.find((x) => x.id === studentId);
   return { name: s?.name ?? "", email: (s?.email ?? "").trim() };
@@ -1135,13 +1141,21 @@ export default function AdminBookings() {
 
   const postManualFinance = async (
     payment: BookingPaymentFields,
-    ctx: { studentId: string; branchId: string; bookingIdNum: number | null; bookingStatus: string },
+    ctx: {
+      studentId: string;
+      branchId: string;
+      bookingIdNum: number | null;
+      bookingStatus: string;
+      /** Required when no booking is linked (e.g. package enrollment without slots). */
+      financeDescription?: string;
+    },
   ) => {
     const gross = parseAmdInput(payment.grossStr);
     const created = new Date(payment.datetimeLocal);
     const { name, email } = studentContact(studentsMini, ctx.studentId);
     const bid =
       ctx.bookingIdNum != null && Number.isFinite(ctx.bookingIdNum) && ctx.bookingIdNum > 0 ? ctx.bookingIdNum : null;
+    const description = (ctx.financeDescription ?? "").trim();
     await vivaApiJson("/finance/transactions", {
       method: "POST",
       body: {
@@ -1153,7 +1167,8 @@ export default function AdminBookings() {
         grossAmd: gross,
         status: financeStatusFromBookingStatus(ctx.bookingStatus),
         source: "manual",
-        bookingId: bid,
+        ...(bid != null ? { bookingId: bid } : {}),
+        ...(bid == null && description ? { description } : {}),
       },
     });
   };
@@ -1326,57 +1341,62 @@ export default function AdminBookings() {
         });
         const practicalCount = slotPickCount(addPackagePracticalSlotPick);
         const theoryCount = slotPickCount(addPackageTheorySlotPick);
-        const packageResult = await vivaApiJson<{ bookingIds?: number[] }>("/bookings/package-atomic", {
-          method: "POST",
-          body: {
-            studentId: studentNum,
-            packageId: Number(pkg.id),
-            branchId: Number(draft.branchId),
-            status: draft.status,
-            ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
-            ...(pkg.lessons > 0 && practicalCount > 0 && addPackagePracticalSlotPick
-              ? {
-                  practical: {
-                    instructorName: addPackagePracticalSlotPick.instructor || draft.instructorName,
-                    ...(addPackagePracticalSlotPick.instructorUserId &&
-                    Number.isFinite(Number(addPackagePracticalSlotPick.instructorUserId))
-                      ? { instructorUserId: Number(addPackagePracticalSlotPick.instructorUserId) }
-                      : {}),
-                    dateIso: addPackagePracticalSlotPick.dateIso,
-                    slots: addPackagePracticalSlotPick.times,
-                    ...(addPackagePracticalSlotPick.slotEntries && addPackagePracticalSlotPick.slotEntries.length > 0
-                      ? { slotEntries: addPackagePracticalSlotPick.slotEntries }
-                      : {}),
-                  },
-                }
-              : {}),
-            ...(pkg.theoryLessons > 0 && theoryCount > 0 && addPackageTheorySlotPick
-              ? {
-                  theoryPersonal: {
-                    instructorName:
-                      addPackageTheorySlotPick.instructor || addPackageTheoryInstructorName || draft.instructorName,
-                    ...(addPackageTheorySlotPick.instructorUserId &&
-                    Number.isFinite(Number(addPackageTheorySlotPick.instructorUserId))
-                      ? { instructorUserId: Number(addPackageTheorySlotPick.instructorUserId) }
-                      : {}),
-                    dateIso: addPackageTheorySlotPick.dateIso,
-                    slots: addPackageTheorySlotPick.times,
-                    ...(addPackageTheorySlotPick.slotEntries && addPackageTheorySlotPick.slotEntries.length > 0
-                      ? { slotEntries: addPackageTheorySlotPick.slotEntries }
-                      : {}),
-                  },
-                }
-              : {}),
-          },
-        });
-        const bookingIds = Array.isArray(packageResult?.bookingIds) ? packageResult.bookingIds : [];
-        const anchorBookingId = bookingIds.length > 0 ? Number(bookingIds[0]) : null;
+        const hasSlotsToBook = practicalCount > 0 || theoryCount > 0;
+        let anchorBookingId: number | null = null;
+        if (hasSlotsToBook) {
+          const packageResult = await vivaApiJson<{ bookingIds?: number[] }>("/bookings/package-atomic", {
+            method: "POST",
+            body: {
+              studentId: studentNum,
+              packageId: Number(pkg.id),
+              branchId: Number(draft.branchId),
+              status: draft.status,
+              ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
+              ...(pkg.lessons > 0 && practicalCount > 0 && addPackagePracticalSlotPick
+                ? {
+                    practical: {
+                      instructorName: addPackagePracticalSlotPick.instructor || draft.instructorName,
+                      ...(addPackagePracticalSlotPick.instructorUserId &&
+                      Number.isFinite(Number(addPackagePracticalSlotPick.instructorUserId))
+                        ? { instructorUserId: Number(addPackagePracticalSlotPick.instructorUserId) }
+                        : {}),
+                      dateIso: addPackagePracticalSlotPick.dateIso,
+                      slots: addPackagePracticalSlotPick.times,
+                      ...(addPackagePracticalSlotPick.slotEntries && addPackagePracticalSlotPick.slotEntries.length > 0
+                        ? { slotEntries: addPackagePracticalSlotPick.slotEntries }
+                        : {}),
+                    },
+                  }
+                : {}),
+              ...(pkg.theoryLessons > 0 && theoryCount > 0 && addPackageTheorySlotPick
+                ? {
+                    theoryPersonal: {
+                      instructorName:
+                        addPackageTheorySlotPick.instructor || addPackageTheoryInstructorName || draft.instructorName,
+                      ...(addPackageTheorySlotPick.instructorUserId &&
+                      Number.isFinite(Number(addPackageTheorySlotPick.instructorUserId))
+                        ? { instructorUserId: Number(addPackageTheorySlotPick.instructorUserId) }
+                        : {}),
+                      dateIso: addPackageTheorySlotPick.dateIso,
+                      slots: addPackageTheorySlotPick.times,
+                      ...(addPackageTheorySlotPick.slotEntries && addPackageTheorySlotPick.slotEntries.length > 0
+                        ? { slotEntries: addPackageTheorySlotPick.slotEntries }
+                        : {}),
+                    },
+                  }
+                : {}),
+            },
+          });
+          const bookingIds = Array.isArray(packageResult?.bookingIds) ? packageResult.bookingIds : [];
+          anchorBookingId = bookingIds.length > 0 ? Number(bookingIds[0]) : null;
+        }
         if (wantsPayment) {
           await postManualFinance(addPayment, {
             studentId: draft.studentId,
             branchId: draft.branchId,
             bookingIdNum: anchorBookingId,
             bookingStatus: draft.status,
+            financeDescription: packagePaymentDescriptionLine(pkg.name, draft.studentId, studentsMini),
           });
         }
       } else {
@@ -2310,6 +2330,8 @@ export default function AdminBookings() {
                           t={t}
                         />
                         {selectedAddPackage ? (
+                          <>
+                          <p className="text-sm text-muted-foreground">{t("adminBookingPackageSlotsOptionalHint")}</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {selectedAddPackage.lessons > 0 ? (
                               <Card className="border-border p-3">
@@ -2342,6 +2364,7 @@ export default function AdminBookings() {
                               </Card>
                             ) : null}
                           </div>
+                          </>
                         ) : null}
                         {selectedAddPackage && selectedAddPackage.lessons > 0 ? (
                           <>

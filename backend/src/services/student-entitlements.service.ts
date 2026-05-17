@@ -1,4 +1,5 @@
 import type { Transaction } from 'sequelize';
+import { Op } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import { Branch, Package, PackageLessonBalance, PackageOrder, StudentExtraPractical, StudentProfile, User } from '../models';
 import FinanceService from './finance.service';
@@ -296,6 +297,84 @@ export default class StudentEntitlementsService {
     );
     if (!applied) return null;
     return this.get(userId);
+  }
+
+  /**
+   * Ensures the student has an active package order + lesson balances for `packageId`.
+   * Used when admin assigns a package on profile without booking slots yet (legacy profile rows included).
+   */
+  static async ensureActivePackageOrder(
+    userId: number,
+    packageId: number,
+    transaction?: Transaction,
+  ): Promise<number | null> {
+    const run = async (tx: Transaction) => {
+      const existing = await PackageOrder.findOne({
+        where: {
+          studentUserId: userId,
+          packageId,
+          status: { [Op.in]: ['active', 'paid', 'confirmed'] },
+        },
+        order: [
+          ['createdAt', 'DESC'],
+          ['id', 'DESC'],
+        ],
+        transaction: tx,
+      });
+      if (existing) return existing.id;
+
+      const pkg = await Package.findByPk(packageId, { transaction: tx });
+      if (!pkg) return null;
+
+      const profile = await StudentProfile.findOne({ where: { userId }, transaction: tx });
+      const theoryTotal =
+        profile && Number(profile.theoryLessonsTotal ?? 0) > 0
+          ? Number(profile.theoryLessonsTotal)
+          : Number(pkg.theoryLessons ?? 0) > 0
+            ? Number(pkg.theoryLessons)
+            : legacyTheorySessionsFromPackageName(pkg);
+      const practicalTotal =
+        profile && Number(profile.lessonsTotal ?? 0) > 0 ? Number(profile.lessonsTotal) : Number(pkg.lessons ?? 0);
+      const practicalBooked = profile ? Math.max(0, Number(profile.lessonsCompleted ?? 0)) : 0;
+      const theoryBooked = profile ? Math.max(0, Number(profile.theoryLessonsCompleted ?? 0)) : 0;
+
+      const order = await PackageOrder.create(
+        {
+          studentUserId: userId,
+          packageId: pkg.id,
+          status: 'active',
+          paidAt: null,
+          source: 'admin_assign',
+          note: 'Auto-created when admin assigned package without immediate slot booking.',
+        },
+        { transaction: tx },
+      );
+      await PackageLessonBalance.bulkCreate(
+        [
+          {
+            packageOrderId: order.id,
+            studentUserId: userId,
+            packageId: pkg.id,
+            lessonType: 'practical',
+            totalIncluded: Math.max(0, practicalTotal),
+            bookedCount: practicalBooked,
+          },
+          {
+            packageOrderId: order.id,
+            studentUserId: userId,
+            packageId: pkg.id,
+            lessonType: 'theory_personal',
+            totalIncluded: Math.max(0, theoryTotal),
+            bookedCount: theoryBooked,
+          },
+        ],
+        { transaction: tx },
+      );
+      return order.id;
+    };
+
+    if (transaction) return run(transaction);
+    return sequelize.transaction(run);
   }
 
   static async addExtraPractical(userId: number, practicalTotal = 3): Promise<StudentEntitlementsDto | null> {

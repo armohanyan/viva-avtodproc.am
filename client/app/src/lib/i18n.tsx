@@ -1539,9 +1539,10 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   adminBookingValTheoryGroupSchedule: "This theory group has no usable weekly session time (on-the-hour start and end on the cohort). Edit the cohort or pick another group.",
   adminBookingValPersonalTheoryOneSlot: "Personal theory: pick one or more consecutive full hours on the calendar (same day).",
   adminBookingValSelectPackage: "Select a package.",
-  adminBookingValPackagePracticalCount: "For this package, select exactly the required number of practical hours on the calendar (consecutive).",
-  adminBookingValPackageTheoryCount: "For this package, select exactly the required number of theory hours on the calendar.",
-  adminBookingPackagePracticalSlotsHint: "This package includes %n practical hour(s). Pick exactly %n consecutive hour(s) on the calendar.",
+  adminBookingValPackagePracticalCount: "You selected more practical hours than this package includes.",
+  adminBookingValPackageTheoryCount: "You selected more theory hours than this package includes.",
+  adminBookingPackagePracticalSlotsHint: "This package includes %n practical hour(s). You may pick any number now (up to %n) or schedule later.",
+  adminBookingPackageSlotsOptionalHint: "Lesson times are optional — you can enroll the student in the package and book hours later.",
   adminBookingValPackageNoServices: "This package has no practical or theory lessons configured.",
   adminBookingPaymentOptionalHint: "Leave the amount empty if you are not recording a payment for this lesson.",
   adminBookingPaymentSystemLinked: "This booking has a system-recorded payment. It cannot be edited here.",
@@ -3139,12 +3140,12 @@ const ru: typeof en = {
   adminBookingValPersonalTheoryOneSlot:
     "Индивидуальная теория: выберите один или несколько подряд полных часов в календаре (один день).",
   adminBookingValSelectPackage: "Выберите пакет.",
-  adminBookingValPackagePracticalCount:
-    "Для этого пакета выберите в календаре нужное число практических часов подряд.",
-  adminBookingValPackageTheoryCount:
-    "Для этого пакета выберите в календаре ровно нужное число часов теории.",
+  adminBookingValPackagePracticalCount: "Выбрано больше практических часов, чем в пакете.",
+  adminBookingValPackageTheoryCount: "Выбрано больше часов теории, чем в пакете.",
   adminBookingPackagePracticalSlotsHint:
-    "В пакете %n практическ(их) час(а). Выберите в календаре ровно %n подряд идущих час(а).",
+    "В пакете %n практическ(их) час(а). Можно выбрать любое количество сейчас (до %n) или записать позже.",
+  adminBookingPackageSlotsOptionalHint:
+    "Время занятий необязательно — можно оформить пакет и записать часы позже.",
   adminBookingValPackageNoServices: "В этом пакете не заданы практика или теория.",
   adminBookingPaymentOptionalHint: "Оставьте сумму пустой, если платёж за этот урок сейчас не вносите.",
   adminBookingPaymentSystemLinked: "У этой записи есть системный платёж. Его нельзя изменить здесь.",
@@ -4716,9 +4717,12 @@ const am: typeof en = {
   adminBookingValTheoryGroupSchedule: "Այս խմբի համար չկա պատշաճ շաբաթական ժամ (ժամի սկիզբը և վերջը՝ խմբի կարգավորումներում)։ Խմբագրեք խումբը կամ ընտրեք այլ խումբ։",
   adminBookingValPersonalTheoryOneSlot: "Անհատական տեսություն՝ ընտրեք մեկ կամ ավելի հաջորդական ամբողջ ժամեր օրացույցում (նույն օրը)։",
   adminBookingValSelectPackage: "Ընտրեք փաթեթը։",
-  adminBookingValPackagePracticalCount: "Այս փաթեթի համար օրացույցում ընտրեք ճիշտ քանակությամբ հաջորդական պրակտիկ ժամեր։",
-  adminBookingValPackageTheoryCount: "Այս փաթեթի համար օրացույցում ընտրեք տեսական ժամերի ճիշտ քանակը։",
-  adminBookingPackagePracticalSlotsHint: "Փաթեթում ներառված է %n պրակտիկ ժամ։ Օրացույցում ընտրեք հենց %n հաջորդական ժամ։",
+  adminBookingValPackagePracticalCount: "Ընտրել եք ավելի շատ պրակտիկ ժամ, քան փաթեթում է։",
+  adminBookingValPackageTheoryCount: "Ընտրել եք ավելի շատ տեսական ժամ, քան փաթեթում է։",
+  adminBookingPackagePracticalSlotsHint:
+    "Փաթեթում ներառված է %n պրակտիկ ժամ։ Կարող եք ընտրել ցանկացած քանակ (մինչև %n) հիմա կամ ավելի ուշ։",
+  adminBookingPackageSlotsOptionalHint:
+    "Դասի ժամերը պարտադիր չեն — կարող եք փաթեթը գրանցել հիմա, ժամերը՝ ավելի ուշ։",
   adminBookingValPackageNoServices: "Այս փաթեթում պրակտիկ կամ տեսական դասեր չեն կազմակերպված։",
   adminBookingPaymentOptionalHint: "Թողեք գումարը դատարկ, եթե այս դասի համար վճար չեք գրանցում։",
   adminBookingPaymentSystemLinked: "Այս ամրագրումն ունի համակարգային վճարում։ Այն այստեղ խմբագրվող չէ։",

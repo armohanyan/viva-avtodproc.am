@@ -274,10 +274,8 @@ export default class FinanceService {
       if (linkedBooking) {
         description = financeDescriptionForBooking(linkedBooking);
       } else {
-        throw new ErrorsUtil.InputValidationError(
-          'Description is required when no booking is linked.',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
+        const customerLabel = input.customer.trim() || 'Customer';
+        description = `Payment — ${customerLabel}`;
       }
     }
 

@@ -103,25 +103,13 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
     const nTheory = pkg.theoryLessons ?? 0;
     if (nPrac > 0) {
       const got = slotCount(input.packagePracticalSlots);
-      if (got !== nPrac) {
+      if (got > nPrac) {
         keys.push("adminBookingValPackagePracticalCount");
       }
     }
     if (nTheory > 0) {
-      const pkgTheoryCohortId = strTrim(input.packageTheoryCohortId);
-      if (!pkgTheoryCohortId) {
-        keys.push("adminBookingValSelectTheoryGroup");
-      } else {
-        const c = input.theoryCohorts.find((x) => x.id === pkgTheoryCohortId);
-        if (!c || !isTheoryCohortBookableStatus(c.status)) {
-          keys.push("adminBookingValSelectTheoryGroup");
-        }
-      }
-      if (!input.packageTheoryCalendarInstructorId) {
-        keys.push("adminBookingInstructorCalendarUnavailable");
-      }
       const gotTheory = slotCount(input.packageTheorySlots);
-      if (gotTheory !== nTheory) {
+      if (gotTheory > nTheory) {
         keys.push("adminBookingValPackageTheoryCount");
       }
     }

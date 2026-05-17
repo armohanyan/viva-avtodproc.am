@@ -24,6 +24,7 @@ import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import FinanceService from './finance.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
+import StudentEntitlementsService from './student-entitlements.service';
 
 const { ConflictError } = ErrorsUtil;
 const { InputValidationError } = ErrorsUtil;
@@ -350,6 +351,9 @@ export default class StudentAdminService {
       packageForTheory != null &&
       patch.theoryLessonsTotal === undefined &&
       patch.theoryLessonsCompleted === undefined;
+    if (packageChangingToNew && patch.packageId != null) {
+      await StudentEntitlementsService.assignPackage(userId, patch.packageId);
+    }
     await profile.update({
       ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
       ...(nextPackageId !== undefined ? { packageId: nextPackageId } : {}),
@@ -370,6 +374,9 @@ export default class StudentAdminService {
       ...(patch.licenseAchieved !== undefined ? { licenseAchieved: patch.licenseAchieved } : {}),
       ...(patch.joinedIso !== undefined ? { joinedAt: patch.joinedIso } : {}),
     });
+    if (patch.packageId != null && patch.packageId > 0) {
+      await StudentEntitlementsService.ensureActivePackageOrder(userId, patch.packageId);
+    }
     const list = await this.list();
     return list.find((r) => r.id === userId) ?? null;
   }

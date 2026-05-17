@@ -35,17 +35,8 @@ const financeTxBodySchema = z.object({
   bookingId: z.coerce.number().int().positive().nullish(),
 });
 
-const createSchema = financeTxBodySchema.superRefine((data, ctx) => {
-  const desc = (data.description ?? '').trim();
-  const bid = data.bookingId != null && data.bookingId > 0;
-  if (!desc && !bid) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'description is required when bookingId is not set',
-      path: ['description'],
-    });
-  }
-});
+/** Description is optional; FinanceService fills from booking or a customer-based default. */
+const createSchema = financeTxBodySchema;
 
 const approveRefundBodySchema = z.object({
   /** Positive AMD; defaults to full original payment when omitted. */
