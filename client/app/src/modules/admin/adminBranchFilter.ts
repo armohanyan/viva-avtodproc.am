@@ -100,3 +100,7 @@ export function appendAdminBranchQuery(suffix: string): string {
 	const sep = suffix.includes("?") ? "&" : "?";
 	return `${suffix}${sep}branchId=${encodeURIComponent(selectedBranchId!)}`;
 }
+
+if (typeof window !== "undefined") {
+	initAdminBranchFilterFromStorage();
+}

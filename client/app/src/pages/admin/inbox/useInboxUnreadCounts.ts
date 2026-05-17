@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { vivaApiJson } from "src/lib/vivaApi";
-import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 
 export type InboxUnreadCounts = {
   theoryPersonal: number;
@@ -15,29 +15,33 @@ const EMPTY: InboxUnreadCounts = {
 };
 
 export function useInboxUnreadCounts() {
-  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
+  const { branchId: filterBranchId } = useAdminBranchFilter();
   const [counts, setCounts] = useState<InboxUnreadCounts>(EMPTY);
 
   const refresh = useCallback(async () => {
     try {
       const [theory, calls, contact] = await Promise.all([
-        vivaApiJson<{ status: string }[]>("/personal-theory-lesson-requests"),
+        vivaApiJson<{ status: string; branchId?: number }[]>("/personal-theory-lesson-requests"),
         vivaApiJson<{ status: string }[]>("/booked-calls"),
         vivaApiJson<{ status: string }[]>("/contact-requests"),
       ]);
+      const theoryRows = Array.isArray(theory) ? theory : [];
+      const theoryForBranch = filterBranchId
+        ? theoryRows.filter((r) => String(r.branchId) === filterBranchId)
+        : theoryRows;
       setCounts({
-        theoryPersonal: Array.isArray(theory) ? theory.filter((r) => r.status === "pending").length : 0,
+        theoryPersonal: theoryForBranch.filter((r) => r.status === "pending").length,
         bookedCalls: Array.isArray(calls) ? calls.filter((r) => r.status === "pending").length : 0,
         contactRequests: Array.isArray(contact) ? contact.filter((r) => r.status === "active").length : 0,
       });
     } catch {
       setCounts(EMPTY);
     }
-  }, []);
+  }, [filterBranchId]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh, branchFilterRevision]);
+  }, [refresh, filterBranchId]);
 
   return { counts, refresh };
 }

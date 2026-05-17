@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import { Card } from "src/components/ui/card";
@@ -7,7 +7,7 @@ import { useLang } from "src/lib/i18n";
 import { localeForLang } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { adminBookingsHrefFromTheoryPersonalRequest } from "src/modules/admin/theoryPersonalRequestBooking";
 import { absWouterHref } from "src/lib/wouterFullPath";
@@ -35,7 +35,7 @@ type Props = {
 };
 
 export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
-  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
+  const { branchId: filterBranchId } = useAdminBranchFilter();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [, setLocation] = useLocation();
@@ -60,7 +60,12 @@ export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
 
   useEffect(() => {
     void load();
-  }, [load, branchFilterRevision]);
+  }, [load, filterBranchId]);
+
+  const visibleRows = useMemo(() => {
+    if (!filterBranchId) return rows;
+    return rows.filter((r) => String(r.branchId) === filterBranchId);
+  }, [rows, filterBranchId]);
 
   const statusLabel = (status: TheoryPersonalRequestRow["status"]): string => {
     const map: Record<TheoryPersonalRequestRow["status"], string> = {
@@ -125,7 +130,7 @@ export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
       <Card className="overflow-hidden p-0">
         {loading ? (
           <p className="text-muted-foreground p-6 text-sm">{t("loading")}</p>
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <p className="text-muted-foreground p-6 text-sm">{t("adminTheoryPersonalRequestsEmpty")}</p>
         ) : (
           <>
@@ -141,7 +146,7 @@ export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {visibleRows.map((r) => (
                     <tr
                       key={r.id}
                       className={cn(

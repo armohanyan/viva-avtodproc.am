@@ -11,7 +11,7 @@ import { useLang } from "src/lib/i18n";
 import { localeForLang } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { filterInstructorsServingBranches } from "src/modules/instructors/instructor-booking";
 
@@ -47,7 +47,7 @@ function statusBadgeClass(status: RequestStatus): string {
 }
 
 export default function AdminTheoryPersonalRequests(): JSX.Element {
-  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
+  const { branchId: filterBranchId } = useAdminBranchFilter();
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { instructors } = useInstructors();
@@ -72,7 +72,12 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
 
   useEffect(() => {
     void load();
-  }, [load, branchFilterRevision]);
+  }, [load, filterBranchId]);
+
+  const visibleRows = useMemo(() => {
+    if (!filterBranchId) return rows;
+    return rows.filter((r) => String(r.branchId) === filterBranchId);
+  }, [rows, filterBranchId]);
 
   const calendarInstructors = useMemo(() => {
     if (!bookingRow) return [];
@@ -155,7 +160,7 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
         <Card className="overflow-hidden p-0">
           {loading ? (
             <p className="text-muted-foreground p-6 text-sm">{t("loading")}</p>
-          ) : rows.length === 0 ? (
+          ) : visibleRows.length === 0 ? (
             <p className="text-muted-foreground p-6 text-sm">{t("adminTheoryPersonalRequestsEmpty")}</p>
           ) : (
             <AdminTableScroll>
@@ -172,7 +177,7 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
+                  {visibleRows.map((r) => {
                     const busy = busyId === r.id;
                     const closed = r.status === "booked" || r.status === "cancelled";
                     return (

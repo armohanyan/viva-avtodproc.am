@@ -1,15 +1,18 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TranslationKey } from "src/lib/i18n";
 import type { Instructor } from "src/data/instructors";
-import LessonBookingCalendar, { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
+import type { LessonBookingPayload } from "src/components/LessonBookingCalendar";
+import AdminInstructorAvailabilityTable from "./AdminInstructorAvailabilityTable";
+import { sortSlotEntriesChrono, sortTimesUnique } from "./adminAvailabilityGrid";
 
 type Props = {
-  hint: string;
-  /** Shown when cohort not chosen (theory) or instructor missing */
+  hint?: string;
   blockingMessage?: string;
-  /** When set, calendar is shown */
   selectedInstructorId: string;
   instructors: readonly Instructor[];
   onInstructorChange: (instructorUserId: string) => void;
+  /** When admin picks a cell under another branch column, parent may update booking branch. */
+  onBranchPicked?: (branchId: string) => void;
   branchId: string;
   studentName: string;
   showInstructorPicker: boolean;
@@ -21,15 +24,36 @@ type Props = {
   maxSelectableSlotsErrorKey?: TranslationKey;
 };
 
+function entriesToPayload(
+  entries: readonly { dateIso: string; time: string }[],
+  instructorId: string,
+  instructorName: string,
+  studentLabel: string,
+): LessonBookingPayload | null {
+  const sorted = sortSlotEntriesChrono(entries);
+  if (sorted.length === 0 || !instructorId) return null;
+  const first = sorted[0];
+  const sameDayTimes = sorted.filter((e) => e.dateIso === first.dateIso).map((e) => e.time);
+  return {
+    instructorUserId: instructorId,
+    instructor: instructorName,
+    dateIso: first.dateIso,
+    time: sameDayTimes[0] ?? first.time,
+    times: sortTimesUnique(sameDayTimes.length > 0 ? sameDayTimes : [first.time]),
+    slotEntries: sorted.map((e) => ({ dateIso: e.dateIso.slice(0, 10), time: e.time })),
+    studentLabel: studentLabel.trim(),
+  };
+}
+
 export default function SlotSelector({
   hint,
   blockingMessage,
   selectedInstructorId,
   instructors,
   onInstructorChange,
+  onBranchPicked,
   branchId,
   studentName,
-  showInstructorPicker,
   onBookingConfirmed,
   onAdminSelectionCleared,
   calendarKey,
@@ -37,30 +61,100 @@ export default function SlotSelector({
   maxSelectableSlots,
   maxSelectableSlotsErrorKey,
 }: Props) {
+  const [entries, setEntries] = useState<{ dateIso: string; time: string }[]>([]);
+  const lastSyncKeyRef = useRef<string | null>(null);
+  const onBookingConfirmedRef = useRef(onBookingConfirmed);
+  const onAdminSelectionClearedRef = useRef(onAdminSelectionCleared);
+  onBookingConfirmedRef.current = onBookingConfirmed;
+  onAdminSelectionClearedRef.current = onAdminSelectionCleared;
+
+  useEffect(() => {
+    setEntries([]);
+    lastSyncKeyRef.current = null;
+    onAdminSelectionClearedRef.current?.();
+  }, [calendarKey]);
+
+  const activeInstructorId = selectedInstructorId || instructors[0]?.id || "";
+
+  const syncPayload = useCallback(
+    (nextEntries: readonly { dateIso: string; time: string }[], instructorId: string) => {
+      const ins = instructors.find((i) => i.id === instructorId);
+      const payload = entriesToPayload(nextEntries, instructorId, ins?.name ?? "", studentName);
+      const key = payload ? `${instructorId}|${JSON.stringify(payload.slotEntries)}` : null;
+      if (key === null) {
+        if (lastSyncKeyRef.current !== null) {
+          lastSyncKeyRef.current = null;
+          onAdminSelectionClearedRef.current?.();
+        }
+        return;
+      }
+      if (lastSyncKeyRef.current === key) return;
+      lastSyncKeyRef.current = key;
+      onBookingConfirmedRef.current(payload);
+    },
+    [instructors, studentName],
+  );
+
+  const handleEntriesChange = useCallback(
+    (next: { dateIso: string; time: string }[]) => {
+      setEntries(next);
+      syncPayload(next, activeInstructorId);
+    },
+    [activeInstructorId, syncPayload],
+  );
+
+  const handleInstructorPicked = useCallback(
+    (instructorUserId: string, pickedBranchId: string) => {
+      if (instructorUserId && instructorUserId !== selectedInstructorId) {
+        onInstructorChange(instructorUserId);
+      }
+      if (pickedBranchId && pickedBranchId !== branchId) {
+        onBranchPicked?.(pickedBranchId);
+      }
+    },
+    [branchId, onBranchPicked, onInstructorChange, selectedInstructorId],
+  );
+
+  useEffect(() => {
+    if (entries.length > 0 && activeInstructorId) {
+      syncPayload(entries, activeInstructorId);
+    }
+  }, [activeInstructorId, entries, syncPayload]);
+
+  const gridInstructors = useMemo(() => [...instructors], [instructors]);
+
+  if (blockingMessage) {
+    return (
+      <div className="space-y-2 pt-2 border-t border-border">
+        {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+        <p className="text-xs text-amber-600 dark:text-amber-500">{blockingMessage}</p>
+      </div>
+    );
+  }
+
+  if (gridInstructors.length === 0) {
+    return (
+      <div className="space-y-2 pt-2 border-t border-border">
+        {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+        <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2 pt-2 border-t border-border">
-      <p className="text-sm text-muted-foreground">{hint}</p>
-      {blockingMessage ? (
-        <p className="text-xs text-amber-600 dark:text-amber-500">{blockingMessage}</p>
-      ) : !selectedInstructorId ? (
-        <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
-      ) : (
-        <LessonBookingCalendar
-          key={calendarKey}
-          mode="admin"
-          instructors={instructors}
-          selectedInstructorId={selectedInstructorId}
-          onInstructorChange={onInstructorChange}
-          branchId={branchId}
-          studentName={studentName}
-          showInstructorPicker={showInstructorPicker}
-          onAdminSelectionCleared={onAdminSelectionCleared}
-          onBookingConfirmed={onBookingConfirmed}
-          adminSuppressSummaryCard
-          maxSelectableSlots={maxSelectableSlots}
-          maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
-        />
-      )}
+      {hint ? <p className="text-sm text-muted-foreground">{hint}</p> : null}
+      <AdminInstructorAvailabilityTable
+        instructors={gridInstructors}
+        bookingBranchId={branchId}
+        studentName={studentName}
+        selectedEntries={entries}
+        onEntriesChange={handleEntriesChange}
+        onInstructorPicked={handleInstructorPicked}
+        maxSelectableSlots={maxSelectableSlots}
+        maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
+        t={t}
+      />
     </div>
   );
 }

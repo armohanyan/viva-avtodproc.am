@@ -10,6 +10,7 @@ import {
 import {
 	ADMIN_BRANCH_FILTER_ALL,
 	getAdminBranchFilterId,
+	getAdminBranchFilterRevision,
 	initAdminBranchFilterFromStorage,
 	setAdminBranchFilterId as persistBranchFilterId,
 	setAdminPanelActive,
@@ -24,13 +25,16 @@ type AdminBranchFilterContextValue = {
 const AdminBranchFilterContext = createContext<AdminBranchFilterContextValue | null>(null);
 
 export function AdminBranchFilterProvider({ children }: PropsWithChildren) {
+	initAdminBranchFilterFromStorage();
 	const [branchId, setBranchIdState] = useState<string | null>(() => getAdminBranchFilterId());
-	const [revision, setRevision] = useState(0);
+	const [revision, setRevision] = useState(() => getAdminBranchFilterRevision());
 
 	useEffect(() => {
 		setAdminPanelActive(true);
 		initAdminBranchFilterFromStorage();
-		setBranchIdState(getAdminBranchFilterId());
+		const id = getAdminBranchFilterId();
+		setBranchIdState(id);
+		setRevision(getAdminBranchFilterRevision());
 		return () => {
 			setAdminPanelActive(false);
 		};
