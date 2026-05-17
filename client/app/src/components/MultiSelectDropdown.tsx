@@ -64,6 +64,7 @@ export default function MultiSelectDropdown<T extends string>({
           <DropdownMenuCheckboxItem
             key={option.value}
             checked={selectedSet.has(option.value)}
+            onSelect={(event) => event.preventDefault()}
             onCheckedChange={(checked) => {
               const next = new Set(value);
               if (checked) next.add(option.value);

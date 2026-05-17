@@ -1,6 +1,9 @@
 import { Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { TheoryCohort, TheoryCohortEnrollment, TheoryCohortSession, User } from '../models';
+import { Op } from 'sequelize';
+import { InstructorBranch, TheoryCohort, TheoryCohortEnrollment, TheoryCohortSession, User } from '../models';
+import InstructorBranchService from './instructor-branch.service';
+import TheoryCohortInstructorService from './theory-cohort-instructor.service';
 import TheoryCohortSessionService from './theory-cohort-session.service';
 import {
   generateCohortSessions,
@@ -29,6 +32,7 @@ export type TheoryCohortDto = {
   lessonWeekdays: number[];
   totalLessons: number;
   instructorUserId: number | null;
+  instructorUserIds: number[];
   generatedSessionCount: number;
 };
 
@@ -69,7 +73,22 @@ async function sessionCountForCohort(cohortId: number): Promise<number> {
   return TheoryCohortSession.count({ where: { cohortId } });
 }
 
-function toDto(c: TheoryCohort, enrolled: number, generatedSessionCount = 0): TheoryCohortDto {
+function legacyInstructorUserIds(c: TheoryCohort): number[] {
+  if (c.instructorUserId != null && Number.isFinite(Number(c.instructorUserId)) && Number(c.instructorUserId) > 0) {
+    return [Math.round(Number(c.instructorUserId))];
+  }
+  return [];
+}
+
+function toDto(
+  c: TheoryCohort,
+  enrolled: number,
+  generatedSessionCount = 0,
+  instructorUserIds: number[] = [],
+): TheoryCohortDto {
+  const ids =
+    instructorUserIds.length > 0 ? instructorUserIds : legacyInstructorUserIds(c);
+  const primaryId = ids[0] ?? null;
   return {
     id: c.id,
     name: c.name,
@@ -86,12 +105,44 @@ function toDto(c: TheoryCohort, enrolled: number, generatedSessionCount = 0): Th
     priceAmd: priceAmdOrNull(c),
     lessonWeekdays: TheoryCohortSessionService.parseWeekdaysFromStorage(c.lessonWeekdays),
     totalLessons: Math.max(0, Math.floor(Number(c.totalLessons) || 0)),
-    instructorUserId:
-      c.instructorUserId != null && Number.isFinite(Number(c.instructorUserId)) && Number(c.instructorUserId) > 0
-        ? Number(c.instructorUserId)
-        : null,
+    instructorUserId: primaryId,
+    instructorUserIds: ids,
     generatedSessionCount,
   };
+}
+
+async function resolveInstructorUserIdsFromInput(input: {
+  instructorUserIds?: readonly number[] | null;
+  instructorUserId?: number | null;
+  instructorName?: string;
+  branchId: number;
+}): Promise<number[]> {
+  const fromList = (input.instructorUserIds ?? [])
+    .map((n) => Math.round(Number(n)))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const uniq = [...new Set(fromList)];
+  if (uniq.length > 0) return uniq;
+  if (
+    input.instructorUserId != null &&
+    Number.isFinite(Number(input.instructorUserId)) &&
+    Number(input.instructorUserId) > 0
+  ) {
+    return [Math.round(Number(input.instructorUserId))];
+  }
+  const name = input.instructorName?.trim();
+  if (!name) return [];
+  const firstName = name.split(',')[0]?.trim() ?? name;
+  const links = await InstructorBranch.findAll({ where: { branchId: input.branchId } });
+  const branchInstructorIds = links.map((l) => l.instructorUserId);
+  const instructor = await User.findOne({
+    where: {
+      name: firstName,
+      accountType: 'instructor',
+      ...(branchInstructorIds.length > 0 ? { id: { [Op.in]: branchInstructorIds } } : {}),
+    },
+    attributes: ['id'],
+  });
+  return instructor ? [instructor.id] : [];
 }
 
 function validateScheduleFields(input: {
@@ -121,15 +172,29 @@ function validateScheduleFields(input: {
   }
 }
 
+async function assertCohortInstructorServesBranch(
+  instructorUserId: number | null,
+  branchId: number,
+): Promise<void> {
+  if (instructorUserId == null) return;
+  await InstructorBranchService.assertInstructorServesBranch(instructorUserId, branchId);
+}
+
 export default class TheoryCohortService {
   static async list(branchId?: number): Promise<TheoryCohortDto[]> {
     const cohorts = await TheoryCohort.findAll({
       ...(branchId !== undefined ? { where: { branchId } } : {}),
       order: [['startDateIso', 'DESC']],
     });
+    const instructorIdsByCohort = await TheoryCohortInstructorService.listInstructorUserIdsByCohortIds(
+      cohorts.map((c) => c.id),
+    );
     const out: TheoryCohortDto[] = [];
     for (const c of cohorts) {
-      out.push(toDto(c, await enrolledCount(c.id), await sessionCountForCohort(c.id)));
+      const linked = instructorIdsByCohort.get(c.id) ?? [];
+      out.push(
+        toDto(c, await enrolledCount(c.id), await sessionCountForCohort(c.id), linked),
+      );
     }
     return out;
   }
@@ -149,6 +214,7 @@ export default class TheoryCohortService {
     lessonWeekdays?: number[];
     totalLessons?: number;
     instructorUserId?: number | null;
+    instructorUserIds?: number[] | null;
   }): Promise<TheoryCohortDto> {
     const startT = timeHmOrNull(input.sessionStartTime);
     const endT = timeHmOrNull(input.sessionEndTime);
@@ -166,10 +232,20 @@ export default class TheoryCohortService {
       input.priceAmd != null && Number.isFinite(Number(input.priceAmd)) && Number(input.priceAmd) >= 0
         ? Math.round(Number(input.priceAmd))
         : null;
-    const instructorUserId =
-      input.instructorUserId != null && Number.isFinite(Number(input.instructorUserId)) && Number(input.instructorUserId) > 0
-        ? Math.round(Number(input.instructorUserId))
-        : null;
+    const resolvedInstructorIds = await resolveInstructorUserIdsFromInput({
+      instructorUserIds: input.instructorUserIds,
+      instructorUserId: input.instructorUserId,
+      instructorName: input.instructorName,
+      branchId: input.branchId,
+    });
+    await TheoryCohortInstructorService.assertAssignableTheoryInstructors(
+      resolvedInstructorIds,
+      input.branchId,
+    );
+    const instructorUserId = resolvedInstructorIds[0] ?? null;
+    const instructorName =
+      (await TheoryCohortInstructorService.buildInstructorDisplayName(resolvedInstructorIds)) ||
+      input.instructorName.trim();
 
     return sequelize.transaction(async (t) => {
       const c = await TheoryCohort.create(
@@ -178,7 +254,7 @@ export default class TheoryCohortService {
           startDateIso: input.startDateIso,
           endDateIso: input.endDateIso,
           seats: input.seats,
-          instructorName: input.instructorName.trim(),
+          instructorName,
           meetLink: input.meetLink?.trim() ?? '',
           status: input.status,
           branchId: input.branchId,
@@ -191,10 +267,16 @@ export default class TheoryCohortService {
         },
         { transaction: t },
       );
-      await TheoryCohortSessionService.syncSessionsForCohort(c, t);
+      await TheoryCohortInstructorService.syncInstructors(
+        c.id,
+        resolvedInstructorIds,
+        input.branchId,
+        t,
+      );
       await c.reload({ transaction: t });
+      await TheoryCohortSessionService.syncSessionsForCohort(c, t);
       const genCount = await sessionCountForCohort(c.id);
-      return toDto(c, 0, genCount);
+      return toDto(c, 0, genCount, resolvedInstructorIds);
     });
   }
 
@@ -215,6 +297,7 @@ export default class TheoryCohortService {
       lessonWeekdays?: number[];
       totalLessons?: number;
       instructorUserId?: number | null;
+      instructorUserIds?: number[] | null;
     }>,
   ): Promise<TheoryCohortDto | null> {
     const c = await TheoryCohort.findByPk(id);
@@ -242,13 +325,65 @@ export default class TheoryCohortService {
       totalLessons: nextTotal,
     });
 
+    const nextBranchId = patch.branchId !== undefined ? patch.branchId : c.branchId;
+    const instructorsTouched =
+      patch.instructorUserIds !== undefined ||
+      patch.instructorUserId !== undefined ||
+      patch.instructorName !== undefined;
+    let nextInstructorIds: number[] | undefined;
+    if (patch.instructorUserIds !== undefined || patch.instructorUserId !== undefined) {
+      nextInstructorIds = await resolveInstructorUserIdsFromInput({
+        instructorUserIds: patch.instructorUserIds,
+        instructorUserId: patch.instructorUserId,
+        instructorName: patch.instructorName ?? c.instructorName,
+        branchId: nextBranchId,
+      });
+      await TheoryCohortInstructorService.assertAssignableTheoryInstructors(
+        nextInstructorIds,
+        nextBranchId,
+      );
+    } else if (patch.branchId !== undefined && patch.branchId !== c.branchId) {
+      nextInstructorIds = await TheoryCohortInstructorService.resolveInstructorUserIds(c);
+      if (nextInstructorIds.length > 0) {
+        await TheoryCohortInstructorService.assertAssignableTheoryInstructors(
+          nextInstructorIds,
+          nextBranchId,
+        );
+      }
+    }
+    const nextInstructorUserId =
+      nextInstructorIds !== undefined
+        ? nextInstructorIds[0] ?? null
+        : patch.instructorUserId !== undefined
+          ? patch.instructorUserId == null ||
+            !Number.isFinite(Number(patch.instructorUserId)) ||
+            Number(patch.instructorUserId) <= 0
+            ? null
+            : Math.round(Number(patch.instructorUserId))
+          : c.instructorUserId != null && Number.isFinite(Number(c.instructorUserId)) && Number(c.instructorUserId) > 0
+            ? Math.round(Number(c.instructorUserId))
+            : null;
+    if (nextInstructorUserId != null) {
+      await assertCohortInstructorServesBranch(nextInstructorUserId, nextBranchId);
+    }
+    const nextInstructorName =
+      nextInstructorIds !== undefined
+        ? (await TheoryCohortInstructorService.buildInstructorDisplayName(nextInstructorIds)) ||
+          (patch.instructorName !== undefined ? patch.instructorName.trim() : c.instructorName)
+        : patch.instructorName !== undefined
+          ? patch.instructorName.trim()
+          : undefined;
+
     return sequelize.transaction(async (t) => {
+    if (nextInstructorIds !== undefined) {
+      await TheoryCohortInstructorService.syncInstructors(c.id, nextInstructorIds, nextBranchId, t);
+    }
     await c.update({
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.startDateIso !== undefined ? { startDateIso: patch.startDateIso } : {}),
       ...(patch.endDateIso !== undefined ? { endDateIso: patch.endDateIso } : {}),
       ...(patch.seats !== undefined ? { seats: patch.seats } : {}),
-      ...(patch.instructorName !== undefined ? { instructorName: patch.instructorName.trim() } : {}),
+      ...(nextInstructorName !== undefined ? { instructorName: nextInstructorName } : {}),
       ...(patch.meetLink !== undefined ? { meetLink: patch.meetLink.trim() } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
       ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
@@ -266,25 +401,23 @@ export default class TheoryCohortService {
         ? { lessonWeekdays: TheoryCohortSessionService.serializeWeekdaysForStorage(patch.lessonWeekdays) }
         : {}),
       ...(patch.totalLessons !== undefined ? { totalLessons: Math.max(0, Math.floor(patch.totalLessons)) } : {}),
-      ...(patch.instructorUserId !== undefined
-        ? {
-            instructorUserId:
-              patch.instructorUserId == null || !Number.isFinite(Number(patch.instructorUserId)) || Number(patch.instructorUserId) <= 0
-                ? null
-                : Math.round(Number(patch.instructorUserId)),
-          }
+      ...(instructorsTouched || patch.instructorUserId !== undefined
+        ? { instructorUserId: nextInstructorUserId }
         : {}),
     }, { transaction: t });
     await c.reload({ transaction: t });
     await TheoryCohortSessionService.syncSessionsForCohort(c, t);
     const genCount = await sessionCountForCohort(c.id);
-    return toDto(c, enc, genCount);
+    const linked =
+      nextInstructorIds ?? (await TheoryCohortInstructorService.listInstructorUserIdsForCohort(c.id));
+    return toDto(c, enc, genCount, linked);
     });
   }
 
   static async remove(id: number): Promise<boolean> {
     return sequelize.transaction(async (t) => {
       await TheoryCohortSessionService.removeAllForCohort(id, t);
+      await TheoryCohortInstructorService.removeAllForCohort(id, t);
       await TheoryCohortEnrollment.destroy({ where: { cohortId: id }, transaction: t });
       const n = await TheoryCohort.destroy({ where: { id }, transaction: t });
       return n > 0;

@@ -1,6 +1,7 @@
 import { Op, Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import { TheoryCohort, TheoryCohortEnrollment, TheoryCohortSession, User } from '../models';
+import TheoryCohortInstructorService from './theory-cohort-instructor.service';
 import {
   generateCohortSessions,
   parseLessonWeekdays,
@@ -202,11 +203,19 @@ export default class TheoryCohortSessionService {
     });
     if (planned.length === 0) return 0;
 
-    const instructorUserId = await resolveInstructorUserId(
+    const cohortInstructorIds = await TheoryCohortInstructorService.resolveInstructorUserIds(cohort);
+    const fallbackInstructorUserId = await resolveInstructorUserId(
       cohort.instructorName,
       cohort.branchId,
       cohort.instructorUserId,
     );
+    const pickInstructorUserId = (lessonIndex: number): number | null => {
+      if (cohortInstructorIds.length > 0) {
+        const idx = Math.max(0, Math.floor(lessonIndex) - 1);
+        return cohortInstructorIds[idx % cohortInstructorIds.length] ?? null;
+      }
+      return fallbackInstructorUserId;
+    };
 
     const existing = await TheoryCohortSession.findAll({
       where: { cohortId: cohort.id },
@@ -225,6 +234,7 @@ export default class TheoryCohortSessionService {
 
     let created = 0;
     for (const p of planned) {
+      const instructorUserId = pickInstructorUserId(p.lessonIndex);
       const key = `${p.dateIso}:${p.startTime}`;
       const prev = existingByKey.get(key);
       if (prev) {

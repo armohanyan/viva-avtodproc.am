@@ -128,7 +128,10 @@ export default class AuthService {
       throw new UnauthorizedError('Invalid email or password', HttpStatusCodesUtil.UNAUTHORIZED);
     }
 
-    if (user.accountType === 'admin' || user.accountType === 'super_admin') {
+    if (
+      !config.AUTH.DISABLE_ADMIN_MFA &&
+      (user.accountType === 'admin' || user.accountType === 'super_admin')
+    ) {
       const { default: AdminMfaService } = await import('./admin-mfa.service');
       const { mfaToken } = await AdminMfaService.startForUser(user);
       return { kind: 'mfa_required', mfaToken };

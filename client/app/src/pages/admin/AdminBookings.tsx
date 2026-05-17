@@ -21,7 +21,10 @@ import { useLocation, useSearch } from "wouter";
 import { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import type { AdminBookingFlowKind, AdminPackageOption, TheoryCohortOption } from "src/modules/admin/booking/types";
 import { theoryGroupSlotPlanFromCohort } from "src/modules/admin/booking/theoryGroupSlotPlan";
-import { isTheoryCohortBookableStatus } from "src/modules/admin/booking/adminTheoryCohort";
+import {
+  filterTheoryCohortsByBranchId,
+  isTheoryCohortBookableStatus,
+} from "src/modules/admin/booking/adminTheoryCohort";
 import BookingTypeSelector from "src/modules/admin/booking/BookingTypeSelector";
 import InstructorSelector from "src/modules/admin/booking/InstructorSelector";
 import GroupLessonSelector from "src/modules/admin/booking/GroupLessonSelector";
@@ -39,7 +42,9 @@ import { useInstructors } from "src/modules/instructors/useInstructors";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import {
   PRACTICAL_LESSON_TYPES,
+  filterInstructorsServingBranches,
   getLessonTypeLabel,
+  withSelectedInstructorByName,
   type PracticalLessonType,
 } from "src/modules/instructors/instructor-booking";
 import { cn } from "src/lib/utils";
@@ -303,6 +308,19 @@ export default function AdminBookings() {
     [theoryCohorts],
   );
 
+  const addTheoryCohorts = useMemo(
+    () => filterTheoryCohortsByBranchId(bookableTheoryCohorts, draft?.branchId),
+    [bookableTheoryCohorts, draft?.branchId],
+  );
+
+  const editTheoryCohorts = useMemo(
+    () =>
+      editBooking?.type === "theory"
+        ? filterTheoryCohortsByBranchId(bookableTheoryCohorts, editBooking.branchId)
+        : bookableTheoryCohorts,
+    [bookableTheoryCohorts, editBooking?.branchId, editBooking?.type],
+  );
+
   const [addFlowKind, setAddFlowKind] = useState<AdminBookingFlowKind>("practical");
   const [addPackageId, setAddPackageId] = useState("");
   const [addPackagePracticalSlotPick, setAddPackagePracticalSlotPick] = useState<LessonBookingPayload | null>(null);
@@ -314,24 +332,54 @@ export default function AdminBookings() {
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [packagesFetchError, setPackagesFetchError] = useState(false);
 
-  const practicalInstructorsForCalendar = useMemo(
+  const activePracticalInstructors = useMemo(
     () => instructors.filter((i) => i.status === "active" && i.teachesPractical),
     [instructors],
   );
 
-  const defaultPracticalInstructorName = useMemo(
-    () => instructors.find((i) => i.status === "active" && i.teachesPractical)?.name ?? instructorNames[0] ?? "",
-    [instructors, instructorNames],
-  );
-
-  const theoryPersonalInstructorNames = useMemo(
-    () =>
-      instructors.filter((i) => i.status === "active" && i.teachesTheory).map((i) => i.name),
+  const activeTheoryInstructors = useMemo(
+    () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
     [instructors],
   );
 
+  const practicalInstructorsForAdd = useMemo(() => {
+    const branchIds = draft?.branchId ? [draft.branchId] : [];
+    const filtered = filterInstructorsServingBranches(activePracticalInstructors, branchIds);
+    return withSelectedInstructorByName(filtered, draft?.instructorName, activePracticalInstructors);
+  }, [activePracticalInstructors, draft?.branchId, draft?.instructorName]);
+
+  const practicalInstructorsForEdit = useMemo(() => {
+    const branchIds = editBooking?.branchId ? [editBooking.branchId] : [];
+    const filtered = filterInstructorsServingBranches(activePracticalInstructors, branchIds);
+    return withSelectedInstructorByName(filtered, editBooking?.instructorName, activePracticalInstructors);
+  }, [activePracticalInstructors, editBooking?.branchId, editBooking?.instructorName]);
+
+  const practicalInstructorsForCalendar = practicalInstructorsForAdd;
+
+  const defaultPracticalInstructorName = useMemo(
+    () => practicalInstructorsForAdd[0]?.name ?? instructorNames[0] ?? "",
+    [practicalInstructorsForAdd, instructorNames],
+  );
+
+  const theoryPersonalInstructorsForAdd = useMemo(() => {
+    const branchIds = draft?.branchId ? [draft.branchId] : [];
+    const filtered = filterInstructorsServingBranches(activeTheoryInstructors, branchIds);
+    return withSelectedInstructorByName(filtered, draft?.instructorName, activeTheoryInstructors);
+  }, [activeTheoryInstructors, draft?.branchId, draft?.instructorName]);
+
+  const theoryPersonalInstructorsForEdit = useMemo(() => {
+    const branchIds = editBooking?.branchId ? [editBooking.branchId] : [];
+    const filtered = filterInstructorsServingBranches(activeTheoryInstructors, branchIds);
+    return withSelectedInstructorByName(filtered, editBooking?.instructorName, activeTheoryInstructors);
+  }, [activeTheoryInstructors, editBooking?.branchId, editBooking?.instructorName]);
+
+  const theoryPersonalInstructorNames = useMemo(
+    () => theoryPersonalInstructorsForAdd.map((i) => i.name),
+    [theoryPersonalInstructorsForAdd],
+  );
+
   const theoryEditCalendarInstructors = useMemo(() => {
-    const base = instructors.filter((i) => i.status === "active" && i.teachesTheory);
+    const base = theoryPersonalInstructorsForEdit;
     if (editBooking?.type !== "theory" || !editTheoryCohortId) return base;
     const c = bookableTheoryCohorts.find((x) => x.id === editTheoryCohortId);
     if (!c) return base;
@@ -340,7 +388,7 @@ export default function AdminBookings() {
       return [...base, full];
     }
     return base;
-  }, [editBooking?.type, editTheoryCohortId, bookableTheoryCohorts, instructors]);
+  }, [editBooking?.type, editTheoryCohortId, bookableTheoryCohorts, instructors, theoryPersonalInstructorsForEdit]);
 
   const calendarInstructorId = useMemo(() => {
     if (!draft) return "";
@@ -372,10 +420,7 @@ export default function AdminBookings() {
     return "";
   }, [editBooking, instructors, editTheoryCohortId, bookableTheoryCohorts]);
 
-  const packageTheoryCalendarInstructors = useMemo(
-    () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
-    [instructors],
-  );
+  const packageTheoryCalendarInstructors = theoryPersonalInstructorsForAdd;
 
   const packageTheoryCalendarInstructorId = useMemo(() => {
     if (addPackageTheorySlotPick?.instructorUserId) {
@@ -386,10 +431,7 @@ export default function AdminBookings() {
     return m?.id ?? packageTheoryCalendarInstructors[0]?.id ?? "";
   }, [addPackageTheorySlotPick, addPackageTheoryInstructorName, instructors, packageTheoryCalendarInstructors]);
 
-  const theoryPersonalCalendarInstructors = useMemo(
-    () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
-    [instructors],
-  );
+  const theoryPersonalCalendarInstructors = theoryPersonalInstructorsForAdd;
 
   const theoryPersonalCalendarInstructorId = useMemo(() => {
     if (!draft || draft.type !== "theory_personal") return "";
@@ -415,6 +457,7 @@ export default function AdminBookings() {
           {
             id: number;
             name: string;
+            startDateIso: string;
             branchId: number;
             instructorName: string;
             status: string;
@@ -450,7 +493,74 @@ export default function AdminBookings() {
     return () => {
       cancelled = true;
     };
-  }, [addOpen, editBooking]);
+  }, [addOpen, editBooking, branchFilterRevision]);
+
+  useEffect(() => {
+    if (!addOpen || addFlowKind !== "theory_group" || !theoryCohortId || !draft?.branchId) return;
+    const c = bookableTheoryCohorts.find((x) => x.id === theoryCohortId);
+    if (c && c.branchId !== draft.branchId) {
+      setTheoryCohortId("");
+    }
+  }, [addOpen, addFlowKind, draft?.branchId, theoryCohortId, bookableTheoryCohorts]);
+
+  useEffect(() => {
+    if (!editBooking || editBooking.type !== "theory" || !editTheoryCohortId) return;
+    const c = bookableTheoryCohorts.find((x) => x.id === editTheoryCohortId);
+    if (c && c.branchId !== editBooking.branchId) {
+      setEditTheoryCohortId("");
+    }
+  }, [editBooking, editTheoryCohortId, bookableTheoryCohorts]);
+
+  useEffect(() => {
+    if (!addOpen || !draft?.branchId) return;
+    if (addFlowKind === "practical") {
+      const stillValid = practicalInstructorsForAdd.some((i) => i.name === draft.instructorName);
+      if (stillValid) return;
+      const first = practicalInstructorsForAdd[0];
+      if (!first) return;
+      setDraft((d) => (d ? { ...d, instructorName: first.name } : d));
+      setSlotPick(null);
+      return;
+    }
+    if (addFlowKind === "theory_personal") {
+      const stillValid = theoryPersonalInstructorsForAdd.some((i) => i.name === draft.instructorName);
+      if (stillValid) return;
+      const first = theoryPersonalInstructorsForAdd[0];
+      if (!first) return;
+      setDraft((d) => (d ? { ...d, instructorName: first.name } : d));
+      setSlotPick(null);
+    }
+  }, [
+    addOpen,
+    addFlowKind,
+    draft?.branchId,
+    draft?.instructorName,
+    practicalInstructorsForAdd,
+    theoryPersonalInstructorsForAdd,
+  ]);
+
+  useEffect(() => {
+    if (!editBooking?.branchId) return;
+    if (editBooking.type === "practical") {
+      const stillValid = practicalInstructorsForEdit.some((i) => i.name === editBooking.instructorName);
+      if (stillValid) return;
+      const first = practicalInstructorsForEdit[0];
+      if (!first) return;
+      setEditBooking({ ...editBooking, instructorName: first.name });
+      lastEditSlotInitKey.current = "";
+    } else if (editBooking.type === "theory_personal") {
+      const stillValid = theoryPersonalInstructorsForEdit.some((i) => i.name === editBooking.instructorName);
+      if (stillValid) return;
+      const first = theoryPersonalInstructorsForEdit[0];
+      if (!first) return;
+      setEditBooking({ ...editBooking, instructorName: first.name });
+      lastEditSlotInitKey.current = "";
+    }
+  }, [
+    editBooking,
+    practicalInstructorsForEdit,
+    theoryPersonalInstructorsForEdit,
+  ]);
 
   useEffect(() => {
     if (!addOpen && !editBooking) return;
@@ -599,12 +709,10 @@ export default function AdminBookings() {
       setEditTheoryCohortId("");
       return;
     }
-    const matches = bookableTheoryCohorts.filter(
-      (c) => c.branchId === editBooking.branchId && c.instructorName === editBooking.instructorName,
-    );
+    const matches = editTheoryCohorts.filter((c) => c.instructorName === editBooking.instructorName);
     const next = matches[0]?.id ?? "";
     setEditTheoryCohortId((prev) => (prev && matches.some((m) => m.id === prev) ? prev : next));
-  }, [editBooking, bookableTheoryCohorts]);
+  }, [editBooking, editTheoryCohorts]);
 
   useEffect(() => {
     if (!editBooking || editBooking.type !== "practical") {
@@ -846,7 +954,7 @@ export default function AdminBookings() {
       instructorName: draft?.instructorName ?? "",
       slotPick,
       theoryCohortId,
-      theoryCohorts: bookableTheoryCohorts,
+      theoryCohorts: addTheoryCohorts,
       selectedPackage: selectedAddPackage,
       packagePracticalSlots: addPackagePracticalSlotPick,
       packageTheorySlots: addPackageTheorySlotPick,
@@ -857,7 +965,7 @@ export default function AdminBookings() {
       draft?.instructorName,
       slotPick,
       theoryCohortId,
-      bookableTheoryCohorts,
+      addTheoryCohorts,
       selectedAddPackage,
       addPackagePracticalSlotPick,
       addPackageTheorySlotPick,
@@ -879,7 +987,7 @@ export default function AdminBookings() {
         instructorName: draft?.instructorName ?? "",
         slotPick,
         theoryCohortId,
-        theoryCohorts: bookableTheoryCohorts,
+        theoryCohorts: addTheoryCohorts,
         calendarInstructorId:
           addFlowKind === "theory_group"
             ? calendarInstructorId
@@ -898,7 +1006,7 @@ export default function AdminBookings() {
       draft?.instructorName,
       slotPick,
       theoryCohortId,
-      bookableTheoryCohorts,
+      addTheoryCohorts,
       calendarInstructorId,
       theoryPersonalCalendarInstructorId,
       selectedAddPackage,
@@ -937,7 +1045,7 @@ export default function AdminBookings() {
       };
     }
     if (addFlowKind === "theory_group") {
-      const c = bookableTheoryCohorts.find((x) => x.id === theoryCohortId);
+      const c = addTheoryCohorts.find((x) => x.id === theoryCohortId);
       const plan = c ? theoryGroupSlotPlanFromCohort(c) : null;
       const details: string[] = [];
       if (c) details.push(`${c.name} — ${c.instructorName}`);
@@ -998,7 +1106,7 @@ export default function AdminBookings() {
     t,
     slotPick,
     theoryCohortId,
-    bookableTheoryCohorts,
+    addTheoryCohorts,
     instructors,
     selectedAddPackage,
     addPackagePracticalSlotPick,
@@ -1400,7 +1508,7 @@ export default function AdminBookings() {
           });
         }
       } else {
-        const theoryCohort = bookableTheoryCohorts.find((x) => x.id === theoryCohortId);
+        const theoryCohort = addTheoryCohorts.find((x) => x.id === theoryCohortId);
         const theoryPlan =
           draft.type === "theory" && theoryCohort ? theoryGroupSlotPlanFromCohort(theoryCohort) : null;
         const pick = slotPick!;
@@ -1913,7 +2021,7 @@ export default function AdminBookings() {
                         setEditTheoryCohortId(id);
                         setEditSlotPick(null);
                         lastEditSlotInitKey.current = "";
-                        const c = bookableTheoryCohorts.find((x) => x.id === id);
+                        const c = editTheoryCohorts.find((x) => x.id === id);
                         if (c) {
                           setEditBooking((eb) =>
                             eb
@@ -1929,7 +2037,7 @@ export default function AdminBookings() {
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="">{t("adminBookingTheoryCohortPlaceholder")}</option>
-                      {bookableTheoryCohorts.map((c) => (
+                      {editTheoryCohorts.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name} — {c.instructorName}
                           {theoryCohortSelectSuffix(c)}
@@ -1966,7 +2074,7 @@ export default function AdminBookings() {
                       }}
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      {practicalInstructorsForCalendar.map((ins) => (
+                      {practicalInstructorsForEdit.map((ins) => (
                         <option key={ins.id} value={ins.name}>
                           {ins.name}
                         </option>
@@ -2008,9 +2116,9 @@ export default function AdminBookings() {
                       }}
                       className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     >
-                      {theoryPersonalInstructorNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
+                      {theoryPersonalInstructorsForEdit.map((ins) => (
+                        <option key={ins.id} value={ins.name}>
+                          {ins.name}
                         </option>
                       ))}
                     </select>
@@ -2201,12 +2309,12 @@ export default function AdminBookings() {
                         <GroupLessonSelector
                           label={t("adminBookingTheoryCohortLabel")}
                           placeholderKey="adminBookingTheoryCohortPlaceholder"
-                          cohorts={bookableTheoryCohorts}
+                          cohorts={addTheoryCohorts}
                           valueId={theoryCohortId}
                           onChangeId={(id) => {
                             setTheoryCohortId(id);
                             setSlotPick(null);
-                            const c = bookableTheoryCohorts.find((x) => x.id === id);
+                            const c = addTheoryCohorts.find((x) => x.id === id);
                             if (c) {
                               const plan = theoryGroupSlotPlanFromCohort(c);
                               setDraft((d) =>

@@ -9,10 +9,45 @@ export type InstructorFilterInput = {
   branchIds?: readonly string[];
 };
 
-type InstructorForPracticalBooking = {
-  teachesPractical: boolean;
-  availableBranchIds: string[];
+type InstructorWithBranches = {
+  availableBranchIds?: readonly string[];
 };
+
+type InstructorForPracticalBooking = InstructorWithBranches & {
+  teachesPractical: boolean;
+};
+
+/** True when the instructor is linked to at least one of the given branch ids (N:N via `instructor_branches`). */
+export function instructorServesAnyBranch(
+  instructor: InstructorWithBranches,
+  branchIds: readonly string[],
+): boolean {
+  if (branchIds.length === 0) return true;
+  const served = new Set(instructor.availableBranchIds ?? []);
+  return branchIds.some((id) => served.has(id));
+}
+
+export function filterInstructorsServingBranches<T extends InstructorWithBranches>(
+  source: readonly T[],
+  branchIds: readonly string[],
+): T[] {
+  if (branchIds.length === 0) return [...source];
+  return source.filter((ins) => instructorServesAnyBranch(ins, branchIds));
+}
+
+/** Keep the current selection visible when branch assignments change. */
+export function withSelectedInstructorByName<T extends { id: string; name: string }>(
+  list: readonly T[],
+  selectedName: string | undefined,
+  all: readonly T[],
+): T[] {
+  if (!selectedName) return [...list];
+  const selected = all.find((i) => i.name === selectedName);
+  if (selected && !list.some((i) => i.id === selected.id)) {
+    return [...list, selected];
+  }
+  return [...list];
+}
 
 export function getLessonTypeLabel(type: PracticalLessonType): string {
   return type === "exam" ? "քննական" : "քաղաքային";

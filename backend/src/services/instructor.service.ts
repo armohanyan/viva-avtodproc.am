@@ -12,6 +12,7 @@ import {
 } from '../models';
 import { Op } from 'sequelize';
 import FleetService from './fleet.service';
+import InstructorBranchService from './instructor-branch.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -191,10 +192,7 @@ export default class InstructorService {
       teachesTheory: input.teachesTheory,
       status: input.status,
     });
-    await InstructorBranch.destroy({ where: { instructorUserId: user.id } });
-    for (const branchId of input.availableBranchIds) {
-      await InstructorBranch.create({ instructorUserId: user.id, branchId });
-    }
+    await InstructorBranchService.syncBranches(user.id, input.availableBranchIds);
     await InstructorScheduleRule.create({
       instructorUserId: user.id,
       ruleKind: 'lunch',
@@ -245,10 +243,7 @@ export default class InstructorService {
       ...(patch.status !== undefined ? { status: patch.status } : {}),
     });
     if (patch.availableBranchIds !== undefined) {
-      await InstructorBranch.destroy({ where: { instructorUserId: id } });
-      for (const branchId of patch.availableBranchIds) {
-        await InstructorBranch.create({ instructorUserId: id, branchId });
-      }
+      await InstructorBranchService.syncBranches(id, patch.availableBranchIds);
     }
     if (patch.fleetCarIds !== undefined) {
       await FleetService.syncInstructorCars(id, patch.fleetCarIds);

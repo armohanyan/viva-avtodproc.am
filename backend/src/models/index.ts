@@ -34,6 +34,7 @@ import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
 import { TheoryCohortEnrollment } from './theory-cohort-enrollment.model';
 import { TheoryCohortSession } from './theory-cohort-session.model';
+import { TheoryCohortInstructor } from './theory-cohort-instructor.model';
 import { User } from './user.model';
 import { RefreshToken } from './refresh-token.model';
 import { OAuthAccount } from './oauth-account.model';
@@ -70,6 +71,18 @@ User.hasMany(InstructorBranch, { foreignKey: 'instructorUserId', sourceKey: 'id'
 Branch.hasMany(InstructorBranch, { foreignKey: 'branchId', sourceKey: 'id' });
 InstructorBranch.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
 InstructorBranch.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+User.belongsToMany(Branch, {
+  through: InstructorBranch,
+  foreignKey: 'instructorUserId',
+  otherKey: 'branchId',
+  as: 'branches',
+});
+Branch.belongsToMany(User, {
+  through: InstructorBranch,
+  foreignKey: 'branchId',
+  otherKey: 'instructorUserId',
+  as: 'instructors',
+});
 
 User.hasMany(InstructorScheduleRule, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 InstructorScheduleRule.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
@@ -97,6 +110,10 @@ TheoryCohortEnrollment.belongsTo(TheoryCohort, { foreignKey: 'cohortId', targetK
 TheoryCohortEnrollment.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
 TheoryCohort.hasMany(TheoryCohortSession, { foreignKey: 'cohortId', sourceKey: 'id', as: 'sessions' });
 TheoryCohortSession.belongsTo(TheoryCohort, { foreignKey: 'cohortId', targetKey: 'id', as: 'cohort' });
+TheoryCohort.hasMany(TheoryCohortInstructor, { foreignKey: 'cohortId', sourceKey: 'id' });
+TheoryCohortInstructor.belongsTo(TheoryCohort, { foreignKey: 'cohortId', targetKey: 'id' });
+TheoryCohortInstructor.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
+User.hasMany(TheoryCohortInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 
 User.hasMany(StudentExtraPractical, { foreignKey: 'userId', sourceKey: 'id' });
 StudentExtraPractical.belongsTo(User, { foreignKey: 'userId', targetKey: 'id' });
@@ -169,6 +186,7 @@ export {
   StudentProfile,
   TheoryCohort,
   TheoryCohortEnrollment,
+  TheoryCohortInstructor,
   TheoryCohortSession,
   User,
 };
@@ -1665,6 +1683,76 @@ async function ensureTheoryCohortSessionsTable(): Promise<void> {
   console.info('[migrate] Table theory_cohort_sessions created.');
 }
 
+/** `branch_id` on theory cohorts (which branch the group belongs to). */
+async function ensureTheoryCohortBranchIdColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohorts' AND COLUMN_NAME = 'branch_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `theory_cohorts` ADD COLUMN `branch_id` INT UNSIGNED NOT NULL DEFAULT 1',
+  );
+  const branchRows = await sequelize.query<{ id: number }>(
+    'SELECT `id` FROM `branches` ORDER BY `id` ASC LIMIT 1',
+    { type: QueryTypes.SELECT },
+  );
+  const defaultBranchId = branchRows[0]?.id;
+  if (defaultBranchId != null && Number.isFinite(Number(defaultBranchId))) {
+    await sequelize.query('UPDATE `theory_cohorts` SET `branch_id` = ? WHERE `branch_id` = 0 OR `branch_id` IS NULL', {
+      replacements: [Math.floor(Number(defaultBranchId))],
+    });
+  }
+}
+
+async function ensureTheoryCohortInstructorsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'theory_cohort_instructors'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length > 0) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table theory_cohort_instructors …');
+  await sequelize.query(`
+    CREATE TABLE \`theory_cohort_instructors\` (
+      \`cohort_id\` INT UNSIGNED NOT NULL,
+      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`cohort_id\`, \`instructor_user_id\`),
+      KEY \`idx_theory_cohort_instructor_user\` (\`instructor_user_id\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+  await sequelize.query(`
+    INSERT IGNORE INTO \`theory_cohort_instructors\` (\`cohort_id\`, \`instructor_user_id\`)
+    SELECT \`id\`, \`instructor_user_id\`
+    FROM \`theory_cohorts\`
+    WHERE \`instructor_user_id\` IS NOT NULL AND \`instructor_user_id\` > 0
+  `);
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Table theory_cohort_instructors created.');
+}
+
 async function ensureTheoryCohortPriceAmdColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -1785,7 +1873,9 @@ export async function syncModels(): Promise<void> {
   await ensureTheoryCohortSessionTimeColumns();
   await ensureTheoryCohortScheduleFields();
   await ensureTheoryCohortSessionsTable();
+  await ensureTheoryCohortBranchIdColumn();
   await ensureTheoryCohortPriceAmdColumn();
+  await ensureTheoryCohortInstructorsTable();
   await migrateLegacyInstructorAvailabilityBlocksTable();
   await ensurePackagesImageUrlColumn();
   await ensurePackagesTheoryLessonsColumn();

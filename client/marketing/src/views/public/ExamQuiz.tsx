@@ -13,7 +13,7 @@ import {
   selectQuestionsForMode,
   type ExamQuizMode,
 } from "src/data/examSampleQuestions";
-import { CheckCircle2, CircleHelp, MessageSquare, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import {
   addExamAttempt,
@@ -28,8 +28,7 @@ import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMet
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 import ExamQuizToolbar from "src/components/exam/ExamQuizToolbar";
-import ExamQuizToolbarCommentsSlot from "src/components/exam/ExamQuizToolbarCommentsSlot";
-import { quizToolbarTouchTarget } from "src/components/exam/quizToolbarStyles";
+import ExamQuizQuestionCommentButton from "src/components/exam/ExamQuizQuestionCommentButton";
 import { cn } from "src/lib/utils";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
@@ -164,6 +163,12 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   }, [resumable, topicId, topicQuestionIds, questions, round]);
 
   const finished = Boolean(questions.length > 0 && index >= questions.length);
+
+  const questionDetailHref = useCallback(
+    (questionId: string) =>
+      `${mode === "topics" ? "/thematic-questions/question" : "/exam-tests/question"}/${questionId}`,
+    [mode],
+  );
 
   const allAnswered = useMemo(() => {
     if (questions.length === 0) return false;
@@ -447,7 +452,11 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                           ) : (
                             <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                           )}
-                          <p className="text-sm text-foreground font-medium">{loc.text}</p>
+                          <p className="text-sm text-foreground font-medium min-w-0 flex-1">{loc.text}</p>
+                          <ExamQuizQuestionCommentButton
+                            href={questionDetailHref(question.id)}
+                            Link={MarketingLink}
+                          />
                         </div>
                         {question.imageUrl ? (
                           <div className="mb-3">
@@ -536,21 +545,6 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                   ) : undefined
                 }
                 onBack={exitToExamTests}
-                commentsAction={
-                  <ExamQuizToolbarCommentsSlot>
-                    <MarketingLink href={`${mode === "topics" ? "/thematic-questions/question" : "/exam-tests/question"}/${q?.id ?? ""}`}>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        disabled={!q}
-                        className={quizToolbarTouchTarget}
-                        aria-label={t("questionDetailOpenAction")}
-                      >
-                        <MessageSquare className="size-4" aria-hidden />
-                      </Button>
-                    </MarketingLink>
-                  </ExamQuizToolbarCommentsSlot>
-                }
                 focusMode={focusMode}
                 onFocusToggle={() => setFocusMode((v) => !v)}
                 layoutMode={layoutMode}
@@ -560,7 +554,17 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                 <Reveal delay={0.06}>
                   <Card className="p-8 border-border">
                     {q?.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
-                    <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{current?.text ?? ""}</h2>
+                    <div className="flex items-start justify-between gap-3 mb-6">
+                      <h2 className="text-lg font-semibold text-foreground leading-snug min-w-0 flex-1">
+                        {current?.text ?? ""}
+                      </h2>
+                      {q ? (
+                        <ExamQuizQuestionCommentButton
+                          href={questionDetailHref(q.id)}
+                          Link={MarketingLink}
+                        />
+                      ) : null}
+                    </div>
                     <div className="space-y-2">
                       {current?.options.map((opt, i) => {
                         const hideImmediateFeedback = timedExam;
@@ -641,9 +645,15 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                       return (
                         <Reveal key={question.id} delay={Math.min(qIdx, 10) * 0.03}>
                           <Card className="p-6 sm:p-8 border-border">
-                            <p className="text-xs font-medium text-muted-foreground mb-3">
-                              {t("examQuizQuestion")} {qIdx + 1} {t("examQuizOf")} {questions.length}
-                            </p>
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                {t("examQuizQuestion")} {qIdx + 1} {t("examQuizOf")} {questions.length}
+                              </p>
+                              <ExamQuizQuestionCommentButton
+                                href={questionDetailHref(question.id)}
+                                Link={MarketingLink}
+                              />
+                            </div>
                             {question.imageUrl ? (
                               <ExamQuestionFigure url={question.imageUrl} alt={t("examQuizQuestionImageAlt")} />
                             ) : null}

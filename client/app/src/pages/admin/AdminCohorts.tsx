@@ -12,6 +12,7 @@ import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
+import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
@@ -19,7 +20,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
-import { allInstructorNames } from "src/modules/admin/adminPeople";
+import { theoryInstructorsForBranch } from "src/modules/admin/adminPeople";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -43,6 +44,7 @@ type Cohort = {
   lessonWeekdays: number[];
   totalLessons: number;
   instructorUserId: string | null;
+  instructorUserIds: string[];
   generatedSessionCount: number;
 };
 
@@ -68,7 +70,6 @@ export default function AdminCohorts() {
   const { showToast } = useToast();
   const { branches } = useBranches();
   const { instructors } = useInstructors();
-  const instructorNames = useMemo(() => allInstructorNames(instructors), [instructors]);
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
 
   const refreshCohorts = useCallback(async () => {
@@ -91,6 +92,7 @@ export default function AdminCohorts() {
           lessonWeekdays?: number[];
           totalLessons?: number;
           instructorUserId?: number | null;
+          instructorUserIds?: number[];
           generatedSessionCount?: number;
         }[]
       >("/theory-cohorts");
@@ -117,6 +119,11 @@ export default function AdminCohorts() {
                 row.instructorUserId != null && Number.isFinite(row.instructorUserId)
                   ? String(row.instructorUserId)
                   : null,
+              instructorUserIds: Array.isArray(row.instructorUserIds)
+                ? row.instructorUserIds.filter((id) => Number.isFinite(id)).map(String)
+                : row.instructorUserId != null && Number.isFinite(row.instructorUserId)
+                  ? [String(row.instructorUserId)]
+                  : [],
               generatedSessionCount:
                 typeof row.generatedSessionCount === "number" ? row.generatedSessionCount : 0,
             }))
@@ -131,6 +138,11 @@ export default function AdminCohorts() {
   useEffect(() => {
     void refreshCohorts();
   }, [refreshCohorts, branchFilterRevision]);
+
+  useEffect(() => {
+    if (branches.length === 0) return;
+    setNewCohort((n) => (n.branchId ? n : { ...n, branchId: branches[0]!.id }));
+  }, [branches]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -144,8 +156,7 @@ export default function AdminCohorts() {
     startDateIso: "",
     endDateIso: "",
     seats: 15,
-    instructorName: instructorNames[0] ?? "",
-    instructorUserId: instructors[0]?.id ?? "",
+    instructorUserIds: [] as string[],
     meetLink: "",
     branchId: "",
     sessionStartTime: "",
@@ -154,6 +165,40 @@ export default function AdminCohorts() {
     lessonWeekdays: [0, 2, 4] as number[],
     totalLessons: 10,
   });
+
+  const addCohortInstructors = useMemo(
+    () =>
+      theoryInstructorsForBranch(instructors, newCohort.branchId, {
+        selectedIds: newCohort.instructorUserIds,
+      }),
+    [instructors, newCohort.branchId, newCohort.instructorUserIds],
+  );
+  const addCohortInstructorOptions = useMemo(
+    () => addCohortInstructors.map((i) => ({ value: i.id, label: i.name })),
+    [addCohortInstructors],
+  );
+
+  const editCohortInstructors = useMemo(
+    () =>
+      theoryInstructorsForBranch(instructors, editCohort?.branchId, {
+        selectedIds: editCohort?.instructorUserIds,
+        selectedName: editCohort?.instructorName,
+      }),
+    [instructors, editCohort?.branchId, editCohort?.instructorName, editCohort?.instructorUserIds],
+  );
+  const editCohortInstructorOptions = useMemo(
+    () => editCohortInstructors.map((i) => ({ value: i.id, label: i.name })),
+    [editCohortInstructors],
+  );
+
+  const instructorNamesByIds = useCallback(
+    (ids: readonly string[]) =>
+      ids
+        .map((id) => instructors.find((i) => i.id === id)?.name)
+        .filter((name): name is string => Boolean(name))
+        .join(", "),
+    [instructors],
+  );
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -170,6 +215,10 @@ export default function AdminCohorts() {
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editCohort) return;
+    if (editCohort.instructorUserIds.length === 0) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
     try {
       await vivaApiJson(`/theory-cohorts/${encodeURIComponent(editCohort.id)}`, {
         method: "PATCH",
@@ -178,7 +227,11 @@ export default function AdminCohorts() {
           startDateIso: editCohort.startDateIso,
           endDateIso: editCohort.endDateIso || editCohort.startDateIso,
           seats: Math.max(1, editCohort.seats || 1),
-          instructorName: editCohort.instructorName.trim() || instructorNames[0] || "—",
+          instructorName:
+            instructorNamesByIds(editCohort.instructorUserIds).trim() ||
+            editCohort.instructorName.trim() ||
+            "—",
+          instructorUserIds: editCohort.instructorUserIds.map(Number),
           meetLink: editCohort.meetLink?.trim() ?? "",
           status: editCohort.status,
           branchId: editCohort.branchId,
@@ -207,6 +260,15 @@ export default function AdminCohorts() {
       showToast(t("fillRequired"), "error");
       return;
     }
+    const branchId = newCohort.branchId || branches[0]?.id || "";
+    if (!branchId) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
+    if (newCohort.instructorUserIds.length === 0) {
+      showToast(t("fillRequired"), "error");
+      return;
+    }
     try {
       const priceRaw = newCohort.priceAmd.trim();
       const parsedPrice = priceRaw === "" ? null : parseAmdInput(priceRaw);
@@ -219,16 +281,17 @@ export default function AdminCohorts() {
           startDateIso: newCohort.startDateIso,
           endDateIso: newCohort.endDateIso || newCohort.startDateIso,
           seats: Math.max(1, newCohort.seats || 1),
-          instructorName: newCohort.instructorName || instructorNames[0] || "—",
+          instructorName: instructorNamesByIds(newCohort.instructorUserIds) || "—",
           meetLink: newCohort.meetLink?.trim() ?? "",
           status: "upcoming",
-          branchId: newCohort.branchId || branches[0]?.id || "",
+          branchId,
           sessionStartTime: newCohort.sessionStartTime?.trim() || null,
           sessionEndTime: newCohort.sessionEndTime?.trim() || null,
           priceAmd,
           lessonWeekdays: newCohort.lessonWeekdays,
           totalLessons: newCohort.totalLessons,
-          instructorUserId: newCohort.instructorUserId ? Number(newCohort.instructorUserId) : null,
+          instructorUserIds: newCohort.instructorUserIds.map(Number),
+          instructorUserId: newCohort.instructorUserIds[0] ? Number(newCohort.instructorUserIds[0]) : null,
         },
       });
       setAddOpen(false);
@@ -237,8 +300,7 @@ export default function AdminCohorts() {
         startDateIso: "",
         endDateIso: "",
         seats: 15,
-        instructorName: instructorNames[0] ?? "",
-        instructorUserId: instructors[0]?.id ?? "",
+        instructorUserIds: [],
         meetLink: "",
         branchId: branches[0]?.id ?? "",
         sessionStartTime: "",
@@ -318,7 +380,12 @@ export default function AdminCohorts() {
               setNewCohort((n) => ({
                 ...n,
                 branchId: branches[0]?.id ?? "",
-                instructorName: instructorNames[0] ?? n.instructorName,
+                instructorUserIds:
+                  n.instructorUserIds.length > 0
+                    ? n.instructorUserIds
+                    : addCohortInstructors[0]
+                      ? [addCohortInstructors[0].id]
+                      : [],
               }));
               setAddOpen(true);
             }}
@@ -479,7 +546,18 @@ export default function AdminCohorts() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
                 <select
                   value={editCohort.branchId}
-                  onChange={(e) => setEditCohort({ ...editCohort, branchId: e.target.value })}
+                  onChange={(e) => {
+                    const branchId = e.target.value;
+                    const nextInstructors = theoryInstructorsForBranch(instructors, branchId, {
+                      selectedIds: editCohort.instructorUserIds,
+                    });
+                    const allowed = new Set(nextInstructors.map((i) => i.id));
+                    setEditCohort({
+                      ...editCohort,
+                      branchId,
+                      instructorUserIds: editCohort.instructorUserIds.filter((id) => allowed.has(id)),
+                    });
+                  }}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   {branches.map((b) => (
@@ -495,25 +573,20 @@ export default function AdminCohorts() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                <select
-                  value={editCohort.instructorName}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    const inst = instructors.find((i) => i.name === name);
+                <MultiSelectDropdown
+                  options={editCohortInstructorOptions}
+                  value={editCohort.instructorUserIds}
+                  onChange={(nextIds) =>
                     setEditCohort({
                       ...editCohort,
-                      instructorName: name,
-                      instructorUserId: inst?.id ?? editCohort.instructorUserId,
-                    });
-                  }}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {instructorNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
+                      instructorUserIds: nextIds,
+                      instructorName: instructorNamesByIds(nextIds),
+                      instructorUserId: nextIds[0] ?? null,
+                    })
+                  }
+                  placeholder={t("cohortColInstructor")}
+                  ariaLabel={t("cohortColInstructor")}
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -591,7 +664,6 @@ export default function AdminCohorts() {
                   }}
                   className="h-10"
                 />
-                <p className="text-xs text-muted-foreground mt-1">{t("cohortGroupPriceAmdHint")}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>
@@ -682,7 +754,18 @@ export default function AdminCohorts() {
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
               <select
                 value={newCohort.branchId}
-                onChange={(e) => setNewCohort({ ...newCohort, branchId: e.target.value })}
+                onChange={(e) => {
+                  const branchId = e.target.value;
+                  const nextInstructors = theoryInstructorsForBranch(instructors, branchId, {
+                    selectedIds: newCohort.instructorUserIds,
+                  });
+                  const allowed = new Set(nextInstructors.map((i) => i.id));
+                  setNewCohort({
+                    ...newCohort,
+                    branchId,
+                    instructorUserIds: newCohort.instructorUserIds.filter((id) => allowed.has(id)),
+                  });
+                }}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 {branches.map((b) => (
@@ -698,25 +781,13 @@ export default function AdminCohorts() {
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-              <select
-                value={newCohort.instructorName}
-                onChange={(e) => {
-                  const name = e.target.value;
-                  const inst = instructors.find((i) => i.name === name);
-                  setNewCohort({
-                    ...newCohort,
-                    instructorName: name,
-                    instructorUserId: inst?.id ?? newCohort.instructorUserId,
-                  });
-                }}
-                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {instructorNames.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                options={addCohortInstructorOptions}
+                value={newCohort.instructorUserIds}
+                onChange={(nextIds) => setNewCohort({ ...newCohort, instructorUserIds: nextIds })}
+                placeholder={t("cohortColInstructor")}
+                ariaLabel={t("cohortColInstructor")}
+              />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -779,7 +850,6 @@ export default function AdminCohorts() {
                 onChange={(e) => setNewCohort({ ...newCohort, priceAmd: e.target.value })}
                 className="h-10"
               />
-              <p className="text-xs text-muted-foreground mt-1">{t("cohortGroupPriceAmdHint")}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelMeetLink")}</label>

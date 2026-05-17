@@ -12,7 +12,6 @@ export type ExamQuizToolbarProps = {
 	progress: ReactNode;
 	countdown?: ReactNode;
 	onBack: () => void;
-	commentsAction: ReactNode;
 	focusMode: boolean;
 	onFocusToggle: () => void;
 	layoutMode: QuizLayoutMode;
@@ -23,7 +22,6 @@ export default function ExamQuizToolbar({
 	progress,
 	countdown,
 	onBack,
-	commentsAction,
 	focusMode,
 	onFocusToggle,
 	layoutMode,
@@ -48,8 +46,6 @@ export default function ExamQuizToolbar({
 				<div className="flex flex-wrap items-center gap-2 lg:ml-auto">
 					{countdown ? <div className="shrink-0">{countdown}</div> : null}
 					<div className={cn(quizToolbarToolGroup, "gap-1")}>
-						{commentsAction}
-						<div className="mx-0.5 h-6 w-px shrink-0 bg-border" aria-hidden />
 						<ExamQuizLayoutToggle mode={layoutMode} onChange={onLayoutModeChange} />
 					</div>
 					<ExamQuizFocusModeButton active={focusMode} onToggle={onFocusToggle} />

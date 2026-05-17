@@ -31,6 +31,7 @@ const createSchema = z.object({
   lessonWeekdays: z.array(z.coerce.number().int().min(0).max(6)).optional(),
   totalLessons: z.coerce.number().int().min(0).optional(),
   instructorUserId: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
+  instructorUserIds: z.array(z.coerce.number().int().positive()).optional(),
 });
 
 const updateSchema = createSchema.partial();

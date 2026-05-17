@@ -34,6 +34,8 @@ const rawEnvSchema = z.object({
   REFRESH_TOKEN_ACTIVE_TIME: z.string().optional(),
   API_PUBLIC_URL: z.string().optional(),
   AUTH_REFRESH_COOKIE_CROSS_SITE: z.string().optional(),
+  /** Set to `1` in local dev to skip admin email OTP (ignored when NODE_ENV=production). */
+  DISABLE_ADMIN_MFA: z.string().optional(),
   PANEL_DEFAULT_ORIGIN: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -124,6 +126,8 @@ const config = {
     REFRESH_TOKEN_ACTIVE_TIME: raw.REFRESH_TOKEN_ACTIVE_TIME || '7d',
     /** Refresh cookie uses SameSite=None; Secure (required for credentialed cross-site fetches). */
     REFRESH_COOKIE_CROSS_SITE: raw.AUTH_REFRESH_COOKIE_CROSS_SITE === '1',
+    /** Skip admin email OTP on login (dev/staging only; never honored in production). */
+    DISABLE_ADMIN_MFA: !isProduction && raw.DISABLE_ADMIN_MFA === '1',
     OAUTH: {
       google: {
         clientId: raw.OAUTH_GOOGLE_CLIENT_ID?.trim(),

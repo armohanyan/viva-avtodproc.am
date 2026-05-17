@@ -8,6 +8,7 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useAccount } from "src/modules/accounts";
+import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 
 type LearnHubStats = {
   groupsTotal: number;
@@ -31,6 +32,7 @@ export default function AdminLearnHub() {
   const { showToast } = useToast();
   const { user } = useAccount();
   const canManageGroups = user?.accountType === "super_admin";
+  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const [stats, setStats] = useState<LearnHubStats>(initialStats);
 
   const loadStats = useCallback(async () => {
@@ -57,7 +59,7 @@ export default function AdminLearnHub() {
 
   useEffect(() => {
     void loadStats();
-  }, [loadStats]);
+  }, [loadStats, branchFilterRevision]);
 
   const cards = useMemo(() => {
     const all = [

@@ -17,6 +17,7 @@ import {
 } from '../models';
 import { BOOKING_CANCELLATION_REASON } from '../constants/booking-cancellation-reasons';
 import TheoryCohortService from './theory-cohort.service';
+import TheoryCohortInstructorService from './theory-cohort-instructor.service';
 import BookingSlotValidationService from './booking-slot-validation.service';
 import FinanceService from './finance.service';
 import BookingNotificationService from './booking-notification.service';
@@ -38,6 +39,21 @@ const THEORY_COHORT_OPEN_FOR_BOOKING = new Set(['active', 'upcoming', 'scheduled
 
 function theoryCohortAllowsNewBookings(status: unknown): boolean {
   return THEORY_COHORT_OPEN_FOR_BOOKING.has(String(status ?? '').trim().toLowerCase());
+}
+
+async function resolveTheoryCohortInstructorUser(cohort: TheoryCohort): Promise<User> {
+  const primaryInstructorUserId = await TheoryCohortInstructorService.resolvePrimaryInstructorUserId(cohort);
+  const instructor =
+    primaryInstructorUserId != null
+      ? await User.findOne({ where: { id: primaryInstructorUserId, accountType: 'instructor' } })
+      : null;
+  if (!instructor) {
+    throw new InputValidationError(
+      `No instructor user matches cohort instructor "${cohort.instructorName}".`,
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+  return instructor;
 }
 
 function meetLinkOrNull(v: unknown): string | null {
@@ -1507,21 +1523,7 @@ export default class BookingService {
     if (duplicate) {
       throw new ConflictError('Student already has an active booking for this theory group.', HttpStatusCodesUtil.CONFLICT);
     }
-    const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
-    const instructorIdsServingBranch = links.map((l) => l.instructorUserId);
-    const instructor = await User.findOne({
-      where: {
-        name: cohort.instructorName.trim(),
-        accountType: 'instructor',
-        ...(instructorIdsServingBranch.length > 0 ? { id: { [Op.in]: instructorIdsServingBranch } } : {}),
-      },
-    });
-    if (!instructor) {
-      throw new InputValidationError(
-        `No instructor user matches cohort instructor "${cohort.instructorName}".`,
-        HttpStatusCodesUtil.BAD_REQUEST,
-      );
-    }
+    const instructor = await resolveTheoryCohortInstructorUser(cohort);
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
     assertInstructorTeachesLessonType(profile, 'theory');
     const sessionStart = normalizeTimeHHMM(String(cohort.sessionStartTime ?? '').trim() || '09:00') ?? '09:00';
@@ -1961,22 +1963,7 @@ export default class BookingService {
         );
       }
       branchId = cohort.branchId;
-      const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
-      const instructorIdsServingBranch = links.map((l) => l.instructorUserId);
-      const instructor = await User.findOne({
-        where: {
-          name: cohort.instructorName.trim(),
-          accountType: 'instructor',
-          ...(instructorIdsServingBranch.length > 0 ? { id: { [Op.in]: instructorIdsServingBranch } } : {}),
-        },
-      });
-      if (!instructor) {
-        throw new InputValidationError(
-          `No instructor user matches cohort instructor "${cohort.instructorName}".`,
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-      instructorUserId = instructor.id;
+      instructorUserId = (await resolveTheoryCohortInstructorUser(cohort)).id;
       try {
         await TheoryCohortService.enroll(cohort.id, input.studentId);
       } catch (e) {
@@ -2131,22 +2118,7 @@ export default class BookingService {
         );
       }
       branchId = cohort.branchId;
-      const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
-      const instructorIdsServingBranch = links.map((l) => l.instructorUserId);
-      const instructor = await User.findOne({
-        where: {
-          name: cohort.instructorName.trim(),
-          accountType: 'instructor',
-          ...(instructorIdsServingBranch.length > 0 ? { id: { [Op.in]: instructorIdsServingBranch } } : {}),
-        },
-      });
-      if (!instructor) {
-        throw new InputValidationError(
-          `No instructor user matches cohort instructor "${cohort.instructorName}".`,
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-      instructorUserId = instructor.id;
+      instructorUserId = (await resolveTheoryCohortInstructorUser(cohort)).id;
       try {
         await TheoryCohortService.enroll(cohort.id, nextStudentId);
       } catch (e) {

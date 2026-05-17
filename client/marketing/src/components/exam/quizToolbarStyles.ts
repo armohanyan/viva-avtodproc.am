@@ -7,5 +7,5 @@ export const quizToolbarTouchTarget = cn(
 );
 
 export const quizToolbarToolGroup = cn(
-	"inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1 shadow-xs",
+	"inline-flex items-center gap-1 rounded-xl bg-muted/40 p-1 shadow-xs",
 );

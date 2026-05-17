@@ -58,6 +58,7 @@ services:
     environment:
       EXPOSE_ERROR_DETAILS: ${EXPOSE_ERROR_DETAILS:-1}
       NODE_ENV: development
+      DISABLE_ADMIN_MFA: ${DISABLE_ADMIN_MFA:-1}
       PORT: "3001"
       MYSQL_HOST: db
       MYSQL_PORT: "3306"
