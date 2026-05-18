@@ -12,6 +12,7 @@ import AdminInstructorDaySlotsModal from "./AdminInstructorDaySlotsModal";
 import {
   ADMIN_AVAILABILITY_GRID_DAYS,
   aggregateBusyCountsByInstructorDay,
+  aggregatePendingCountsByInstructorDay,
   armenianWeekdayShort,
   buildBranchInstructorGroups,
   defaultGridRangeStart,
@@ -33,8 +34,12 @@ type Props = {
   instructors: readonly Instructor[];
   bookingBranchId: string;
   studentName: string;
+  /** Instructor that owns {@link selectedEntries} (from parent booking draft). */
+  selectionInstructorId?: string;
+  /** When this changes (e.g. add-booking modal session), local pending picks are cleared. */
+  pickerResetKey?: string;
   selectedEntries: readonly { dateIso: string; time: string }[];
-  onEntriesChange: (entries: { dateIso: string; time: string }[]) => void;
+  onEntriesChange: (entries: { dateIso: string; time: string }[], instructorId: string) => void;
   onInstructorPicked: (instructorUserId: string, branchId: string) => void;
   maxSelectableSlots?: number;
   maxSelectableSlotsErrorKey?: TranslationKey;
@@ -45,6 +50,8 @@ export default function AdminInstructorAvailabilityTable({
   instructors,
   bookingBranchId,
   studentName,
+  selectionInstructorId = "",
+  pickerResetKey = "",
   selectedEntries,
   onEntriesChange,
   onInstructorPicked,
@@ -58,6 +65,11 @@ export default function AdminInstructorAvailabilityTable({
   const [gridLoading, setGridLoading] = useState(false);
   const [slotModal, setSlotModal] = useState<CellTarget | null>(null);
   const [activeInstructorId, setActiveInstructorId] = useState("");
+  /** Updated synchronously on confirm so the grid reflects picks before parent state settles. */
+  const [pendingSelection, setPendingSelection] = useState<{
+    instructorId: string;
+    entries: readonly { dateIso: string; time: string }[];
+  } | null>(null);
 
   const dates = useMemo(() => gridDateRange(rangeStartIso), [rangeStartIso]);
   const rangeEndIso = dates[dates.length - 1] ?? rangeStartIso;
@@ -105,14 +117,43 @@ export default function AdminInstructorAvailabilityTable({
     [instructorIds, busyByInstructor],
   );
 
+  useEffect(() => {
+    setPendingSelection(null);
+    setActiveInstructorId("");
+  }, [pickerResetKey]);
+
+  useEffect(() => {
+    if (selectedEntries.length === 0) return;
+    const ownerId = activeInstructorId || selectionInstructorId;
+    if (!ownerId) return;
+    setPendingSelection({ instructorId: ownerId, entries: selectedEntries });
+  }, [selectedEntries, activeInstructorId, selectionInstructorId]);
+
+  const pendingSource =
+    pendingSelection && pendingSelection.entries.length > 0
+      ? pendingSelection
+      : selectedEntries.length > 0
+        ? {
+            instructorId: activeInstructorId || selectionInstructorId,
+            entries: selectedEntries,
+          }
+        : null;
+
+  const pendingLessonCounts = useMemo(() => {
+    if (!pendingSource?.entries.length || !pendingSource.instructorId) return new Map<string, number>();
+    return aggregatePendingCountsByInstructorDay(pendingSource.instructorId, pendingSource.entries);
+  }, [pendingSource]);
+
+  const selectionOwnerId = pendingSource?.instructorId || activeInstructorId || selectionInstructorId;
+
   const selectedByInstructorDay = useMemo(() => {
     const m = new Set<string>();
-    if (!activeInstructorId) return m;
-    for (const e of selectedEntries) {
-      m.add(`${activeInstructorId}|${e.dateIso.slice(0, 10)}`);
+    if (!selectionOwnerId || !pendingSource?.entries.length) return m;
+    for (const e of pendingSource.entries) {
+      m.add(`${selectionOwnerId}|${e.dateIso.slice(0, 10)}`);
     }
     return m;
-  }, [selectedEntries, activeInstructorId]);
+  }, [pendingSource, selectionOwnerId]);
 
   const rangeLabel = useMemo(() => {
     if (dates.length === 0) return "";
@@ -198,9 +239,12 @@ export default function AdminInstructorAvailabilityTable({
                   </td>
                   {branchGroups.flatMap((g) =>
                     g.instructors.map((ins) => {
-                      const count = lessonCountForCell(lessonCounts, ins.id, dateIso);
+                      const busyCount = lessonCountForCell(lessonCounts, ins.id, dateIso);
+                      const pendingCount = lessonCountForCell(pendingLessonCounts, ins.id, dateIso);
+                      const cellLabel =
+                        pendingCount > 0 ? `${busyCount} + ${pendingCount}` : String(busyCount);
                       const hasPick =
-                        activeInstructorId === ins.id &&
+                        selectionOwnerId === ins.id &&
                         selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`);
                       return (
                         <td key={`${dateIso}-${g.branchId}-${ins.id}`} className="p-0 border-r border-border/30 last:border-r-0">
@@ -214,24 +258,28 @@ export default function AdminInstructorAvailabilityTable({
                                 activeInstructorId !== ins.id &&
                                 selectedEntries.length > 0
                               ) {
-                                onEntriesChange([]);
+                                setPendingSelection(null);
+                                onEntriesChange([], "");
                               }
                               setActiveInstructorId(ins.id);
                               setSlotModal({ instructor: ins, branchId: g.branchId, dateIso });
                             }}
                             className={cn(
-                              "w-full h-10 flex items-center justify-center font-semibold tabular-nums transition-colors text-primary",
+                              "w-full min-h-10 py-1 flex items-center justify-center font-semibold tabular-nums transition-colors text-primary",
+                              pendingCount > 0 ? "text-[11px] leading-tight" : "text-sm",
                               "hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                               hasPick && "ring-1 ring-inset ring-primary/60 bg-primary/10",
                               !studentName.trim() && "opacity-40 cursor-not-allowed",
                             )}
                             title={
                               studentName.trim()
-                                ? `${ins.name} · ${formatGridDateLabel(dateIso)}`
+                                ? pendingCount > 0
+                                  ? `${ins.name} · ${formatGridDateLabel(dateIso)} · ${busyCount} + ${pendingCount}`
+                                  : `${ins.name} · ${formatGridDateLabel(dateIso)}`
                                 : t("adminLearnPickStudentHint")
                             }
                           >
-                            {count}
+                            {cellLabel}
                           </button>
                         </td>
                       );
@@ -244,11 +292,11 @@ export default function AdminInstructorAvailabilityTable({
         </AdminTableScroll>
       )}
 
-      {selectedEntries.length > 0 ? (
+      {pendingSource && pendingSource.entries.length > 0 ? (
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
           <p className="text-xs font-medium text-muted-foreground mb-1">{t("adminBookingSelectedSlotsLabel")}</p>
           <ul className="space-y-0.5 text-sm text-foreground max-h-28 overflow-y-auto">
-            {sortSlotEntriesChrono(selectedEntries).map((e) => (
+            {sortSlotEntriesChrono(pendingSource.entries).map((e) => (
               <li key={slotEntryKey(e.dateIso, e.time)} className="tabular-nums">
                 {formatGridDateLabel(e.dateIso)} · {e.time}
               </li>
@@ -261,7 +309,8 @@ export default function AdminInstructorAvailabilityTable({
             className="mt-2 h-7 text-xs text-muted-foreground"
             onClick={() => {
               setActiveInstructorId("");
-              onEntriesChange([]);
+              setPendingSelection(null);
+              onEntriesChange([], "");
             }}
           >
             {t("adminBookingClearSelectedSlots")}
@@ -279,16 +328,20 @@ export default function AdminInstructorAvailabilityTable({
           instructorName={slotModal.instructor.name}
           branchId={slotModal.branchId || bookingBranchId}
           dateIso={slotModal.dateIso}
-          initialSelected={selectedEntries}
+          initialSelected={pendingSource?.entries ?? selectedEntries}
           maxSelectableSlots={maxSelectableSlots}
           maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
           t={t}
           onConfirm={(entries) => {
-            onEntriesChange(entries);
-            setActiveInstructorId(slotModal.instructor.id);
-            onInstructorPicked(slotModal.instructor.id, slotModal.branchId);
+            const instructorId = slotModal.instructor.id;
+            const pickedBranchId = slotModal.branchId;
+            const normalized = sortSlotEntriesChrono(entries);
+            setPendingSelection({ instructorId, entries: normalized });
+            setActiveInstructorId(instructorId);
+            onEntriesChange(normalized, instructorId);
             setSlotModal(null);
             void loadBusy();
+            onInstructorPicked(instructorId, pickedBranchId);
           }}
         />
       ) : null}

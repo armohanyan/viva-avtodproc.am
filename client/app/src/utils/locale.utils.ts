@@ -66,3 +66,15 @@ export function formatArmenianDateRange(startIso: string, endIso: string): strin
   if (startIso === endIso) return formatShortDateArmenian(startIso);
   return `${formatShortDateArmenian(startIso)} – ${formatShortDateArmenian(endIso)}`;
 }
+
+/** YYYY-MM-DD → e.g. `18.05.2026` (numeric, for official print forms). */
+export function formatNumericDateFromIso(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+export function formatNumericDateRange(startIso: string, endIso: string): string {
+  if (startIso === endIso) return formatNumericDateFromIso(startIso);
+  return `${formatNumericDateFromIso(startIso)} – ${formatNumericDateFromIso(endIso)}`;
+}

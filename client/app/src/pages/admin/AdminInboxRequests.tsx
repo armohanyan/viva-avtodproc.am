@@ -14,6 +14,14 @@ import { useInboxUnreadCounts } from "./inbox/useInboxUnreadCounts";
 import { GraduationCap, Mail, PhoneCall, type LucideIcon } from "lucide-react";
 
 export default function AdminInboxRequests(): JSX.Element {
+  return (
+    <AdminLayout>
+      <AdminInboxRequestsContent />
+    </AdminLayout>
+  );
+}
+
+function AdminInboxRequestsContent(): JSX.Element {
   const { t } = useLang();
   const [location, setLocation] = useLocation();
   const { counts, refresh } = useInboxUnreadCounts();
@@ -53,7 +61,7 @@ export default function AdminInboxRequests(): JSX.Element {
   }, [activeTab]);
 
   return (
-    <AdminLayout>
+    <>
       <PanelPageHeader
         icon={pageHeader.icon}
         title={t(pageHeader.titleKey)}
@@ -86,6 +94,6 @@ export default function AdminInboxRequests(): JSX.Element {
           <ContactRequestsPanel onCountsChange={refresh} />
         </TabsContent>
       </Tabs>
-    </AdminLayout>
+    </>
   );
 }

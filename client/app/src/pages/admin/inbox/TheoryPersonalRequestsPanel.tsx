@@ -9,7 +9,10 @@ import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
-import { adminBookingsHrefFromTheoryPersonalRequest } from "src/modules/admin/theoryPersonalRequestBooking";
+import {
+  adminBookingsHrefFromTheoryPersonalRequest,
+  stashAdminBookingIntentQuery,
+} from "src/modules/admin/theoryPersonalRequestBooking";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { cn } from "src/lib/utils";
 import {
@@ -120,7 +123,10 @@ export function TheoryPersonalRequestsPanel({ onCountsChange }: Props) {
 
   const openBooking = (row: TheoryPersonalRequestRow) => {
     setDetailRow(null);
-    setLocation(absWouterHref(adminBookingsHrefFromTheoryPersonalRequest(row)));
+    const href = adminBookingsHrefFromTheoryPersonalRequest(row);
+    const query = href.includes("?") ? href.slice(href.indexOf("?") + 1) : "";
+    stashAdminBookingIntentQuery(query);
+    setLocation(absWouterHref(query ? `/admin/bookings?${query}` : "/admin/bookings"));
   };
 
   const detailBranchLabel = detailRow ? branchNameById(branches, detailRow.branchId) : "";

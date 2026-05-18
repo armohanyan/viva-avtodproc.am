@@ -1,3 +1,27 @@
+const ADMIN_BOOKING_INTENT_STORAGE_KEY = "viva-admin-booking-intent-v1";
+
+/** Persist intent across route change when wouter drops the query string. */
+export function stashAdminBookingIntentQuery(queryWithoutLeadingQuestionMark: string): void {
+  const q = queryWithoutLeadingQuestionMark.replace(/^\?/, "").trim();
+  if (!q || typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(ADMIN_BOOKING_INTENT_STORAGE_KEY, q);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function takeStashedAdminBookingIntentQuery(): string {
+  if (typeof sessionStorage === "undefined") return "";
+  try {
+    const raw = sessionStorage.getItem(ADMIN_BOOKING_INTENT_STORAGE_KEY) ?? "";
+    if (raw) sessionStorage.removeItem(ADMIN_BOOKING_INTENT_STORAGE_KEY);
+    return raw;
+  } catch {
+    return "";
+  }
+}
+
 /** Build admin bookings URL that opens the add modal with a student (and branch) pre-selected. */
 export function adminBookingsHrefFromStudent(opts: {
   studentId: string | number;
@@ -21,6 +45,7 @@ export function adminBookingsHrefFromTheoryPersonalRequest(row: {
   id: string;
   studentUserId: number;
   instructorUserId: number;
+  instructorName?: string;
   branchId: number;
   selectedThemes: string[];
 }): string {
@@ -32,6 +57,8 @@ export function adminBookingsHrefFromTheoryPersonalRequest(row: {
     instructor: String(row.instructorUserId),
     theoryRequest: String(row.id),
   });
+  const instructorName = String(row.instructorName ?? "").trim();
+  if (instructorName) p.set("instructorName", instructorName);
   if (row.selectedThemes.length > 0) {
     p.set("themes", row.selectedThemes.map((t) => encodeURIComponent(t)).join(","));
   }

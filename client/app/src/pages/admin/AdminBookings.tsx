@@ -59,7 +59,10 @@ import {
 import { BOOKING_STATUS_BADGE_CLASS } from "src/constants/booking.constants";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { ApiRequestError } from "src/lib/api";
-import { parseThemesFromBookingSearch } from "src/modules/admin/theoryPersonalRequestBooking";
+import {
+  parseThemesFromBookingSearch,
+  takeStashedAdminBookingIntentQuery,
+} from "src/modules/admin/theoryPersonalRequestBooking";
 
 function studentIdMatches(a: string | number, b: string | number): boolean {
   return String(a) === String(b);
@@ -228,9 +231,8 @@ export default function AdminBookings() {
   const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const editBookingFormId = useId();
   const addBookingFormId = useId();
-  const [, setLocation] = useLocation();
-  /** Wouter may include a leading `?`; strip so `URLSearchParams` parses keys correctly. */
-  const bookingIntentSearch = (useSearch() ?? "").replace(/^\?/, "");
+  const [location, setLocation] = useLocation();
+  const hookBookingSearch = (useSearch() ?? "").replace(/^\?/, "");
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -282,6 +284,8 @@ export default function AdminBookings() {
   const [cancellationStaffBusyId, setCancellationStaffBusyId] = useState<string | null>(null);
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  /** Bumps when the add-booking modal opens so slot pickers reset without reacting to branch/instructor draft edits. */
+  const [addSlotSessionId, setAddSlotSessionId] = useState(0);
   const [draft, setDraft] = useState<Booking | null>(null);
   const [addInlineErrors, setAddInlineErrors] = useState<AddInlineErrors>({
     general: null,
@@ -752,9 +756,11 @@ export default function AdminBookings() {
           ? String(opts.studentId)
           : (studentsMini[0]?.id ?? "");
       const pickBranch =
-        opts?.branchId && branches.some((b) => b.id === opts.branchId)
-          ? opts.branchId
-          : (branches[0]?.id ?? "");
+        opts?.branchId && branches.some((b) => String(b.id) === String(opts.branchId))
+          ? String(opts.branchId)
+          : opts?.branchId
+            ? String(opts.branchId)
+            : (branches[0]?.id ?? "");
 
       const resolveInstructorName = (): string => {
         if (opts?.instructorName?.trim()) return opts.instructorName.trim();
@@ -799,6 +805,7 @@ export default function AdminBookings() {
       setDraft(newDraft);
       setAddPayment(defaultPaymentFields());
       setBookingModalTab("booking");
+      setAddSlotSessionId((n) => n + 1);
       setAddOpen(true);
     },
     [branches, defaultPracticalInstructorName, instructors, studentsMini],
@@ -807,8 +814,17 @@ export default function AdminBookings() {
   const consumedBookingIntentSearch = useRef<string | null>(null);
   const pendingTheoryRequestIdRef = useRef<string | null>(null);
 
+  /** Read intent query from wouter or the browser (needed for `~/admin/bookings?…` navigations). */
+  const readBookingIntentSearch = useCallback((): string => {
+    if (hookBookingSearch) return hookBookingSearch;
+    if (typeof window === "undefined") return "";
+    const path = window.location.pathname.replace(/\/$/, "") || "/";
+    if (!path.endsWith("/admin/bookings")) return "";
+    return window.location.search.replace(/^\?/, "");
+  }, [hookBookingSearch]);
+
   useEffect(() => {
-    const raw = bookingIntentSearch || "";
+    const raw = readBookingIntentSearch() || takeStashedAdminBookingIntentQuery();
     const p = new URLSearchParams(raw);
     const wantNew = p.get("new") === "1";
     const studentQ = p.get("student")?.trim() ?? "";
@@ -824,7 +840,7 @@ export default function AdminBookings() {
       consumedBookingIntentSearch.current = null;
       return;
     }
-    if (consumedBookingIntentSearch.current === raw) return;
+    if (!raw || consumedBookingIntentSearch.current === raw) return;
     if ((studentQ || isTheoryPersonalIntent) && studentsMini.length === 0) return;
     if (instructorQ && instructors.length === 0) return;
 
@@ -836,7 +852,10 @@ export default function AdminBookings() {
     }
 
     const validStudent = studentQ && studentOk ? studentQ : "";
-    const validBranch = branchQ && branches.some((b) => b.id === branchQ) ? branchQ : "";
+    const validBranch =
+      branchQ && branches.some((b) => String(b.id) === String(branchQ))
+        ? String(branchQ)
+        : branchQ || "";
     const validFlow =
       flowQ === "practical" || flowQ === "theory_group" || flowQ === "package" || flowQ === "theory_personal"
         ? flowQ
@@ -853,10 +872,10 @@ export default function AdminBookings() {
       ...(theoryRequestQ ? { theoryRequestId: theoryRequestQ } : {}),
     });
     setLocation("/admin/bookings", { replace: true });
-  }, [bookingIntentSearch, branches, instructors, openAdd, setLocation, studentsMini]);
+  }, [readBookingIntentSearch, location, branches, instructors, openAdd, setLocation, studentsMini]);
 
   useEffect(() => {
-    const raw = bookingIntentSearch || "";
+    const raw = readBookingIntentSearch();
     const p = new URLSearchParams(raw);
     const editId = p.get("edit")?.trim() ?? "";
     const deleteIdQ = p.get("delete")?.trim() ?? "";
@@ -878,7 +897,7 @@ export default function AdminBookings() {
       }
       setLocation("/admin/bookings", { replace: true });
     }
-  }, [bookingIntentSearch, bookings, setLocation]);
+  }, [readBookingIntentSearch, bookings, setLocation]);
 
   const handleAddFlowKindChange = useCallback(
     (flow: AdminBookingFlowKind) => {
@@ -2451,17 +2470,19 @@ export default function AdminBookings() {
                               )}
                               selectedInstructorId={packagePracticalCalendarInstructorId}
                               instructors={practicalInstructorsForGrid}
-                              onInstructorChange={(id) => {
+                              onInstructorChange={(id, opts) => {
                                 const ins = instructors.find((i) => i.id === id);
                                 if (ins) {
                                   setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                                  setAddPackagePracticalSlotPick(null);
-                                  setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
+                                  if (!opts?.fromGridPick) {
+                                    setAddPackagePracticalSlotPick(null);
+                                    setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
+                                  }
                                 }
                               }}
-                              onBranchPicked={(bid) => {
+                              onBranchPicked={(bid, opts) => {
                                 setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                                setAddPackagePracticalSlotPick(null);
+                                if (!opts?.fromGridPick) setAddPackagePracticalSlotPick(null);
                               }}
                               branchId={draft.branchId}
                               studentName={studentLabel(draft.studentId)}
@@ -2474,7 +2495,7 @@ export default function AdminBookings() {
                                 setAddPackagePracticalSlotPick(null);
                                 setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
                               }}
-                              calendarKey={`add-pkg-prac-${draft.instructorName}-${draft.branchId}-${addPackageId}`}
+                              calendarKey={`add-pkg-prac-${addSlotSessionId}-${addPackageId}`}
                               maxSelectableSlots={packageSelectionStats.practical.remainingBeforeSelection}
                               maxSelectableSlotsErrorKey="adminBookingValPackagePracticalCount"
                               t={t}
@@ -2491,17 +2512,19 @@ export default function AdminBookings() {
                               hint="Կարող եք ժամերը ընտրել հիմա կամ ավելի ուշ"
                               selectedInstructorId={packageTheoryCalendarInstructorId}
                               instructors={theoryInstructorsForGrid}
-                              onInstructorChange={(id) => {
+                              onInstructorChange={(id, opts) => {
                                 const ins = instructors.find((i) => i.id === id);
                                 if (ins) {
                                   setAddPackageTheoryInstructorName(ins.name);
-                                  setAddPackageTheorySlotPick(null);
-                                  setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
+                                  if (!opts?.fromGridPick) {
+                                    setAddPackageTheorySlotPick(null);
+                                    setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
+                                  }
                                 }
                               }}
-                              onBranchPicked={(bid) => {
+                              onBranchPicked={(bid, opts) => {
                                 setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                                setAddPackageTheorySlotPick(null);
+                                if (!opts?.fromGridPick) setAddPackageTheorySlotPick(null);
                               }}
                               branchId={draft.branchId}
                               studentName={studentLabel(draft.studentId)}
@@ -2514,7 +2537,7 @@ export default function AdminBookings() {
                                 setAddPackageTheorySlotPick(null);
                                 setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
                               }}
-                              calendarKey={`add-pkg-th-${addPackageTheoryInstructorName}-${draft.branchId}-${addPackageId}`}
+                              calendarKey={`add-pkg-th-${addSlotSessionId}-${addPackageId}`}
                               maxSelectableSlots={packageSelectionStats.theory.remainingBeforeSelection}
                               maxSelectableSlotsErrorKey="adminBookingValPackageTheoryCount"
                               t={t}
@@ -2532,17 +2555,19 @@ export default function AdminBookings() {
                         <SlotSelector
                           selectedInstructorId={calendarInstructorId}
                           instructors={practicalInstructorsForGrid}
-                          onInstructorChange={(id) => {
+                          onInstructorChange={(id, opts) => {
                             const ins = instructors.find((i) => i.id === id);
                             if (ins) {
                               setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                              setSlotPick(null);
-                              setAddInlineErrors((prev) => ({ ...prev, slots: null }));
+                              if (!opts?.fromGridPick) {
+                                setSlotPick(null);
+                                setAddInlineErrors((prev) => ({ ...prev, slots: null }));
+                              }
                             }
                           }}
-                          onBranchPicked={(bid) => {
+                          onBranchPicked={(bid, opts) => {
                             setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                            setSlotPick(null);
+                            if (!opts?.fromGridPick) setSlotPick(null);
                           }}
                           branchId={draft.branchId}
                           studentName={studentLabel(draft.studentId)}
@@ -2564,7 +2589,7 @@ export default function AdminBookings() {
                             setSlotPick(null);
                             setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                           }}
-                          calendarKey={`add-practical-${draft.instructorName}-${draft.branchId}`}
+                          calendarKey={`add-practical-${addSlotSessionId}`}
                           t={t}
                         />
                         {addInlineErrors.slots ? (
@@ -2581,17 +2606,19 @@ export default function AdminBookings() {
                         <SlotSelector
                           selectedInstructorId={theoryPersonalCalendarInstructorId}
                           instructors={theoryInstructorsForGrid}
-                          onInstructorChange={(id) => {
+                          onInstructorChange={(id, opts) => {
                             const ins = instructors.find((i) => i.id === id);
                             if (ins) {
                               setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                              setSlotPick(null);
-                              setAddInlineErrors((prev) => ({ ...prev, slots: null }));
+                              if (!opts?.fromGridPick) {
+                                setSlotPick(null);
+                                setAddInlineErrors((prev) => ({ ...prev, slots: null }));
+                              }
                             }
                           }}
-                          onBranchPicked={(bid) => {
+                          onBranchPicked={(bid, opts) => {
                             setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                            setSlotPick(null);
+                            if (!opts?.fromGridPick) setSlotPick(null);
                           }}
                           branchId={draft.branchId}
                           studentName={studentLabel(draft.studentId)}
@@ -2613,7 +2640,7 @@ export default function AdminBookings() {
                             setSlotPick(null);
                             setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                           }}
-                          calendarKey={`add-personal-${draft.instructorName}-${draft.branchId}`}
+                          calendarKey={`add-personal-${addSlotSessionId}`}
                           t={t}
                         />
                         {addInlineErrors.slots ? (

@@ -1,6 +1,8 @@
 export {
   formatArmenianDateRange,
   formatDateTimeArmenian,
+  formatNumericDateFromIso,
+  formatNumericDateRange,
   formatShortDateArmenian,
   formatShortDateFromIso,
   localeForLang,

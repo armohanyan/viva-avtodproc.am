@@ -10,9 +10,9 @@ type Props = {
   blockingMessage?: string;
   selectedInstructorId: string;
   instructors: readonly Instructor[];
-  onInstructorChange: (instructorUserId: string) => void;
+  onInstructorChange: (instructorUserId: string, options?: { fromGridPick?: boolean }) => void;
   /** When admin picks a cell under another branch column, parent may update booking branch. */
-  onBranchPicked?: (branchId: string) => void;
+  onBranchPicked?: (branchId: string, options?: { fromGridPick?: boolean }) => void;
   branchId: string;
   studentName: string;
   showInstructorPicker: boolean;
@@ -62,6 +62,7 @@ export default function SlotSelector({
   maxSelectableSlotsErrorKey,
 }: Props) {
   const [entries, setEntries] = useState<{ dateIso: string; time: string }[]>([]);
+  const [entriesInstructorId, setEntriesInstructorId] = useState("");
   const lastSyncKeyRef = useRef<string | null>(null);
   const onBookingConfirmedRef = useRef(onBookingConfirmed);
   const onAdminSelectionClearedRef = useRef(onAdminSelectionCleared);
@@ -70,6 +71,7 @@ export default function SlotSelector({
 
   useEffect(() => {
     setEntries([]);
+    setEntriesInstructorId("");
     lastSyncKeyRef.current = null;
     onAdminSelectionClearedRef.current?.();
   }, [calendarKey]);
@@ -96,30 +98,39 @@ export default function SlotSelector({
   );
 
   const handleEntriesChange = useCallback(
-    (next: { dateIso: string; time: string }[]) => {
+    (next: { dateIso: string; time: string }[], instructorId: string) => {
       setEntries(next);
-      syncPayload(next, activeInstructorId);
+      if (instructorId) setEntriesInstructorId(instructorId);
+      else if (next.length === 0) setEntriesInstructorId("");
+      const ownerId = instructorId || entriesInstructorId || activeInstructorId;
+      if (next.length > 0) syncPayload(next, ownerId);
+      else if (lastSyncKeyRef.current !== null) {
+        lastSyncKeyRef.current = null;
+        onAdminSelectionClearedRef.current?.();
+      }
     },
-    [activeInstructorId, syncPayload],
+    [activeInstructorId, entriesInstructorId, syncPayload],
   );
 
   const handleInstructorPicked = useCallback(
     (instructorUserId: string, pickedBranchId: string) => {
+      const gridOpts = { fromGridPick: true as const };
       if (instructorUserId && instructorUserId !== selectedInstructorId) {
-        onInstructorChange(instructorUserId);
+        onInstructorChange(instructorUserId, gridOpts);
       }
       if (pickedBranchId && pickedBranchId !== branchId) {
-        onBranchPicked?.(pickedBranchId);
+        onBranchPicked?.(pickedBranchId, gridOpts);
       }
     },
     [branchId, onBranchPicked, onInstructorChange, selectedInstructorId],
   );
 
   useEffect(() => {
-    if (entries.length > 0 && activeInstructorId) {
-      syncPayload(entries, activeInstructorId);
+    if (entries.length > 0) {
+      const ownerId = entriesInstructorId || activeInstructorId;
+      if (ownerId) syncPayload(entries, ownerId);
     }
-  }, [activeInstructorId, entries, syncPayload]);
+  }, [activeInstructorId, entries, entriesInstructorId, syncPayload]);
 
   const gridInstructors = useMemo(() => [...instructors], [instructors]);
 
@@ -148,6 +159,8 @@ export default function SlotSelector({
         instructors={gridInstructors}
         bookingBranchId={branchId}
         studentName={studentName}
+        selectionInstructorId={entriesInstructorId || activeInstructorId}
+        pickerResetKey={calendarKey}
         selectedEntries={entries}
         onEntriesChange={handleEntriesChange}
         onInstructorPicked={handleInstructorPicked}

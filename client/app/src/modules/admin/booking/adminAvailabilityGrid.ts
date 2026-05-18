@@ -124,3 +124,18 @@ export function lessonCountForCell(
 ): number {
   return counts.get(`${instructorId}|${dateIso.slice(0, 10)}`) ?? 0;
 }
+
+/** Pending admin picks (not yet saved) for one instructor, keyed like {@link lessonCountForCell}. */
+export function aggregatePendingCountsByInstructorDay(
+  instructorId: string,
+  entries: readonly { dateIso: string; time: string }[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (!instructorId) return counts;
+  for (const e of entries) {
+    const d = e.dateIso.slice(0, 10);
+    const key = `${instructorId}|${d}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}

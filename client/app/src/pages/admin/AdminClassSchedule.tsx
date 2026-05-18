@@ -10,9 +10,7 @@ import { Input } from "src/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { BOOKING_STATUS_BADGE_CLASS } from "src/constants/booking.constants";
 import {
-	formatArmenianDateRange,
-	formatDateTimeArmenian,
-	formatShortDateArmenian,
+	formatNumericDateRange,
 	formatShortDateFromIso,
 	localeForLang,
 } from "src/lib/adminFormat";
@@ -26,6 +24,9 @@ import {
 } from "src/modules/admin/classSchedule/printClassSchedule";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { getAdminBranchFilterId } from "src/modules/admin/adminBranchFilter";
+import { branchOptionLabel, useBranches } from "src/modules/branches";
+import { cityNameById, useCities } from "src/modules/cities";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import {
 	yerevanAddCalendarDays,
@@ -121,15 +122,6 @@ function paymentKey(status: ClassScheduleItem["payment"]["status"]): Translation
 	return "adminClassSchedulePaymentNotRequired";
 }
 
-function formatLessonHeldForPrint(
-	value: boolean | null,
-	t: (k: TranslationKey) => string,
-): string {
-	if (value === true) return t("adminClassSchedulePrintLessonHeldYes");
-	if (value === false) return t("adminClassSchedulePrintLessonHeldNo");
-	return "";
-}
-
 function formatNotesForPrint(raw: string, t: (k: TranslationKey) => string): string {
 	if (!raw.trim()) return "";
 	return raw
@@ -187,6 +179,8 @@ function enumerateIsoDates(start: string, end: string): string[] {
 
 export default function AdminClassSchedule() {
 	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
+	const { branches } = useBranches();
+	const { cities } = useCities();
 	const { t, lang } = useLang();
 	const { showToast } = useToast();
 	const { instructors } = useInstructors();
@@ -298,31 +292,35 @@ export default function AdminClassSchedule() {
 		if (items.length === 0) return;
 
 		const tAm = translateAm;
-		const generatedAt = formatDateTimeArmenian(new Date());
 		const printPeriod =
-			meta != null ? formatArmenianDateRange(meta.startDate, meta.endDate) : periodLabel;
+			meta != null ? formatNumericDateRange(meta.startDate, meta.endDate) : periodLabel;
+
+		const printDateValue =
+			meta != null ? formatNumericDateRange(meta.startDate, meta.endDate) : periodLabel;
+
+		const filterBranchId = getAdminBranchFilterId();
+		const filteredBranch = filterBranchId
+			? branches.find((b) => String(b.id) === filterBranchId)
+			: undefined;
+		const printBranchValue = filteredBranch
+			? branchOptionLabel(filteredBranch, cityNameById(cities, filteredBranch.cityId))
+			: items[0]?.branch.name ?? "";
+
+		const filteredInstructor = instructorId
+			? instructors.find((ins) => String(ins.id) === instructorId)
+			: undefined;
+		const printInstructorValue =
+			filteredInstructor?.name ??
+			(instructorId ? "" : items.find((item) => item.instructor.name)?.instructor.name ?? "");
 
 		const printRows: ClassSchedulePrintRow[] = items.map((item) => {
-			const canon = toCanonicalBookingStatus(item.status);
 			const packageNote =
-				item.package?.isIncludedLesson && item.package.name
-					? `${item.package.name}`
-					: "";
+				item.package?.isIncludedLesson && item.package.name ? `${item.package.name}` : "";
 			const notesCombined = [formatNotesForPrint(item.notes, tAm), packageNote].filter(Boolean).join("; ");
 
 			return {
-				date: item.date,
-				dateLabel: formatShortDateArmenian(item.date),
 				timeLabel: `${displayTime(item.startTime)} – ${displayTime(item.endTime)}`,
 				studentName: item.student.name,
-				studentPhone: item.student.phone ?? "",
-				instructorName: item.instructor.name || "—",
-				lessonTypeLabel: tAm(lessonTypeKey(item.lessonType)),
-				branchName: item.branch.name,
-				statusLabel: tAm(canon),
-				paymentLabel: tAm(paymentKey(item.payment.status)),
-				bookingTypeLabel: tAm(bookingTypeKey(item.bookingType)),
-				lessonHeldLabel: formatLessonHeldForPrint(item.lessonPassedSuccessfully, tAm),
 				notesLabel: notesCombined,
 			};
 		});
@@ -330,34 +328,30 @@ export default function AdminClassSchedule() {
 		const html = buildClassSchedulePrintHtml(
 			{
 				documentTitle: `${tAm("adminClassSchedule")} — ${printPeriod}`,
-				heading: tAm("adminClassSchedule"),
-				period: printPeriod,
-				generatedLabel: tAm("adminClassSchedulePrintGeneratedAt"),
-				totalLabel: tAm("adminClassSchedulePrintTotal"),
+				schoolName: tAm("adminClassSchedulePrintSchoolName"),
+				labelBranch: tAm("adminClassSchedulePrintHeaderBranch"),
+				labelDate: tAm("adminClassSchedulePrintHeaderDate"),
+				labelInstructor: tAm("adminClassSchedulePrintHeaderInstructor"),
+				branchValue: printBranchValue,
+				dateValue: printDateValue,
+				instructorValue: printInstructorValue,
 				colNo: tAm("adminClassSchedulePrintColNo"),
-				colDate: tAm("adminClassScheduleColDate"),
 				colTime: tAm("adminClassScheduleColTime"),
-				colStudent: tAm("adminClassScheduleColStudent"),
-				colPhone: tAm("phoneNumber"),
-				colInstructor: tAm("adminClassScheduleColInstructor"),
-				colLessonType: tAm("adminClassScheduleColType"),
-				colBranch: tAm("adminClassScheduleColBranch"),
-				colStatus: tAm("adminClassScheduleColStatus"),
-				colPayment: tAm("adminClassScheduleColPayment"),
-				colBookingType: tAm("adminClassScheduleColBookingType"),
-				colLessonHeld: tAm("adminClassSchedulePrintLessonHeld"),
-				colNotes: tAm("adminClassSchedulePrintNotesCol"),
+				colStudent: tAm("adminClassSchedulePrintColStudentAa"),
+				colSignature: tAm("adminClassSchedulePrintColStudentSign"),
+				colNotes: tAm("adminClassSchedulePrintColOtherNotes"),
+				footerTotalHours: tAm("adminClassSchedulePrintFooterTotalHours"),
+				footerDeparted: tAm("adminClassSchedulePrintFooterDeparted"),
+				footerInstructor: tAm("adminClassSchedulePrintFooterInstructor"),
 			},
 			printRows,
-			items.length,
-			generatedAt,
 			"hy",
 		);
 
 		if (!printClassScheduleDocument(html)) {
 			showToast(t("adminClassSchedulePrintBlocked"), "error");
 		}
-	}, [items, meta, periodLabel, showToast, t]);
+	}, [branches, cities, instructorId, instructors, items, meta, periodLabel, showToast, t]);
 
 	const renderLessonChip = (item: ClassScheduleItem, compact?: boolean) => (
 			<button

@@ -1,4 +1,19 @@
-import sanitizeHtml from "sanitize-html";
+import DOMPurify from "dompurify";
+
+let blogImgDataUriHookInstalled = false;
+
+function ensureBlogImgDataUriHook(): void {
+  if (blogImgDataUriHookInstalled || typeof window === "undefined") return;
+  blogImgDataUriHookInstalled = true;
+  DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
+    if (
+      data.attrName === "src" &&
+      /^data:image\/(png|jpeg|jpg|gif|webp);base64,/i.test(data.attrValue)
+    ) {
+      data.forceKeepAttr = true;
+    }
+  });
+}
 
 /** Escape plain text and wrap paragraphs for legacy plain-text posts. */
 /** True if rich text has no visible text (empty editor). */
@@ -18,51 +33,48 @@ export function plainTextToHtml(text: string): string {
     .join("");
 }
 
-const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: [
-    "p",
-    "br",
-    "strong",
-    "b",
-    "em",
-    "i",
-    "u",
-    "s",
-    "h2",
-    "h3",
-    "h4",
-    "ul",
-    "ol",
-    "li",
-    "a",
-    "img",
-    "blockquote",
-    "span",
-  ],
-  allowedAttributes: {
-    a: ["href", "title", "target", "rel", "class"],
-    img: ["src", "alt", "title", "class", "width", "height"],
-    span: ["class"],
-    p: ["class"],
-    h2: ["class"],
-    h3: ["class"],
-    h4: ["class"],
-    ul: ["class"],
-    ol: ["class"],
-    li: ["class"],
-    blockquote: ["class"],
-  },
-  allowedSchemes: ["http", "https", "mailto"],
-  allowedSchemesByTag: {
-    img: ["http", "https", "data"],
-    a: ["http", "https", "mailto"],
-  },
-  allowProtocolRelative: false,
-};
+const BLOG_ALLOWED_TAGS = [
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "h2",
+  "h3",
+  "h4",
+  "ul",
+  "ol",
+  "li",
+  "a",
+  "img",
+  "blockquote",
+  "span",
+] as const;
+
+const BLOG_ALLOWED_ATTR = [
+  "href",
+  "title",
+  "target",
+  "rel",
+  "class",
+  "src",
+  "alt",
+  "width",
+  "height",
+] as const;
 
 /** Safe HTML for blog body and excerpts derived from HTML. */
 export function sanitizeBlogHtml(html: string): string {
-  return sanitizeHtml(html, SANITIZE_OPTIONS);
+  ensureBlogImgDataUriHook();
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [...BLOG_ALLOWED_TAGS],
+    ALLOWED_ATTR: [...BLOG_ALLOWED_ATTR],
+    ALLOW_DATA_ATTR: false,
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+  });
 }
 
 const MAX_COVER_DATA_URL_CHARS = 2_400_000;
