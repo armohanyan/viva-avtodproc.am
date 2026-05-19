@@ -17,6 +17,21 @@ export type LessonTypeProgress = {
   upcoming: number;
 };
 
+export type StudentExamProgressDto = {
+  totalQuestions: number;
+  questionsAnswered: number;
+  questionsCorrect: number;
+  questionsWrong: number;
+  coveragePercent: number;
+  accuracyPercent: number;
+  attempts: number;
+  bestScorePct: number;
+  lastScorePct: number;
+  topicsStudied: number;
+  topicsCompleted: number;
+  hasActiveSession: boolean;
+};
+
 export type StudentProgressDto = {
   studentUserId: number;
   lastCalculatedAt: string;
@@ -30,6 +45,7 @@ export type StudentProgressDto = {
   practical: LessonTypeProgress;
   personalTheory: LessonTypeProgress;
   groupTheory: LessonTypeProgress;
+  examQuestions?: StudentExamProgressDto;
   lastCompletedLesson: ProgressLessonSnapshot | null;
   nextUpcomingLesson: ProgressLessonSnapshot | null;
 };

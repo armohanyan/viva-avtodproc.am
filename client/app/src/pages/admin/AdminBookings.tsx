@@ -38,6 +38,8 @@ import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
+import AdminStudentPicker from "src/components/admin/AdminStudentPicker";
+import type { AdminStudentMini } from "src/modules/admin/useAdminStudents";
 import {
   PRACTICAL_LESSON_TYPES,
   filterInstructorsServingBranches,
@@ -78,7 +80,7 @@ type OpenAddOptions = {
   theoryRequestId?: string;
 };
 
-type StudentRow = { id: string; name: string; email?: string };
+type StudentRow = { id: string; name: string; email?: string; phone?: string };
 
 type Booking = {
   id: string;
@@ -256,7 +258,12 @@ export default function AdminBookings() {
       const m: Record<string, string> = {};
       if (Array.isArray(st)) {
         setStudentsMini(
-          st.map((r) => ({ id: String(r.id), name: r.name, email: r.email })),
+          st.map((r) => ({
+            id: String(r.id),
+            name: r.name,
+            email: r.email,
+            phone: (r.phone ?? "").trim(),
+          })),
         );
         for (const r of st) m[String(r.id)] = r.name;
       } else {
@@ -754,7 +761,7 @@ export default function AdminBookings() {
       const pickStudent =
         opts?.studentId && studentsMini.some((s) => studentIdMatches(s.id, opts.studentId!))
           ? String(opts.studentId)
-          : (studentsMini[0]?.id ?? "");
+          : "";
       const pickBranch =
         opts?.branchId && branches.some((b) => String(b.id) === String(opts.branchId))
           ? String(opts.branchId)
@@ -788,7 +795,7 @@ export default function AdminBookings() {
         dateIso: todayIsoDate(),
         time: "10:00",
         type: lessonType,
-        status: "confirmed",
+        status: "pending",
         branchId: pickBranch,
         meetLink: null,
       };
@@ -1637,7 +1644,7 @@ export default function AdminBookings() {
             value={payment.grossStr}
             onChange={(e) => setPayment((p) => ({ ...p, grossStr: e.target.value }))}
             className="h-10 tabular-nums"
-            placeholder="55000"
+            placeholder="0"
           />
         </div>
         <div>
@@ -1957,17 +1964,27 @@ export default function AdminBookings() {
               >
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
-                  <select
+                  <AdminStudentPicker
+                    students={studentsMini.map<AdminStudentMini>((s) => ({
+                      id: s.id,
+                      name: s.name,
+                      email: s.email ?? "",
+                      phone: s.phone ?? "",
+                    }))}
                     value={editBooking.studentId}
-                    onChange={(e) => setEditBooking({ ...editBooking, studentId: e.target.value })}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {studentsMini.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(s) => {
+                      if (!s) return;
+                      setEditBooking({ ...editBooking, studentId: s.id });
+                    }}
+                    branchIdForNewStudent={editBooking.branchId}
+                    onStudentCreated={(s) => {
+                      setStudentsMini((prev) => {
+                        if (prev.some((p) => p.id === s.id)) return prev;
+                        return [...prev, { id: s.id, name: s.name, email: s.email, phone: s.phone }];
+                      });
+                      setStudentNames((prev) => ({ ...prev, [s.id]: s.name }));
+                    }}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
@@ -2253,20 +2270,28 @@ export default function AdminBookings() {
                 <div className="space-y-3 min-w-0">
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
-                      <select
+                      <AdminStudentPicker
+                        students={studentsMini.map<AdminStudentMini>((s) => ({
+                          id: s.id,
+                          name: s.name,
+                          email: s.email ?? "",
+                          phone: s.phone ?? "",
+                        }))}
                         value={draft.studentId}
-                        onChange={(e) => setDraft({ ...draft, studentId: e.target.value })}
-                        className={cn(
-                          "w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring",
-                          addFieldInvalid.student && "border-red-500 focus:ring-red-500",
-                        )}
-                      >
-                        {studentsMini.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(s) => {
+                          if (!s) return;
+                          setDraft({ ...draft, studentId: s.id });
+                        }}
+                        branchIdForNewStudent={draft.branchId}
+                        invalid={addFieldInvalid.student}
+                        onStudentCreated={(s) => {
+                          setStudentsMini((prev) => {
+                            if (prev.some((p) => p.id === s.id)) return prev;
+                            return [...prev, { id: s.id, name: s.name, email: s.email, phone: s.phone }];
+                          });
+                          setStudentNames((prev) => ({ ...prev, [s.id]: s.name }));
+                        }}
+                      />
                       {addFieldInvalid.student ? (
                         <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectStudent")}</p>
                       ) : null}

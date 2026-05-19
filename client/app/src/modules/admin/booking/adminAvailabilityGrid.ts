@@ -1,8 +1,9 @@
 import type { Instructor } from "src/data/instructors";
 import type { Branch } from "src/modules/branches";
-import { yerevanAddCalendarDays, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
+import { yerevanAddCalendarDays, yerevanAddCalendarMonths, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 
-export const ADMIN_AVAILABILITY_GRID_DAYS = 14;
+/** Each grid page covers a calendar month — from `start` through the same day-of-month next month, inclusive. */
+export const ADMIN_AVAILABILITY_GRID_MONTHS = 1;
 
 const ARMENIAN_WEEKDAY_SHORT = ["Կիր", "Երկ", "Երք", "Չրք", "Հնգ", "Ուրբ", "Շբթ"] as const;
 
@@ -42,11 +43,22 @@ export function sortTimesUnique(times: readonly string[]): string[] {
   return [...set].sort((a, b) => a.localeCompare(b));
 }
 
-/** Grid date rows from `startIso` for {@link ADMIN_AVAILABILITY_GRID_DAYS} days. */
-export function gridDateRange(startIso: string, dayCount = ADMIN_AVAILABILITY_GRID_DAYS): string[] {
+/**
+ * Grid date rows from `startIso` through `startIso + months` months (inclusive of the same
+ * day-of-month in the target month). E.g. `2026-05-19` → through `2026-06-19` inclusive.
+ */
+export function gridDateRange(startIso: string, months = ADMIN_AVAILABILITY_GRID_MONTHS): string[] {
+  const start = startIso.slice(0, 10);
+  const end = yerevanAddCalendarMonths(start, months);
   const out: string[] = [];
-  for (let i = 0; i < dayCount; i++) {
-    out.push(yerevanAddCalendarDays(startIso, i));
+  let cur = start;
+  // Safety cap so a misordered range can't infinite-loop.
+  const SAFETY_MAX = 400;
+  let i = 0;
+  while (cur <= end && i < SAFETY_MAX) {
+    out.push(cur);
+    cur = yerevanAddCalendarDays(cur, 1);
+    i++;
   }
   return out;
 }

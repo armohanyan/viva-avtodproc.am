@@ -64,6 +64,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
 		"/admin/bookings": Calendar,
+		"/admin/driving": Car,
 		"/admin/class-schedule": CalendarDays,
 		"/admin/notifications": Bell,
 		"/admin/inbox": Mail,

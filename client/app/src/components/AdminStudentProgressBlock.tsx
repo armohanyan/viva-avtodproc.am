@@ -62,6 +62,62 @@ export default function AdminStudentProgressBlock({ studentUserId }: { studentUs
           percent={progress.groupTheory.progressPercent}
         />
       </div>
+      {progress.examQuestions ? (
+        <div className="border-t border-border/80 pt-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-foreground">
+              {t("adminStudentExamProgressHeading")}
+            </h4>
+            {progress.examQuestions.hasActiveSession ? (
+              <span className="text-[10px] uppercase tracking-wide rounded-full bg-amber-100 text-amber-700 px-2 py-0.5">
+                {t("adminStudentExamSessionInProgress")}
+              </span>
+            ) : null}
+          </div>
+          <LessonProgressBar
+            label={t("adminStudentExamCoverageLabel")}
+            completed={progress.examQuestions.questionsAnswered}
+            total={progress.examQuestions.totalQuestions}
+            percent={progress.examQuestions.coveragePercent}
+            remainingLabel={`${Math.max(
+              0,
+              progress.examQuestions.totalQuestions - progress.examQuestions.questionsAnswered,
+            )} ${t("adminStudentExamRemainingSuffix")}`}
+          />
+          <LessonProgressBar
+            label={t("adminStudentExamAccuracyLabel")}
+            completed={progress.examQuestions.questionsCorrect}
+            total={Math.max(progress.examQuestions.questionsAnswered, 0)}
+            percent={progress.examQuestions.accuracyPercent}
+            remainingLabel={`${progress.examQuestions.questionsWrong} ${t(
+              "adminStudentExamWrongSuffix",
+            )}`}
+          />
+          <dl className="grid gap-2 text-xs sm:grid-cols-3">
+            <div className="rounded-md bg-background/60 px-3 py-2">
+              <dt className="text-muted-foreground">{t("adminStudentExamAttempts")}</dt>
+              <dd className="text-foreground font-semibold tabular-nums">
+                {progress.examQuestions.attempts}
+              </dd>
+            </div>
+            <div className="rounded-md bg-background/60 px-3 py-2">
+              <dt className="text-muted-foreground">{t("adminStudentExamBestScore")}</dt>
+              <dd className="text-foreground font-semibold tabular-nums">
+                {progress.examQuestions.bestScorePct}%
+                <span className="text-muted-foreground font-normal ml-2">
+                  {t("adminStudentExamLastScoreShort")} {progress.examQuestions.lastScorePct}%
+                </span>
+              </dd>
+            </div>
+            <div className="rounded-md bg-background/60 px-3 py-2">
+              <dt className="text-muted-foreground">{t("adminStudentExamTopics")}</dt>
+              <dd className="text-foreground font-semibold tabular-nums">
+                {progress.examQuestions.topicsCompleted} / {progress.examQuestions.topicsStudied}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
       {(progress.lastCompletedLesson || progress.nextUpcomingLesson) && (
         <dl className="grid gap-2 text-xs sm:grid-cols-2 border-t border-border/80 pt-3">
           {progress.lastCompletedLesson ? (

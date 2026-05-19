@@ -3,6 +3,8 @@ import type { LessonCompletionStatus } from '../constants/lesson-completion';
 import { BOOKING_STATUSES_COUNTED_FOR_PROGRESS } from '../constants/lesson-completion';
 import {
   Booking,
+  ExamQuestion,
+  StudentExamStats,
   TheoryCohortEnrollment,
   TheoryCohortSession,
   User,
@@ -17,6 +19,33 @@ export type ProgressLessonSnapshot = {
   time: string;
   endTime: string | null;
   label: string;
+};
+
+export type StudentExamProgressDto = {
+  /** Total number of exam questions in the bank. */
+  totalQuestions: number;
+  /** Unique questions the student has answered (correct + wrong). */
+  questionsAnswered: number;
+  /** Unique questions answered correctly. */
+  questionsCorrect: number;
+  /** Unique questions answered incorrectly (latest known result). */
+  questionsWrong: number;
+  /** 0-100 ratio of `questionsAnswered / totalQuestions`. */
+  coveragePercent: number;
+  /** 0-100 ratio of `questionsCorrect / questionsAnswered`. */
+  accuracyPercent: number;
+  /** Number of full quiz attempts the student has completed. */
+  attempts: number;
+  /** Highest score percentage (0-100) over all attempts. */
+  bestScorePct: number;
+  /** Last score percentage (0-100). */
+  lastScorePct: number;
+  /** Number of distinct topics the student has any progress in. */
+  topicsStudied: number;
+  /** Number of topics the student fully completed. */
+  topicsCompleted: number;
+  /** Has an unfinished session in progress. */
+  hasActiveSession: boolean;
 };
 
 export type StudentProgressDto = {
@@ -50,6 +79,7 @@ export type StudentProgressDto = {
     progressPercent: number;
     upcoming: number;
   };
+  examQuestions: StudentExamProgressDto;
   lastCompletedLesson: ProgressLessonSnapshot | null;
   nextUpcomingLesson: ProgressLessonSnapshot | null;
 };
@@ -122,6 +152,79 @@ function snapshotFromSession(session: TheoryCohortSession, cohortName?: string):
     time: String(session.startTime).slice(0, 5),
     endTime: String(session.endTime).slice(0, 5),
     label: cohortName ? `Group theory · ${cohortName}` : 'Group theory lesson',
+  };
+}
+
+function emptyExamProgress(totalQuestions: number): StudentExamProgressDto {
+  return {
+    totalQuestions,
+    questionsAnswered: 0,
+    questionsCorrect: 0,
+    questionsWrong: 0,
+    coveragePercent: 0,
+    accuracyPercent: 0,
+    attempts: 0,
+    bestScorePct: 0,
+    lastScorePct: 0,
+    topicsStudied: 0,
+    topicsCompleted: 0,
+    hasActiveSession: false,
+  };
+}
+
+async function computeStudentExamProgress(studentUserId: number): Promise<StudentExamProgressDto> {
+  const totalQuestions = await ExamQuestion.count();
+  const row = await StudentExamStats.findByPk(studentUserId);
+  if (!row) return emptyExamProgress(totalQuestions);
+
+  const payload = (row.payload ?? {}) as {
+    attempts?: number;
+    bestPct?: number;
+    lastPct?: number;
+    questionResults?: Record<string, boolean | undefined>;
+    topics?: Record<string, { completedAt?: number | null }>;
+    activeSession?: unknown;
+  };
+
+  const results = payload.questionResults ?? {};
+  let questionsAnswered = 0;
+  let questionsCorrect = 0;
+  for (const key of Object.keys(results)) {
+    const val = results[key];
+    if (val === true) {
+      questionsAnswered += 1;
+      questionsCorrect += 1;
+    } else if (val === false) {
+      questionsAnswered += 1;
+    }
+  }
+  const questionsWrong = Math.max(0, questionsAnswered - questionsCorrect);
+
+  const topicsObj = payload.topics ?? {};
+  const topicEntries = Object.values(topicsObj);
+  const topicsStudied = topicEntries.length;
+  const topicsCompleted = topicEntries.filter(
+    (t) => t && typeof t === 'object' && t.completedAt != null,
+  ).length;
+
+  const coveragePercent =
+    totalQuestions > 0 ? Math.min(100, Math.round((questionsAnswered / totalQuestions) * 1000) / 10) : 0;
+  const accuracyPercent =
+    questionsAnswered > 0 ? Math.min(100, Math.round((questionsCorrect / questionsAnswered) * 1000) / 10) : 0;
+
+  return {
+    totalQuestions,
+    questionsAnswered,
+    questionsCorrect,
+    questionsWrong,
+    coveragePercent,
+    accuracyPercent,
+    attempts: Number(payload.attempts ?? 0) || 0,
+    bestScorePct: Math.min(100, Math.max(0, Number(payload.bestPct ?? 0) || 0)),
+    lastScorePct: Math.min(100, Math.max(0, Number(payload.lastPct ?? 0) || 0)),
+    topicsStudied,
+    topicsCompleted,
+    hasActiveSession: payload.activeSession != null,
   };
 }
 
@@ -244,6 +347,8 @@ export default class StudentProgressService {
       .filter((t) => !t.completed && Number.isFinite(t.endMs) && t.endMs > now.getTime())
       .sort((a, b) => a.endMs - b.endMs);
 
+    const examQuestions = await computeStudentExamProgress(studentUserId);
+
     return {
       studentUserId,
       lastCalculatedAt: now.toISOString(),
@@ -275,6 +380,7 @@ export default class StudentProgressService {
         progressPercent: progressPercent(groupCompleted, groupTotal),
         upcoming: groupUpcoming,
       },
+      examQuestions,
       lastCompletedLesson: completedSorted[0]?.snapshot ?? null,
       nextUpcomingLesson: upcomingSorted[0]?.snapshot ?? null,
     };

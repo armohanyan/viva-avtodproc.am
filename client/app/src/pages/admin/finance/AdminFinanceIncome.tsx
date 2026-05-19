@@ -619,7 +619,7 @@ export default function AdminFinanceIncome() {
                 value={manualForm.grossStr}
                 onChange={(e) => setManualForm((f) => ({ ...f, grossStr: e.target.value }))}
                 className="h-10 tabular-nums"
-                placeholder="55000"
+                placeholder="0"
               />
             </div>
             <div>

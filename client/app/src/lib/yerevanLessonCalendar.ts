@@ -16,6 +16,24 @@ export function yerevanAddCalendarDays(fromIso: string, deltaDays: number): stri
 	return shifted.toLocaleDateString("en-CA", { timeZone: YEREVAN_TZ });
 }
 
+/**
+ * Adds `deltaMonths` calendar months to `fromIso` (YYYY-MM-DD), keeping the same day-of-month when
+ * possible and clamping to the last valid day otherwise (e.g. Jan 31 + 1 month → Feb 28/29).
+ */
+export function yerevanAddCalendarMonths(fromIso: string, deltaMonths: number): string {
+	const [ys, ms, ds] = fromIso.slice(0, 10).split("-");
+	const y0 = Number(ys);
+	const m0 = Number(ms);
+	const d0 = Number(ds);
+	if (!Number.isFinite(y0) || !Number.isFinite(m0) || !Number.isFinite(d0)) return fromIso;
+	const total = y0 * 12 + (m0 - 1) + deltaMonths;
+	const y = Math.floor(total / 12);
+	const m = (((total % 12) + 12) % 12) + 1;
+	const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+	const day = Math.min(d0, lastDay);
+	return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function parseHHMMToMinutes(t: string): number | null {
 	const m = /^(\d{1,2}):(\d{2})/.exec(t.trim());
 	if (!m) return null;

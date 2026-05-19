@@ -14,19 +14,18 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, Edit2, Trash2, GraduationCap, CalendarPlus, Mail, BarChart3 } from "lucide-react";
+import { Plus, Trash2, GraduationCap, CalendarPlus, Mail, BarChart3, Eye } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
 import { adminBookingsHrefFromStudent } from "src/modules/admin/theoryPersonalRequestBooking";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
-import AdminStudentProgressBlock from "src/components/AdminStudentProgressBlock";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
-type PackageRow = { id: string; name: string; lessons: number; theoryLessons: number };
+
 const INTERNAL_NO_LOGIN_EMAIL_DOMAIN = "no-login.local";
 
 type NewUserDraft = Partial<User> & { inviteToSystem: boolean };
@@ -34,12 +33,6 @@ type NewUserDraft = Partial<User> & { inviteToSystem: boolean };
 function displayStudentEmail(email: string): string {
   const value = (email ?? "").trim();
   return value.toLowerCase().endsWith(`@${INTERNAL_NO_LOGIN_EMAIL_DOMAIN}`) ? "" : value;
-}
-
-function parseLessons(lessons: string): { completed: number; total: number } | null {
-  const m = /^(\d+)\s*\/\s*(\d+)$/.exec(lessons.trim());
-  if (!m) return null;
-  return { completed: Number(m[1]), total: Number(m[2]) };
 }
 
 type User = {
@@ -77,9 +70,12 @@ function studentBookingHref(u: Pick<User, "id" | "branchId" | "instructor">): st
   );
 }
 
+function studentDetailsHref(u: Pick<User, "id">): string {
+  return absWouterHref(`/admin/students/${encodeURIComponent(u.id)}`);
+}
+
 export default function AdminUsers() {
   const branchFilterRevision = useOptionalAdminBranchFilterRevision();
-  const editUserFormId = useId();
   const addUserFormId = useId();
   const [, setLocation] = useLocation();
   const urlSearch = (useSearch() ?? "").replace(/^\?/, "");
@@ -88,9 +84,7 @@ export default function AdminUsers() {
   const { branches } = useBranches();
   const { instructors } = useInstructors();
   const instructorOptions = useMemo(() => allInstructorNames(instructors), [instructors]);
-  const instructorRows = useMemo(() => instructors.map((i) => ({ id: i.id, name: i.name })), [instructors]);
   const [users, setUsers] = useState<User[]>([]);
-  const [packages, setPackages] = useState<PackageRow[]>([]);
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const inviteStudent = useCallback(
@@ -120,26 +114,13 @@ export default function AdminUsers() {
 
   const refresh = useCallback(async () => {
     try {
-      const [stu, pkg] = await Promise.all([
-        vivaApiJson<User[]>("/students"),
-        vivaApiJson<PackageRow[]>("/packages"),
-      ]);
+      const stu = await vivaApiJson<User[]>("/students");
       setUsers(
         Array.isArray(stu)
           ? stu.map((u) => ({
               ...u,
               id: String(u.id),
               email: displayStudentEmail(u.email),
-            }))
-          : [],
-      );
-      setPackages(
-        Array.isArray(pkg)
-          ? pkg.map((p) => ({
-              id: p.id,
-              name: p.name,
-              lessons: p.lessons,
-              theoryLessons: Number((p as PackageRow).theoryLessons ?? 0),
             }))
           : [],
       );
@@ -161,7 +142,6 @@ export default function AdminUsers() {
   const [search, setSearch] = useState("");
   const [instructorFilter, setInstructorFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [editUser, setEditUser] = useState<User | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [newUser, setNewUser] = useState<NewUserDraft>({
@@ -200,39 +180,6 @@ export default function AdminUsers() {
       setDeleteId(null);
       await refresh();
       showToast(t("userDeleted"), "success");
-    } catch (e) {
-      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
-    }
-  };
-
-  const handleEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editUser) return;
-    const parsed = parseLessons(editUser.lessons);
-    const pkg = packages.find((p) => p.name === editUser.package);
-    const ins = instructorRows.find((i) => i.name === editUser.instructor);
-    try {
-      await vivaApiJson(`/students/${encodeURIComponent(editUser.id)}`, {
-        method: "PATCH",
-        body: {
-          name: editUser.name,
-          email: editUser.email,
-          phone: editUser.phone,
-          branchId: editUser.branchId,
-          packageId: pkg?.id,
-          instructorUserId: ins?.id ?? null,
-          enrollmentStatus: editUser.status,
-          skillRating: editUser.skillRating,
-          licenseAchieved: editUser.licenseAchieved,
-          joinedIso: editUser.joinedIso,
-          ...(parsed
-            ? { lessonsCompleted: parsed.completed, lessonsTotal: parsed.total }
-            : {}),
-        },
-      });
-      setEditUser(null);
-      await refresh();
-      showToast(t("profileSaved"), "success");
     } catch (e) {
       showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
     }
@@ -385,6 +332,13 @@ export default function AdminUsers() {
                   actions={[
                     {
                       kind: "link",
+                      id: "view",
+                      label: t("studentDetailsViewDetails"),
+                      href: studentDetailsHref(u),
+                      icon: Eye,
+                    },
+                    {
+                      kind: "link",
                       id: "book",
                       label: t("adminStudentBookLesson"),
                       href: studentBookingHref(u),
@@ -403,13 +357,6 @@ export default function AdminUsers() {
                       : []),
                     {
                       kind: "item",
-                      id: "edit",
-                      label: t("edit"),
-                      icon: Edit2,
-                      onClick: () => setEditUser({ ...u }),
-                    },
-                    {
-                      kind: "item",
                       id: "delete",
                       label: t("delete"),
                       icon: Trash2,
@@ -418,7 +365,18 @@ export default function AdminUsers() {
                     },
                   ]}
                 >
-                  <tr className="hover:bg-muted/30 transition-colors">
+                  <tr
+                    className="hover:bg-muted/30 transition-colors cursor-pointer"
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => setLocation(studentDetailsHref(u))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setLocation(studentDetailsHref(u));
+                      }
+                    }}
+                  >
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-xs shrink-0">{u.name[0]}</div>
@@ -441,11 +399,22 @@ export default function AdminUsers() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{displayJoined(u.joinedIso)}</td>
-                    <td className="px-4 py-3.5">
+                    <td
+                      className="px-4 py-3.5"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
                       <AdminTableRowActions
                         toolbarOnly
                         className="gap-0.5"
                         actions={[
+                          {
+                            kind: "link",
+                            id: "view",
+                            label: t("studentDetailsViewDetails"),
+                            href: studentDetailsHref(u),
+                            icon: Eye,
+                          },
                           {
                             kind: "link",
                             id: "book",
@@ -464,13 +433,6 @@ export default function AdminUsers() {
                                 },
                               ]
                             : []),
-                          {
-                            kind: "item",
-                            id: "edit",
-                            label: t("edit"),
-                            icon: Edit2,
-                            onClick: () => setEditUser({ ...u }),
-                          },
                           {
                             kind: "item",
                             id: "delete",
@@ -492,83 +454,6 @@ export default function AdminUsers() {
           {t("panelShowingLabel")} {filtered.length} / {users.length} {t("adminTableUsersFooter")}
         </div>
       </Card>
-      {/* Edit Dialog */}
-      <AppModal
-        open={!!editUser}
-        onOpenChange={(o) => !o && setEditUser(null)}
-        title={t("userDialogEditTitle")}
-        contentClassName="max-w-lg max-h-[min(90vh,720px)]"
-        footer={
-          editUser ? (
-            <div className="flex flex-wrap gap-2 sm:gap-3 flex-1 min-w-0 w-full sm:justify-end">
-              <Button type="button" variant="outline" className="min-w-[6rem] flex-1 sm:flex-none" onClick={() => setEditUser(null)}>
-                {t("cancel")}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                className="min-w-0 flex-1 sm:flex-none gap-2"
-                onClick={() => {
-                  setLocation(studentBookingHref(editUser));
-                  setEditUser(null);
-                }}
-              >
-                <CalendarPlus className="w-4 h-4 shrink-0" />
-                {t("adminStudentBookLesson")}
-              </Button>
-              <Button type="submit" form={editUserFormId} className="min-w-[6rem] flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-primary-foreground">
-                {t("save")}
-              </Button>
-            </div>
-          ) : null
-        }
-      >
-        {editUser && (
-            <form id={editUserFormId} onSubmit={handleEdit} className="space-y-3">
-              <AdminStudentProgressBlock studentUserId={Number(editUser.id)} />
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
-                <select value={editUser.branchId} onChange={e => setEditUser({ ...editUser, branchId: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                  {branches.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("name")}</label>
-                <Input value={editUser.name} onChange={e => setEditUser({ ...editUser, name: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("emailAddress")}</label>
-                <Input value={editUser.email} onChange={e => setEditUser({ ...editUser, email: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
-                <Input value={editUser.phone} onChange={e => setEditUser({ ...editUser, phone: e.target.value })} className="h-10" /></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                <select value={editUser.instructor} onChange={e => setEditUser({ ...editUser, instructor: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                  {instructorOptions.map((name) => (
-                    <option key={name} value={name}>{name}</option>
-                  ))}
-                </select></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
-                <select value={editUser.status} onChange={e => setEditUser({ ...editUser, status: e.target.value, licenseAchieved: e.target.value === "completed" ? true : editUser.licenseAchieved })}
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-                  <option value="active">{t("active")}</option>
-                  <option value="inactive">{t("inactive")}</option>
-                  <option value="completed">{t("userStatusCompleted")}</option>
-                </select></div>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("studentSkillRating")} (0-10)</label>
-                <Input type="number" min={0} max={10} value={editUser.skillRating} onChange={e => setEditUser({ ...editUser, skillRating: Math.max(0, Math.min(10, Number(e.target.value) || 0)) })} className="h-10" /></div>
-              <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
-                <input
-                  type="checkbox"
-                  checked={editUser.licenseAchieved}
-                  onChange={e => setEditUser({ ...editUser, licenseAchieved: e.target.checked, status: e.target.checked ? "completed" : editUser.status === "completed" ? "active" : editUser.status })}
-                  className="h-4 w-4 rounded border-input accent-primary"
-                />
-                {t("studentLicenseAchieved")}
-              </label>
-              <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminColJoined")}</label>
-                <Input type="date" value={editUser.joinedIso} onChange={e => setEditUser({ ...editUser, joinedIso: e.target.value })} className="h-10" /></div>
-            </form>
-          )}
-      </AppModal>
 
       {/* Add Dialog */}
       <AppModal

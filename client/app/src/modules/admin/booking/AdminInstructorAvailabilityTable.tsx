@@ -7,10 +7,10 @@ import type { TranslationKey } from "src/lib/i18n";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { useBranches } from "src/modules/branches";
 import { cn } from "src/lib/utils";
-import { yerevanAddCalendarDays } from "src/lib/yerevanLessonCalendar";
+import { yerevanAddCalendarMonths } from "src/lib/yerevanLessonCalendar";
 import AdminInstructorDaySlotsModal from "./AdminInstructorDaySlotsModal";
 import {
-  ADMIN_AVAILABILITY_GRID_DAYS,
+  ADMIN_AVAILABILITY_GRID_MONTHS,
   aggregateBusyCountsByInstructorDay,
   aggregatePendingCountsByInstructorDay,
   armenianWeekdayShort,
@@ -30,6 +30,13 @@ type CellTarget = {
   dateIso: string;
 };
 
+export type AdminAvailabilityCellClick = (target: {
+  instructor: Instructor;
+  branchId: string;
+  dateIso: string;
+  busyCount: number;
+}) => void;
+
 type Props = {
   instructors: readonly Instructor[];
   bookingBranchId: string;
@@ -43,6 +50,12 @@ type Props = {
   onInstructorPicked: (instructorUserId: string, branchId: string) => void;
   maxSelectableSlots?: number;
   maxSelectableSlotsErrorKey?: TranslationKey;
+  /**
+   * Optional override: when provided, clicking a cell calls this handler instead of opening the
+   * in-component slot picker modal. Bypasses the studentName requirement and hides the local
+   * selection chip — used by view-only flows (e.g. the standalone driving overview page).
+   */
+  onCellClick?: AdminAvailabilityCellClick;
   t: (k: TranslationKey) => string;
 };
 
@@ -57,8 +70,10 @@ export default function AdminInstructorAvailabilityTable({
   onInstructorPicked,
   maxSelectableSlots,
   maxSelectableSlotsErrorKey,
+  onCellClick,
   t,
 }: Props) {
+  const cellClickMode = Boolean(onCellClick);
   const { branches } = useBranches();
   const [rangeStartIso, setRangeStartIso] = useState(defaultGridRangeStart);
   const [busyByInstructor, setBusyByInstructor] = useState<Map<string, InstructorBusySlotRow[]>>(new Map());
@@ -171,7 +186,7 @@ export default function AdminInstructorAvailabilityTable({
             size="icon"
             className="h-8 w-8"
             disabled={!canGoPrev}
-            onClick={() => setRangeStartIso((s) => yerevanAddCalendarDays(s, -ADMIN_AVAILABILITY_GRID_DAYS))}
+            onClick={() => setRangeStartIso((s) => yerevanAddCalendarMonths(s, -ADMIN_AVAILABILITY_GRID_MONTHS))}
             aria-label={t("adminBookingAvailabilityGridPrev")}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -182,7 +197,7 @@ export default function AdminInstructorAvailabilityTable({
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setRangeStartIso((s) => yerevanAddCalendarDays(s, ADMIN_AVAILABILITY_GRID_DAYS))}
+            onClick={() => setRangeStartIso((s) => yerevanAddCalendarMonths(s, ADMIN_AVAILABILITY_GRID_MONTHS))}
             aria-label={t("adminBookingAvailabilityGridNext")}
           >
             <ChevronRight className="h-4 w-4" />
@@ -246,12 +261,17 @@ export default function AdminInstructorAvailabilityTable({
                       const hasPick =
                         selectionOwnerId === ins.id &&
                         selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`);
+                      const disabled = !cellClickMode && !studentName.trim();
                       return (
                         <td key={`${dateIso}-${g.branchId}-${ins.id}`} className="p-0 border-r border-border/30 last:border-r-0">
                           <button
                             type="button"
-                            disabled={!studentName.trim()}
+                            disabled={disabled}
                             onClick={() => {
+                              if (cellClickMode) {
+                                onCellClick?.({ instructor: ins, branchId: g.branchId, dateIso, busyCount });
+                                return;
+                              }
                               if (!studentName.trim()) return;
                               if (
                                 activeInstructorId &&
@@ -269,14 +289,16 @@ export default function AdminInstructorAvailabilityTable({
                               pendingCount > 0 ? "text-[11px] leading-tight" : "text-sm",
                               "hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                               hasPick && "ring-1 ring-inset ring-primary/60 bg-primary/10",
-                              !studentName.trim() && "opacity-40 cursor-not-allowed",
+                              disabled && "opacity-40 cursor-not-allowed",
                             )}
                             title={
-                              studentName.trim()
-                                ? pendingCount > 0
-                                  ? `${ins.name} · ${formatGridDateLabel(dateIso)} · ${busyCount} + ${pendingCount}`
-                                  : `${ins.name} · ${formatGridDateLabel(dateIso)}`
-                                : t("adminLearnPickStudentHint")
+                              cellClickMode
+                                ? `${ins.name} · ${formatGridDateLabel(dateIso)} · ${busyCount} ${t("adminDrivingCellLessonsSuffix")}`
+                                : studentName.trim()
+                                  ? pendingCount > 0
+                                    ? `${ins.name} · ${formatGridDateLabel(dateIso)} · ${busyCount} + ${pendingCount}`
+                                    : `${ins.name} · ${formatGridDateLabel(dateIso)}`
+                                  : t("adminLearnPickStudentHint")
                             }
                           >
                             {cellLabel}
@@ -292,7 +314,7 @@ export default function AdminInstructorAvailabilityTable({
         </AdminTableScroll>
       )}
 
-      {pendingSource && pendingSource.entries.length > 0 ? (
+      {!cellClickMode && pendingSource && pendingSource.entries.length > 0 ? (
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
           <p className="text-xs font-medium text-muted-foreground mb-1">{t("adminBookingSelectedSlotsLabel")}</p>
           <ul className="space-y-0.5 text-sm text-foreground max-h-28 overflow-y-auto">
@@ -318,7 +340,7 @@ export default function AdminInstructorAvailabilityTable({
         </div>
       ) : null}
 
-      {slotModal ? (
+      {!cellClickMode && slotModal ? (
         <AdminInstructorDaySlotsModal
           open
           onOpenChange={(open) => {
