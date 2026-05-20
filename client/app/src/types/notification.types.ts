@@ -11,7 +11,14 @@ export type NotificationItem = {
   type: NotificationType;
   title: string;
   message: string;
-  entityType: "booking" | "theory_cohort" | "contact_request" | "booked_call" | "finance_transaction" | "system";
+  entityType:
+    | "booking"
+    | "theory_cohort"
+    | "contact_request"
+    | "booked_call"
+    | "theory_personal_lesson_request"
+    | "finance_transaction"
+    | "system";
   entityId: string | null;
   metadata: Record<string, unknown> | null;
   isRead: boolean;
