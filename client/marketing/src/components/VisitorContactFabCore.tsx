@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { parseWhatsappDigits } from "src/modules/marketing/whatsappDigits";
-import { FaWhatsapp } from "react-icons/fa";
+import { WhatsAppBrandIcon } from "src/components/icons/WhatsAppBrandIcon";
 import { Phone } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import { DialogFooter } from "src/components/ui/dialog";
@@ -124,7 +124,7 @@ export function VisitorContactFabCore({ pathname }: VisitorContactFabCoreProps):
               "transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
             )}
           >
-            <FaWhatsapp className="size-8" aria-hidden />
+            <WhatsAppBrandIcon className="size-8" />
           </a>
         ) : null}
       </div>
