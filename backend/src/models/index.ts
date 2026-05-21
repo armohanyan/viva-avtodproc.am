@@ -650,6 +650,30 @@ async function ensureBookingsPaymentColumns(): Promise<void> {
   }
 }
 
+/** Adds `bookings.paid_amount_amd` for admin partial / prepaid tracking. */
+async function ensureBookingsPaidAmountColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND COLUMN_NAME = 'paid_amount_amd'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `paid_amount_amd` INT UNSIGNED NULL');
+}
+
 /** Adds `bookings.hold_extension_count` when tables predate Sequelize fields. */
 async function ensureBookingsHoldExtensionCountColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -1897,6 +1921,7 @@ export async function syncModels(): Promise<void> {
   await ensureCarExpensesTitleColumn();
   await ensureFinanceExpensesTable();
   await ensureBookingsPaymentColumns();
+  await ensureBookingsPaidAmountColumn();
   await ensureBookingsHoldExtensionCountColumn();
   await ensureBookingsMultiSlotColumns();
   await ensureBookingSlotsTable();

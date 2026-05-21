@@ -10,6 +10,8 @@ const { ResourceNotFoundError, UnauthorizedError, PermissionError, InputValidati
 
 const bookingStatusSchema = z.enum(['confirmed', 'pending', 'pending_payment', 'cancelled', 'refunded']);
 
+const adminPaymentStatusSchema = z.enum(['paid', 'partial', 'unpaid']);
+
 const createBodySchema = z.object({
   studentId: z.coerce.number().int().positive(),
   instructorName: z.string().optional(),
@@ -32,6 +34,8 @@ const createBodySchema = z.object({
   consumePackageCredits: z.boolean().optional(),
   packageOrderId: z.coerce.number().int().positive().optional(),
   meetLink: z.union([z.string().max(512), z.null(), z.literal('')]).optional(),
+  adminPaymentStatus: adminPaymentStatusSchema.optional(),
+  paidAmountAmd: z.coerce.number().int().nonnegative().optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -223,6 +227,14 @@ export default class BookingController {
       }
 
       if (studentUserId !== undefined && Number.isFinite(studentUserId) && studentUserId > 0) {
+        const summaryOnly =
+          String(req.query.summary ?? '').trim().toLowerCase() === 'payment' ||
+          String(req.query.paymentSummary ?? '').trim() === '1';
+        if (summaryOnly) {
+          const summary = await BookingService.getStudentPaymentSummary(studentUserId);
+          SuccessHandlerUtil.handleGet(res, next, summary);
+          return;
+        }
         const data = await BookingService.listForStudent(studentUserId);
         SuccessHandlerUtil.handleList(res, next, data);
         return;
@@ -286,6 +298,8 @@ export default class BookingController {
             slotEntries: body.slotEntries,
             consumePackageCredits: body.consumePackageCredits,
             packageOrderId: body.packageOrderId,
+            adminPaymentStatus: body.adminPaymentStatus,
+            paidAmountAmd: body.paidAmountAmd,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -342,6 +356,9 @@ export default class BookingController {
         slotEntries: body.slotEntries,
         consumePackageCredits: body.consumePackageCredits,
         packageOrderId: body.packageOrderId,
+        meetLink: body.meetLink,
+        adminPaymentStatus: body.adminPaymentStatus,
+        paidAmountAmd: body.paidAmountAmd,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -411,18 +428,7 @@ export default class BookingController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const body = parseBody(updateSchema, req.body) as Partial<{
-        studentId: number;
-        instructorName: string;
-        dateIso: string;
-        time: string;
-        type: 'practical' | 'theory' | 'theory_personal';
-        status: string;
-        branchId: number;
-        slots: string[];
-        theoryCohortId: number;
-        slotEntries: { dateIso: string; time: string }[];
-      }>;
+      const body = parseBody(updateSchema, req.body);
       const row = await BookingService.updateAdmin(Number(req.params.id), body);
       if (!row) {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));

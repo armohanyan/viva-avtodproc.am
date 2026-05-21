@@ -45,8 +45,11 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare prepaidMeta: CreationOptional<Record<string, unknown> | null>;
   /**
    * Payment lifecycle for student bookings (`paid` after capture). Nullable on legacy/admin rows.
+   * Admin manual bookings may use `partial` for մասնակի վճարում.
    */
-  declare paymentStatus: CreationOptional<'paid' | 'unpaid' | 'pending' | 'failed' | null>;
+  declare paymentStatus: CreationOptional<'paid' | 'unpaid' | 'partial' | 'pending' | 'failed' | null>;
+  /** Amount already paid toward {@link totalPriceAmd} (admin-recorded or inferred from legacy data). */
+  declare paidAmountAmd: CreationOptional<number | null>;
   /** First calendar day when pay-at-booking-time applies (student must complete payment). */
   declare paymentRequiredAt: CreationOptional<string | null>;
   /** When the “payment due soon” email + notification were sent (dedupe). */
@@ -81,6 +84,7 @@ Booking.init(
     lessonCompletedAt: { type: DataTypes.DATE, allowNull: true },
     prepaidMeta: { type: DataTypes.JSON, allowNull: true },
     paymentStatus: { type: DataTypes.STRING(16), allowNull: true },
+    paidAmountAmd: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
     paymentRequiredAt: { type: DataTypes.DATEONLY, allowNull: true },
     paymentReminderSentAt: { type: DataTypes.DATE, allowNull: true },
     autoCancelledAt: { type: DataTypes.DATE, allowNull: true },

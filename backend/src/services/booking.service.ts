@@ -31,6 +31,14 @@ import {
   isImmediatePaymentRequired,
   shouldAutoCancelUnpaidAfterPaymentDeadline,
 } from '../utils/booking-payment-schedule.util';
+import {
+  adminPaymentFieldsForDb,
+  bookingTotalPriceAmd,
+  buildStudentPaymentSummary,
+  resolveBookingPayment,
+  type AdminBookingPaymentStatus,
+  type StudentPaymentSummaryDto,
+} from '../utils/booking-admin-payment.util';
 
 const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
 
@@ -60,6 +68,47 @@ function meetLinkOrNull(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length > 0 ? s.slice(0, 512) : null;
+}
+
+function adminPaymentDbPatch(
+  totalPriceAmd: number,
+  input: { adminPaymentStatus?: AdminBookingPaymentStatus; paidAmountAmd?: number },
+  prepaidMeta?: Record<string, unknown> | null,
+): { paymentStatus: import('../utils/booking-admin-payment.util').BookingPaymentStatusDb; paidAmountAmd: number; paidAt: Date | null } {
+  try {
+    return adminPaymentFieldsForDb(totalPriceAmd, input.adminPaymentStatus, input.paidAmountAmd, { prepaidMeta });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid payment';
+    throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
+  }
+}
+
+type AdminPaymentPatchInput = {
+  adminPaymentStatus?: AdminBookingPaymentStatus;
+  paidAmountAmd?: number;
+};
+
+function mergeAdminPaymentIntoRowUpdate(
+  row: Booking,
+  patch: AdminPaymentPatchInput,
+  nextTotalPriceAmd: number | null,
+): Partial<{ paymentStatus: import('../utils/booking-admin-payment.util').BookingPaymentStatusDb; paidAmountAmd: number; paidAt: Date | null }> {
+  const billable = row.prepaidMeta ? 0 : bookingTotalPriceAmd({ totalPriceAmd: nextTotalPriceAmd });
+  const hasExplicit = patch.adminPaymentStatus !== undefined || patch.paidAmountAmd !== undefined;
+  if (!hasExplicit && billable === bookingTotalPriceAmd(row)) {
+    return {};
+  }
+  const resolved = resolveBookingPayment(row);
+  const status: AdminBookingPaymentStatus =
+    patch.adminPaymentStatus ??
+    (resolved.paymentStatus === 'paid' ||
+    resolved.paymentStatus === 'partial' ||
+    resolved.paymentStatus === 'unpaid'
+      ? resolved.paymentStatus
+      : 'unpaid');
+  const paidAmt =
+    patch.paidAmountAmd ?? (status === 'partial' ? resolved.paidAmountAmd : undefined);
+  return adminPaymentDbPatch(billable, { adminPaymentStatus: status, paidAmountAmd: paidAmt }, row.prepaidMeta);
 }
 
 function meetLinkPatchForLessonType(
@@ -143,6 +192,7 @@ export type BookingAdminDto = {
   /** From `booking_slots` when loaded (admin calendar / multi-day edits). */
   slotEntries?: { dateIso: string; time: string }[];
   paymentStatus?: string | null;
+  paidAmountAmd?: number | null;
   paymentRequiredAt?: string | null;
   cancellationReason?: string | null;
   meetLink?: string | null;
@@ -180,7 +230,8 @@ export type StudentBookingDto = {
   /** ISO time when a refund cancellation was submitted; staff must approve. */
   cancellationRequestedAt?: string | null;
   maxHoldExtensions?: number;
-  paymentStatus?: 'paid' | 'unpaid' | 'pending' | 'failed' | null;
+  paymentStatus?: 'paid' | 'unpaid' | 'partial' | 'pending' | 'failed' | null;
+  paidAmountAmd?: number | null;
   /** First calendar day when card payment becomes mandatory (reserved-unpaid flow). */
   paymentRequiredAt?: string | null;
   /** True when the lesson is within the pay-horizon and payment has not been captured yet. */
@@ -957,6 +1008,7 @@ export default class BookingService {
     const row = b as BookingWithUsers;
     const inst = row.instructor;
     const stu = row.student;
+    const pay = resolveBookingPayment(b);
     return {
       id: b.id,
       studentId: stu.id,
@@ -970,11 +1022,37 @@ export default class BookingService {
       branchId: b.branchId,
       cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
-      paymentStatus: b.paymentStatus ?? null,
+      paymentStatus: pay.paymentStatus,
+      paidAmountAmd: pay.paidAmountAmd,
       paymentRequiredAt: b.paymentRequiredAt ? String(b.paymentRequiredAt).slice(0, 10) : null,
       cancellationReason: b.cancellationReason ?? null,
       meetLink: meetLinkOrNull(b.meetLink),
     };
+  }
+
+  static async getStudentPaymentSummary(studentUserId: number): Promise<StudentPaymentSummaryDto> {
+    const rows = await Booking.findAll({
+      where: { studentUserId },
+      order: [
+        ['dateIso', 'DESC'],
+        ['time', 'DESC'],
+      ],
+    });
+    return buildStudentPaymentSummary(
+      rows.map((b) => ({
+        id: b.id,
+        status: b.status,
+        totalPriceAmd: b.totalPriceAmd,
+        paidAmountAmd: b.paidAmountAmd,
+        paymentStatus: b.paymentStatus,
+        paidAt: b.paidAt,
+        prepaidMeta: b.prepaidMeta,
+        dateIso: dateIsoString(b.dateIso),
+        time: b.time,
+        endTime: b.endTime ?? null,
+        lessonType: b.lessonType,
+      })),
+    );
   }
 
   static async listAdmin(branchId?: number): Promise<BookingAdminDto[]> {
@@ -1165,7 +1243,7 @@ export default class BookingService {
         b.paidAt == null &&
         (st === 'pending' || st === 'pending_payment') &&
         isImmediatePaymentRequired(dIso, today);
-      const ps = b.paymentStatus as StudentBookingDto['paymentStatus'];
+      const resolvedPay = resolveBookingPayment(b);
       return {
         id: b.id,
         dateIso: dateIsoString(b.dateIso),
@@ -1187,7 +1265,8 @@ export default class BookingService {
         cancelRefundEligible: eligible,
         hoursUntilLesson: Math.round(hoursLeft * 10) / 10,
         cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
-        paymentStatus: ps ?? undefined,
+        paymentStatus: resolvedPay.paymentStatus,
+        paidAmountAmd: resolvedPay.paidAmountAmd,
         paymentRequiredAt: paymentReqRaw,
         paymentRequiredNow,
         meetLink: b.lessonType === 'theory_personal' ? meetLinkOrNull(b.meetLink) : null,
@@ -1561,6 +1640,8 @@ export default class BookingService {
     consumePackageCredits?: boolean;
     packageOrderId?: number;
     meetLink?: string | null;
+    adminPaymentStatus?: AdminBookingPaymentStatus;
+    paidAmountAmd?: number;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -1604,6 +1685,12 @@ export default class BookingService {
                 transaction,
               })
             : null;
+        const billableTotal = prepaidMeta ? 0 : totalPriceAmd;
+        const payPatch = adminPaymentDbPatch(
+          billableTotal,
+          { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
+          prepaidMeta,
+        );
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -1612,13 +1699,14 @@ export default class BookingService {
             dateIso: first.dateIso,
             time: first.time,
             endTime,
-            totalPriceAmd: prepaidMeta ? 0 : totalPriceAmd,
+            totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
             status: input.status,
-            paidAt: null,
             holdExpiresAt: null,
             prepaidMeta,
-            ...(prepaidMeta ? { paymentStatus: 'paid' as const } : {}),
+            paymentStatus: payPatch.paymentStatus,
+            paidAmountAmd: payPatch.paidAmountAmd,
+            paidAt: payPatch.paidAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
           },
           { transaction },
@@ -1656,6 +1744,8 @@ export default class BookingService {
     consumePackageCredits?: boolean;
     packageOrderId?: number;
     meetLink?: string | null;
+    adminPaymentStatus?: AdminBookingPaymentStatus;
+    paidAmountAmd?: number;
   }): Promise<BookingAdminDto | null> {
     const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? []);
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
@@ -1676,6 +1766,8 @@ export default class BookingService {
         consumePackageCredits: input.consumePackageCredits,
         packageOrderId: input.packageOrderId,
         meetLink: input.meetLink,
+        adminPaymentStatus: input.adminPaymentStatus,
+        paidAmountAmd: input.paidAmountAmd,
       });
     }
 
@@ -1701,6 +1793,8 @@ export default class BookingService {
         consumePackageCredits: input.consumePackageCredits,
         packageOrderId: input.packageOrderId,
         meetLink: input.meetLink,
+        adminPaymentStatus: input.adminPaymentStatus,
+        paidAmountAmd: input.paidAmountAmd,
       });
     }
 
@@ -1726,6 +1820,11 @@ export default class BookingService {
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
     const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : 0;
 
+    const payPatch = adminPaymentDbPatch(totalPriceAmd, {
+      adminPaymentStatus: input.adminPaymentStatus,
+      paidAmountAmd: input.paidAmountAmd,
+    });
+
     let newId = 0;
     try {
       await sequelize.transaction(async (transaction) => {
@@ -1740,6 +1839,9 @@ export default class BookingService {
             totalPriceAmd,
             lessonType: input.type,
             status: input.status,
+            paymentStatus: payPatch.paymentStatus,
+            paidAmountAmd: payPatch.paidAmountAmd,
+            paidAt: payPatch.paidAt,
             ...meetLinkPatchForLessonType(input.type, input.meetLink),
           },
           { transaction },
@@ -1935,6 +2037,8 @@ export default class BookingService {
     consumePackageCredits?: boolean;
     packageOrderId?: number;
     meetLink?: string | null;
+    adminPaymentStatus?: AdminBookingPaymentStatus;
+    paidAmountAmd?: number;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
     const sorted = normalizeAndSortSlots(input.slots);
@@ -2024,6 +2128,12 @@ export default class BookingService {
         if (input.lessonType === 'theory' && input.theoryCohortId != null && Number.isFinite(input.theoryCohortId)) {
           prepaidMeta = { ...(prepaidMeta ?? {}), theoryCohortId: input.theoryCohortId };
         }
+        const billableTotal = prepaidMeta ? 0 : totalPriceAmd;
+        const payPatch = adminPaymentDbPatch(
+          billableTotal,
+          { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
+          prepaidMeta,
+        );
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -2032,13 +2142,14 @@ export default class BookingService {
             dateIso,
             time: sorted[0],
             endTime: exclusiveEnd,
-            totalPriceAmd: prepaidMeta ? 0 : totalPriceAmd,
+            totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
             status: input.status,
-            paidAt: null,
             holdExpiresAt: null,
             prepaidMeta,
-            ...(prepaidMeta ? { paymentStatus: 'paid' as const } : {}),
+            paymentStatus: payPatch.paymentStatus,
+            paidAmountAmd: payPatch.paidAmountAmd,
+            paidAt: payPatch.paidAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
           },
           { transaction },
@@ -2082,6 +2193,8 @@ export default class BookingService {
       branchId: number;
       slots: readonly string[];
       theoryCohortId?: number;
+      adminPaymentStatus?: AdminBookingPaymentStatus;
+      paidAmountAmd?: number;
     }>;
     lessonType: 'practical' | 'theory' | 'theory_personal';
     slots: readonly string[];
@@ -2177,6 +2290,7 @@ export default class BookingService {
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
+    const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, totalPriceAmd);
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -2191,6 +2305,7 @@ export default class BookingService {
             ...(patch.type !== undefined ? { lessonType: patch.type } : { lessonType }),
             ...(patch.status !== undefined ? { status: patch.status } : {}),
             branchId,
+            ...payUpdate,
           },
           { transaction },
         );
@@ -2230,6 +2345,8 @@ export default class BookingService {
       status: string;
       branchId: number;
       meetLink?: string | null;
+      adminPaymentStatus?: AdminBookingPaymentStatus;
+      paidAmountAmd?: number;
     }>;
     lessonType: 'practical' | 'theory_personal';
     entries: AdminSlotEntry[];
@@ -2275,6 +2392,7 @@ export default class BookingService {
     const endTime = endTimeExclusiveForSlotEntries(entries);
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
+    const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, totalPriceAmd);
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -2290,6 +2408,7 @@ export default class BookingService {
             ...(patch.status !== undefined ? { status: patch.status } : {}),
             branchId,
             ...meetLinkPatchForLessonType(lessonType, patch.meetLink),
+            ...payUpdate,
           },
           { transaction },
         );
@@ -2331,6 +2450,8 @@ export default class BookingService {
       theoryCohortId?: number;
       slotEntries?: readonly { dateIso: string; time: string }[];
       meetLink?: string | null;
+      adminPaymentStatus?: AdminBookingPaymentStatus;
+      paidAmountAmd?: number;
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
@@ -2416,6 +2537,11 @@ export default class BookingService {
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
+    const nextTotalForPayment =
+      patch.time !== undefined || patch.dateIso !== undefined || patch.instructorName !== undefined
+        ? totalPriceAmd
+        : row.totalPriceAmd ?? null;
+    const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, nextTotalForPayment);
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -2432,6 +2558,7 @@ export default class BookingService {
             ...(patch.status !== undefined ? { status: patch.status } : {}),
             ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
             ...meetLinkPatchForLessonType(effectiveType, patch.meetLink),
+            ...payUpdate,
           },
           { transaction },
         );
@@ -2599,6 +2726,7 @@ export default class BookingService {
         await TheoryCohortService.enroll(cohortId, studentUserId);
       }
       const paidAt = new Date();
+      const total = bookingTotalPriceAmd(row);
       await row.update(
         {
           status: 'confirmed',
@@ -2606,6 +2734,7 @@ export default class BookingService {
           holdExpiresAt: null,
           holdExtensionCount: 0,
           paymentStatus: 'paid',
+          paidAmountAmd: total,
         },
         { transaction },
       );

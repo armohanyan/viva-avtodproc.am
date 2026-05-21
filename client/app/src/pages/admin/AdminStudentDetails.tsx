@@ -67,9 +67,28 @@ type StudentBookingRow = {
   instructor: string;
   lessonTypeKey: "lessonTypePractical" | "lessonTypeTheory" | "lessonTypeTheoryPersonal";
   status: string;
-  paymentStatus?: "paid" | "unpaid" | "pending" | "failed" | null;
+  paymentStatus?: "paid" | "unpaid" | "partial" | "pending" | "failed" | null;
+  paidAmountAmd?: number | null;
   paymentRequiredAt?: string | null;
   cancellationRequestedAt?: string | null;
+};
+
+type StudentPaymentSummary = {
+  totalDebtAmd: number;
+  totalPaidOnBookingsAmd: number;
+  totalRemainingAmd: number;
+  unpaidBookings: Array<{
+    id: number;
+    dateIso: string;
+    time: string;
+    endTime: string | null;
+    totalPriceAmd: number;
+    paidAmountAmd: number;
+    remainingAmd: number;
+    lessonTypeKey: StudentBookingRow["lessonTypeKey"];
+    paymentStatus: string;
+    status: string;
+  }>;
 };
 
 const statusColor: Record<string, string> = {
@@ -88,21 +107,22 @@ function studentBookingHref(s: Pick<StudentRow, "id" | "branchId" | "instructor"
   );
 }
 
-function isPendingBooking(status: string): boolean {
-  const c = toCanonicalBookingStatus(status);
-  return c === "pending" || c === "pending_payment";
-}
-
-function isUnpaidBooking(b: StudentBookingRow): boolean {
+function bookingRemainingAmd(b: StudentBookingRow): number {
   const c = toCanonicalBookingStatus(b.status);
-  if (c === "cancelled" || c === "refunded") return false;
-  if (b.paymentStatus === "paid") return false;
-  return c === "pending" || c === "pending_payment" || b.paymentStatus === "unpaid" || b.paymentStatus === "pending";
+  if (c === "cancelled" || c === "refunded") return 0;
+  const total = b.totalPriceAmd ?? 0;
+  if (total <= 0) return 0;
+  const paid = b.paidAmountAmd ?? (b.paymentStatus === "paid" ? total : 0);
+  return Math.max(0, total - paid);
 }
 
 function paymentStatusBadge(b: StudentBookingRow): { labelKey: TranslationKey; className: string } {
-  if (b.paymentStatus === "paid") {
+  const remaining = bookingRemainingAmd(b);
+  if (b.paymentStatus === "paid" || remaining === 0) {
     return { labelKey: "studentDetailsPaymentPaid", className: "bg-emerald-100 text-emerald-700" };
+  }
+  if (b.paymentStatus === "partial" || (remaining > 0 && (b.paidAmountAmd ?? 0) > 0)) {
+    return { labelKey: "adminBookingPaymentStatusPartial", className: "bg-sky-100 text-sky-800" };
   }
   if (b.paymentStatus === "failed") {
     return { labelKey: "studentDetailsPaymentFailed", className: "bg-red-100 text-red-600" };
@@ -110,7 +130,7 @@ function paymentStatusBadge(b: StudentBookingRow): { labelKey: TranslationKey; c
   if (b.paymentStatus === "pending") {
     return { labelKey: "studentDetailsPaymentPending", className: "bg-amber-100 text-amber-700" };
   }
-  if (isUnpaidBooking(b)) {
+  if (remaining > 0) {
     return { labelKey: "studentDetailsPaymentUnpaid", className: "bg-amber-100 text-amber-700" };
   }
   return { labelKey: "studentDetailsPaymentNa", className: "bg-slate-100 text-slate-500" };
@@ -126,6 +146,7 @@ export default function AdminStudentDetails() {
 
   const [student, setStudent] = useState<StudentRow | null | undefined>(undefined);
   const [bookings, setBookings] = useState<StudentBookingRow[]>([]);
+  const [paymentSummary, setPaymentSummary] = useState<StudentPaymentSummary | null>(null);
   const [transactions, setTransactions] = useState<FinanceTx[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -133,10 +154,13 @@ export default function AdminStudentDetails() {
   const load = useCallback(async () => {
     if (!studentId) return;
     try {
-      const [students, bks, txs] = await Promise.all([
+      const [students, bks, summary, txs] = await Promise.all([
         vivaApiJson<StudentRow[]>("/students"),
         vivaApiJson<StudentBookingRow[]>(
           `/bookings?studentUserId=${encodeURIComponent(studentId)}`,
+        ),
+        vivaApiJson<StudentPaymentSummary>(
+          `/bookings?studentUserId=${encodeURIComponent(studentId)}&paymentSummary=1`,
         ),
         vivaApiJson<FinanceTx[]>(
           `/finance/student-transactions?studentUserId=${encodeURIComponent(studentId)}`,
@@ -155,6 +179,7 @@ export default function AdminStudentDetails() {
           : null,
       );
       setBookings(Array.isArray(bks) ? bks : []);
+      setPaymentSummary(summary && typeof summary === "object" ? summary : null);
       setTransactions(
         (Array.isArray(txs) ? txs : []).map((tx) => ({
           ...tx,
@@ -195,12 +220,15 @@ export default function AdminStudentDetails() {
       .filter((tx) => tx.status === "refunded")
       .reduce((sum, tx) => sum + (tx.grossAmd ?? 0), 0);
 
-    const totalOutstandingBookings = bookings
-      .filter((b) => isUnpaidBooking(b))
-      .reduce((sum, b) => sum + (b.totalPriceAmd ?? 0), 0);
+    const totalOutstandingBookings = paymentSummary?.totalDebtAmd ?? bookings.reduce((sum, b) => sum + bookingRemainingAmd(b), 0);
+    const totalPaidOnBookings = paymentSummary?.totalPaidOnBookingsAmd ?? 0;
+    const unpaidLessonCount = paymentSummary?.unpaidBookings.length ?? bookings.filter((b) => bookingRemainingAmd(b) > 0).length;
 
     const totalBookings = bookings.length;
-    const pendingBookings = bookings.filter((b) => isPendingBooking(b.status)).length;
+    const pendingBookings = bookings.filter((b) => {
+      const c = toCanonicalBookingStatus(b.status);
+      return c === "pending" || c === "pending_payment";
+    }).length;
     const confirmedBookings = bookings.filter(
       (b) => toCanonicalBookingStatus(b.status) === "confirmed",
     ).length;
@@ -215,12 +243,14 @@ export default function AdminStudentDetails() {
       totalPendingTx,
       totalRefunded,
       totalOutstandingBookings,
+      totalPaidOnBookings,
+      unpaidLessonCount,
       totalBookings,
       pendingBookings,
       confirmedBookings,
       cancelledBookings,
     };
-  }, [bookings, transactions]);
+  }, [bookings, paymentSummary, transactions]);
 
   if (student === undefined) {
     return (
@@ -387,8 +417,14 @@ export default function AdminStudentDetails() {
               icon={<AlertCircle className="w-4 h-4 text-amber-600" />}
               label={t("studentDetailsAmountDue")}
               value={formatAmd(stats.totalOutstandingBookings)}
-              hint={`${stats.pendingBookings} ${t("studentDetailsPendingBookings")}`}
+              hint={`${stats.unpaidLessonCount} ${t("studentDetailsUnpaidBookingsTitle").toLowerCase()}`}
               tone="amber"
+            />
+            <StatCard
+              icon={<CreditCard className="w-4 h-4 text-sky-600" />}
+              label={t("studentDetailsBookingPaid")}
+              value={formatAmd(stats.totalPaidOnBookings)}
+              tone="sky"
             />
             <StatCard
               icon={<ReceiptText className="w-4 h-4 text-sky-600" />}
@@ -404,6 +440,45 @@ export default function AdminStudentDetails() {
             />
           </div>
         </div>
+
+        {(paymentSummary?.unpaidBookings.length ?? 0) > 0 ? (
+          <div>
+            <h3 className="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              {t("studentDetailsUnpaidBookingsTitle")}
+            </h3>
+            <Card className="border-border overflow-hidden">
+              <AdminTableScroll>
+                <table className="w-full text-sm min-w-[40rem]">
+                  <thead className="bg-muted/40">
+                    <tr className="text-left">
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t("date")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t("studentDetailsLessonType")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("adminColPrice")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("adminBookingPaymentPaidAmount")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("studentDetailsBookingRemaining")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {(paymentSummary?.unpaidBookings ?? []).map((b) => (
+                      <tr key={b.id} className="hover:bg-muted/30">
+                        <td className="px-4 py-3 whitespace-nowrap tabular-nums">
+                          {displayJoined(b.dateIso)} · {b.time}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{t(b.lessonTypeKey)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{formatAmd(b.totalPriceAmd)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatAmd(b.paidAmountAmd)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums font-medium text-amber-700">{formatAmd(b.remainingAmd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </AdminTableScroll>
+            </Card>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("studentDetailsNoUnpaidBookings")}</p>
+        )}
 
         <div>
           <h3 className="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -452,6 +527,11 @@ export default function AdminStudentDetails() {
                           <td className="px-4 py-3"><Badge className={`text-xs ${pay.className}`}>{t(pay.labelKey)}</Badge></td>
                           <td className="px-4 py-3 text-foreground text-right whitespace-nowrap tabular-nums">
                             {b.totalPriceAmd != null ? formatAmd(b.totalPriceAmd) : "—"}
+                            {bookingRemainingAmd(b) > 0 ? (
+                              <div className="text-xs text-amber-700 font-normal">
+                                {t("studentDetailsBookingRemaining")}: {formatAmd(bookingRemainingAmd(b))}
+                              </div>
+                            ) : null}
                           </td>
                         </tr>
                       );

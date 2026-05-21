@@ -4,6 +4,7 @@ import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
 import AdminStudentPicker from "src/components/admin/AdminStudentPicker";
+import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
 import { cn } from "src/lib/utils";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
@@ -22,11 +23,12 @@ import {
   sortTimesUnique,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
 import {
-  parseAmdInput,
-  toDatetimeLocalValue,
-  type TxMethod,
-} from "src/pages/admin/finance/adminFinanceShared";
-
+  adminPaymentApiPayload,
+  defaultAdminBookingPayment,
+  paidAmountFromState,
+  validateAdminBookingPayment,
+  type AdminBookingPaymentState,
+} from "src/modules/admin/booking/adminBookingPayment";
 export type QuickPracticalBookingModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -41,16 +43,6 @@ export type QuickPracticalBookingModalProps = {
 };
 
 type Status = "confirmed" | "pending" | "cancelled" | "refunded";
-
-type PaymentFields = {
-  method: TxMethod;
-  grossStr: string;
-  datetimeLocal: string;
-};
-
-function defaultPayment(): PaymentFields {
-  return { method: "cash", grossStr: "", datetimeLocal: toDatetimeLocalValue(new Date()) };
-}
 
 function financeStatusFromBookingStatus(status: Status): "completed" | "pending" | "failed" | "refunded" {
   if (status === "confirmed") return "completed";
@@ -78,8 +70,10 @@ export default function QuickPracticalBookingModal({
   const [branchId, setBranchId] = useState(initialBranchId);
   const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
   const [status, setStatus] = useState<Status>("pending");
-  const [withPayment, setWithPayment] = useState(false);
-  const [payment, setPayment] = useState<PaymentFields>(() => defaultPayment());
+  const [bookingPayment, setBookingPayment] = useState<AdminBookingPaymentState>(() =>
+    defaultAdminBookingPayment(),
+  );
+  const [paymentErrorKey, setPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -88,11 +82,15 @@ export default function QuickPracticalBookingModal({
     setBranchId(initialBranchId);
     setLessonType("");
     setStatus("pending");
-    setWithPayment(false);
-    setPayment(defaultPayment());
+    setBookingPayment(defaultAdminBookingPayment());
+    setPaymentErrorKey(null);
   }, [open, initialBranchId]);
 
   const sortedEntries = useMemo(() => sortSlotEntriesChrono(slotEntries), [slotEntries]);
+  const totalPriceAmd = useMemo(
+    () => Math.max(0, Math.round(Number(instructor.hourlyPrice) || 0) * sortedEntries.length),
+    [instructor.hourlyPrice, sortedEntries.length],
+  );
   const firstEntry = sortedEntries[0];
   const dateLabel = useMemo(() => {
     const dates = Array.from(new Set(sortedEntries.map((e) => e.dateIso)));
@@ -116,12 +114,16 @@ export default function QuickPracticalBookingModal({
       showToast(t("adminBookingValSelectSlots"), "error");
       return;
     }
-    const gross = withPayment ? parseAmdInput(payment.grossStr) : NaN;
-    const wantsPayment = withPayment && Number.isFinite(gross) && gross > 0;
-    if (withPayment && !wantsPayment) {
-      showToast(t("financeManualErrorAmount"), "error");
+    const payErr = validateAdminBookingPayment(bookingPayment, totalPriceAmd);
+    if (payErr) {
+      setPaymentErrorKey(payErr);
+      showToast(t(payErr), "error");
       return;
     }
+    setPaymentErrorKey(null);
+
+    const paid = paidAmountFromState(bookingPayment);
+    const paymentBody = adminPaymentApiPayload(bookingPayment, totalPriceAmd);
 
     setSubmitting(true);
     try {
@@ -139,12 +141,13 @@ export default function QuickPracticalBookingModal({
         ...(sortedEntries.length > 0
           ? { slotEntries: sortedEntries.map((e) => ({ dateIso: e.dateIso, time: e.time })) }
           : {}),
+        ...paymentBody,
       };
       const created = await vivaApiJson<{ id: number }>("/bookings", { method: "POST", body });
       const bookingIdNum = Number(created.id);
 
-      if (wantsPayment && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
-        const createdAtIso = new Date(payment.datetimeLocal).toISOString();
+      if (paid > 0 && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
+        const createdAtIso = new Date(bookingPayment.datetimeLocal).toISOString();
         const stu = students.find((s) => s.id === studentId);
         await vivaApiJson("/finance/transactions", {
           method: "POST",
@@ -153,8 +156,8 @@ export default function QuickPracticalBookingModal({
             customer: stu?.name?.trim() ?? "",
             email: stu?.email?.trim() ?? "",
             branchId: Number(branchId),
-            method: payment.method,
-            grossAmd: gross,
+            method: bookingPayment.method,
+            grossAmd: paid,
             status: financeStatusFromBookingStatus(status),
             source: "manual",
             bookingId: bookingIdNum,
@@ -300,59 +303,12 @@ export default function QuickPracticalBookingModal({
           </div>
         </div>
 
-        <div className="rounded-lg border border-border px-3 py-2.5">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={withPayment}
-              onChange={(e) => setWithPayment(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
-            />
-            <span className="text-sm font-medium text-foreground">{t("adminBookingModalTabPayment")}</span>
-          </label>
-          {withPayment ? (
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-1">
-                <label className="block text-xs font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
-                <select
-                  value={payment.method}
-                  onChange={(e) =>
-                    setPayment((p) => ({ ...p, method: e.target.value as TxMethod }))
-                  }
-                  className="w-full h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="cash">{t("financeMethodCash")}</option>
-                  <option value="card">{t("financeMethodCard")}</option>
-                  <option value="transfer">{t("financeMethodTransfer")}</option>
-                  <option value="idram">{t("financeMethodIdram")}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  {t("financeManualTxGrossLabel")}
-                </label>
-                <Input
-                  inputMode="decimal"
-                  value={payment.grossStr}
-                  onChange={(e) => setPayment((p) => ({ ...p, grossStr: e.target.value }))}
-                  className="h-9 tabular-nums"
-                  placeholder="0"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  {t("financeColDateTime")}
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={payment.datetimeLocal}
-                  onChange={(e) => setPayment((p) => ({ ...p, datetimeLocal: e.target.value }))}
-                  className="h-9"
-                />
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <AdminBookingPaymentSection
+          totalPriceAmd={totalPriceAmd}
+          value={bookingPayment}
+          onChange={setBookingPayment}
+          errorKey={paymentErrorKey}
+        />
 
         <p className="text-xs text-muted-foreground">{t("adminDrivingQuickBookingSummary")}</p>
       </form>

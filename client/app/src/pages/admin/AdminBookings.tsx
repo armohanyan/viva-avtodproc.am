@@ -12,7 +12,6 @@ import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
-import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban } from "lucide-react";
@@ -31,6 +30,21 @@ import PackageSelector from "src/modules/admin/booking/PackageSelector";
 import SlotSelector from "src/modules/admin/booking/SlotSelector";
 import { useBookingPriceCalculator, type BookingPriceInput } from "src/modules/admin/booking/useBookingPriceCalculator";
 import { validateAdminBookingAdd } from "src/modules/admin/booking/useBookingValidation";
+import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
+import {
+  adminPaymentApiPayload,
+  adminPaymentFromBooking,
+  BOOKING_LIST_PAYMENT_BADGE_CLASS,
+  bookingListPaymentLabelKey,
+  bookingListPaymentRow,
+  bookingMatchesPaymentFilter,
+  bookingOccursOnDateIso,
+  defaultAdminBookingPayment,
+  paidAmountFromState,
+  validateAdminBookingPayment,
+  type AdminBookingPaymentState,
+  type BookingPaymentFilter,
+} from "src/modules/admin/booking/adminBookingPayment";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
@@ -92,6 +106,8 @@ type Booking = {
   /** Present when the server stored multiple `booking_slots` rows (multi-day / non-consecutive). */
   slotEntries?: { dateIso: string; time: string }[];
   totalPriceAmd?: number | null;
+  paymentStatus?: string | null;
+  paidAmountAmd?: number | null;
   type: "practical" | "theory" | "theory_personal";
   status: string;
   branchId: string;
@@ -282,8 +298,12 @@ export default function AdminBookings() {
     void refresh();
   }, [refresh, branchFilterRevision]);
   const [search, setSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState(() => todayIsoDate());
+  const [paymentFilter, setPaymentFilter] = useState<BookingPaymentFilter>("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [lessonTypeFilter, setLessonTypeFilter] = useState<"all" | "practical" | "theory" | "theory_personal">("all");
+  const [lessonTypeFilter, setLessonTypeFilter] = useState("all");
+  const [studentFilter, setStudentFilter] = useState("");
+  const [instructorFilter, setInstructorFilter] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [staffCancellationDialog, setStaffCancellationDialog] = useState<
     { kind: "approve" | "reject"; booking: Booking } | null
@@ -301,8 +321,14 @@ export default function AdminBookings() {
     packageTheorySlots: null,
   });
   const [bookingModalTab, setBookingModalTab] = useState<"booking" | "payment">("booking");
-  const [addPayment, setAddPayment] = useState<BookingPaymentFields>(() => defaultPaymentFields());
-  const [editPayment, setEditPayment] = useState<BookingPaymentFields>(() => defaultPaymentFields());
+  const [addBookingPayment, setAddBookingPayment] = useState<AdminBookingPaymentState>(() =>
+    defaultAdminBookingPayment(),
+  );
+  const [editBookingPayment, setEditBookingPayment] = useState<AdminBookingPaymentState>(() =>
+    defaultAdminBookingPayment(),
+  );
+  const [addPaymentErrorKey, setAddPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
+  const [editPaymentErrorKey, setEditPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
   /** Manual finance row id when editing a booking that already has a manual payment. */
   const [editManualTxId, setEditManualTxId] = useState<number | null>(null);
   /** When set, booking has a system-generated payment — show notice instead of form. */
@@ -810,7 +836,8 @@ export default function AdminBookings() {
       setTheoryCohortId("");
       pendingTheoryRequestIdRef.current = opts?.theoryRequestId?.trim() ? opts.theoryRequestId.trim() : null;
       setDraft(newDraft);
-      setAddPayment(defaultPaymentFields());
+      setAddBookingPayment(defaultAdminBookingPayment());
+      setAddPaymentErrorKey(null);
       setBookingModalTab("booking");
       setAddSlotSessionId((n) => n + 1);
       setAddOpen(true);
@@ -1121,8 +1148,28 @@ export default function AdminBookings() {
       const stu = studentLabel(b.studentId);
       const dateLabel = formatShortDateFromIso(b.dateIso, lang);
       const timeLabel = formatBookingSlotRangeLabel(b.time, b.endTime);
-      const hay = [b.id, stu, b.instructorName, dateLabel, timeLabel, b.time, b.type, b.status, branchLabel].join(" ").toLowerCase();
+      const pay = bookingListPaymentRow(b);
+      const payLabel = t(bookingListPaymentLabelKey(pay.status));
+      const hay = [
+        b.id,
+        stu,
+        b.instructorName,
+        dateLabel,
+        timeLabel,
+        b.time,
+        b.type,
+        b.status,
+        branchLabel,
+        payLabel,
+        String(pay.totalAmd),
+        String(pay.paidAmd),
+        String(pay.remainingAmd),
+      ]
+        .join(" ")
+        .toLowerCase();
       const matchSearch = !q || hay.includes(q);
+      const matchDate = !dateFilter.trim() || bookingOccursOnDateIso(b, dateFilter);
+      const matchPayment = bookingMatchesPaymentFilter(b, paymentFilter);
       const canon = toCanonicalBookingStatus(b.status);
       const matchStatus =
         statusFilter === "all"
@@ -1133,9 +1180,38 @@ export default function AdminBookings() {
               ? canon === "pending" || canon === "pending_payment"
               : canon === statusFilter;
       const matchLessonType = lessonTypeFilter === "all" || b.type === lessonTypeFilter;
-      return matchSearch && matchStatus && matchLessonType;
+      const matchStudent = !studentFilter || String(b.studentId) === studentFilter;
+      const matchInstructor =
+        !instructorFilter ||
+        (instructors.find((ins) => String(ins.id) === instructorFilter)?.name ?? "") === b.instructorName;
+      return (
+        matchSearch &&
+        matchDate &&
+        matchPayment &&
+        matchStatus &&
+        matchLessonType &&
+        matchStudent &&
+        matchInstructor
+      );
     });
-  }, [bookings, search, statusFilter, lessonTypeFilter, branches, lang, studentLabel]);
+  }, [
+    bookings,
+    search,
+    dateFilter,
+    paymentFilter,
+    statusFilter,
+    lessonTypeFilter,
+    studentFilter,
+    instructorFilter,
+    branches,
+    lang,
+    studentLabel,
+    instructors,
+    t,
+  ]);
+
+  const filterSelectClass =
+    "w-full h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring";
 
   useEffect(() => {
     if (!editBooking) {
@@ -1150,30 +1226,17 @@ export default function AdminBookings() {
     if (manual) {
       setEditManualTxId(manual.id);
       setEditSystemPayment(null);
-      setEditPayment({
-        method: manual.method,
-        grossStr: String(manual.grossAmd),
-        datetimeLocal: toDatetimeLocalValue(new Date(manual.createdAt)),
-      });
+      setEditBookingPayment(adminPaymentFromBooking(editBooking, manual));
     } else if (system) {
       setEditManualTxId(null);
       setEditSystemPayment(system);
-      const gross =
-        editBooking.totalPriceAmd != null && editBooking.totalPriceAmd > 0 ? String(editBooking.totalPriceAmd) : "";
-      setEditPayment({
-        ...defaultPaymentFields(),
-        grossStr: gross,
-      });
+      setEditBookingPayment(adminPaymentFromBooking(editBooking));
     } else {
       setEditManualTxId(null);
       setEditSystemPayment(null);
-      const gross =
-        editBooking.totalPriceAmd != null && editBooking.totalPriceAmd > 0 ? String(editBooking.totalPriceAmd) : "";
-      setEditPayment({
-        ...defaultPaymentFields(),
-        grossStr: gross,
-      });
+      setEditBookingPayment(adminPaymentFromBooking(editBooking));
     }
+    setEditPaymentErrorKey(null);
   }, [editBooking, financeTxs]);
 
   const handleDelete = async () => {
@@ -1217,11 +1280,13 @@ export default function AdminBookings() {
   };
 
   const validatePaymentForSubmit = (
-    payment: BookingPaymentFields,
+    payment: BookingPaymentFields | AdminBookingPaymentState,
     studentId: string,
     requireAmount: boolean,
   ): boolean => {
-    const gross = parseAmdInput(payment.grossStr);
+    const gross =
+      "paidStr" in payment ? paidAmountFromState(payment) : parseAmdInput(payment.grossStr);
+    const datetimeLocal = payment.datetimeLocal;
     if (!Number.isFinite(gross) || gross <= 0) {
       if (requireAmount) {
         showToast(t("financeManualErrorAmount"), "error");
@@ -1229,7 +1294,7 @@ export default function AdminBookings() {
       }
       return true;
     }
-    const created = new Date(payment.datetimeLocal);
+    const created = new Date(datetimeLocal);
     if (Number.isNaN(created.getTime())) {
       showToast(t("financeManualErrorDate"), "error");
       return false;
@@ -1241,6 +1306,12 @@ export default function AdminBookings() {
     }
     return true;
   };
+
+  const bookingPaymentToFinanceFields = (state: AdminBookingPaymentState): BookingPaymentFields => ({
+    method: state.method,
+    grossStr: state.paidStr,
+    datetimeLocal: state.datetimeLocal,
+  });
 
   const postManualFinance = async (
     payment: BookingPaymentFields,
@@ -1333,11 +1404,22 @@ export default function AdminBookings() {
       showToast(t("fillRequired"), "error");
       return;
     }
+    const editTotal = editBooking.totalPriceAmd ?? 0;
+    const payErr = validateAdminBookingPayment(editBookingPayment, editTotal);
+    if (payErr) {
+      setBookingModalTab("payment");
+      setEditPaymentErrorKey(payErr);
+      showToast(t(payErr), "error");
+      return;
+    }
+    setEditPaymentErrorKey(null);
+
     try {
       const pick = editSlotPick!;
       const useArbitrarySlots =
         (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
         (pick.slotEntries?.length ?? 0) > 0;
+      const paymentBody = adminPaymentApiPayload(editBookingPayment, editTotal);
       const body =
         editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
           ? {
@@ -1354,6 +1436,7 @@ export default function AdminBookings() {
               ...(editBooking.type === "theory_personal"
                 ? { meetLink: editBooking.meetLink?.trim() || null }
                 : {}),
+              ...paymentBody,
             }
           : {
               studentId: editBooking.studentId,
@@ -1363,6 +1446,7 @@ export default function AdminBookings() {
               type: editBooking.type,
               status: editBooking.status,
               branchId: Number(editBooking.branchId),
+              ...paymentBody,
             };
       await vivaApiJson(`/bookings/${encodeURIComponent(editBooking.id)}`, {
         method: "PATCH",
@@ -1371,13 +1455,13 @@ export default function AdminBookings() {
       const bookingIdNum = Number(editBooking.id);
       const financeDateIso = editSlotPick?.dateIso ?? editBooking.dateIso;
       if (!editSystemPayment) {
-        const gross = parseAmdInput(editPayment.grossStr);
-        const wantsNewOrUpdate = editManualTxId != null || (Number.isFinite(gross) && gross > 0);
-        if (wantsNewOrUpdate) {
-          const ok = validatePaymentForSubmit(editPayment, editBooking.studentId, editManualTxId != null);
+        const paid = paidAmountFromState(editBookingPayment);
+        if (paid > 0) {
+          const financeFields = bookingPaymentToFinanceFields(editBookingPayment);
+          const ok = validatePaymentForSubmit(editBookingPayment, editBooking.studentId, true);
           if (!ok) return;
           if (editManualTxId != null) {
-            await patchManualFinance(editManualTxId, editPayment, {
+            await patchManualFinance(editManualTxId, financeFields, {
               studentId: editBooking.studentId,
               branchId: editBooking.branchId,
               bookingIdNum,
@@ -1389,7 +1473,7 @@ export default function AdminBookings() {
               }),
             });
           } else {
-            await postManualFinance(editPayment, {
+            await postManualFinance(financeFields, {
               studentId: editBooking.studentId,
               branchId: editBooking.branchId,
               bookingIdNum,
@@ -1417,12 +1501,20 @@ export default function AdminBookings() {
       showToast(t(v.messageKeys[0]), "error");
       return;
     }
-    const gross = parseAmdInput(addPayment.grossStr);
-    const wantsPayment = Number.isFinite(gross) && gross > 0;
-    if (wantsPayment) {
-      const ok = validatePaymentForSubmit(addPayment, draft.studentId, true);
+    const payErr = validateAdminBookingPayment(addBookingPayment, addEffectiveTotalAmd);
+    if (payErr) {
+      setBookingModalTab("payment");
+      setAddPaymentErrorKey(payErr);
+      showToast(t(payErr), "error");
+      return;
+    }
+    setAddPaymentErrorKey(null);
+    const addPaid = paidAmountFromState(addBookingPayment);
+    if (addPaid > 0) {
+      const ok = validatePaymentForSubmit(addBookingPayment, draft.studentId, true);
       if (!ok) return;
     }
+    const paymentBody = adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd);
     try {
       setAddInlineErrors({
         general: null,
@@ -1493,8 +1585,8 @@ export default function AdminBookings() {
           const bookingIds = Array.isArray(packageResult?.bookingIds) ? packageResult.bookingIds : [];
           anchorBookingId = bookingIds.length > 0 ? Number(bookingIds[0]) : null;
         }
-        if (wantsPayment) {
-          await postManualFinance(addPayment, {
+        if (addPaid > 0) {
+          await postManualFinance(bookingPaymentToFinanceFields(addBookingPayment), {
             studentId: draft.studentId,
             branchId: draft.branchId,
             bookingIdNum: anchorBookingId,
@@ -1528,6 +1620,7 @@ export default function AdminBookings() {
                 slots: pick.times,
                 meetLink: draft.meetLink?.trim() || null,
                 ...arbitrary,
+                ...paymentBody,
               }
             : {
                 studentId: Number(draft.studentId),
@@ -1545,14 +1638,15 @@ export default function AdminBookings() {
                     }
                   : { theoryCohortId: Number(theoryCohortId) }),
                 ...(!theoryPlan ? arbitrary : {}),
+                ...paymentBody,
               };
         const created = await vivaApiJson<{ id: number }>("/bookings", {
           method: "POST",
           body,
         });
         const bookingIdNum = Number(created.id);
-        if (wantsPayment && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
-          await postManualFinance(addPayment, {
+        if (addPaid > 0 && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
+          await postManualFinance(bookingPaymentToFinanceFields(addBookingPayment), {
             studentId: draft.studentId,
             branchId: draft.branchId,
             bookingIdNum,
@@ -1604,61 +1698,9 @@ export default function AdminBookings() {
     }
   };
 
-  const onAddBookingModalTabChange = useCallback(
-    (v: string) => {
-      const tab = v as "booking" | "payment";
-      setBookingModalTab(tab);
-      if (tab === "payment") {
-        const amt = addEffectiveTotalAmd;
-        if (amt > 0) {
-          setAddPayment((p) => ({ ...p, grossStr: String(amt) }));
-        }
-      }
-    },
-    [addEffectiveTotalAmd],
-  );
-
-  const renderPaymentFields = (
-    payment: BookingPaymentFields,
-    setPayment: React.Dispatch<React.SetStateAction<BookingPaymentFields>>,
-  ) => (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
-          <select
-            value={payment.method}
-            onChange={(e) => setPayment((p) => ({ ...p, method: e.target.value as TxMethod }))}
-            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="cash">{t("financeMethodCash")}</option>
-            <option value="card">{t("financeMethodCard")}</option>
-            <option value="transfer">{t("financeMethodTransfer")}</option>
-            <option value="idram">{t("financeMethodIdram")}</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeManualTxGrossLabel")}</label>
-          <Input
-            inputMode="decimal"
-            value={payment.grossStr}
-            onChange={(e) => setPayment((p) => ({ ...p, grossStr: e.target.value }))}
-            className="h-10 tabular-nums"
-            placeholder="0"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")}</label>
-          <Input
-            type="datetime-local"
-            value={payment.datetimeLocal}
-            onChange={(e) => setPayment((p) => ({ ...p, datetimeLocal: e.target.value }))}
-            className="h-10"
-          />
-        </div>
-      </div>
-    </div>
-  );
+  const onAddBookingModalTabChange = useCallback((v: string) => {
+    setBookingModalTab(v as "booking" | "payment");
+  }, []);
 
   return (
     <AdminLayout>
@@ -1675,83 +1717,190 @@ export default function AdminBookings() {
       />
 
       <Card className="border-border overflow-hidden min-w-0">
-        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
-          <CsvExportButton
-            filename="admin-bookings.csv"
-            headers={[
-              t("tableColId"),
-              t("bookingColStudent"),
-              t("adminColBranch"),
-              t("cohortColInstructor"),
-              t("date"),
-              t("bookingColTime"),
-              t("bookingColType"),
-              t("status"),
-            ]}
-            rows={filtered.map((b) => [
-              b.id,
-              studentLabel(b.studentId),
-              branchNameById(branches, b.branchId),
-              b.instructorName,
-              formatShortDateFromIso(b.dateIso, lang),
-              formatBookingSlotRangeLabel(b.time, b.endTime),
-              t(bookingLessonTypeTKey(b.type)),
-              t(toCanonicalBookingStatus(b.status) as TranslationKey),
-            ])}
-          />
-        </DataTableToolbar>
+        <div className="p-4 space-y-3 border-b border-border">
+          <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="p-0 border-0">
+            <CsvExportButton
+              filename="admin-bookings.csv"
+              headers={[
+                t("tableColId"),
+                t("bookingColStudent"),
+                t("adminColBranch"),
+                t("cohortColInstructor"),
+                t("date"),
+                t("bookingColTime"),
+                t("bookingColType"),
+                t("status"),
+                t("adminBookingsColPayment"),
+                t("adminBookingPaymentTotalPrice"),
+                t("adminBookingPaymentPaidAmount"),
+                t("adminBookingPaymentRemaining"),
+              ]}
+              rows={filtered.map((b) => {
+                const pay = bookingListPaymentRow(b);
+                return [
+                  b.id,
+                  studentLabel(b.studentId),
+                  branchNameById(branches, b.branchId),
+                  b.instructorName,
+                  formatShortDateFromIso(b.dateIso, lang),
+                  formatBookingSlotRangeLabel(b.time, b.endTime),
+                  t(bookingLessonTypeTKey(b.type)),
+                  t(toCanonicalBookingStatus(b.status) as TranslationKey),
+                  t(bookingListPaymentLabelKey(pay.status)),
+                  pay.totalAmd > 0 ? String(pay.totalAmd) : "",
+                  pay.paidAmd > 0 ? String(pay.paidAmd) : "",
+                  pay.remainingAmd > 0 ? String(pay.remainingAmd) : "",
+                ];
+              })}
+            />
+          </DataTableToolbar>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("adminBookingsFilterDate")}
+              </label>
+              <Input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className={cn(filterSelectClass, "tabular-nums")}
+                aria-label={t("adminBookingsFilterDate")}
+              />
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-primary hover:underline"
+                  onClick={() => setDateFilter(todayIsoDate())}
+                >
+                  {t("adminBookingsFilterToday")}
+                </button>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+                  onClick={() => setDateFilter("")}
+                >
+                  {t("adminBookingsFilterAllDates")}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("adminClassScheduleFiltersLessonType")}
+              </label>
+              <select
+                value={lessonTypeFilter}
+                onChange={(e) => setLessonTypeFilter(e.target.value)}
+                className={filterSelectClass}
+                aria-label={t("filterByType")}
+              >
+                <option value="all">{t("adminBookingsFilterAllTypes")}</option>
+                <option value="practical">{t("lessonTypePractical")}</option>
+                <option value="theory">{t("lessonTypeTheory")}</option>
+                <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("adminClassScheduleFiltersStatus")}
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={filterSelectClass}
+                aria-label={t("filterByStatus")}
+              >
+                <option value="all">{t("accountsFilterAll")}</option>
+                <option value="confirmed">{t("confirmed")}</option>
+                <option value="pending">{t("pending")}</option>
+                <option value="pending_student_cancel">{t("statusFilterCancellationPending")}</option>
+                <option value="cancelled">{t("cancelled")}</option>
+                <option value="refunded">{t("refunded")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("filterByPaymentStatus")}
+              </label>
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value as BookingPaymentFilter)}
+                className={filterSelectClass}
+                aria-label={t("filterByPaymentStatus")}
+              >
+                <option value="all">{t("accountsFilterAll")}</option>
+                <option value="paid">{t("adminBookingPaymentStatusPaid")}</option>
+                <option value="partial">{t("adminBookingPaymentStatusPartial")}</option>
+                <option value="unpaid">{t("adminBookingPaymentStatusUnpaid")}</option>
+                <option value="outstanding">{t("adminBookingsFilterPaymentOutstanding")}</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("adminClassScheduleFiltersStudent")}
+              </label>
+              <select
+                value={studentFilter}
+                onChange={(e) => setStudentFilter(e.target.value)}
+                className={filterSelectClass}
+                aria-label={t("adminClassScheduleFiltersStudent")}
+              >
+                <option value="">{t("accountsFilterAll")}</option>
+                {studentsMini.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("adminClassScheduleFiltersInstructor")}
+              </label>
+              <select
+                value={instructorFilter}
+                onChange={(e) => setInstructorFilter(e.target.value)}
+                className={filterSelectClass}
+                aria-label={t("adminClassScheduleFiltersInstructor")}
+              >
+                <option value="">{t("accountsFilterAll")}</option>
+                {instructors.map((ins) => (
+                  <option key={ins.id} value={String(ins.id)}>
+                    {ins.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
 
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[56rem]">
-            <thead className="bg-muted/40">
-              <tr>
-                <TableColumnHeaderWithFilter title={t("tableColId")} />
-                <TableColumnHeaderWithFilter title={t("bookingColStudent")} />
-                <TableColumnHeaderWithFilter title={t("adminColBranch")} />
-                <TableColumnHeaderWithFilter title={t("cohortColInstructor")} />
-                <TableColumnHeaderWithFilter title={t("date")} />
-                <TableColumnHeaderWithFilter title={t("bookingColTime")} />
-                <TableColumnHeaderWithFilter
-                  title={t("bookingColType")}
-                  filter={
-                    <TableColumnFilter
-                      value={lessonTypeFilter}
-                      onChange={(v) => setLessonTypeFilter(v as "all" | "practical" | "theory" | "theory_personal")}
-                      ariaLabel={t("filterByType")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        { value: "practical", label: t("lessonTypePractical") },
-                        { value: "theory", label: t("lessonTypeTheory") },
-                        { value: "theory_personal", label: t("lessonTypeTheoryPersonal") },
-                      ]}
-                    />
-                  }
-                />
-                <TableColumnHeaderWithFilter
-                  title={t("status")}
-                  filter={
-                    <TableColumnFilter
-                      value={statusFilter}
-                      onChange={setStatusFilter}
-                      ariaLabel={t("filterByStatus")}
-                      options={[
-                        { value: "all", label: t("filterOptionAll") },
-                        { value: "pending_student_cancel", label: t("statusFilterCancellationPending") },
-                        { value: "confirmed", label: t("confirmed") },
-                        { value: "pending", label: t("pending") },
-                        { value: "cancelled", label: t("cancelled") },
-                        { value: "refunded", label: t("refunded") },
-                      ]}
-                    />
-                  }
-                />
-                <TableColumnHeaderWithFilter title={t("actions")} align="end" />
+          <table className="w-full text-sm min-w-[68rem]">
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("tableColId")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColStudent")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminColBranch")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("cohortColInstructor")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("date")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColTime")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColType")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("status")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminBookingsColPayment")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap text-right">{t("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((b, i) => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                    {t("adminBookingsEmptyFiltered")}
+                  </td>
+                </tr>
+              ) : null}
+              {filtered.map((b) => (
                 <AdminTableRowContextMenu
-                  key={i}
+                  key={b.id}
                   actions={[
                     {
                       kind: "item",
@@ -1800,11 +1949,8 @@ export default function AdminBookings() {
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.instructorName}</td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{formatShortDateFromIso(b.dateIso, lang)}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">
-                      <span className="block">{formatBookingSlotRangeLabel(b.time, b.endTime)}</span>
-                      {b.totalPriceAmd != null && b.totalPriceAmd > 0 ? (
-                        <span className="text-xs text-muted-foreground/80">{b.totalPriceAmd.toLocaleString()} ֏</span>
-                      ) : null}
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap tabular-nums">
+                      {formatBookingSlotRangeLabel(b.time, b.endTime)}
                     </td>
                     <td className="px-4 py-3.5">
                       <Badge className={`text-xs ${typeColor[b.type] ?? typeColor.practical}`}>{t(bookingLessonTypeTKey(b.type))}</Badge>
@@ -1822,6 +1968,33 @@ export default function AdminBookings() {
                           </Badge>
                         ) : null}
                       </div>
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      {(() => {
+                        const pay = bookingListPaymentRow(b);
+                        if (pay.status === "na") {
+                          return <span className="text-xs text-muted-foreground">—</span>;
+                        }
+                        return (
+                          <div className="flex flex-col gap-1 items-start min-w-[7.5rem]">
+                            <Badge className={`text-xs ${BOOKING_LIST_PAYMENT_BADGE_CLASS[pay.status]}`}>
+                              {t(bookingListPaymentLabelKey(pay.status))}
+                            </Badge>
+                            {pay.totalAmd > 0 ? (
+                              <div className="text-xs text-muted-foreground tabular-nums leading-snug">
+                                <span className="text-foreground">{formatAmd(pay.paidAmd)}</span>
+                                <span className="mx-0.5">/</span>
+                                <span>{formatAmd(pay.totalAmd)}</span>
+                                {pay.remainingAmd > 0 ? (
+                                  <div className="text-amber-700 font-medium">
+                                    {t("adminBookingPaymentRemaining")}: {formatAmd(pay.remainingAmd)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex flex-col items-end gap-2">
@@ -2210,7 +2383,12 @@ export default function AdminBookings() {
                     </p>
                   </div>
                 ) : (
-                  renderPaymentFields(editPayment, setEditPayment)
+                  <AdminBookingPaymentSection
+                    totalPriceAmd={editBooking.totalPriceAmd ?? 0}
+                    value={editBookingPayment}
+                    onChange={setEditBookingPayment}
+                    errorKey={editPaymentErrorKey}
+                  />
                 )}
               </TabsContent>
             </Tabs>
@@ -2680,7 +2858,12 @@ export default function AdminBookings() {
                 </div>
               </TabsContent>
               <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
-                {renderPaymentFields(addPayment, setAddPayment)}
+                <AdminBookingPaymentSection
+                  totalPriceAmd={addEffectiveTotalAmd}
+                  value={addBookingPayment}
+                  onChange={setAddBookingPayment}
+                  errorKey={addPaymentErrorKey}
+                />
               </TabsContent>
             </Tabs>
           </form>
