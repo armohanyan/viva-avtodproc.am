@@ -4,7 +4,6 @@ import {
 	useContext,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
 	type ReactNode,
 } from "react";
@@ -66,10 +65,8 @@ export function useOptionalPanelFocusMode(): PanelFocusModeContextValue | null {
 
 /** Restores sidebar/header when the quiz page unmounts. */
 export function usePanelFocusModeCleanupOnUnmount(): void {
-	const setActive = usePanelFocusMode().setActive;
-	const setActiveRef = useRef(setActive);
-	setActiveRef.current = setActive;
+	const { setActive } = usePanelFocusMode();
 	useEffect(() => {
-		return () => setActiveRef.current(false);
-	}, []);
+		return () => setActive(false);
+	}, [setActive]);
 }

@@ -34,7 +34,9 @@ import AdminBookingPaymentSection from "src/components/admin/AdminBookingPayment
 import {
   adminPaymentApiPayload,
   adminPaymentFromBooking,
+  adminPaymentStateAfterPaidStrChange,
   BOOKING_LIST_PAYMENT_BADGE_CLASS,
+  bookingHasDebtPaymentStatus,
   bookingListPaymentLabelKey,
   bookingListPaymentRow,
   bookingMatchesPaymentFilter,
@@ -45,6 +47,14 @@ import {
   type AdminBookingPaymentState,
   type BookingPaymentFilter,
 } from "src/modules/admin/booking/adminBookingPayment";
+import {
+  bookingsPathForTab,
+  bookingsTabFromPath,
+  isAdminBookingsPath,
+  type AdminBookingsTab,
+} from "src/modules/admin/booking/bookingsTabs";
+import { absWouterHref } from "src/lib/wouterFullPath";
+import { TabCountBadge } from "./inbox/TabCountBadge";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
@@ -108,6 +118,8 @@ type Booking = {
   totalPriceAmd?: number | null;
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
+  paymentNotes?: string | null;
+  paymentReminderDateIso?: string | null;
   type: "practical" | "theory" | "theory_personal";
   status: string;
   branchId: string;
@@ -250,6 +262,7 @@ export default function AdminBookings() {
   const editBookingFormId = useId();
   const addBookingFormId = useId();
   const [location, setLocation] = useLocation();
+  const activeBookingsTab = bookingsTabFromPath(location);
   const hookBookingSearch = (useSearch() ?? "").replace(/^\?/, "");
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -297,8 +310,27 @@ export default function AdminBookings() {
   useEffect(() => {
     void refresh();
   }, [refresh, branchFilterRevision]);
+
+  const onBookingsTabChange = useCallback(
+    (tab: AdminBookingsTab) => {
+      setLocation(absWouterHref(bookingsPathForTab(tab)));
+    },
+    [setLocation],
+  );
+
+  const debtsBookingsCount = useMemo(
+    () => bookings.filter((b) => bookingHasDebtPaymentStatus(b)).length,
+    [bookings],
+  );
+
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState(() => todayIsoDate());
+
+  useEffect(() => {
+    if (activeBookingsTab === "debts" && dateFilter === todayIsoDate()) {
+      setDateFilter("");
+    }
+  }, [activeBookingsTab, dateFilter]);
   const [paymentFilter, setPaymentFilter] = useState<BookingPaymentFilter>("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [lessonTypeFilter, setLessonTypeFilter] = useState("all");
@@ -853,7 +885,7 @@ export default function AdminBookings() {
     if (hookBookingSearch) return hookBookingSearch;
     if (typeof window === "undefined") return "";
     const path = window.location.pathname.replace(/\/$/, "") || "/";
-    if (!path.endsWith("/admin/bookings")) return "";
+    if (!isAdminBookingsPath(path)) return "";
     return window.location.search.replace(/^\?/, "");
   }, [hookBookingSearch]);
 
@@ -881,7 +913,7 @@ export default function AdminBookings() {
     const studentOk = !studentQ || studentsMini.some((s) => studentIdMatches(s.id, studentQ));
     if (!wantNew && studentQ && studentsMini.length > 0 && !studentOk) {
       consumedBookingIntentSearch.current = raw;
-      setLocation("/admin/bookings", { replace: true });
+      setLocation(absWouterHref(bookingsPathForTab(activeBookingsTab)), { replace: true });
       return;
     }
 
@@ -905,8 +937,8 @@ export default function AdminBookings() {
       ...(themesQ ? { theoryThemeTitles: parseThemesFromBookingSearch(themesQ) } : {}),
       ...(theoryRequestQ ? { theoryRequestId: theoryRequestQ } : {}),
     });
-    setLocation("/admin/bookings", { replace: true });
-  }, [readBookingIntentSearch, location, branches, instructors, openAdd, setLocation, studentsMini]);
+    setLocation(absWouterHref(bookingsPathForTab(activeBookingsTab)), { replace: true });
+  }, [readBookingIntentSearch, location, branches, instructors, openAdd, setLocation, studentsMini, activeBookingsTab]);
 
   useEffect(() => {
     const raw = readBookingIntentSearch();
@@ -921,7 +953,7 @@ export default function AdminBookings() {
         setBookingModalTab("booking");
         setEditBooking({ ...row, status: toCanonicalBookingStatus(row.status) });
       }
-      setLocation("/admin/bookings", { replace: true });
+      setLocation(absWouterHref(bookingsPathForTab(activeBookingsTab)), { replace: true });
       return;
     }
     if (deleteIdQ) {
@@ -929,9 +961,9 @@ export default function AdminBookings() {
       if (row) {
         setDeleteId(String(row.id));
       }
-      setLocation("/admin/bookings", { replace: true });
+      setLocation(absWouterHref(bookingsPathForTab(activeBookingsTab)), { replace: true });
     }
-  }, [readBookingIntentSearch, bookings, setLocation]);
+  }, [readBookingIntentSearch, bookings, setLocation, activeBookingsTab]);
 
   const handleAddFlowKindChange = useCallback(
     (flow: AdminBookingFlowKind) => {
@@ -1169,7 +1201,10 @@ export default function AdminBookings() {
         .toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchDate = !dateFilter.trim() || bookingOccursOnDateIso(b, dateFilter);
-      const matchPayment = bookingMatchesPaymentFilter(b, paymentFilter);
+      const matchPayment =
+        activeBookingsTab === "debts"
+          ? bookingHasDebtPaymentStatus(b)
+          : bookingMatchesPaymentFilter(b, paymentFilter);
       const canon = toCanonicalBookingStatus(b.status);
       const matchStatus =
         statusFilter === "all"
@@ -1198,6 +1233,7 @@ export default function AdminBookings() {
     bookings,
     search,
     dateFilter,
+    activeBookingsTab,
     paymentFilter,
     statusFilter,
     lessonTypeFilter,
@@ -1698,16 +1734,40 @@ export default function AdminBookings() {
     }
   };
 
-  const onAddBookingModalTabChange = useCallback((v: string) => {
-    setBookingModalTab(v as "booking" | "payment");
-  }, []);
+  useEffect(() => {
+    if (!addOpen) return;
+    setAddBookingPayment((prev) => adminPaymentStateAfterPaidStrChange(prev, prev.paidStr, addEffectiveTotalAmd));
+  }, [addOpen, addEffectiveTotalAmd]);
+
+  useEffect(() => {
+    if (!editBooking) return;
+    const editTotal = editBooking.totalPriceAmd ?? 0;
+    setEditBookingPayment((prev) => adminPaymentStateAfterPaidStrChange(prev, prev.paidStr, editTotal));
+  }, [editBooking?.id, editBooking?.totalPriceAmd]);
+
+  const onBookingModalTabChange = useCallback(
+    (v: string, mode: "add" | "edit") => {
+      if (v === "payment") {
+        if (mode === "add") {
+          setAddBookingPayment((prev) =>
+            adminPaymentStateAfterPaidStrChange(prev, prev.paidStr, addEffectiveTotalAmd),
+          );
+        } else {
+          const editTotal = editBooking?.totalPriceAmd ?? 0;
+          setEditBookingPayment((prev) => adminPaymentStateAfterPaidStrChange(prev, prev.paidStr, editTotal));
+        }
+      }
+      setBookingModalTab(v as "booking" | "payment");
+    },
+    [addEffectiveTotalAmd, editBooking?.totalPriceAmd],
+  );
 
   return (
     <AdminLayout>
       <PanelPageHeader
         icon={CalendarRange}
         title={t("bookings")}
-        subtitle={t("adminBookingsPageSubtitle")}
+        subtitle={t(activeBookingsTab === "debts" ? "adminBookingsDebtsPageSubtitle" : "adminBookingsPageSubtitle")}
         actions={
           <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={() => openAdd()}>
             <Plus className="w-4 h-4" />
@@ -1716,6 +1776,22 @@ export default function AdminBookings() {
         }
       />
 
+      <Tabs
+        value={activeBookingsTab}
+        onValueChange={(v) => onBookingsTabChange(v as AdminBookingsTab)}
+        className="space-y-4"
+      >
+        <TabsList className="flex flex-wrap h-auto gap-1 w-full sm:w-auto">
+          <TabsTrigger value="all" className="px-3">
+            {t("bookings")}
+          </TabsTrigger>
+          <TabsTrigger value="debts" className="px-3">
+            {t("adminBookingsDebtsTab")}
+            <TabCountBadge count={debtsBookingsCount} />
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeBookingsTab} className="mt-0">
       <Card className="border-border overflow-hidden min-w-0">
         <div className="p-4 space-y-3 border-b border-border">
           <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="p-0 border-0">
@@ -1818,23 +1894,25 @@ export default function AdminBookings() {
                 <option value="refunded">{t("refunded")}</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                {t("filterByPaymentStatus")}
-              </label>
-              <select
-                value={paymentFilter}
-                onChange={(e) => setPaymentFilter(e.target.value as BookingPaymentFilter)}
-                className={filterSelectClass}
-                aria-label={t("filterByPaymentStatus")}
-              >
-                <option value="all">{t("accountsFilterAll")}</option>
-                <option value="paid">{t("adminBookingPaymentStatusPaid")}</option>
-                <option value="partial">{t("adminBookingPaymentStatusPartial")}</option>
-                <option value="unpaid">{t("adminBookingPaymentStatusUnpaid")}</option>
-                <option value="outstanding">{t("adminBookingsFilterPaymentOutstanding")}</option>
-              </select>
-            </div>
+            {activeBookingsTab === "all" ? (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  {t("filterByPaymentStatus")}
+                </label>
+                <select
+                  value={paymentFilter}
+                  onChange={(e) => setPaymentFilter(e.target.value as BookingPaymentFilter)}
+                  className={filterSelectClass}
+                  aria-label={t("filterByPaymentStatus")}
+                >
+                  <option value="all">{t("accountsFilterAll")}</option>
+                  <option value="paid">{t("adminBookingPaymentStatusPaid")}</option>
+                  <option value="partial">{t("adminBookingPaymentStatusPartial")}</option>
+                  <option value="unpaid">{t("adminBookingPaymentStatusUnpaid")}</option>
+                  <option value="outstanding">{t("adminBookingsFilterPaymentOutstanding")}</option>
+                </select>
+              </div>
+            ) : null}
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 {t("adminClassScheduleFiltersStudent")}
@@ -1894,7 +1972,7 @@ export default function AdminBookings() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
-                    {t("adminBookingsEmptyFiltered")}
+                    {t(activeBookingsTab === "debts" ? "adminBookingsEmptyDebts" : "adminBookingsEmptyFiltered")}
                   </td>
                 </tr>
               ) : null}
@@ -2075,6 +2153,8 @@ export default function AdminBookings() {
           {t("panelShowingLabel")} {filtered.length} / {bookings.length} {t("bookings")}
         </div>
       </Card>
+        </TabsContent>
+      </Tabs>
 
       <AppModal
         open={!!editBooking}
@@ -2121,7 +2201,7 @@ export default function AdminBookings() {
       >
         {editBooking && (
           <form id={editBookingFormId} onSubmit={handleEdit} className="space-y-4">
-            <Tabs value={bookingModalTab} onValueChange={(v) => setBookingModalTab(v as "booking" | "payment")}>
+            <Tabs value={bookingModalTab} onValueChange={(v) => onBookingModalTabChange(v, "edit")}>
               <TabsList className="grid w-full grid-cols-2 h-11">
                 <TabsTrigger value="booking" className="text-sm">
                   {t("adminBookingModalTabBooking")}
@@ -2435,7 +2515,7 @@ export default function AdminBookings() {
       >
         {draft && (
           <form id={addBookingFormId} onSubmit={handleAdd} className="space-y-4">
-            <Tabs value={bookingModalTab} onValueChange={onAddBookingModalTabChange}>
+            <Tabs value={bookingModalTab} onValueChange={(v) => onBookingModalTabChange(v, "add")}>
               <TabsList className="grid w-full grid-cols-2 h-11">
                 <TabsTrigger value="booking" className="text-sm">
                   {t("adminBookingModalTabBooking")}

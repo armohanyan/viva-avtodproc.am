@@ -54,6 +54,10 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare paymentRequiredAt: CreationOptional<string | null>;
   /** When the “payment due soon” email + notification were sent (dedupe). */
   declare paymentReminderSentAt: CreationOptional<Date | null>;
+  /** Admin notes about payment (cash, promise to pay, etc.). */
+  declare paymentNotes: CreationOptional<string | null>;
+  /** When to send debt payment reminder (defaults to date at 22:00 Yerevan if only date set). */
+  declare paymentReminderAt: CreationOptional<Date | null>;
   /** When the system cancelled the booking for missed payment (auto-cancel path). */
   declare autoCancelledAt: CreationOptional<Date | null>;
   /** Structured reason for cancellation when applicable (e.g. missed payment deadline). */
@@ -87,6 +91,8 @@ Booking.init(
     paidAmountAmd: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
     paymentRequiredAt: { type: DataTypes.DATEONLY, allowNull: true },
     paymentReminderSentAt: { type: DataTypes.DATE, allowNull: true },
+    paymentNotes: { type: DataTypes.TEXT, allowNull: true },
+    paymentReminderAt: { type: DataTypes.DATE, allowNull: true },
     autoCancelledAt: { type: DataTypes.DATE, allowNull: true },
     cancellationReason: { type: DataTypes.STRING(64), allowNull: true },
     meetLink: { type: DataTypes.STRING(512), allowNull: true, defaultValue: null },

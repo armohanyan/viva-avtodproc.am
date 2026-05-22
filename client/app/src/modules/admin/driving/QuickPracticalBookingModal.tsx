@@ -309,8 +309,6 @@ export default function QuickPracticalBookingModal({
           onChange={setBookingPayment}
           errorKey={paymentErrorKey}
         />
-
-        <p className="text-xs text-muted-foreground">{t("adminDrivingQuickBookingSummary")}</p>
       </form>
     </AppModal>
   );

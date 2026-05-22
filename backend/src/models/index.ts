@@ -650,6 +650,34 @@ async function ensureBookingsPaymentColumns(): Promise<void> {
   }
 }
 
+/** Adds `bookings.payment_notes` and `bookings.payment_reminder_at` for admin debt reminders. */
+async function ensureBookingsPaymentNotesAndReminderAtColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+       AND COLUMN_NAME IN ('payment_notes', 'payment_reminder_at')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(colRows.map((c) => c.COLUMN_NAME));
+  if (!have.has('payment_notes')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `payment_notes` TEXT NULL');
+  }
+  if (!have.has('payment_reminder_at')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `payment_reminder_at` DATETIME NULL');
+  }
+}
+
 /** Adds `bookings.paid_amount_amd` for admin partial / prepaid tracking. */
 async function ensureBookingsPaidAmountColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -1922,6 +1950,7 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceExpensesTable();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
+  await ensureBookingsPaymentNotesAndReminderAtColumns();
   await ensureBookingsHoldExtensionCountColumn();
   await ensureBookingsMultiSlotColumns();
   await ensureBookingSlotsTable();

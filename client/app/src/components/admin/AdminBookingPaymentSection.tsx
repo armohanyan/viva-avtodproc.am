@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { Input } from "src/components/ui/input";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { formatAmd, methodTKey, type TxMethod } from "src/pages/admin/finance/adminFinanceShared";
 import {
+  adminPaymentStateAfterPaidStrChange,
   adminPaymentStatusLabelKey,
   bookingRemainingAmd,
   paidAmountFromState,
@@ -34,11 +36,51 @@ export default function AdminBookingPaymentSection({
       ...value,
       status,
       paidStr: paidStrForStatusChange(status, total, value.paidStr),
+      ...(status === "paid" ? { paymentReminderDate: "" } : {}),
     });
   };
 
+  const showReminderDate = value.status === "unpaid" || value.status === "partial";
+
+  useEffect(() => {
+    const synced = adminPaymentStateAfterPaidStrChange(value, value.paidStr, total);
+    if (
+      synced.status !== value.status ||
+      (synced.status === "paid" && value.paymentReminderDate !== "")
+    ) {
+      onChange(synced);
+    }
+  }, [total]);
+
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
+          <select
+            value={value.method}
+            disabled={disabled}
+            onChange={(e) => onChange({ ...value, method: e.target.value as TxMethod })}
+            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+          >
+            <option value="cash">{t("financeMethodCash")}</option>
+            <option value="card">{t("financeMethodCard")}</option>
+            <option value="transfer">{t("financeMethodTransfer")}</option>
+            <option value="idram">{t("financeMethodIdram")}</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")}</label>
+          <Input
+            type="datetime-local"
+            disabled={disabled}
+            value={value.datetimeLocal}
+            onChange={(e) => onChange({ ...value, datetimeLocal: e.target.value })}
+            className="h-10"
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className="block text-sm font-medium text-muted-foreground mb-1">
@@ -56,7 +98,7 @@ export default function AdminBookingPaymentSection({
             inputMode="decimal"
             disabled={disabled}
             value={value.paidStr}
-            onChange={(e) => onChange({ ...value, paidStr: e.target.value })}
+            onChange={(e) => onChange(adminPaymentStateAfterPaidStrChange(value, e.target.value, total))}
             className="h-10 tabular-nums"
             placeholder="0"
           />
@@ -93,32 +135,35 @@ export default function AdminBookingPaymentSection({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
-          <select
-            value={value.method}
-            disabled={disabled}
-            onChange={(e) => onChange({ ...value, method: e.target.value as TxMethod })}
-            className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
-          >
-            <option value="cash">{t("financeMethodCash")}</option>
-            <option value="card">{t("financeMethodCard")}</option>
-            <option value="transfer">{t("financeMethodTransfer")}</option>
-            <option value="idram">{t("financeMethodIdram")}</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColDateTime")}</label>
-          <Input
-            type="datetime-local"
-            disabled={disabled}
-            value={value.datetimeLocal}
-            onChange={(e) => onChange({ ...value, datetimeLocal: e.target.value })}
-            className="h-10"
-          />
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-muted-foreground mb-1">
+          {t("adminBookingPaymentNotes")}
+        </label>
+        <textarea
+          disabled={disabled}
+          value={value.paymentNotes}
+          onChange={(e) => onChange({ ...value, paymentNotes: e.target.value })}
+          rows={3}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60 resize-y min-h-[4.5rem]"
+          placeholder={t("adminBookingPaymentNotesPlaceholder")}
+        />
       </div>
+
+      {showReminderDate ? (
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-1">
+            {t("adminBookingPaymentReminderDate")}
+          </label>
+          <Input
+            type="date"
+            disabled={disabled}
+            value={value.paymentReminderDate}
+            onChange={(e) => onChange({ ...value, paymentReminderDate: e.target.value })}
+            className="h-10 max-w-xs"
+          />
+          <p className="text-xs text-muted-foreground mt-1">{t("adminBookingPaymentReminderDateHint")}</p>
+        </div>
+      ) : null}
 
       {errorKey ? <p className="text-xs text-red-600">{t(errorKey)}</p> : null}
     </div>

@@ -7,6 +7,11 @@ import BookingService from './booking.service';
 import LessonCompletionService from './lesson-completion.service';
 import { todayIsoUtc } from '../utils/calendar-month.util';
 import { shouldAutoCancelUnpaidAfterPaymentDeadline } from '../utils/booking-payment-schedule.util';
+import {
+  bookingNeedsDebtPaymentReminder,
+  isDebtPaymentReminderDue,
+  resolveDebtPaymentReminderDueAt,
+} from '../utils/booking-payment-reminder.util';
 
 /**
  * Deletes unpaid bookings whose server-side payment hold has expired.
@@ -69,6 +74,26 @@ export default class BookingCronService {
       if (ok) paymentRemindersSent += 1;
     }
 
+    const now = new Date();
+    const debtCandidates = await Booking.findAll({
+      where: {
+        paymentReminderSentAt: { [Op.is]: null },
+        totalPriceAmd: { [Op.gt]: 0 },
+        paymentStatus: { [Op.in]: ['unpaid', 'partial'] },
+      },
+      attributes: ['id'],
+    });
+    let debtPaymentRemindersSent = 0;
+    for (const r of debtCandidates) {
+      const full = await Booking.findByPk(r.id);
+      if (!full || !bookingNeedsDebtPaymentReminder(full)) continue;
+      const dueAt = resolveDebtPaymentReminderDueAt(full);
+      if (!dueAt || !isDebtPaymentReminderDue(now, dueAt)) continue;
+      const ok = await BookingNotificationService.emitAdminDebtPaymentReminderOnce(r.id, now);
+      if (ok) debtPaymentRemindersSent += 1;
+    }
+    paymentRemindersSent += debtPaymentRemindersSent;
+
     const cancelRows = await Booking.findAll({
       where: {
         status: 'pending_payment',
@@ -92,7 +117,7 @@ export default class BookingCronService {
 
     if (paymentRemindersSent > 0 || autoCancelledUnpaidReserved > 0) {
       LoggerUtil.info(
-        `Booking cron: payment reminders ${paymentRemindersSent}; auto-cancelled unpaid reserved ${autoCancelledUnpaidReserved}`,
+        `Booking cron: payment reminders ${paymentRemindersSent} (debt ${debtPaymentRemindersSent}); auto-cancelled unpaid reserved ${autoCancelledUnpaidReserved}`,
       );
     }
     if (upcomingLessonRemindersCreated > 0) {

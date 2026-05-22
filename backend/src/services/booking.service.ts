@@ -39,6 +39,12 @@ import {
   type AdminBookingPaymentStatus,
   type StudentPaymentSummaryDto,
 } from '../utils/booking-admin-payment.util';
+import {
+  adminPaymentExtrasForCreate,
+  mergeAdminPaymentExtrasPatch,
+  paymentReminderDateIsoForApi,
+  type AdminPaymentExtrasInput,
+} from '../utils/booking-payment-reminder.util';
 
 const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
 
@@ -83,10 +89,55 @@ function adminPaymentDbPatch(
   }
 }
 
-type AdminPaymentPatchInput = {
+type AdminPaymentPatchInput = AdminPaymentExtrasInput & {
   adminPaymentStatus?: AdminBookingPaymentStatus;
   paidAmountAmd?: number;
 };
+
+function effectiveAdminPaymentStatus(
+  row: Booking,
+  patch: AdminPaymentPatchInput,
+  payUpdate?: { paymentStatus?: string },
+): AdminBookingPaymentStatus {
+  const fromPatch = patch.adminPaymentStatus;
+  if (fromPatch) return fromPatch;
+  const fromPay = payUpdate?.paymentStatus;
+  if (fromPay === 'paid' || fromPay === 'partial' || fromPay === 'unpaid') return fromPay;
+  const resolved = resolveBookingPayment(row);
+  if (resolved.paymentStatus === 'paid' || resolved.paymentStatus === 'partial' || resolved.paymentStatus === 'unpaid') {
+    return resolved.paymentStatus;
+  }
+  return 'unpaid';
+}
+
+function mergeAdminPaymentRowPatch(
+  row: Booking,
+  patch: AdminPaymentPatchInput,
+  nextTotalPriceAmd: number | null,
+): Partial<Booking> {
+  const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, nextTotalPriceAmd);
+  const status = effectiveAdminPaymentStatus(row, patch, payUpdate);
+  let extras: ReturnType<typeof mergeAdminPaymentExtrasPatch>;
+  try {
+    extras = mergeAdminPaymentExtrasPatch(row, patch, status);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid payment reminder date';
+    throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  return { ...payUpdate, ...extras };
+}
+
+function adminPaymentExtrasForCreateSafe(
+  paymentStatus: AdminBookingPaymentStatus,
+  input: AdminPaymentExtrasInput,
+): { paymentNotes: string | null; paymentReminderAt: Date | null } {
+  try {
+    return adminPaymentExtrasForCreate(paymentStatus, input);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid payment reminder date';
+    throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
+  }
+}
 
 function mergeAdminPaymentIntoRowUpdate(
   row: Booking,
@@ -193,6 +244,8 @@ export type BookingAdminDto = {
   slotEntries?: { dateIso: string; time: string }[];
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
+  paymentNotes?: string | null;
+  paymentReminderDateIso?: string | null;
   paymentRequiredAt?: string | null;
   cancellationReason?: string | null;
   meetLink?: string | null;
@@ -1024,6 +1077,8 @@ export default class BookingService {
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
       paymentStatus: pay.paymentStatus,
       paidAmountAmd: pay.paidAmountAmd,
+      paymentNotes: b.paymentNotes?.trim() ? b.paymentNotes.trim() : null,
+      paymentReminderDateIso: paymentReminderDateIsoForApi(b.paymentReminderAt ?? null),
       paymentRequiredAt: b.paymentRequiredAt ? String(b.paymentRequiredAt).slice(0, 10) : null,
       cancellationReason: b.cancellationReason ?? null,
       meetLink: meetLinkOrNull(b.meetLink),
@@ -1051,6 +1106,8 @@ export default class BookingService {
         time: b.time,
         endTime: b.endTime ?? null,
         lessonType: b.lessonType,
+        paymentNotes: b.paymentNotes,
+        paymentReminderAt: b.paymentReminderAt,
       })),
     );
   }
@@ -1642,6 +1699,8 @@ export default class BookingService {
     meetLink?: string | null;
     adminPaymentStatus?: AdminBookingPaymentStatus;
     paidAmountAmd?: number;
+    paymentNotes?: string | null;
+    paymentReminderDate?: string | null;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -1691,6 +1750,14 @@ export default class BookingService {
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
           prepaidMeta,
         );
+        const payStatus =
+          payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
+            ? payPatch.paymentStatus
+            : 'unpaid';
+        const paymentExtras = adminPaymentExtrasForCreateSafe(payStatus, {
+          paymentNotes: input.paymentNotes,
+          paymentReminderDate: input.paymentReminderDate,
+        });
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -1707,6 +1774,8 @@ export default class BookingService {
             paymentStatus: payPatch.paymentStatus,
             paidAmountAmd: payPatch.paidAmountAmd,
             paidAt: payPatch.paidAt,
+            paymentNotes: paymentExtras.paymentNotes,
+            paymentReminderAt: paymentExtras.paymentReminderAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
           },
           { transaction },
@@ -1746,6 +1815,8 @@ export default class BookingService {
     meetLink?: string | null;
     adminPaymentStatus?: AdminBookingPaymentStatus;
     paidAmountAmd?: number;
+    paymentNotes?: string | null;
+    paymentReminderDate?: string | null;
   }): Promise<BookingAdminDto | null> {
     const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? []);
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
@@ -1768,6 +1839,8 @@ export default class BookingService {
         meetLink: input.meetLink,
         adminPaymentStatus: input.adminPaymentStatus,
         paidAmountAmd: input.paidAmountAmd,
+        paymentNotes: input.paymentNotes,
+        paymentReminderDate: input.paymentReminderDate,
       });
     }
 
@@ -1795,6 +1868,8 @@ export default class BookingService {
         meetLink: input.meetLink,
         adminPaymentStatus: input.adminPaymentStatus,
         paidAmountAmd: input.paidAmountAmd,
+        paymentNotes: input.paymentNotes,
+        paymentReminderDate: input.paymentReminderDate,
       });
     }
 
@@ -1824,6 +1899,14 @@ export default class BookingService {
       adminPaymentStatus: input.adminPaymentStatus,
       paidAmountAmd: input.paidAmountAmd,
     });
+    const payStatusSingle =
+      payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
+        ? payPatch.paymentStatus
+        : 'unpaid';
+    const paymentExtrasSingle = adminPaymentExtrasForCreateSafe(payStatusSingle, {
+      paymentNotes: input.paymentNotes,
+      paymentReminderDate: input.paymentReminderDate,
+    });
 
     let newId = 0;
     try {
@@ -1842,6 +1925,8 @@ export default class BookingService {
             paymentStatus: payPatch.paymentStatus,
             paidAmountAmd: payPatch.paidAmountAmd,
             paidAt: payPatch.paidAt,
+            paymentNotes: paymentExtrasSingle.paymentNotes,
+            paymentReminderAt: paymentExtrasSingle.paymentReminderAt,
             ...meetLinkPatchForLessonType(input.type, input.meetLink),
           },
           { transaction },
@@ -2039,6 +2124,8 @@ export default class BookingService {
     meetLink?: string | null;
     adminPaymentStatus?: AdminBookingPaymentStatus;
     paidAmountAmd?: number;
+    paymentNotes?: string | null;
+    paymentReminderDate?: string | null;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
     const sorted = normalizeAndSortSlots(input.slots);
@@ -2134,6 +2221,14 @@ export default class BookingService {
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
           prepaidMeta,
         );
+        const payStatusMulti =
+          payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
+            ? payPatch.paymentStatus
+            : 'unpaid';
+        const paymentExtrasMulti = adminPaymentExtrasForCreateSafe(payStatusMulti, {
+          paymentNotes: input.paymentNotes,
+          paymentReminderDate: input.paymentReminderDate,
+        });
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -2150,6 +2245,8 @@ export default class BookingService {
             paymentStatus: payPatch.paymentStatus,
             paidAmountAmd: payPatch.paidAmountAmd,
             paidAt: payPatch.paidAt,
+            paymentNotes: paymentExtrasMulti.paymentNotes,
+            paymentReminderAt: paymentExtrasMulti.paymentReminderAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
           },
           { transaction },
@@ -2290,7 +2387,7 @@ export default class BookingService {
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
-    const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, totalPriceAmd);
+    const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -2392,7 +2489,7 @@ export default class BookingService {
     const endTime = endTimeExclusiveForSlotEntries(entries);
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
-    const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, totalPriceAmd);
+    const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -2452,6 +2549,8 @@ export default class BookingService {
       meetLink?: string | null;
       adminPaymentStatus?: AdminBookingPaymentStatus;
       paidAmountAmd?: number;
+      paymentNotes?: string | null;
+      paymentReminderDate?: string | null;
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
@@ -2541,7 +2640,7 @@ export default class BookingService {
       patch.time !== undefined || patch.dateIso !== undefined || patch.instructorName !== undefined
         ? totalPriceAmd
         : row.totalPriceAmd ?? null;
-    const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, nextTotalForPayment);
+    const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalForPayment);
 
     try {
       await sequelize.transaction(async (transaction) => {

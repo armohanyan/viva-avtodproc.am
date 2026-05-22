@@ -1,3 +1,5 @@
+import { paymentReminderDateIsoForApi } from './booking-payment-reminder.util';
+
 /** Admin-recorded payment state on a booking (separate from booking lifecycle `status`). */
 export type AdminBookingPaymentStatus = 'paid' | 'partial' | 'unpaid';
 
@@ -23,6 +25,8 @@ export type StudentPaymentSummaryDto = {
     lessonTypeKey: 'lessonTypePractical' | 'lessonTypeTheory' | 'lessonTypeTheoryPersonal';
     paymentStatus: string;
     status: string;
+    paymentNotes: string | null;
+    paymentReminderDateIso: string | null;
   }>;
 };
 
@@ -203,6 +207,8 @@ export function buildStudentPaymentSummary(
       time: string;
       endTime?: string | null;
       lessonType: 'practical' | 'theory' | 'theory_personal';
+      paymentNotes?: string | null;
+      paymentReminderAt?: Date | null;
     }
   >,
 ): StudentPaymentSummaryDto {
@@ -232,6 +238,8 @@ export function buildStudentPaymentSummary(
             : 'lessonTypePractical',
       paymentStatus: resolved.paymentStatus,
       status: normalizeLifecycleStatus(String(row.status)),
+      paymentNotes: row.paymentNotes?.trim() ? row.paymentNotes.trim() : null,
+      paymentReminderDateIso: paymentReminderDateIsoForApi(row.paymentReminderAt ?? null),
     });
   }
 
@@ -243,4 +251,19 @@ export function buildStudentPaymentSummary(
     totalRemainingAmd: totalDebtAmd,
     unpaidBookings,
   };
+}
+
+/** Cash-like income recognized from payment fields (not booking lifecycle status). */
+export function recognizedIncomeAmd(row: BookingPaymentRow): number {
+  if (!bookingCountsTowardStudentDebt(row)) return 0;
+  const resolved = resolveBookingPayment(row);
+  const ps = resolved.paymentStatus;
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 0;
+  return resolved.paidAmountAmd;
+}
+
+export function isCountableAdminPaymentStatus(
+  ps: ResolvedBookingPayment['paymentStatus'],
+): ps is AdminBookingPaymentStatus {
+  return ps === 'paid' || ps === 'partial' || ps === 'unpaid';
 }

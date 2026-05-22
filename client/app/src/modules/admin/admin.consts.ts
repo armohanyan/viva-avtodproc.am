@@ -18,11 +18,12 @@ export function adminNavAllowedForUser(
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
   { href: "/admin/driving", translationKey: "adminSidebarDriving" },
-  { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
   { href: "/admin/bookings", translationKey: "bookings" },
+  { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
   { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/inbox", translationKey: "adminInbox" },
   { href: "/admin/students", translationKey: "adminSidebarStudents" },
+  { href: "/admin/reports", translationKey: "adminReportNav" },
   {
     href: "/admin/learn",
     translationKey: "adminSidebarLearn",

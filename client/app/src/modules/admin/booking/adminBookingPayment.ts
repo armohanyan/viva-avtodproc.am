@@ -9,6 +9,8 @@ export type AdminBookingPaymentState = {
   paidStr: string;
   method: TxMethod;
   datetimeLocal: string;
+  paymentNotes: string;
+  paymentReminderDate: string;
 };
 
 export function defaultAdminBookingPayment(status: AdminBookingPaymentStatus = "unpaid"): AdminBookingPaymentState {
@@ -17,6 +19,8 @@ export function defaultAdminBookingPayment(status: AdminBookingPaymentStatus = "
     paidStr: "",
     method: "cash",
     datetimeLocal: toDatetimeLocalValue(new Date()),
+    paymentNotes: "",
+    paymentReminderDate: "",
   };
 }
 
@@ -25,11 +29,44 @@ export function paidAmountFromState(state: AdminBookingPaymentState): number {
   return Number.isFinite(paid) && paid > 0 ? Math.round(paid) : 0;
 }
 
+/** Derive admin payment status from total vs paid (amounts are source of truth in the UI). */
+export function inferAdminPaymentStatusFromAmounts(
+  totalAmd: number,
+  paidAmd: number,
+): AdminBookingPaymentStatus {
+  const total = Math.max(0, Math.round(totalAmd));
+  const paid = Math.max(0, Math.round(paidAmd));
+  if (total <= 0) return "paid";
+  if (paid <= 0) return "unpaid";
+  if (paid >= total) return "paid";
+  return "partial";
+}
+
+/** After editing paid amount, sync status (and reminder visibility) automatically. */
+export function adminPaymentStateAfterPaidStrChange(
+  state: AdminBookingPaymentState,
+  paidStr: string,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  const total = Math.max(0, Math.round(totalAmd));
+  const raw = parseAmdInput(paidStr);
+  const paid = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
+  const status = inferAdminPaymentStatusFromAmounts(total, paid);
+  return {
+    ...state,
+    paidStr,
+    status,
+    ...(status === "paid" ? { paymentReminderDate: "" } : {}),
+  };
+}
+
 export function adminPaymentFromBooking(
   booking: {
     paymentStatus?: string | null;
     paidAmountAmd?: number | null;
     totalPriceAmd?: number | null;
+    paymentNotes?: string | null;
+    paymentReminderDateIso?: string | null;
   },
   finance?: { method?: TxMethod; createdAt?: string } | null,
 ): AdminBookingPaymentState {
@@ -57,6 +94,8 @@ export function adminPaymentFromBooking(
     paidStr,
     method: finance?.method ?? "cash",
     datetimeLocal,
+    paymentNotes: booking.paymentNotes?.trim() ?? "",
+    paymentReminderDate: booking.paymentReminderDateIso?.slice(0, 10) ?? "",
   };
 }
 
@@ -75,9 +114,8 @@ export function validateAdminBookingPayment(
   if (!Number.isFinite(paid)) return "adminBookingPaymentPartialRequired";
   if (paid < 0) return "adminBookingPaymentPartialPositive";
   if (paid > total) return "adminBookingPaymentPartialLessThanTotal";
-  if (state.status === "paid" && paid !== total) return "adminBookingPaymentPaidMustEqualTotal";
-  if (state.status === "unpaid" && paid !== 0) return "adminBookingPaymentUnpaidMustBeZero";
-  if (state.status === "partial") {
+  const status = inferAdminPaymentStatusFromAmounts(total, Number.isFinite(paid) ? Math.round(paid) : 0);
+  if (status === "partial") {
     if (paid <= 0) return "adminBookingPaymentPartialPositive";
     if (paid >= total) return "adminBookingPaymentPartialLessThanTotal";
   }
@@ -91,16 +129,39 @@ export function validateAdminBookingPayment(
 export function adminPaymentApiPayload(
   state: AdminBookingPaymentState,
   totalAmd: number,
-): { adminPaymentStatus: AdminBookingPaymentStatus; paidAmountAmd?: number } {
+): {
+  adminPaymentStatus: AdminBookingPaymentStatus;
+  paidAmountAmd?: number;
+  paymentNotes?: string | null;
+  paymentReminderDate?: string | null;
+} {
   const total = Math.max(0, Math.round(totalAmd));
   const paid = Math.min(total, Math.max(0, paidAmountFromState(state)));
-  if (state.status === "paid") {
-    return { adminPaymentStatus: "paid", paidAmountAmd: total };
+  const status = inferAdminPaymentStatusFromAmounts(total, paid);
+  const notes = state.paymentNotes.trim() ? state.paymentNotes.trim() : null;
+  const reminderDate =
+    status === "paid"
+      ? null
+      : state.paymentReminderDate.trim()
+        ? state.paymentReminderDate.trim().slice(0, 10)
+        : null;
+  if (status === "paid") {
+    return { adminPaymentStatus: "paid", paidAmountAmd: total, paymentNotes: notes, paymentReminderDate: null };
   }
-  if (state.status === "unpaid") {
-    return { adminPaymentStatus: "unpaid", paidAmountAmd: 0 };
+  if (status === "unpaid") {
+    return {
+      adminPaymentStatus: "unpaid",
+      paidAmountAmd: 0,
+      paymentNotes: notes,
+      paymentReminderDate: reminderDate,
+    };
   }
-  return { adminPaymentStatus: "partial", paidAmountAmd: paid };
+  return {
+    adminPaymentStatus: "partial",
+    paidAmountAmd: paid,
+    paymentNotes: notes,
+    paymentReminderDate: reminderDate,
+  };
 }
 
 export type BookingListPaymentRow = {
@@ -165,6 +226,13 @@ export function bookingOccursOnDateIso(
 }
 
 export type BookingPaymentFilter = "all" | "paid" | "partial" | "unpaid" | "outstanding";
+
+export function bookingHasDebtPaymentStatus(
+  booking: { paymentStatus?: string | null; paidAmountAmd?: number | null; totalPriceAmd?: number | null },
+): boolean {
+  const row = bookingListPaymentRow(booking);
+  return row.status === "partial" || row.status === "unpaid";
+}
 
 export function bookingMatchesPaymentFilter(
   booking: { paymentStatus?: string | null; paidAmountAmd?: number | null; totalPriceAmd?: number | null },

@@ -88,6 +88,8 @@ type StudentPaymentSummary = {
     lessonTypeKey: StudentBookingRow["lessonTypeKey"];
     paymentStatus: string;
     status: string;
+    paymentNotes: string | null;
+    paymentReminderDateIso: string | null;
   }>;
 };
 
@@ -457,6 +459,8 @@ export default function AdminStudentDetails() {
                       <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("adminColPrice")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("adminBookingPaymentPaidAmount")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("studentDetailsBookingRemaining")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t("studentDetailsPaymentNotes")}</th>
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t("studentDetailsPaymentReminderDate")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -469,6 +473,14 @@ export default function AdminStudentDetails() {
                         <td className="px-4 py-3 text-right tabular-nums">{formatAmd(b.totalPriceAmd)}</td>
                         <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatAmd(b.paidAmountAmd)}</td>
                         <td className="px-4 py-3 text-right tabular-nums font-medium text-amber-700">{formatAmd(b.remainingAmd)}</td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground max-w-[12rem] truncate" title={b.paymentNotes ?? ""}>
+                          {b.paymentNotes?.trim() || "—"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">
+                          {b.paymentReminderDateIso
+                            ? formatShortDateFromIso(b.paymentReminderDateIso, lang)
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,5 +1,10 @@
 import { Booking, User } from '../models';
 import { BookingNotificationPersistedType as Bnt } from '../constants/booking-notification-types';
+import {
+  bookingNeedsDebtPaymentReminder,
+  resolveDebtPaymentReminderDueAt,
+} from '../utils/booking-payment-reminder.util';
+import { resolveBookingPayment } from '../utils/booking-admin-payment.util';
 import MailService from './mail.service';
 import NotificationService from './notification.service';
 import { todayIsoUtc } from '../utils/calendar-month.util';
@@ -17,6 +22,14 @@ function bookingLessonTypeLabel(lessonType: Booking['lessonType']): string {
     : lessonType === 'theory_personal'
       ? '1:1 theory lesson'
       : 'Practical lesson';
+}
+
+function bookingLessonTypeLabelHy(lessonType: Booking['lessonType']): string {
+  return lessonType === 'theory'
+    ? 'Խմբային տեսական դաս'
+    : lessonType === 'theory_personal'
+      ? 'Անհատական տեսական դաս'
+      : 'Պրակտիկ դաս';
 }
 
 function isEffectivelyConfirmed(status: string): boolean {
@@ -190,10 +203,10 @@ export default class BookingNotificationService {
       recipientUserId: student.id,
       recipientRole: student.accountType,
       type: Bnt.BOOKING_PAYMENT_REMINDER,
-      title: 'Payment coming due',
+      title: 'Վճարման հիշեցում',
       message: dateLine
-        ? `Payment for your reserved lesson will be required soon (deadline date ${pr}). ${dateLine}`
-        : `Payment for your reserved lesson will be required soon (deadline date ${pr}).`,
+        ? `Ձեր պահված դասի համար վճարումը շուտով պարտադիր կլինի (վերջնաժամկետ՝ ${pr})։ ${dateLine}`
+        : `Ձեր պահված դասի համար վճարումը շուտով պարտադիր կլինի (վերջնաժամկետ՝ ${pr})։`,
       entityType: 'booking',
       entityId: String(row.id),
       dedupeKey: `booking-payment-reminder:${row.id}`,
@@ -205,14 +218,71 @@ export default class BookingNotificationService {
       await MailService.sendBookingLifecycleUpdate(email, {
         bookingId: row.id,
         studentName: student.name,
-        bookingType: bookingLessonTypeLabel(row.lessonType),
+        bookingType: bookingLessonTypeLabelHy(row.lessonType),
         dateIso: dateIsoString(row.dateIso),
         time: row.time,
         eventKey: 'payment_reminder',
-        statusLabel: 'Payment required soon',
-        summary: `Your reserved lesson is approaching the payment date. Please complete card payment in your student panel by ${pr} (Armenia / business calendar). After that date unpaid bookings are released.`,
+        statusLabel: 'Շուտով պարտադիր է վճարում',
+        summary: `Ձեր պահված դասը մոտենում է վճարման ամսաթվին։ Խնդրում ենք ավարտել քարտային վճարումը ուսանողական հարթակում մինչև ${pr} (Հայաստանի գործարքային օրացույց)։ Այդ ամսաթվից հետո չվճարված ամրագրումները ազատվում են։`,
       });
     }
+
+    const fresh = await Booking.findByPk(bookingId);
+    if (fresh && !fresh.paymentReminderSentAt) {
+      await fresh.update({ paymentReminderSentAt: new Date() });
+    }
+    return true;
+  }
+
+  /**
+   * Admin-recorded debt reminder (unpaid / partial): notifies student and staff once when due.
+   * Uses `payment_reminder_at` or automatic offset after lesson; deduped via `payment_reminder_sent_at`.
+   */
+  static async emitAdminDebtPaymentReminderOnce(bookingId: number, now = new Date()): Promise<boolean> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'accountType'] }],
+    });
+    if (!row) return false;
+    if (row.paymentReminderSentAt) return false;
+    if (!bookingNeedsDebtPaymentReminder(row)) return false;
+
+    const dueAt = resolveDebtPaymentReminderDueAt(row);
+    if (!dueAt || dueAt.getTime() > now.getTime()) return false;
+
+    const student = (row as unknown as { student?: User }).student;
+    if (!student) return false;
+
+    const resolved = resolveBookingPayment(row);
+    const remaining = resolved.remainingAmd;
+    const lessonDate = dateIsoString(row.dateIso);
+    const typeLabel = bookingLessonTypeLabel(row.lessonType);
+    const statusHy =
+      resolved.paymentStatus === 'partial' ? 'մասնակի վճարված' : 'չվճարված';
+
+    const studentMessage = `Հիշեցում․ Դուք ունեք ${statusHy} դաս։ Խնդրում ենք կատարել վճարումը։ Մնացորդ՝ ${remaining} AMD`;
+    const adminMessage = `Վճարման հիշեցում․ ${student.name}-ը ունի չվճարված/մասնակի վճարված ամրագրում (${typeLabel}${lessonDate ? ` · ${lessonDate}` : ''})։ Մնացորդ՝ ${remaining} AMD`;
+
+    await NotificationService.createOne({
+      recipientUserId: student.id,
+      recipientRole: student.accountType,
+      type: Bnt.BOOKING_PAYMENT_REMINDER,
+      title: 'Վճարման հիշեցում',
+      message: studentMessage,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-debt-payment-reminder:student:${row.id}`,
+      metadata: { remainingAmd: remaining, paymentStatus: resolved.paymentStatus },
+    });
+
+    await NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: Bnt.BOOKING_PAYMENT_REMINDER,
+      title: 'Վճարման հիշեցում',
+      message: adminMessage,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-debt-payment-reminder:staff:${row.id}`,
+      metadata: { studentUserId: student.id, remainingAmd: remaining },
+    });
 
     const fresh = await Booking.findByPk(bookingId);
     if (fresh && !fresh.paymentReminderSentAt) {
@@ -235,10 +305,10 @@ export default class BookingNotificationService {
       recipientUserId: student.id,
       recipientRole: student.accountType,
       type: Bnt.BOOKING_AUTO_CANCELLED_PAYMENT,
-      title: 'Booking cancelled — payment not received',
+      title: 'Ամրագրումը չեղարկվել է — վճարում չկատարվեց',
       message: dateLine
-        ? `Your booking was cancelled because payment was not completed before the required date. ${dateLine}`
-        : 'Your booking was cancelled because payment was not completed before the required date.',
+        ? `Ձեր ամրագրումը չեղարկվել է, քանի որ վճարումը չի ավարտվել պահանջվող ամսաթվից առաջ։ ${dateLine}`
+        : 'Ձեր ամրագրումը չեղարկվել է, քանի որ վճարումը չի ավարտվել պահանջվող ամսաթվից առաջ։',
       entityType: 'booking',
       entityId: String(row.id),
       dedupeKey: `booking-auto-cancel-pay:${row.id}`,
@@ -250,13 +320,13 @@ export default class BookingNotificationService {
     await MailService.sendBookingLifecycleUpdate(email, {
       bookingId: row.id,
       studentName: student.name,
-      bookingType: bookingLessonTypeLabel(row.lessonType),
+      bookingType: bookingLessonTypeLabelHy(row.lessonType),
       dateIso: dateIsoString(row.dateIso),
       time: row.time,
       eventKey: 'auto_cancelled_payment',
-      statusLabel: 'Cancelled (payment missed)',
+      statusLabel: 'Չեղարկված (վճարում չկատարվեց)',
       summary:
-        'Your booking was cancelled because payment was not completed before the required date. The slot has been released for other students.',
+        'Ձեր ամրագրումը չեղարկվել է, քանի որ վճարումը չի ավարտվել պահանջվող ամսաթվից առաջ։ Սլոթը ազատվել է այլ ուսանողների համար։',
     });
   }
 }

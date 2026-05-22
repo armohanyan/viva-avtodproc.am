@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactElement } from "react";
+import { cloneElement, type ComponentProps, type MouseEvent, type ReactElement } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "src/lib/utils";
@@ -32,6 +32,24 @@ export type AdminTableRowAction =
       href: string;
     }
   | { kind: "separator"; id: string };
+
+const ROW_INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, [role='button'], [data-no-row-dblclick]";
+
+function isRowInteractiveDoubleClickTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest(ROW_INTERACTIVE_SELECTOR));
+}
+
+/** First row menu item with `id: "edit"` (opens edit modal / form in admin tables). */
+export function findAdminTableRowEditAction(
+  actions: AdminTableRowAction[],
+): Extract<AdminTableRowAction, { kind: "item" }> | null {
+  const edit = actions.find(
+    (a): a is Extract<AdminTableRowAction, { kind: "item" }> => a.kind === "item" && a.id === "edit",
+  );
+  return edit ?? null;
+}
 
 function AdminTableRowActionsMenuContent({ actions }: { actions: AdminTableRowAction[] }) {
   const [, setLocation] = useLocation();
@@ -70,13 +88,35 @@ function AdminTableRowActionsMenuContent({ actions }: { actions: AdminTableRowAc
 export function AdminTableRowContextMenu({
   actions,
   children,
+  onRowDoubleClick,
 }: {
   actions: AdminTableRowAction[];
   children: ReactElement<ComponentProps<"tr">>;
+  /** Overrides the default double-click handler (first `id: "edit"` menu item). */
+  onRowDoubleClick?: () => void;
 }) {
+  const { t } = useLang();
+  const editAction = findAdminTableRowEditAction(actions);
+  const handleRowDoubleClick = onRowDoubleClick ?? editAction?.onClick;
+
+  const row =
+    handleRowDoubleClick != null
+      ? cloneElement(children, {
+          onDoubleClick: (e: MouseEvent<HTMLTableRowElement>) => {
+            children.props.onDoubleClick?.(e);
+            if (e.defaultPrevented) return;
+            if (isRowInteractiveDoubleClickTarget(e.target)) return;
+            e.preventDefault();
+            handleRowDoubleClick();
+          },
+          className: cn(children.props.className, "cursor-pointer"),
+          title: children.props.title ?? t("adminTableRowDoubleClickEdit"),
+        })
+      : children;
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
       <AdminTableRowActionsMenuContent actions={actions} />
     </ContextMenu>
   );

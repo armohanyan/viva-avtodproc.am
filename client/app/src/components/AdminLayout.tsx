@@ -9,6 +9,7 @@ import {
 	Car,
 	Calendar,
 	CalendarDays,
+	FileBarChart,
 	Newspaper,
 	LogOut,
 	GraduationCap,
@@ -64,6 +65,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
 		"/admin/bookings": Calendar,
+		"/admin/reports": FileBarChart,
 		"/admin/driving": Car,
 		"/admin/class-schedule": CalendarDays,
 		"/admin/notifications": Bell,
@@ -97,7 +99,7 @@ export default function AdminLayout({ children }: Props) {
 		}
 		const visibleChildren =
 			link.children?.filter((c) => adminNavAllowedForUser(user, c.allowedAccountTypes)) ?? [];
-		const Icon = iconByPath[link.href as keyof typeof iconByPath];
+		const Icon = iconByPath[link.href as keyof typeof iconByPath] ?? LayoutDashboard;
 		const hasChildren = Boolean(visibleChildren.length);
 
 		if (link.collapsible && link.children?.length) {
@@ -183,7 +185,9 @@ export default function AdminLayout({ children }: Props) {
 
 		if (!hasChildren) {
 			if (link.children?.length && !visibleChildren.length) return null;
-			const active = location === link.href;
+			const active =
+				location === link.href ||
+				(link.href === "/admin/bookings" && location.startsWith("/admin/bookings/"));
 			return (
 				<Link
 					key={link.href}
@@ -262,6 +266,7 @@ export default function AdminLayout({ children }: Props) {
 		if (location === "/admin/finance/outcomes") return t("adminFinanceOutcomesTitle");
 		if (location === "/admin/finance/transactions") return t("adminFinanceTransactionsTitle");
 		if (location === "/admin/finance") return t("adminFinanceOverviewTitle");
+		if (location.startsWith("/admin/bookings")) return t("bookings");
 		return adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard");
 	}, [location, t, adminNavLabels]);
 

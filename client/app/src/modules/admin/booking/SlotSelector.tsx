@@ -64,17 +64,13 @@ export default function SlotSelector({
   const [entries, setEntries] = useState<{ dateIso: string; time: string }[]>([]);
   const [entriesInstructorId, setEntriesInstructorId] = useState("");
   const lastSyncKeyRef = useRef<string | null>(null);
-  const onBookingConfirmedRef = useRef(onBookingConfirmed);
-  const onAdminSelectionClearedRef = useRef(onAdminSelectionCleared);
-  onBookingConfirmedRef.current = onBookingConfirmed;
-  onAdminSelectionClearedRef.current = onAdminSelectionCleared;
 
   useEffect(() => {
     setEntries([]);
     setEntriesInstructorId("");
     lastSyncKeyRef.current = null;
-    onAdminSelectionClearedRef.current?.();
-  }, [calendarKey]);
+    onAdminSelectionCleared?.();
+  }, [calendarKey, onAdminSelectionCleared]);
 
   const activeInstructorId = selectedInstructorId || instructors[0]?.id || "";
 
@@ -86,15 +82,15 @@ export default function SlotSelector({
       if (key === null) {
         if (lastSyncKeyRef.current !== null) {
           lastSyncKeyRef.current = null;
-          onAdminSelectionClearedRef.current?.();
+          onAdminSelectionCleared?.();
         }
         return;
       }
       if (lastSyncKeyRef.current === key) return;
       lastSyncKeyRef.current = key;
-      onBookingConfirmedRef.current(payload);
+      onBookingConfirmed(payload);
     },
-    [instructors, studentName],
+    [instructors, studentName, onBookingConfirmed, onAdminSelectionCleared],
   );
 
   const handleEntriesChange = useCallback(
@@ -106,10 +102,10 @@ export default function SlotSelector({
       if (next.length > 0) syncPayload(next, ownerId);
       else if (lastSyncKeyRef.current !== null) {
         lastSyncKeyRef.current = null;
-        onAdminSelectionClearedRef.current?.();
+        onAdminSelectionCleared?.();
       }
     },
-    [activeInstructorId, entriesInstructorId, syncPayload],
+    [activeInstructorId, entriesInstructorId, syncPayload, onAdminSelectionCleared],
   );
 
   const handleInstructorPicked = useCallback(
