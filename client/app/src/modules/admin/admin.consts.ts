@@ -48,6 +48,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
       { href: "/admin/finance/transactions", translationKey: "adminFinanceTransactionsNav" },
       { href: "/admin/finance/income", translationKey: "adminFinanceIncomeNav" },
       { href: "/admin/finance/outcomes", translationKey: "adminFinanceOutcomesNav" },
+      { href: "/admin/finance/petrol", translationKey: "adminPetrolNav" },
     ],
   },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },

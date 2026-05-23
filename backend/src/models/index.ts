@@ -30,6 +30,7 @@ import { Package } from './package.model';
 import { PersonalTheoryLessonRequest } from './personal-theory-lesson-request.model';
 import { PackageLessonBalance } from './package-lesson-balance.model';
 import { PackageOrder } from './package-order.model';
+import { PetrolExpense } from './petrol-expense.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
@@ -107,6 +108,13 @@ FinanceTransaction.belongsTo(Booking, { foreignKey: 'bookingId', targetKey: 'id'
 FleetCar.hasMany(CarExpense, { foreignKey: 'carId', sourceKey: 'id' });
 CarExpense.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
 
+FleetCar.hasMany(PetrolExpense, { foreignKey: 'carId', sourceKey: 'id' });
+PetrolExpense.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
+User.hasMany(PetrolExpense, { foreignKey: 'instructorUserId', sourceKey: 'id', as: 'petrolExpensesAsInstructor' });
+PetrolExpense.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+User.hasMany(PetrolExpense, { foreignKey: 'createdByUserId', sourceKey: 'id', as: 'petrolExpensesCreated' });
+PetrolExpense.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
 User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -183,6 +191,7 @@ export {
   Notification,
   PackageLessonBalance,
   PackageOrder,
+  PetrolExpense,
   AdminMfaChallenge,
   OAuthAccount,
   Package,
@@ -589,6 +598,76 @@ async function ensureCarExpensesTitleColumn(): Promise<void> {
   );
   if (colRows.length > 0) return;
   await sequelize.query('ALTER TABLE `car_expenses` ADD COLUMN `title` VARCHAR(255) NULL AFTER `car_id`');
+}
+
+async function ensurePetrolExpensesTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table petrol_expenses …');
+  await sequelize.query(`
+    CREATE TABLE \`petrol_expenses\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`car_id\` INT UNSIGNED NOT NULL,
+      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`date\` DATE NOT NULL,
+      \`petrol_type\` ENUM('benzin','lpg') NOT NULL DEFAULT 'benzin',
+      \`petrol_count\` DECIMAL(10,2) NULL,
+      \`price\` INT UNSIGNED NOT NULL,
+      \`description\` TEXT NULL,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`petrol_expenses_date_idx\` (\`date\`),
+      KEY \`petrol_expenses_instructor_date_idx\` (\`instructor_user_id\`, \`date\`),
+      KEY \`petrol_expenses_car_idx\` (\`car_id\`),
+      CONSTRAINT \`petrol_expenses_car_fk\` FOREIGN KEY (\`car_id\`) REFERENCES \`fleet_cars\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`petrol_expenses_instructor_fk\` FOREIGN KEY (\`instructor_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`petrol_expenses_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensurePetrolExpensesTypeAndNullableCount(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) return;
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string; IS_NULLABLE: string }>(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'
+       AND COLUMN_NAME IN ('petrol_type', 'petrol_count')`,
+    { type: QueryTypes.SELECT },
+  );
+  const byName = new Map(cols.map((c) => [c.COLUMN_NAME, c]));
+
+  if (!byName.has('petrol_type')) {
+    await sequelize.query(`
+      ALTER TABLE \`petrol_expenses\`
+        ADD COLUMN \`petrol_type\` ENUM('benzin','lpg') NOT NULL DEFAULT 'benzin' AFTER \`date\`
+    `);
+  }
+
+  const countCol = byName.get('petrol_count');
+  if (countCol && countCol.IS_NULLABLE === 'NO') {
+    await sequelize.query(`
+      ALTER TABLE \`petrol_expenses\`
+        MODIFY COLUMN \`petrol_count\` DECIMAL(10,2) NULL
+    `);
+  }
 }
 
 async function ensureFinanceExpensesTable(): Promise<void> {
@@ -1948,6 +2027,8 @@ export async function syncModels(): Promise<void> {
   await ensureCarExpensesDropPaymentColumns();
   await ensureCarExpensesTitleColumn();
   await ensureFinanceExpensesTable();
+  await ensurePetrolExpensesTable();
+  await ensurePetrolExpensesTypeAndNullableCount();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
   await ensureBookingsPaymentNotesAndReminderAtColumns();

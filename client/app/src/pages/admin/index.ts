@@ -27,6 +27,7 @@ export { default as AdminFinanceOverviewPage } from "./finance/AdminFinanceOverv
 export { default as AdminFinanceIncomePage } from "./finance/AdminFinanceIncome";
 export { default as AdminFinanceOutcomesPage } from "./finance/AdminFinanceOutcomes";
 export { default as AdminFinanceTransactionsPage } from "./finance/AdminFinanceTransactions";
+export { default as AdminPetrolPage } from "./AdminPetrol";
 export { default as AdminProfilePage } from "./AdminProfile";
 export { default as AdminLearnHubPage } from "./AdminLearnHub";
 export { default as AdminExamQuestionsPage } from "./AdminExamQuestions";
