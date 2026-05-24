@@ -49,6 +49,9 @@ export function AppModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={showCloseButton}
+        {...(description == null || description === ""
+          ? { "aria-describedby": undefined }
+          : {})}
         className={cn(
           "flex max-h-[min(92vh,900px)] flex-col gap-0 overflow-hidden p-0",
           contentClassName
@@ -80,7 +83,7 @@ export function AppModal({
         {hasFooter ? (
           <div
             className={cn(
-              "shrink-0 border-t border-border bg-background px-6 py-4",
+              "flex shrink-0 items-center justify-end gap-3 border-t border-border bg-background px-6 py-4",
               footerClassName
             )}
           >

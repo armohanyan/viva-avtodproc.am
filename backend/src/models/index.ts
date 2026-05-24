@@ -30,6 +30,7 @@ import { Package } from './package.model';
 import { PersonalTheoryLessonRequest } from './personal-theory-lesson-request.model';
 import { PackageLessonBalance } from './package-lesson-balance.model';
 import { PackageOrder } from './package-order.model';
+import { PetrolConsumption } from './petrol-consumption.model';
 import { PetrolExpense } from './petrol-expense.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
@@ -115,6 +116,21 @@ PetrolExpense.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id',
 User.hasMany(PetrolExpense, { foreignKey: 'createdByUserId', sourceKey: 'id', as: 'petrolExpensesCreated' });
 PetrolExpense.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
+FleetCar.hasMany(PetrolConsumption, { foreignKey: 'carId', sourceKey: 'id' });
+PetrolConsumption.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
+User.hasMany(PetrolConsumption, {
+  foreignKey: 'instructorUserId',
+  sourceKey: 'id',
+  as: 'petrolConsumptionsAsInstructor',
+});
+PetrolConsumption.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+User.hasMany(PetrolConsumption, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'petrolConsumptionsCreated',
+});
+PetrolConsumption.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
 User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -191,6 +207,7 @@ export {
   Notification,
   PackageLessonBalance,
   PackageOrder,
+  PetrolConsumption,
   PetrolExpense,
   AdminMfaChallenge,
   OAuthAccount,
@@ -668,6 +685,67 @@ async function ensurePetrolExpensesTypeAndNullableCount(): Promise<void> {
         MODIFY COLUMN \`petrol_count\` DECIMAL(10,2) NULL
     `);
   }
+}
+
+async function ensurePetrolConsumptionsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_consumptions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table petrol_consumptions …');
+  await sequelize.query(`
+    CREATE TABLE \`petrol_consumptions\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`car_id\` INT UNSIGNED NOT NULL,
+      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`date\` DATE NOT NULL,
+      \`distance_value\` DECIMAL(10,2) NOT NULL,
+      \`distance_unit\` ENUM('km','mile') NOT NULL DEFAULT 'km',
+      \`petrol_amount\` DECIMAL(10,2) NULL,
+      \`petrol_unit\` ENUM('liter','ml') NOT NULL DEFAULT 'liter',
+      \`description\` TEXT NULL,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`petrol_consumptions_date_idx\` (\`date\`),
+      KEY \`petrol_consumptions_instructor_date_idx\` (\`instructor_user_id\`, \`date\`),
+      KEY \`petrol_consumptions_car_idx\` (\`car_id\`),
+      CONSTRAINT \`petrol_consumptions_car_fk\` FOREIGN KEY (\`car_id\`) REFERENCES \`fleet_cars\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`petrol_consumptions_instructor_fk\` FOREIGN KEY (\`instructor_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`petrol_consumptions_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensurePetrolConsumptionsPetrolAmountNullable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_consumptions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) return;
+
+  const cols = await sequelize.query<{ IS_NULLABLE: string }>(
+    `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_consumptions'
+       AND COLUMN_NAME = 'petrol_amount'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols[0]?.IS_NULLABLE === 'YES') return;
+
+  await sequelize.query(`
+    ALTER TABLE \`petrol_consumptions\`
+      MODIFY COLUMN \`petrol_amount\` DECIMAL(10,2) NULL
+  `);
 }
 
 async function ensureFinanceExpensesTable(): Promise<void> {
@@ -2029,6 +2107,8 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceExpensesTable();
   await ensurePetrolExpensesTable();
   await ensurePetrolExpensesTypeAndNullableCount();
+  await ensurePetrolConsumptionsTable();
+  await ensurePetrolConsumptionsPetrolAmountNullable();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
   await ensureBookingsPaymentNotesAndReminderAtColumns();
