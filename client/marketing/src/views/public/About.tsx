@@ -23,16 +23,13 @@ export default function About() {
   const { t, lang } = useLang();
   const { data: mkt } = useMarketingPublic();
 
-  const { storyStats, marketingStatByKey } = useMemo(() => {
+  const storyStats = useMemo(() => {
     const byKey = Object.fromEntries((mkt?.stats ?? []).map((s) => [s.key, s.value])) as Record<string, string>;
-    const storyStats = ABOUT_MARKETING_STATS_ORDER.filter((key) => byKey[key]).map((key) => ({
+    return ABOUT_MARKETING_STATS_ORDER.filter((key) => byKey[key]).map((key) => ({
       value: byKey[key]!,
       label: t((ABOUT_MARKETING_STAT_LABEL_KEY[key] ?? "aboutStatYearsActive") as TranslationKey),
     }));
-    return { storyStats, marketingStatByKey: byKey };
   }, [mkt, t]);
-
-  const graduateCountDisplay = marketingStatByKey.students ?? "3,200+";
 
   const values = [
     { icon: Target, title: t("aboutValueSafetyTitle"), desc: t("aboutValueSafetyDesc") },
@@ -40,13 +37,6 @@ export default function About() {
     { icon: Heart, title: t("aboutValueStudentTitle"), desc: t("aboutValueStudentDesc") },
   ];
 
-  const milestones = [
-    { year: "2022", event: t("aboutMilestone2022") },
-    { year: "2023", event: t("aboutMilestone2023") },
-    { year: "2024", event: t("aboutMilestone2024") },
-    { year: "2025", event: t("aboutMilestone2025") },
-    { year: "2026", event: t("aboutMilestone2026").replace("{count}", graduateCountDisplay) },
-  ];
   const ownerPhoto = sameOriginStaffUploadUrl(mkt?.siteContent.ownerPhoto);
   const ownerName = mkt?.siteContent.ownerName?.[lang]?.trim() || DEFAULT_OWNER_NAME;
   const ownerPosition = mkt?.siteContent.ownerPosition?.[lang]?.trim() || DEFAULT_OWNER_POSITION;
@@ -155,30 +145,6 @@ export default function About() {
                 <p className="text-muted-foreground text-sm leading-relaxed">{v.desc}</p>
               </Reveal>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Timeline */}
-      <section className="py-20 bg-background">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-foreground mb-4">{t("aboutOurJourneyTitle")}</h2>
-          </div>
-          <div className="relative">
-            <div className="absolute left-8 top-0 bottom-0 w-px bg-border" />
-            <div className="space-y-8">
-              {milestones.map((m, i) => (
-                <Reveal key={i} delay={i * 0.05} className="flex gap-6 items-start">
-                  <div className="relative z-10 w-16 h-16 bg-primary rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-primary-foreground font-bold text-xs">{m.year}</span>
-                  </div>
-                  <div className="bg-accent rounded-xl p-4 flex-1 mt-3">
-                    <p className="text-muted-foreground font-medium">{m.event}</p>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
           </div>
         </div>
       </section>

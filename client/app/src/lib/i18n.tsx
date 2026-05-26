@@ -144,11 +144,6 @@ const en = {
   aboutValueTransparencyDesc: "Clear pricing, honest timelines, and no hidden surprises.",
   aboutValueStudentTitle: "Student-Centered",
   aboutValueStudentDesc: "We adapt to each student's pace, learning style, and goals.",
-  aboutMilestone2022: "Viva Driving School was founded in Yerevan",
-  aboutMilestone2023: "Expanded to 3 training locations",
-  aboutMilestone2024: "Launched online theory courses",
-  aboutMilestone2025: "Introduced a modern dual-control vehicle fleet",
-  aboutMilestone2026: "{count} successful graduates",
   
     // Services
   servicesTitle: "Our Services",
@@ -1524,7 +1519,6 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   // About page sections
   aboutOurStoryTitle: "Our Story",
   aboutOurValuesTitle: "Our Values",
-  aboutOurJourneyTitle: "Our Journey",
 
   // Auth (login/register/forgot)
   loginHeroQuote: "The road to your license starts with the right instructor.",
@@ -2052,11 +2046,6 @@ const ru: typeof en = {
   aboutValueTransparencyDesc: "Понятные цены, честные сроки и никаких скрытых сюрпризов.",
   aboutValueStudentTitle: "Ориентированность на ученика",
   aboutValueStudentDesc: "Мы подстраиваемся под темп, стиль обучения и цели каждого ученика.",
-  aboutMilestone2022: "В Ереване была основана автошкола Viva",
-  aboutMilestone2023: "Расширение до 3 учебных площадок",
-  aboutMilestone2024: "Запущены онлайн-курсы теории",
-  aboutMilestone2025: "Введён современный автопарк с двойным управлением",
-  aboutMilestone2026: "{count}+ успешных выпускников",
   
   servicesTitle: "Наши услуги",
   servicesSub: "Всё необходимое для получения водительских прав",
@@ -3426,7 +3415,6 @@ const ru: typeof en = {
   // About page sections
   aboutOurStoryTitle: "Наша история",
   aboutOurValuesTitle: "Наши ценности",
-  aboutOurJourneyTitle: "Наш путь",
 
   // Auth (login/register/forgot)
   loginHeroQuote: "Путь к вашим правам начинается с правильного инструктора.",
@@ -3973,11 +3961,6 @@ const am: typeof en = {
   aboutValueTransparencyDesc: "Հստակ գնային քաղաքականություն, իրական ժամկետներ և առանց թաքնված վճարների ծառայություններ։",
   aboutValueStudentTitle: "Ուսանողակենտրոն մոտեցում",
   aboutValueStudentDesc: "Մենք անհատական մոտեցում ենք ցուցաբերում յուրաքանչյուր ուսանողի՝ հաշվի առնելով նրա տեմպը, ուսուցման ոճը և նպատակները։",
-  aboutMilestone2022: "Viva ավտոդպրոցի հիմնադրումը Երևանում",
-  aboutMilestone2023: "Ընդլայնում՝ մինչև 3 ուսումնական մասնաճյուղ",
-  aboutMilestone2024: "Մեկնարկեցին առցանց տեսական դասընթացները",
-  aboutMilestone2025: "Ներդրվեց ժամանակակից կրկնակի կառավարմամբ ավտոպարկ",
-  aboutMilestone2026: "{count}+ հաջողակ շրջանավարտներ",
   
   servicesTitle: "Մեր ծառայությունները",
   servicesSub: "Ամբողջական ուսուցում՝ վարորդական իրավունք ստանալու և վստահ վարելու համար։",
@@ -5337,7 +5320,6 @@ const am: typeof en = {
   // About page sections
   aboutOurStoryTitle: "Մեր պատմությունը",
   aboutOurValuesTitle: "Մեր արժեքները",
-  aboutOurJourneyTitle: "Մեր ճանապարհը",
 
   // Auth (login/register/forgot)
   loginHeroQuote: "Ձեր վարորդական իրավունքի ճանապարհը ճիշտ հրահանգչից է սկսվում։",

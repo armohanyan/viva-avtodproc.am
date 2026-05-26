@@ -102,11 +102,6 @@ const en = {
   aboutValueTransparencyDesc: "Clear pricing, honest timelines, and no hidden surprises.",
   aboutValueStudentTitle: "Student-Centered",
   aboutValueStudentDesc: "We adapt to each student's pace, learning style, and goals.",
-  aboutMilestone2022: "Երևանում հիմնադրվեց Viva ավտոդպրոցը",
-  aboutMilestone2023: "Ընդլայնում մինչև 3 ուսումնական վայր",
-  aboutMilestone2024: "Մեկնարկեցին առցանց տեսական դասընթացները",
-  aboutMilestone2025: "Ներդրվեց ժամանակակից կրկնակի կառավարման ավտոպարկ",
-  aboutMilestone2026: "{count} հաջողակ շրջանավարտ",
 
   // Services
   servicesTitle: "Our Services",
@@ -1110,7 +1105,6 @@ const en = {
   // About page sections
   aboutOurStoryTitle: "Our Story",
   aboutOurValuesTitle: "Our Values",
-  aboutOurJourneyTitle: "Our Journey",
 
   // Auth (login/register/forgot)
   loginHeroQuote: "The road to your license starts with the right instructor.",
@@ -1575,11 +1569,6 @@ const ru: typeof en = {
   aboutValueTransparencyDesc: "Понятные цены, честные сроки и никаких скрытых сюрпризов.",
   aboutValueStudentTitle: "Ориентир на ученика",
   aboutValueStudentDesc: "Мы подстраиваемся под темп, стиль обучения и цели каждого ученика.",
-  aboutMilestone2022: "Երևանում հիմնադրվեց Viva ավտոդպրոցը",
-  aboutMilestone2023: "Ընդլայնում մինչև 3 ուսումնական վայր",
-  aboutMilestone2024: "Մեկնարկեցին առցանց տեսական դասընթացները",
-  aboutMilestone2025: "Ներդրվեց ժամանակակից կրկնակի կառավարման ավտոպարկ",
-  aboutMilestone2026: "{count} հաջողակ շրջանավարտ",
 
   servicesTitle: "Наши услуги",
   servicesSub: "Всё необходимое для получения водительских прав",
@@ -2573,7 +2562,6 @@ const ru: typeof en = {
   // About page sections
   aboutOurStoryTitle: "Наша история",
   aboutOurValuesTitle: "Наши ценности",
-  aboutOurJourneyTitle: "Наш путь",
 
   // Auth (login/register/forgot)
   loginHeroQuote: "Путь к вашим правам начинается с правильного инструктора.",
@@ -3037,11 +3025,6 @@ const am: typeof en = {
   aboutValueTransparencyDesc: "Հստակ գներ, ազնիվ ժամկետներ և առանց թաքնված անակնկալների։",
   aboutValueStudentTitle: "Ուսանողակենտրոն մոտեցում",
   aboutValueStudentDesc: "Մենք հարմարվում ենք յուրաքանչյուր ուսանողի տեմպին, սովորելու ոճին և նպատակներին։",
-  aboutMilestone2022: "Երևանում հիմնադրվեց Viva ավտոդպրոցը",
-  aboutMilestone2023: "Ընդլայնում մինչև 3 ուսումնական վայր",
-  aboutMilestone2024: "Մեկնարկեցին առցանց տեսական դասընթացները",
-  aboutMilestone2025: "Ներդրվեց ժամանակակից կրկնակի կառավարման ավտոպարկ",
-  aboutMilestone2026: "{count} հաջողակ շրջանավարտ",
 
   servicesTitle: "Մեր ծառայությունները",
   servicesSub: "Ամեն ինչ, ինչ անհրաժեշտ է վարորդական իրավունք ստանալու համար",
@@ -4036,7 +4019,6 @@ const am: typeof en = {
   // About page sections
   aboutOurStoryTitle: "Մեր պատմությունը",
   aboutOurValuesTitle: "Մեր արժեքները",
-  aboutOurJourneyTitle: "Մեր ճանապարհը",
 
   // Auth (login/register/forgot)
   loginHeroQuote: "Ձեր վարորդական իրավունքի ճանապարհը ճիշտ հրահանգչից է սկսվում։",
