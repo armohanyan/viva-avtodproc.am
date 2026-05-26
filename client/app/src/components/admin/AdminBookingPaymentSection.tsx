@@ -45,12 +45,14 @@ export default function AdminBookingPaymentSection({
   useEffect(() => {
     const synced = adminPaymentStateAfterPaidStrChange(value, value.paidStr, total);
     if (
-      synced.status !== value.status ||
-      (synced.status === "paid" && value.paymentReminderDate !== "")
+      synced.status === value.status &&
+      synced.paidStr === value.paidStr &&
+      !(synced.status === "paid" && value.paymentReminderDate !== "")
     ) {
-      onChange(synced);
+      return;
     }
-  }, [total]);
+    onChange(synced);
+  }, [total, value, onChange]);
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">

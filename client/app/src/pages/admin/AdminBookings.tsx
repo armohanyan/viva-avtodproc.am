@@ -1736,7 +1736,17 @@ export default function AdminBookings() {
 
   useEffect(() => {
     if (!addOpen) return;
-    setAddBookingPayment((prev) => adminPaymentStateAfterPaidStrChange(prev, prev.paidStr, addEffectiveTotalAmd));
+    setAddBookingPayment((prev) => {
+      const next = adminPaymentStateAfterPaidStrChange(prev, prev.paidStr, addEffectiveTotalAmd);
+      if (
+        next.status === prev.status &&
+        next.paidStr === prev.paidStr &&
+        next.paymentReminderDate === prev.paymentReminderDate
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, [addOpen, addEffectiveTotalAmd]);
 
   useEffect(() => {

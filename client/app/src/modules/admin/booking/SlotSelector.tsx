@@ -64,13 +64,20 @@ export default function SlotSelector({
   const [entries, setEntries] = useState<{ dateIso: string; time: string }[]>([]);
   const [entriesInstructorId, setEntriesInstructorId] = useState("");
   const lastSyncKeyRef = useRef<string | null>(null);
+  const onAdminSelectionClearedRef = useRef(onAdminSelectionCleared);
+  const prevCalendarKeyRef = useRef<string | null>(null);
+
+  onAdminSelectionClearedRef.current = onAdminSelectionCleared;
 
   useEffect(() => {
     setEntries([]);
     setEntriesInstructorId("");
     lastSyncKeyRef.current = null;
-    onAdminSelectionCleared?.();
-  }, [calendarKey, onAdminSelectionCleared]);
+    if (prevCalendarKeyRef.current !== null && prevCalendarKeyRef.current !== calendarKey) {
+      onAdminSelectionClearedRef.current?.();
+    }
+    prevCalendarKeyRef.current = calendarKey;
+  }, [calendarKey]);
 
   const activeInstructorId = selectedInstructorId || instructors[0]?.id || "";
 
