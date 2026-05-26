@@ -32,7 +32,7 @@ export default function InstructorCard({
 }: Props) {
   const { t } = useLang();
   const { panelHref } = useAppNavigation();
-  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "h-60");
+  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "aspect-[4/3] w-full");
   const frameBorder =
     pickerMode && isPicked
       ? "border-2 border-primary"
@@ -48,7 +48,7 @@ export default function InstructorCard({
         <img
           src={instructor.imageSrc}
           alt={instructor.name}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover object-top"
           loading="lazy"
         />
       </div>

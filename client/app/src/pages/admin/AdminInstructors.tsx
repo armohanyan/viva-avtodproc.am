@@ -709,7 +709,7 @@ export default function AdminInstructors() {
                       <img
                         src={ins.imageSrc}
                         alt=""
-                        className="w-10 h-10 rounded-full object-cover border border-border bg-muted shrink-0"
+                        className="w-10 h-10 rounded-full object-cover object-top border border-border bg-muted shrink-0"
                       />
                     </td>
                     <td className="px-4 py-3.5 min-w-[220px]">
@@ -827,7 +827,7 @@ export default function AdminInstructors() {
                     <img
                       src={editIns.imageSrc}
                       alt=""
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted"
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover object-top border border-border bg-muted"
                       onError={(e) => {
                         e.currentTarget.src = "/logo.svg";
                       }}
@@ -997,7 +997,7 @@ export default function AdminInstructors() {
                     <img
                       src={newIns.imageSrc}
                       alt=""
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border border-border bg-muted"
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover object-top border border-border bg-muted"
                       onError={(e) => {
                         e.currentTarget.src = "/logo.svg";
                       }}

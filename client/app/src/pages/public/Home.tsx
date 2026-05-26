@@ -397,12 +397,7 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {visibleInstructors.map((ins, i) => (
-                <InstructorCard
-                  key={i}
-                  instructor={ins}
-                  showBookButton={true}
-                  imageHeightClassName="h-64"
-                />
+                <InstructorCard key={i} instructor={ins} showBookButton={true} />
               ))}
             </div>
             <div className="text-center mt-10">

@@ -116,7 +116,7 @@ export default function InstructorProfile() {
           <Card className="p-6 border-border text-center gap-3">
             <div className="relative inline-block">
               <div className="w-28 h-28 rounded-full overflow-hidden bg-muted mx-auto ring-2 ring-border">
-                <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
+                <img src={avatarSrc} alt="" className="w-full h-full object-cover object-top" />
               </div>
             </div>
             <input

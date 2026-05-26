@@ -32,11 +32,7 @@ export default function Instructors() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {visibleInstructors.map((ins, i) => (
               <Reveal key={i} delay={i * 0.06}>
-                <InstructorCard
-                  instructor={ins}
-                  showBookButton={true}
-                  imageHeightClassName="h-64"
-                />
+                <InstructorCard instructor={ins} showBookButton={true} />
               </Reveal>
             ))}
           </div>
