@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import type { TranslationKey } from "src/lib/i18n";
+import { yerevanAddCalendarDays, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 import { cn } from "src/lib/utils";
 import {
+  armenianWeekdayShort,
   formatGridDateLabel,
   mergeSlotEntries,
   padSlotTime,
@@ -39,59 +42,69 @@ export default function AdminInstructorDaySlotsModal({
   onConfirm,
   t,
 }: Props) {
-  const [picked, setPicked] = useState<{ dateIso: string; time: string }[]>([]);
+  const [viewDateIso, setViewDateIso] = useState(dateIso.slice(0, 10));
+  const [sessionEntries, setSessionEntries] = useState<{ dateIso: string; time: string }[]>([]);
   const [capError, setCapError] = useState(false);
+
+  const viewDay = viewDateIso.slice(0, 10);
+  const todayIso = useMemo(() => yerevanTodayIso(), [open]);
 
   const { slots, loading } = useInstructorDaySlots({
     instructorId,
     branchId,
-    dateIso,
+    dateIso: viewDay,
     open,
   });
 
   useEffect(() => {
     if (!open) return;
-    const forDay = initialSelected.filter((e) => e.dateIso.slice(0, 10) === dateIso.slice(0, 10));
-    setPicked(sortSlotEntriesChrono(forDay));
+    setViewDateIso(dateIso.slice(0, 10));
+    setSessionEntries(sortSlotEntriesChrono([...initialSelected]));
     setCapError(false);
   }, [open, dateIso, initialSelected]);
 
-  const pickedKeys = useMemo(() => new Set(picked.map((e) => slotEntryKey(e.dateIso, e.time))), [picked]);
+  const pickedKeys = useMemo(
+    () => new Set(sessionEntries.map((e) => slotEntryKey(e.dateIso, e.time))),
+    [sessionEntries],
+  );
+
+  const otherDayEntries = useMemo(
+    () => sessionEntries.filter((e) => e.dateIso.slice(0, 10) !== viewDay),
+    [sessionEntries, viewDay],
+  );
+
+  const canGoPrevDay = viewDay > todayIso;
 
   const toggleSlot = (time: string) => {
-    const key = slotEntryKey(dateIso, time);
+    const key = slotEntryKey(viewDay, time);
     if (pickedKeys.has(key)) {
-      setPicked((prev) => prev.filter((e) => slotEntryKey(e.dateIso, e.time) !== key));
+      setSessionEntries((prev) => prev.filter((e) => slotEntryKey(e.dateIso, e.time) !== key));
       setCapError(false);
       return;
     }
-    const otherDays = initialSelected.filter((e) => e.dateIso.slice(0, 10) !== dateIso.slice(0, 10));
-    const merged = mergeSlotEntries(otherDays, [...picked, { dateIso: dateIso.slice(0, 10), time: padSlotTime(time) }]);
+    const merged = mergeSlotEntries(sessionEntries, [
+      { dateIso: viewDay, time: padSlotTime(time) },
+    ]);
     if (maxSelectableSlots != null && merged.length > maxSelectableSlots) {
       setCapError(true);
       return;
     }
-    setPicked((prev) => sortSlotEntriesChrono([...prev, { dateIso: dateIso.slice(0, 10), time: padSlotTime(time) }]));
+    setSessionEntries(merged);
     setCapError(false);
   };
 
   const handleDone = () => {
-    const otherDays = initialSelected.filter((e) => e.dateIso.slice(0, 10) !== dateIso.slice(0, 10));
-    onConfirm(mergeSlotEntries(otherDays, picked));
+    onConfirm(sessionEntries);
     onOpenChange(false);
   };
+
+  const viewWeekday = armenianWeekdayShort(viewDay);
 
   return (
     <AppModal
       open={open}
       onOpenChange={onOpenChange}
-      title={
-        <span className="text-primary font-semibold">
-          {instructorName}
-          <span className="text-muted-foreground font-normal"> · </span>
-          {formatGridDateLabel(dateIso)}
-        </span>
-      }
+      title={<span className="text-primary font-semibold">{instructorName}</span>}
       contentClassName="max-w-md sm:max-w-lg"
       bodyClassName="px-4 pb-4"
       footer={
@@ -105,6 +118,49 @@ export default function AdminInstructorDaySlotsModal({
         </div>
       }
     >
+      <div className="flex items-center justify-between gap-2 mb-3 -mt-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          disabled={!canGoPrevDay}
+          onClick={() => setViewDateIso((d) => yerevanAddCalendarDays(d, -1))}
+          aria-label={t("adminBookingSlotsModalPrevDay")}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="min-w-0 flex-1 text-center">
+          <p className="text-sm font-semibold text-foreground tabular-nums">{formatGridDateLabel(viewDay)}</p>
+          {viewWeekday ? <p className="text-xs text-muted-foreground">{viewWeekday}</p> : null}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={() => setViewDateIso((d) => yerevanAddCalendarDays(d, 1))}
+          aria-label={t("adminBookingSlotsModalNextDay")}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {otherDayEntries.length > 0 ? (
+        <div className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 mb-3">
+          <p className="text-xs font-medium text-muted-foreground mb-1">
+            {t("adminBookingSlotsModalOtherDays")}
+          </p>
+          <ul className="space-y-0.5 text-xs text-foreground tabular-nums max-h-20 overflow-y-auto">
+            {sortSlotEntriesChrono(otherDayEntries).map((e) => (
+              <li key={slotEntryKey(e.dateIso, e.time)}>
+                {formatGridDateLabel(e.dateIso)} · {e.time}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {loading ? (
         <p className="text-sm text-muted-foreground py-4">{t("instructorAvailabilityCalendarLoading")}</p>
       ) : slots.length === 0 ? (
@@ -113,7 +169,7 @@ export default function AdminInstructorDaySlotsModal({
         <div className="max-h-[min(60vh,420px)] overflow-y-auto space-y-2 pr-1">
           {slots.map((slot) => {
             const isAvailable = slot.status === "available";
-            const isSelected = pickedKeys.has(slotEntryKey(dateIso, slot.time));
+            const isSelected = pickedKeys.has(slotEntryKey(viewDay, slot.time));
             return (
               <button
                 key={slot.time}
