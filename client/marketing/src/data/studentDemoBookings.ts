@@ -3,15 +3,30 @@ import type { CanonicalBookingStatus } from "src/types/booking.types";
 
 export type StudentDemoBookingStatus = CanonicalBookingStatus;
 
-/** Human-readable range for hourly bookings (`endTime` is exclusive end from the API). */
+/**
+ * Human-readable slot range (`endTime` is exclusive end from the API).
+ * Multi-hour theory blocks on the hour show the last slot start plus hour count;
+ * practical / sub-hour slots show the real exclusive end without a duration suffix.
+ */
 export function formatBookingSlotRangeLabel(time: string, endTime?: string | null): string {
-  if (endTime == null || endTime === "") return time;
+  if (endTime == null || endTime === "") return normalizeSlot(time);
   const sm = parseSlotMinutes(time);
   const em = parseSlotMinutes(endTime);
-  if (!Number.isFinite(sm) || !Number.isFinite(em) || em <= sm + 60) return time;
-  const hours = (em - sm) / 60;
-  const lastStartM = em - 60;
-  return `${normalizeSlot(time)}–${minutesToSlotLabel(lastStartM)} (${hours}h)`;
+  if (!Number.isFinite(sm) || !Number.isFinite(em) || em <= sm) return normalizeSlot(time);
+
+  const durationM = em - sm;
+  const startLabel = normalizeSlot(time);
+  const endLabel = normalizeSlot(endTime);
+
+  if (durationM < 60) return `${startLabel}–${endLabel}`;
+  if (durationM === 60) return startLabel;
+
+  if (sm % 60 === 0 && durationM % 60 === 0) {
+    const hours = durationM / 60;
+    return `${startLabel}–${minutesToSlotLabel(em - 60)} (${hours}h)`;
+  }
+
+  return `${startLabel}–${endLabel}`;
 }
 
 function pad2(n: number): string {

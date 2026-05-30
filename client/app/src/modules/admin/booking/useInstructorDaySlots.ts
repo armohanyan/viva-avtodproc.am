@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
 import { isSlotBlockedByAvailabilityRules, normalizeAvailabilityBlocksFromApi } from "src/modules/instructors/instructorAvailability";
 import {
@@ -12,6 +12,8 @@ import {
   normalizeBranchScheduleFromApi,
   type SlotUnavailabilityReason,
 } from "src/modules/booking/booking-slot.util";
+import { practicalSlotRangeMinutesFromBookable } from "src/modules/booking/practical-slot-plan";
+import { useEffectivePracticalSlots } from "src/modules/booking/useEffectivePracticalSlots";
 import { yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { padSlotTime, type InstructorBusySlotRow } from "./adminAvailabilityGrid";
@@ -24,12 +26,16 @@ export type DaySlotRow = {
   reason: SlotUnavailabilityReason | null;
 };
 
+export type InstructorDaySlotSource = "branch" | "practical";
+
 type Params = {
   instructorId: string;
   branchId: string;
   dateIso: string;
   open: boolean;
   ignoreBusyBookingId?: string;
+  /** Practical driving uses the global slot plan instead of branch work hours. */
+  slotSource?: InstructorDaySlotSource;
 };
 
 export function useInstructorDaySlots({
@@ -38,7 +44,15 @@ export function useInstructorDaySlots({
   dateIso,
   open,
   ignoreBusyBookingId = "",
+  slotSource = "branch",
 }: Params) {
+  const usePracticalPlan = slotSource === "practical";
+  const { effectiveTimes, loading: planLoading } = useEffectivePracticalSlots(
+    branchId,
+    instructorId,
+    open && usePracticalPlan,
+  );
+
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [busySlots, setBusySlots] = useState<InstructorBusySlotRow[]>([]);
   const [branchScheduleRules, setBranchScheduleRules] = useState<BranchScheduleRule[]>(() =>
@@ -89,6 +103,7 @@ export function useInstructorDaySlots({
   }, [open, instructorId, dateIso, ignoreBusyBookingId]);
 
   useEffect(() => {
+    if (usePracticalPlan) return;
     const bid = branchId.trim();
     if (!open || !bid) {
       setBranchScheduleRules(defaultBranchScheduleRules());
@@ -106,7 +121,7 @@ export function useInstructorDaySlots({
     return () => {
       cancelled = true;
     };
-  }, [open, branchId]);
+  }, [open, branchId, usePracticalPlan]);
 
   const yerevanToday = useMemo(() => yerevanTodayIso(), [dateIso, open]);
 
@@ -118,39 +133,68 @@ export function useInstructorDaySlots({
     return s;
   }, [busySlots]);
 
+  const planTimes = useMemo(
+    () => (usePracticalPlan ? effectiveTimes : []),
+    [usePracticalPlan, effectiveTimes],
+  );
+
   const slots = useMemo((): DaySlotRow[] => {
-    const dayHours = new Set(hourlySlotStartsForBranchDate(dateIso, branchScheduleRules));
-    const times = [...dayHours].sort((a, b) => a.localeCompare(b));
+    const times = usePracticalPlan
+      ? planTimes
+      : [...new Set(hourlySlotStartsForBranchDate(dateIso, branchScheduleRules))].sort((a, b) =>
+          a.localeCompare(b),
+        );
+
+    const combinedLoading = loading || (usePracticalPlan && planLoading);
+
     return times.map((time) => {
       const slot = padSlotTime(time);
-      if (!dayHours.has(slot)) {
-        return { time: slot, status: "unavailable" as const, reason: "outside_hours" as const };
-      }
-      if (loading) {
+      if (combinedLoading) {
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };
       }
       if (isSlotDateBeforeToday(dateIso, yerevanToday) || isSlotStartInPast(dateIso, slot)) {
         return { time: slot, status: "unavailable" as const, reason: "past" as const };
       }
-      const branchReason = branchScheduleBlockReason(dateIso, slot, branchScheduleRules);
-      if (branchReason === "branch_closed") {
-        return { time: slot, status: "unavailable" as const, reason: "branch_closed" as const };
+
+      if (!usePracticalPlan) {
+        const branchReason = branchScheduleBlockReason(dateIso, slot, branchScheduleRules);
+        if (branchReason === "branch_closed") {
+          return { time: slot, status: "unavailable" as const, reason: "branch_closed" as const };
+        }
+        if (branchReason === "outside_hours" || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchScheduleRules)) {
+          return { time: slot, status: "unavailable" as const, reason: "outside_hours" as const };
+        }
       }
-      if (branchReason === "outside_hours" || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchScheduleRules)) {
-        return { time: slot, status: "unavailable" as const, reason: "outside_hours" as const };
-      }
+
       const key = `${dateIso.slice(0, 10)}\t${slot}`;
       if (busyKeys.has(key)) {
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };
       }
-      if (isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks)) {
+
+      const slotRange = usePracticalPlan ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes) : undefined;
+      if (
+        isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks, slotRange, {
+          forPracticalPlan: usePracticalPlan,
+        })
+      ) {
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };
       }
       return { time: slot, status: "available" as const, reason: null };
     });
-  }, [dateIso, branchScheduleRules, loading, yerevanToday, busyKeys, availabilityBlocks]);
+  }, [
+    usePracticalPlan,
+    planTimes,
+    dateIso,
+    branchScheduleRules,
+    loading,
+    planLoading,
+    yerevanToday,
+    busyKeys,
+    availabilityBlocks,
+    effectiveTimes,
+  ]);
 
   const availableSlots = useMemo(() => slots.filter((s) => s.status === "available"), [slots]);
 
-  return { slots, availableSlots, loading };
+  return { slots, availableSlots, loading: loading || (usePracticalPlan && planLoading) };
 }

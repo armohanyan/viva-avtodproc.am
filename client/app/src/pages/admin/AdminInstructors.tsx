@@ -26,6 +26,7 @@ import { cityNameById, useCities } from "src/modules/cities";
 import { useAccount } from "src/modules/accounts";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
 import type { ScheduleRuleKind } from "src/modules/instructors/instructorAvailability";
+import InstructorPracticalSlotsSection from "src/modules/instructors/InstructorPracticalSlotsSection";
 
 type InstructorForm = Pick<
   Instructor,
@@ -936,6 +937,9 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
+              {editIns.teachesPractical ? (
+                <InstructorPracticalSlotsSection instructorId={editIns.id} />
+              ) : null}
               {branches.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>

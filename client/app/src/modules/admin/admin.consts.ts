@@ -61,4 +61,5 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   },
   { href: "/admin/blogs", translationKey: "blogsAdmin", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/accounts", translationKey: "adminAccounts", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { href: "/admin/settings", translationKey: "adminSidebarSettings" }
 ];

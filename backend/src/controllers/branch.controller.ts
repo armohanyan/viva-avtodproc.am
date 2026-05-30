@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseBody } from '../helpers';
 import BranchService from '../services/branch.service';
 import BranchScheduleService from '../services/branch-schedule.service';
+import PracticalSlotPlanService from '../services/practical-slot-plan.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -43,6 +44,24 @@ export default class BranchController {
   }
 
   /** Resolved branch hours for booking calendars (DB rules → workHours text → default 09:00–18:00). */
+  /** Practical lesson slot grid for this branch (used by student/admin booking UIs). */
+  static async practicalSlotPlan(req: Request, res: Response, next: NextFunction) {
+    try {
+      const branchId = Number(req.params.id);
+      if (!Number.isFinite(branchId) || branchId <= 0) {
+        return next(new ResourceNotFoundError('Branch not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const exists = await BranchScheduleService.branchExists(branchId);
+      if (!exists) {
+        return next(new ResourceNotFoundError('Branch not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const rows = await PracticalSlotPlanService.getPlan(branchId);
+      SuccessHandlerUtil.handleGet(res, next, { branchId, rows });
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async bookingSchedule(req: Request, res: Response, next: NextFunction) {
     try {
       const branchId = Number(req.params.id);

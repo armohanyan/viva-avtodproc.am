@@ -59,6 +59,7 @@ export default function SlotSelector({
           adminSuppressSummaryCard
           maxSelectableSlots={maxSelectableSlots}
           maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
+          studentBookingType="practical"
         />
       )}
     </div>

@@ -40,6 +40,7 @@ const createBodySchema = z.object({
   paymentReminderDate: z
     .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(''), z.null()])
     .optional(),
+  totalPriceAmd: z.coerce.number().int().nonnegative().optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -306,6 +307,7 @@ export default class BookingController {
             paidAmountAmd: body.paidAmountAmd,
             paymentNotes: body.paymentNotes,
             paymentReminderDate: body.paymentReminderDate,
+            totalPriceAmd: body.totalPriceAmd,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -367,6 +369,7 @@ export default class BookingController {
         paidAmountAmd: body.paidAmountAmd,
         paymentNotes: body.paymentNotes,
         paymentReminderDate: body.paymentReminderDate,
+        totalPriceAmd: body.totalPriceAmd,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

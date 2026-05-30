@@ -22,6 +22,7 @@ import studentRoutes from './student.routes';
 import theoryCohortRoutes from './theory-cohort.routes';
 import uploadRoutes from './upload.routes';
 import userRoutes from './user.routes';
+import settingsRoutes from './settings.routes';
 
 const router = Router();
 
@@ -56,5 +57,6 @@ router.use('/finance', financeRoutes);
 router.use('/fleet', fleetRoutes);
 router.use('/user', userRoutes);
 router.use('/uploads', uploadRoutes);
+router.use('/settings', settingsRoutes);
 
 export default router;

@@ -28,6 +28,14 @@ import {
   type SlotUnavailabilityReason,
 } from "src/modules/booking/booking-slot.util";
 import { yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
+import {
+  areConsecutiveInBookableTimes,
+  bookableTimesFromPlan,
+  resolveEffectiveBookableTimes,
+  normalizePracticalSlotPlan,
+  practicalSlotRangeMinutesFromBookable,
+  type PracticalSlotPlanRow,
+} from "src/modules/booking/practical-slot-plan";
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
 import { TooltipProvider } from "src/components/ui/tooltip";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
@@ -234,6 +242,12 @@ export default function LessonBookingCalendar({
     defaultBranchScheduleRules(),
   );
   const [branchScheduleLoading, setBranchScheduleLoading] = useState(false);
+  const [practicalSlotPlan, setPracticalSlotPlan] = useState<PracticalSlotPlanRow[]>([]);
+  const [instructorPracticalPlan, setInstructorPracticalPlan] = useState<PracticalSlotPlanRow[]>([]);
+  const [instructorPlanCustomized, setInstructorPlanCustomized] = useState(false);
+  const [practicalPlanLoading, setPracticalPlanLoading] = useState(false);
+  const [instructorPlanLoading, setInstructorPlanLoading] = useState(false);
+  const usePracticalSlotPlanGrid = studentBookingType === "practical";
   /** When `adminSuppressSummaryCard`, avoid duplicate `onBookingConfirmed` / clear loops. */
   const lastAdminAutoSyncKeyRef = useRef<string | null>(null);
   /** After instructor changes, skip one admin auto-sync pass (selection is still from the previous id). */
@@ -299,29 +313,76 @@ export default function LessonBookingCalendar({
     if (!bid) {
       setBranchScheduleRules(defaultBranchScheduleRules());
       setBranchScheduleLoading(false);
+      setPracticalSlotPlan([]);
+      setPracticalPlanLoading(false);
       return;
     }
     let cancelled = false;
     const run = async () => {
-      setBranchScheduleLoading(true);
+      setBranchScheduleLoading(!usePracticalSlotPlanGrid);
+      setPracticalPlanLoading(usePracticalSlotPlanGrid);
       try {
-        const rules = await vivaApiJson<unknown>(
-          `/branches/${encodeURIComponent(bid)}/booking-schedule`,
-        );
-        if (!cancelled) {
-          setBranchScheduleRules(normalizeBranchScheduleFromApi(rules));
+        if (usePracticalSlotPlanGrid) {
+          const data = await vivaApiJson<{ rows?: unknown }>(
+            `/branches/${encodeURIComponent(bid)}/practical-slot-plan`,
+          );
+          if (!cancelled) setPracticalSlotPlan(normalizePracticalSlotPlan(data?.rows));
+        } else {
+          const rules = await vivaApiJson<unknown>(
+            `/branches/${encodeURIComponent(bid)}/booking-schedule`,
+          );
+          if (!cancelled) setBranchScheduleRules(normalizeBranchScheduleFromApi(rules));
         }
       } catch {
-        if (!cancelled) setBranchScheduleRules(defaultBranchScheduleRules());
+        if (!cancelled) {
+          if (usePracticalSlotPlanGrid) setPracticalSlotPlan(normalizePracticalSlotPlan(null));
+          else setBranchScheduleRules(defaultBranchScheduleRules());
+        }
       } finally {
-        if (!cancelled) setBranchScheduleLoading(false);
+        if (!cancelled) {
+          setBranchScheduleLoading(false);
+          setPracticalPlanLoading(false);
+        }
       }
     };
     void run();
     return () => {
       cancelled = true;
     };
-  }, [branchId]);
+  }, [branchId, usePracticalSlotPlanGrid]);
+
+  useEffect(() => {
+    const iid = selectedInstructorId.trim();
+    if (!usePracticalSlotPlanGrid || !iid) {
+      setInstructorPracticalPlan([]);
+      setInstructorPlanCustomized(false);
+      setInstructorPlanLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setInstructorPlanLoading(true);
+    void (async () => {
+      try {
+        const data = await vivaApiJson<{ rows?: unknown; customized?: boolean }>(
+          `/instructors/${encodeURIComponent(iid)}/practical-slot-plan`,
+        );
+        if (!cancelled) {
+          setInstructorPracticalPlan(normalizePracticalSlotPlan(data?.rows));
+          setInstructorPlanCustomized(Boolean(data?.customized));
+        }
+      } catch {
+        if (!cancelled) {
+          setInstructorPracticalPlan(normalizePracticalSlotPlan(null));
+          setInstructorPlanCustomized(false);
+        }
+      } finally {
+        if (!cancelled) setInstructorPlanLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstructorId, usePracticalSlotPlanGrid]);
 
   useEffect(() => {
     if (mode !== "student" || !studentUserId) {
@@ -493,16 +554,35 @@ export default function LessonBookingCalendar({
   const weekDateIsos = useMemo(() => days.map((d) => fmt(d)), [days]);
   const yerevanToday = useMemo(() => yerevanTodayIso(), [weekOffset, countdownTick]);
 
+  const planBookableTimes = useMemo(() => {
+    if (!usePracticalSlotPlanGrid) return [];
+    if (!selectedInstructorId.trim()) return bookableTimesFromPlan(practicalSlotPlan);
+    return resolveEffectiveBookableTimes(practicalSlotPlan, instructorPracticalPlan, instructorPlanCustomized);
+  }, [
+    usePracticalSlotPlanGrid,
+    practicalSlotPlan,
+    instructorPracticalPlan,
+    instructorPlanCustomized,
+    selectedInstructorId,
+  ]);
+
   const branchHoursByDate = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const dateIso of weekDateIsos) {
-      map.set(dateIso, new Set(hourlySlotStartsForBranchDate(dateIso, branchScheduleRules)));
+      map.set(
+        dateIso,
+        usePracticalSlotPlanGrid
+          ? new Set(planBookableTimes)
+          : new Set(hourlySlotStartsForBranchDate(dateIso, branchScheduleRules)),
+      );
     }
     return map;
-  }, [weekDateIsos, branchScheduleRules]);
+  }, [weekDateIsos, branchScheduleRules, usePracticalSlotPlanGrid, planBookableTimes]);
 
   const visibleTimeSlots = useMemo(() => {
-    const base = hourlySlotStartsForBranchDates(weekDateIsos, branchScheduleRules);
+    const base = usePracticalSlotPlanGrid
+      ? planBookableTimes
+      : hourlySlotStartsForBranchDates(weekDateIsos, branchScheduleRules);
     return base.filter((time) => {
       const q = slotSearch.trim();
       if (q && !time.replace(":", "").toLowerCase().includes(q.toLowerCase()) && !time.toLowerCase().includes(q.toLowerCase())) {
@@ -513,7 +593,7 @@ export default function LessonBookingCalendar({
       if (periodFilter === "afternoon" && hour < 12) return false;
       return true;
     });
-  }, [weekDateIsos, branchScheduleRules, slotSearch, periodFilter]);
+  }, [weekDateIsos, branchScheduleRules, slotSearch, periodFilter, usePracticalSlotPlanGrid, planBookableTimes]);
 
   const adminSelectedKeys = useMemo(() => {
     const s = new Set<string>();
@@ -559,19 +639,21 @@ export default function LessonBookingCalendar({
       }
 
       const key = `${dateIso}\t${slot}`;
-      if (blocksLoading || branchScheduleLoading) {
+      if (blocksLoading || branchScheduleLoading || practicalPlanLoading || instructorPlanLoading) {
         return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
       }
       if (isSlotDateBeforeToday(dateIso, yerevanToday) || isSlotStartInPast(dateIso, slot)) {
         return { status: "unavailable", reason: "past", outsideBranchDayHours: false };
       }
 
-      const branchReason = branchScheduleBlockReason(dateIso, slot, branchScheduleRules);
-      if (branchReason === "branch_closed") {
-        return { status: "unavailable", reason: "branch_closed", outsideBranchDayHours: false };
-      }
-      if (branchReason === "outside_hours" || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchScheduleRules)) {
-        return { status: "unavailable", reason: "outside_hours", outsideBranchDayHours: false };
+      if (!usePracticalSlotPlanGrid) {
+        const branchReason = branchScheduleBlockReason(dateIso, slot, branchScheduleRules);
+        if (branchReason === "branch_closed") {
+          return { status: "unavailable", reason: "branch_closed", outsideBranchDayHours: false };
+        }
+        if (branchReason === "outside_hours" || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchScheduleRules)) {
+          return { status: "unavailable", reason: "outside_hours", outsideBranchDayHours: false };
+        }
       }
 
       if (mode === "student" && studentUserId && mySlotKeys.has(key)) {
@@ -580,7 +662,14 @@ export default function LessonBookingCalendar({
       if (busyOccupiedKeys.has(key)) {
         return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
       }
-      if (isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks)) {
+      const slotRange = usePracticalSlotPlanGrid
+        ? practicalSlotRangeMinutesFromBookable(slot, planBookableTimes)
+        : undefined;
+      if (
+        isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks, slotRange, {
+          forPracticalPlan: usePracticalSlotPlanGrid,
+        })
+      ) {
         return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
       }
       if (mode === "student" && studentUserId && pendingBookingBlocksNew) {
@@ -592,8 +681,12 @@ export default function LessonBookingCalendar({
       branchHoursByDate,
       blocksLoading,
       branchScheduleLoading,
+      practicalPlanLoading,
+      instructorPlanLoading,
       yerevanToday,
       branchScheduleRules,
+      usePracticalSlotPlanGrid,
+      planBookableTimes,
       mode,
       studentUserId,
       mySlotKeys,
@@ -701,7 +794,12 @@ export default function LessonBookingCalendar({
         return;
       }
       const sorted = sortTimesUnique(selected.times);
-      if (!isConsecutiveHourlySlots(sorted)) {
+      if (studentBookingType === "practical") {
+        if (!areConsecutiveInBookableTimes(sorted, planBookableTimes)) {
+          showToast(t("bookingSlotsMustBeConsecutive"), "error");
+          return;
+        }
+      } else if (!isConsecutiveHourlySlots(sorted)) {
         showToast(t("bookingSlotsMustBeConsecutive"), "error");
         return;
       }
@@ -764,7 +862,12 @@ export default function LessonBookingCalendar({
 
     if (!selected) return;
     const sorted = sortTimesUnique(selected.times);
-    if (!isConsecutiveHourlySlots(sorted)) {
+    if (studentBookingType === "practical") {
+      if (!areConsecutiveInBookableTimes(sorted, planBookableTimes)) {
+        showToast(t("bookingSlotsMustBeConsecutive"), "error");
+        return;
+      }
+    } else if (!isConsecutiveHourlySlots(sorted)) {
       showToast(t("bookingSlotsMustBeConsecutive"), "error");
       return;
     }

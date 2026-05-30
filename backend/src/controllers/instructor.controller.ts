@@ -2,9 +2,11 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, parseParams, parseQuery, resolveBranchIdFilter } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
+import { User } from '../models';
 import BookingService from '../services/booking.service';
 import InstructorAvailabilityService from '../services/instructor-availability.service';
 import InstructorService from '../services/instructor.service';
+import PracticalSlotPlanService from '../services/practical-slot-plan.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -41,6 +43,14 @@ const busySlotsQuerySchema = z.object({
   to: z.string().min(10),
   /** When editing a booking, omit that booking’s slot rows so the calendar stays usable. */
   excludeBookingId: z.coerce.number().int().positive().optional(),
+});
+
+const slotPlanRowSchema = z.object({
+  time: z.union([z.string(), z.null()]),
+});
+
+const replaceInstructorPracticalSlotPlanSchema = z.object({
+  rows: z.array(slotPlanRowSchema).min(1).max(32),
 });
 
 /** `users.id` for an instructor — path segments are strings; reject slugs like "acc-instructor" with a clear message. */
@@ -239,6 +249,46 @@ export default class InstructorController {
 
         throw err;
       }
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** Instructor working slots for practical lessons (defaults to school grid until customized). */
+  static async getPracticalSlotPlan(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id: instructorUserId } = parseParams(instructorUserIdParamsSchema, req.params);
+      const instructor = await User.findOne({
+        where: { id: instructorUserId, accountType: 'instructor' },
+        attributes: ['id'],
+      });
+      if (!instructor) {
+        return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const meta = await PracticalSlotPlanService.getInstructorPlanMeta(instructorUserId);
+      SuccessHandlerUtil.handleGet(res, next, {
+        instructorUserId,
+        rows: meta.rows,
+        customized: meta.customized,
+      });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async replacePracticalSlotPlan(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id: instructorUserId } = parseParams(instructorUserIdParamsSchema, req.params);
+      const instructor = await User.findOne({
+        where: { id: instructorUserId, accountType: 'instructor' },
+        attributes: ['id'],
+      });
+      if (!instructor) {
+        return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const body = parseBody(replaceInstructorPracticalSlotPlanSchema, req.body);
+      const rows = await PracticalSlotPlanService.saveInstructorPlan(instructorUserId, body.rows);
+      SuccessHandlerUtil.handleUpdate(res, next, { instructorUserId, rows, customized: true });
     } catch (e) {
       next(e);
     }

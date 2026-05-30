@@ -9,6 +9,8 @@ router.post('/', requireStaff, InstructorController.create);
 
 router.get('/:id/availability-blocks', InstructorController.listAvailabilityBlocks);
 router.get('/:id/busy-slots', InstructorController.listBusySlots);
+router.get('/:id/practical-slot-plan', InstructorController.getPracticalSlotPlan);
+router.put('/:id/practical-slot-plan', requireStaff, InstructorController.replacePracticalSlotPlan);
 router.post('/:id/availability-blocks', requireStaff, InstructorController.createAvailabilityBlock);
 router.delete('/:id/availability-blocks/:blockId', requireStaff, InstructorController.removeAvailabilityBlock);
 

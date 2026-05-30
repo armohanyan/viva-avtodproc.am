@@ -6,6 +6,7 @@ import { BookedCall } from './booked-call.model';
 import { Booking } from './booking.model';
 import { BookingSlot } from './booking-slot.model';
 import { Branch } from './branch.model';
+import { BranchPracticalSlotPlan } from './branch-practical-slot-plan.model';
 import { BranchScheduleRule } from './branch-schedule-rule.model';
 import { CarExpense } from './car-expense.model';
 import { City } from './city.model';
@@ -20,8 +21,10 @@ import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
 import { InstructorScheduleRule } from './instructor-schedule-rule.model';
 import { InstructorBranch } from './instructor-branch.model';
+import { InstructorPracticalSlotPlan } from './instructor-practical-slot-plan.model';
 import { InstructorProfile } from './instructor-profile.model';
 import { InstructorStudentRating } from './instructor-student-rating.model';
+import { AppSetting } from './app-setting.model';
 import { MarketingSetting } from './marketing-setting.model';
 import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
@@ -49,9 +52,13 @@ City.hasMany(Branch, { foreignKey: 'cityId', sourceKey: 'id' });
 Branch.belongsTo(City, { foreignKey: 'cityId', targetKey: 'id' });
 Branch.hasMany(BranchScheduleRule, { foreignKey: 'branchId', sourceKey: 'id' });
 BranchScheduleRule.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
+Branch.hasOne(BranchPracticalSlotPlan, { foreignKey: 'branchId', sourceKey: 'id', as: 'practicalSlotPlan' });
+BranchPracticalSlotPlan.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
 User.hasOne(InstructorProfile, { foreignKey: 'userId', sourceKey: 'id', as: 'instructorProfile' });
 InstructorProfile.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'user' });
+User.hasOne(InstructorPracticalSlotPlan, { foreignKey: 'instructorUserId', sourceKey: 'id', as: 'practicalSlotPlan' });
+InstructorPracticalSlotPlan.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
 
 User.hasOne(StudentProfile, { foreignKey: 'userId', sourceKey: 'id', as: 'studentProfile' });
 StudentProfile.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'studentAccount' });
@@ -180,11 +187,13 @@ User.hasMany(FinanceExpense, { foreignKey: 'createdByUserId', sourceKey: 'id' })
 FinanceExpense.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
 export {
+  AppSetting,
   Blog,
   BookedCall,
   Booking,
   BookingSlot,
   Branch,
+  BranchPracticalSlotPlan,
   BranchScheduleRule,
   CarExpense,
   City,
@@ -199,6 +208,7 @@ export {
   FleetCarInstructor,
   InstructorScheduleRule,
   InstructorBranch,
+  InstructorPracticalSlotPlan,
   InstructorProfile,
   InstructorStudentRating,
   MarketingSetting,
@@ -954,11 +964,19 @@ async function ensureBookingSlotsTable(): Promise<void> {
     `);
   }
   await sequelize.query(`
+    DELETE s FROM \`booking_slots\` s
+    INNER JOIN \`bookings\` b ON b.\`id\` = s.\`booking_id\`
+    WHERE b.\`status\` NOT IN ('confirmed', 'pending', 'pending_prebook', 'pending_payment', 'completed')
+       OR b.\`instructor_user_id\` IS NULL
+  `);
+  await sequelize.query(`
     INSERT IGNORE INTO \`booking_slots\`
       (\`booking_id\`, \`instructor_user_id\`, \`date_iso\`, \`slot_time\`, \`created_at\`, \`updated_at\`)
     SELECT \`id\`, \`instructor_user_id\`, \`date_iso\`, \`time\`, NOW(), NOW()
     FROM \`bookings\` b
-    WHERE NOT EXISTS (SELECT 1 FROM \`booking_slots\` s WHERE s.\`booking_id\` = b.\`id\`)
+    WHERE b.\`instructor_user_id\` IS NOT NULL
+      AND b.\`status\` IN ('confirmed', 'pending', 'pending_prebook', 'pending_payment', 'completed')
+      AND NOT EXISTS (SELECT 1 FROM \`booking_slots\` s WHERE s.\`booking_id\` = b.\`id\`)
   `);
 }
 

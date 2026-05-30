@@ -72,7 +72,11 @@ export default function AdminStudentPicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const selected = useMemo(() => students.find((s) => s.id === value) ?? null, [students, value]);
+  const valueKey = value === "" || value == null ? "" : String(value);
+  const selected = useMemo(
+    () => students.find((s) => String(s.id) === valueKey) ?? null,
+    [students, valueKey],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -324,11 +328,11 @@ export default function AdminStudentPicker({
                       <button
                         type="button"
                         role="option"
-                        aria-selected={s.id === value}
+                        aria-selected={String(s.id) === valueKey}
                         className={cn(
                           "w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors",
                           "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
-                          s.id === value && "bg-muted/80",
+                          String(s.id) === valueKey && "bg-muted/80",
                         )}
                         onClick={() => {
                           onChange(s);

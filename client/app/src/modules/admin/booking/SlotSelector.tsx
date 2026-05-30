@@ -3,6 +3,7 @@ import type { TranslationKey } from "src/lib/i18n";
 import type { Instructor } from "src/data/instructors";
 import type { LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import AdminInstructorAvailabilityTable from "./AdminInstructorAvailabilityTable";
+import type { InstructorDaySlotSource } from "./useInstructorDaySlots";
 import { sortSlotEntriesChrono, sortTimesUnique } from "./adminAvailabilityGrid";
 
 type Props = {
@@ -22,6 +23,9 @@ type Props = {
   t: (k: TranslationKey) => string;
   maxSelectableSlots?: number;
   maxSelectableSlotsErrorKey?: TranslationKey;
+  slotSource?: InstructorDaySlotSource;
+  /** Passed to the availability grid so busy counts reload after booking changes. */
+  reloadKey?: number | string;
 };
 
 function entriesToPayload(
@@ -60,6 +64,8 @@ export default function SlotSelector({
   t,
   maxSelectableSlots,
   maxSelectableSlotsErrorKey,
+  slotSource = "branch",
+  reloadKey = 0,
 }: Props) {
   const [entries, setEntries] = useState<{ dateIso: string; time: string }[]>([]);
   const [entriesInstructorId, setEntriesInstructorId] = useState("");
@@ -67,7 +73,9 @@ export default function SlotSelector({
   const onAdminSelectionClearedRef = useRef(onAdminSelectionCleared);
   const prevCalendarKeyRef = useRef<string | null>(null);
 
-  onAdminSelectionClearedRef.current = onAdminSelectionCleared;
+  useEffect(() => {
+    onAdminSelectionClearedRef.current = onAdminSelectionCleared;
+  }, [onAdminSelectionCleared]);
 
   useEffect(() => {
     setEntries([]);
@@ -169,6 +177,8 @@ export default function SlotSelector({
         onInstructorPicked={handleInstructorPicked}
         maxSelectableSlots={maxSelectableSlots}
         maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
+        slotSource={slotSource}
+        reloadKey={reloadKey}
         t={t}
       />
     </div>

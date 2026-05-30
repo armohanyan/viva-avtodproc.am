@@ -9,6 +9,7 @@ import { useBranches } from "src/modules/branches";
 import { cn } from "src/lib/utils";
 import { yerevanAddCalendarMonths } from "src/lib/yerevanLessonCalendar";
 import AdminInstructorDaySlotsModal from "./AdminInstructorDaySlotsModal";
+import type { InstructorDaySlotSource } from "./useInstructorDaySlots";
 import {
   ADMIN_AVAILABILITY_GRID_MONTHS,
   aggregateBusyCountsByInstructorDay,
@@ -56,6 +57,9 @@ type Props = {
    * selection chip — used by view-only flows (e.g. the standalone driving overview page).
    */
   onCellClick?: AdminAvailabilityCellClick;
+  slotSource?: InstructorDaySlotSource;
+  /** When this changes, busy-slot counts are reloaded (e.g. after a booking is deleted). */
+  reloadKey?: number | string;
   t: (k: TranslationKey) => string;
 };
 
@@ -71,6 +75,8 @@ export default function AdminInstructorAvailabilityTable({
   maxSelectableSlots,
   maxSelectableSlotsErrorKey,
   onCellClick,
+  slotSource = "branch",
+  reloadKey = 0,
   t,
 }: Props) {
   const cellClickMode = Boolean(onCellClick);
@@ -125,7 +131,7 @@ export default function AdminInstructorAvailabilityTable({
 
   useEffect(() => {
     void loadBusy();
-  }, [loadBusy]);
+  }, [loadBusy, reloadKey]);
 
   const lessonCounts = useMemo(
     () => aggregateBusyCountsByInstructorDay(instructorIds, busyByInstructor),
@@ -353,6 +359,7 @@ export default function AdminInstructorAvailabilityTable({
           initialSelected={pendingSource?.entries ?? selectedEntries}
           maxSelectableSlots={maxSelectableSlots}
           maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
+          slotSource={slotSource}
           t={t}
           onConfirm={(entries) => {
             const instructorId = slotModal.instructor.id;

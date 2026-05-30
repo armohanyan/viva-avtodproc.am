@@ -110,6 +110,7 @@ export function validateAdminBookingPayment(
 ): TranslationKey | null {
   const total = Math.max(0, Math.round(totalAmd));
   if (total <= 0) return null;
+  if (state.status === "paid") return null;
   const paid = parseAmdInput(state.paidStr);
   if (!Number.isFinite(paid)) return "adminBookingPaymentPartialRequired";
   if (paid < 0) return "adminBookingPaymentPartialPositive";
@@ -136,9 +137,12 @@ export function adminPaymentApiPayload(
   paymentReminderDate?: string | null;
 } {
   const total = Math.max(0, Math.round(totalAmd));
-  const paid = Math.min(total, Math.max(0, paidAmountFromState(state)));
-  const status = inferAdminPaymentStatusFromAmounts(total, paid);
+  const paidFromField = Math.min(total, Math.max(0, paidAmountFromState(state)));
   const notes = state.paymentNotes.trim() ? state.paymentNotes.trim() : null;
+  const status: AdminBookingPaymentStatus =
+    state.status === "paid" || state.status === "partial" || state.status === "unpaid"
+      ? state.status
+      : inferAdminPaymentStatusFromAmounts(total, paidFromField);
   const reminderDate =
     status === "paid"
       ? null
@@ -158,7 +162,7 @@ export function adminPaymentApiPayload(
   }
   return {
     adminPaymentStatus: "partial",
-    paidAmountAmd: paid,
+    paidAmountAmd: paidFromField,
     paymentNotes: notes,
     paymentReminderDate: reminderDate,
   };

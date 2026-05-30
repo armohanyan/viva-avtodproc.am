@@ -19,6 +19,8 @@ type Props = {
   onRequest?: () => void;
   requestDisabled?: boolean;
   imageHeightClassName?: string;
+  /** When "contain", the full image is shown without cropping (e.g. public instructors page). */
+  imageObjectFit?: "cover" | "contain";
   /** Tighter typography and spacing (e.g. horizontal picker strip). */
   compact?: boolean;
   className?: string;
@@ -34,6 +36,7 @@ export default function InstructorCard({
   onRequest,
   requestDisabled = false,
   imageHeightClassName,
+  imageObjectFit = "cover",
   compact = false,
   className,
 }: Props) {
@@ -55,7 +58,11 @@ export default function InstructorCard({
         <img
           src={instructor.imageSrc}
           alt={instructor.name}
-          className="h-full w-full object-cover object-top"
+          className={
+            imageObjectFit === "contain"
+              ? "h-full w-full object-contain"
+              : "h-full w-full object-cover object-top"
+          }
           loading="lazy"
         />
       </div>

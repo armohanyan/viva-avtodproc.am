@@ -13,7 +13,7 @@ import {
   slotEntryKey,
   sortSlotEntriesChrono,
 } from "./adminAvailabilityGrid";
-import { useInstructorDaySlots } from "./useInstructorDaySlots";
+import { useInstructorDaySlots, type InstructorDaySlotSource } from "./useInstructorDaySlots";
 
 type Props = {
   open: boolean;
@@ -25,6 +25,7 @@ type Props = {
   initialSelected: readonly { dateIso: string; time: string }[];
   maxSelectableSlots?: number;
   maxSelectableSlotsErrorKey?: TranslationKey;
+  slotSource?: InstructorDaySlotSource;
   onConfirm: (entries: { dateIso: string; time: string }[]) => void;
   t: (k: TranslationKey) => string;
 };
@@ -39,6 +40,7 @@ export default function AdminInstructorDaySlotsModal({
   initialSelected,
   maxSelectableSlots,
   maxSelectableSlotsErrorKey = "adminBookingValPackagePracticalCount",
+  slotSource = "branch",
   onConfirm,
   t,
 }: Props) {
@@ -54,6 +56,7 @@ export default function AdminInstructorDaySlotsModal({
     branchId,
     dateIso: viewDay,
     open,
+    slotSource,
   });
 
   useEffect(() => {

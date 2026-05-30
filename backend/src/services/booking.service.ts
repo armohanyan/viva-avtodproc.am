@@ -19,6 +19,7 @@ import { BOOKING_CANCELLATION_REASON } from '../constants/booking-cancellation-r
 import TheoryCohortService from './theory-cohort.service';
 import TheoryCohortInstructorService from './theory-cohort-instructor.service';
 import BookingSlotValidationService from './booking-slot-validation.service';
+import PracticalSlotPlanService from './practical-slot-plan.service';
 import FinanceService from './finance.service';
 import BookingNotificationService from './booking-notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
@@ -45,8 +46,24 @@ import {
   paymentReminderDateIsoForApi,
   type AdminPaymentExtrasInput,
 } from '../utils/booking-payment-reminder.util';
+import {
+  areConsecutiveInBookableTimes,
+  bookableTimesFromPlan,
+  exclusiveEndFromBookableStarts,
+  normalizePracticalSlotStartsFromBookable,
+  type PracticalSlotPlanRow,
+} from '../utils/practical-slot-plan.util';
 
 const { InputValidationError, ConflictError, PermissionError } = ErrorsUtil;
+
+function assertConsecutivePractical(sorted: string[], bookableSorted: readonly string[]): void {
+  if (!areConsecutiveInBookableTimes(sorted, bookableSorted)) {
+    throw new InputValidationError(
+      'Select consecutive slots from the practical schedule (no gaps).',
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+}
 
 /** Cohort statuses that accept new group-theory bookings (admin + student flows). */
 const THEORY_COHORT_OPEN_FOR_BOOKING = new Set(['active', 'upcoming', 'scheduled', 'planned', 'open']);
@@ -74,6 +91,14 @@ function meetLinkOrNull(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s.length > 0 ? s.slice(0, 512) : null;
+}
+
+/** Admin may override auto-calculated lesson total (e.g. discount or custom rate). */
+function resolveAdminTotalPriceAmd(override: number | undefined, computed: number): number {
+  if (override != null && Number.isFinite(override)) {
+    return Math.max(0, Math.round(override));
+  }
+  return Math.max(0, Math.round(computed));
 }
 
 function adminPaymentDbPatch(
@@ -476,6 +501,45 @@ function assertConsecutiveHourly(sorted: string[]): void {
   }
 }
 
+async function normalizeAndSortSlotsForLesson(
+  lessonType: 'practical' | 'theory' | 'theory_personal',
+  slots: readonly string[],
+  branchId: number,
+  instructorUserId?: number,
+): Promise<string[]> {
+  if (lessonType === 'practical') {
+    if (!instructorUserId || !Number.isFinite(instructorUserId)) {
+      throw new InputValidationError('Instructor is required for practical lessons.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const effective = await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId);
+    try {
+      return normalizePracticalSlotStartsFromBookable(slots, effective);
+    } catch {
+      throw new InputValidationError(
+        'Each slot must be a valid time from the branch and instructor practical schedule.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+  }
+  return normalizeAndSortSlots(slots);
+}
+
+async function exclusiveEndForLesson(
+  lessonType: 'practical' | 'theory' | 'theory_personal',
+  sorted: readonly string[],
+  branchId: number,
+  instructorUserId?: number,
+): Promise<string> {
+  if (lessonType === 'practical') {
+    if (!instructorUserId || !Number.isFinite(instructorUserId)) {
+      return exclusiveEndFromSortedStarts([...sorted]);
+    }
+    const effective = await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId);
+    return exclusiveEndFromBookableStarts(sorted, effective);
+  }
+  return exclusiveEndFromSortedStarts([...sorted]);
+}
+
 /** Exclusive end on the same calendar day (e.g. 09:00+10:00 → 11:00). */
 function exclusiveEndFromSortedStarts(sorted: string[]): string {
   const lastStart = parseTimeToMinutes(sorted[sorted.length - 1]);
@@ -525,15 +589,23 @@ const MAX_ADMIN_SLOT_ENTRIES = 64;
 
 type AdminSlotEntry = { dateIso: string; time: string };
 
-/** Dedupe, normalize, sort chronologically; drops invalid hour-starts. */
-function normalizeAdminSlotEntries(raw: readonly { dateIso: string; time: string }[]): AdminSlotEntry[] {
+/** Dedupe, normalize, sort chronologically; drops invalid starts. */
+function normalizeAdminSlotEntries(
+  raw: readonly { dateIso: string; time: string }[],
+  allowedPracticalTimes?: readonly string[],
+): AdminSlotEntry[] {
+  const allowedPractical = allowedPracticalTimes?.length ? new Set(allowedPracticalTimes) : null;
   const seen = new Set<string>();
   const out: AdminSlotEntry[] = [];
   for (const r of raw) {
     const d = dateIsoString(r.dateIso);
     const t = normalizeTimeHHMM(String(r.time ?? '').trim());
     if (!t || !TIME_RE.test(t)) continue;
-    if (parseTimeToMinutes(t) % 60 !== 0) continue;
+    if (allowedPractical) {
+      if (!allowedPractical.has(t)) continue;
+    } else if (parseTimeToMinutes(t) % 60 !== 0) {
+      continue;
+    }
     const key = `${d}\t${t}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -543,6 +615,17 @@ function normalizeAdminSlotEntries(raw: readonly { dateIso: string; time: string
     (a, b) => a.dateIso.localeCompare(b.dateIso) || parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time),
   );
   return out;
+}
+
+function endTimeExclusiveForPracticalSlotEntries(
+  entries: readonly AdminSlotEntry[],
+  bookableSorted: readonly string[],
+): string | null {
+  if (entries.length === 0) return null;
+  const d0 = entries[0].dateIso;
+  if (!entries.every((e) => e.dateIso === d0)) return null;
+  const times = [...entries.map((e) => e.time)].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+  return exclusiveEndFromBookableStarts(times, bookableSorted);
 }
 
 /** Same calendar day, consecutive full hours → exclusive end on that day; otherwise `null`. */
@@ -1377,8 +1460,17 @@ export default class BookingService {
     payNow?: boolean;
   }): Promise<StudentMultiSlotBookingDto> {
     const dateIso = input.dateIso.slice(0, 10);
-    const sorted = normalizeAndSortSlots(input.slots);
-    assertConsecutiveHourly(sorted);
+    const sorted = await normalizeAndSortSlotsForLesson(
+      'practical',
+      input.slots,
+      input.branchId,
+      input.instructorUserId,
+    );
+    const effectivePractical = await PracticalSlotPlanService.getEffectiveBookableTimes(
+      input.branchId,
+      input.instructorUserId,
+    );
+    assertConsecutivePractical(sorted, effectivePractical);
     if (sorted.length === 0) {
       throw new InputValidationError('At least one slot is required.', HttpStatusCodesUtil.BAD_REQUEST);
     }
@@ -1422,9 +1514,15 @@ export default class BookingService {
       instructorUserId: input.instructorUserId,
       dateIso,
       slots: sorted,
+      lessonType: 'practical',
     });
 
-    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
+    const exclusiveEnd = await exclusiveEndForLesson(
+      'practical',
+      sorted,
+      input.branchId,
+      input.instructorUserId,
+    );
     const today = todayIsoUtc();
 
     try {
@@ -1701,6 +1799,7 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    totalPriceAmd?: number;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -1720,16 +1819,24 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, input.lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly) ? hourly * entries.length : 0;
+    const computedTotal = Number.isFinite(hourly) ? hourly * entries.length : 0;
+    const totalPriceAmd = resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
 
     await BookingSlotValidationService.assertSlotEntriesBookable({
       branchId: input.branchId,
       instructorUserId,
       entries,
+      lessonType: input.lessonType,
     });
 
     const first = entries[0];
-    const endTime = endTimeExclusiveForSlotEntries(entries);
+    const endTime =
+      input.lessonType === 'practical'
+        ? endTimeExclusiveForPracticalSlotEntries(
+            entries,
+            await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
+          )
+        : endTimeExclusiveForSlotEntries(entries);
 
     let newId = 0;
     try {
@@ -1817,8 +1924,24 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    totalPriceAmd?: number;
   }): Promise<BookingAdminDto | null> {
-    const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? []);
+    let allowedPracticalTimes: string[] | undefined;
+    if (input.type === 'practical') {
+      let instructorUserId = input.instructorUserId;
+      if (!Number.isFinite(instructorUserId)) {
+        const inst = await User.findOne({
+          where: { name: input.instructorName.trim(), accountType: 'instructor' },
+          attributes: ['id'],
+        });
+        instructorUserId = inst?.id;
+      }
+      allowedPracticalTimes =
+        Number.isFinite(instructorUserId) && instructorUserId! > 0
+          ? await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId!)
+          : bookableTimesFromPlan(await PracticalSlotPlanService.getPlan(input.branchId));
+    }
+    const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? [], allowedPracticalTimes);
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
       if (entriesNorm.length > MAX_ADMIN_SLOT_ENTRIES) {
         throw new InputValidationError(
@@ -1841,6 +1964,7 @@ export default class BookingService {
         paidAmountAmd: input.paidAmountAmd,
         paymentNotes: input.paymentNotes,
         paymentReminderDate: input.paymentReminderDate,
+        totalPriceAmd: input.totalPriceAmd,
       });
     }
 
@@ -1870,6 +1994,7 @@ export default class BookingService {
         paidAmountAmd: input.paidAmountAmd,
         paymentNotes: input.paymentNotes,
         paymentReminderDate: input.paymentReminderDate,
+        totalPriceAmd: input.totalPriceAmd,
       });
     }
 
@@ -1880,20 +2005,22 @@ export default class BookingService {
             where: { name: input.instructorName, accountType: 'instructor' },
           });
     if (!instructor) return null;
-    const sorted = normalizeAndSortSlots([input.time]);
-    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
+    const sorted = await normalizeAndSortSlotsForLesson(input.type, [input.time], input.branchId, instructor.id);
+    const exclusiveEnd = await exclusiveEndForLesson(input.type, sorted, input.branchId, instructor.id);
 
     await BookingSlotValidationService.assertSlotsBookable({
       branchId: input.branchId,
       instructorUserId: instructor.id,
       dateIso,
       slots: sorted,
+      lessonType: input.type,
     });
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
     assertInstructorTeachesLessonType(profile, input.type);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly) ? hourly * sorted.length : 0;
+    const computedTotal = Number.isFinite(hourly) ? hourly * sorted.length : 0;
+    const totalPriceAmd = resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
 
     const payPatch = adminPaymentDbPatch(totalPriceAmd, {
       adminPaymentStatus: input.adminPaymentStatus,
@@ -1989,9 +2116,25 @@ export default class BookingService {
     if (!pkg) {
       throw new InputValidationError('Package not found.', HttpStatusCodesUtil.BAD_REQUEST);
     }
+    let practicalAllowed: string[] | undefined;
+    if (input.practical) {
+      let iid = input.practical.instructorUserId;
+      if (!Number.isFinite(iid)) {
+        const inst = await User.findOne({
+          where: { name: String(input.practical.instructorName ?? '').trim(), accountType: 'instructor' },
+          attributes: ['id'],
+        });
+        iid = inst?.id;
+      }
+      practicalAllowed =
+        Number.isFinite(iid) && iid! > 0
+          ? await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, iid!)
+          : bookableTimesFromPlan(await PracticalSlotPlanService.getPlan(input.branchId));
+    }
     const practicalEntries = normalizeAdminSlotEntries(
       input.practical?.slotEntries ??
         (input.practical?.slots ?? []).map((t) => ({ dateIso: input.practical!.dateIso, time: t })),
+      practicalAllowed,
     );
     const theoryEntries = normalizeAdminSlotEntries(
       input.theoryPersonal?.slotEntries ??
@@ -2049,6 +2192,7 @@ export default class BookingService {
             branchId: input.branchId,
             instructorUserId,
             entries: opts.entries,
+            lessonType: opts.lessonType,
           });
           const prepaidMeta = await consumePackageLessonCreditsInTx({
             studentUserId: input.studentId,
@@ -2065,7 +2209,13 @@ export default class BookingService {
               branchId: input.branchId,
               dateIso: first.dateIso,
               time: first.time,
-              endTime: endTimeExclusiveForSlotEntries(opts.entries),
+              endTime:
+                opts.lessonType === 'practical'
+                  ? endTimeExclusiveForPracticalSlotEntries(
+                      opts.entries,
+                      await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
+                    ) ?? endTimeExclusiveForSlotEntries(opts.entries)
+                  : endTimeExclusiveForSlotEntries(opts.entries),
               totalPriceAmd: 0,
               lessonType: opts.lessonType,
               status: input.status,
@@ -2126,13 +2276,9 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    totalPriceAmd?: number;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
-    const sorted = normalizeAndSortSlots(input.slots);
-    assertConsecutiveHourly(sorted);
-    if (sorted.length === 0) {
-      throw new InputValidationError('At least one slot is required.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
 
     let instructorUserId: number;
     let branchId = input.branchId;
@@ -2174,6 +2320,22 @@ export default class BookingService {
       instructorUserId = instructor.id;
     }
 
+    const sorted = await normalizeAndSortSlotsForLesson(
+      input.lessonType,
+      input.slots,
+      branchId,
+      input.lessonType === 'practical' ? instructorUserId : undefined,
+    );
+    if (input.lessonType === 'practical') {
+      const effective = await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId);
+      assertConsecutivePractical(sorted, effective);
+    } else {
+      assertConsecutiveHourly(sorted);
+    }
+    if (sorted.length === 0) {
+      throw new InputValidationError('At least one slot is required.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
     const branchOk = await InstructorBranch.findOne({
       where: { instructorUserId, branchId },
     });
@@ -2184,19 +2346,26 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, input.lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd =
+    const computedTotal =
       input.lessonType === 'theory' && theoryCohort
         ? totalPriceAmdForTheoryCohortBooking(theoryCohort, hourly, sorted.length)
         : Number.isFinite(hourly)
           ? hourly * sorted.length
           : 0;
-    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
+    const totalPriceAmd = resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
+    const exclusiveEnd = await exclusiveEndForLesson(
+      input.lessonType,
+      sorted,
+      branchId,
+      input.lessonType === 'practical' ? instructorUserId : undefined,
+    );
 
     await BookingSlotValidationService.assertSlotsBookable({
       branchId,
       instructorUserId,
       dateIso,
       slots: sorted,
+      lessonType: input.lessonType,
     });
 
     let newId = 0;
@@ -2299,9 +2468,6 @@ export default class BookingService {
     const { id, row, patch, lessonType, slots } = opts;
     const dateIso =
       patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
-    const sorted = normalizeAndSortSlots(slots);
-    assertConsecutiveHourly(sorted);
-    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
 
     let instructorUserId: number;
     let branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
@@ -2360,6 +2526,25 @@ export default class BookingService {
       instructorUserId = instructor.id;
     }
 
+    const sorted = await normalizeAndSortSlotsForLesson(
+      lessonType,
+      slots,
+      branchId,
+      lessonType === 'practical' ? instructorUserId : undefined,
+    );
+    if (lessonType === 'practical') {
+      const effective = await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId);
+      assertConsecutivePractical(sorted, effective);
+    } else {
+      assertConsecutiveHourly(sorted);
+    }
+    const exclusiveEnd = await exclusiveEndForLesson(
+      lessonType,
+      sorted,
+      branchId,
+      lessonType === 'practical' ? instructorUserId : undefined,
+    );
+
     const branchOk = await InstructorBranch.findOne({
       where: { instructorUserId, branchId },
     });
@@ -2383,6 +2568,7 @@ export default class BookingService {
       dateIso,
       slots: sorted,
       excludeBookingId: id,
+      lessonType,
     });
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
@@ -2483,10 +2669,17 @@ export default class BookingService {
       instructorUserId,
       entries,
       excludeBookingId: id,
+      lessonType,
     });
 
     const first = entries[0];
-    const endTime = endTimeExclusiveForSlotEntries(entries);
+    const endTime =
+      lessonType === 'practical'
+        ? endTimeExclusiveForPracticalSlotEntries(
+            entries,
+            await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId),
+          )
+        : endTimeExclusiveForSlotEntries(entries);
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
@@ -2557,7 +2750,22 @@ export default class BookingService {
     if (!row) return null;
 
     const effectiveType = patch.type ?? row.lessonType;
-    const slotEntriesNorm = normalizeAdminSlotEntries(patch.slotEntries ?? []);
+    let allowedPracticalTimes: string[] | undefined;
+    if (effectiveType === 'practical' && (patch.slotEntries?.length ?? 0) > 0) {
+      let instructorUserId = row.instructorUserId;
+      if (patch.instructorName !== undefined) {
+        const inst = await User.findOne({
+          where: { name: patch.instructorName.trim(), accountType: 'instructor' },
+          attributes: ['id'],
+        });
+        instructorUserId = inst?.id ?? null;
+      }
+      const branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
+      if (instructorUserId != null && Number.isFinite(instructorUserId)) {
+        allowedPracticalTimes = await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId);
+      }
+    }
+    const slotEntriesNorm = normalizeAdminSlotEntries(patch.slotEntries ?? [], allowedPracticalTimes);
     if (
       slotEntriesNorm.length > 0 &&
       (effectiveType === 'practical' || effectiveType === 'theory_personal')
@@ -2612,17 +2820,18 @@ export default class BookingService {
 
     const nextDateIso = patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
     const nextTime = patch.time !== undefined ? patch.time : row.time;
-    const sorted = normalizeAndSortSlots([nextTime]);
-    const exclusiveEnd = exclusiveEndFromSortedStarts(sorted);
+    const branchIdForValidation = patch.branchId !== undefined ? patch.branchId : row.branchId;
+    const sorted = await normalizeAndSortSlotsForLesson(effectiveType, [nextTime], branchIdForValidation);
+    const exclusiveEnd = await exclusiveEndForLesson(effectiveType, sorted, branchIdForValidation);
 
     if (touchesSchedule && instructorUserId != null) {
-      const branchIdForValidation = patch.branchId !== undefined ? patch.branchId : row.branchId;
       await BookingSlotValidationService.assertSlotsBookable({
         branchId: branchIdForValidation,
         instructorUserId,
         dateIso: nextDateIso,
         slots: sorted,
         excludeBookingId: id,
+        lessonType: effectiveType,
       });
     }
 
@@ -3097,9 +3306,25 @@ export default class BookingService {
 
   /**
    * Hard-delete a booking and any linked finance rows (`booking_id` FK is ON DELETE RESTRICT).
+   * Frees instructor slots and restores package / cohort credits like cancellation.
    */
   static async remove(id: number): Promise<boolean> {
     return sequelize.transaction(async (transaction) => {
+      const row = await Booking.findByPk(id, { transaction, lock: Transaction.LOCK.UPDATE });
+      if (!row) return false;
+
+      const st = normalizeBookingStatus(row.status);
+      if (st !== 'cancelled' && st !== 'refunded') {
+        await finalizePracticalCancellationInTx({
+          row,
+          studentUserId: row.studentUserId,
+          transaction,
+          refundIfPaid: false,
+        });
+      } else {
+        await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+      }
+
       await FinanceTransaction.destroy({ where: { bookingId: id }, transaction });
       const n = await Booking.destroy({ where: { id }, transaction });
       return n > 0;

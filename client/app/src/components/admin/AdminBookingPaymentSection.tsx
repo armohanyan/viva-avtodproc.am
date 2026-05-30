@@ -18,6 +18,10 @@ type Props = {
   onChange: (next: AdminBookingPaymentState) => void;
   errorKey?: TranslationKey | null;
   disabled?: boolean;
+  /** When set, total price is an input instead of read-only (used by quick practical booking). */
+  totalPriceEditable?: boolean;
+  totalPriceStr?: string;
+  onTotalPriceStrChange?: (value: string) => void;
 };
 
 export default function AdminBookingPaymentSection({
@@ -26,6 +30,9 @@ export default function AdminBookingPaymentSection({
   onChange,
   errorKey,
   disabled,
+  totalPriceEditable,
+  totalPriceStr = "",
+  onTotalPriceStrChange,
 }: Props) {
   const { t } = useLang();
   const total = Math.max(0, Math.round(totalPriceAmd));
@@ -88,9 +95,19 @@ export default function AdminBookingPaymentSection({
           <label className="block text-sm font-medium text-muted-foreground mb-1">
             {t("adminBookingPaymentTotalPrice")}
           </label>
-          <div className="h-10 flex items-center rounded-lg border border-input bg-muted/40 px-3 text-sm font-semibold tabular-nums text-foreground">
-            {formatAmd(total)}
-          </div>
+          {totalPriceEditable && onTotalPriceStrChange ? (
+            <Input
+              inputMode="decimal"
+              disabled={disabled}
+              value={totalPriceStr}
+              onChange={(e) => onTotalPriceStrChange(e.target.value)}
+              className="h-10 tabular-nums"
+            />
+          ) : (
+            <div className="h-10 flex items-center rounded-lg border border-input bg-muted/40 px-3 text-sm font-semibold tabular-nums text-foreground">
+              {formatAmd(total)}
+            </div>
+          )}
         </div>
         <div>
           <label className="block text-sm font-medium text-muted-foreground mb-1">

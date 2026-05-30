@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { BookingSlot } from '../models';
+import { Booking, BookingSlot } from '../models';
 import BranchScheduleService from './branch-schedule.service';
 import InstructorAvailabilityService from './instructor-availability.service';
 import ErrorsUtil from '../utils/errors.util';
@@ -10,8 +10,20 @@ import {
   isSlotDateBeforeToday,
   isSlotStartInPast,
 } from '../utils/booking-slot.util';
+import PracticalSlotPlanService from './practical-slot-plan.service';
+import { normalizeTimeHHMM } from '../utils/booking-slot.util';
+import { practicalSlotRangeMinutesFromBookable } from '../utils/practical-slot-plan.util';
 
 const { InputValidationError } = ErrorsUtil;
+
+/** Must match {@link BookingService} slot occupancy — only these booking statuses block a slot. */
+const SLOT_RESERVING_STATUSES = [
+  'confirmed',
+  'pending',
+  'pending_prebook',
+  'pending_payment',
+  'completed',
+] as const;
 
 export type SlotValidationFailureReason = 'past' | 'outside_hours' | 'branch_closed' | 'instructor_unavailable' | 'booked';
 
@@ -42,6 +54,8 @@ export default class BookingSlotValidationService {
     dateIso: string;
     slots: readonly string[];
     excludeBookingId?: number;
+    /** Practical lessons use the global slot plan instead of branch work hours. */
+    lessonType?: 'practical' | 'theory' | 'theory_personal';
   }): Promise<void> {
     const dateIso = input.dateIso.slice(0, 10);
     if (!Number.isFinite(input.branchId) || input.branchId <= 0) {
@@ -54,24 +68,43 @@ export default class BookingSlotValidationService {
     }
 
     const branchRules = await BranchScheduleService.resolveEffectiveRulesForBranch(input.branchId);
+    const isPractical = input.lessonType === 'practical';
+    const effectiveTimes =
+      isPractical && Number.isFinite(input.instructorUserId)
+        ? await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, input.instructorUserId)
+        : null;
 
     for (const slot of input.slots) {
       if (isSlotDateBeforeToday(dateIso) || isSlotStartInPast(dateIso, slot)) {
         throw new InputValidationError(messageForReason('past'), HttpStatusCodesUtil.BAD_REQUEST);
       }
 
-      const branchReason = branchScheduleBlockReason(dateIso, slot, branchRules);
-      if (branchReason === 'branch_closed') {
-        throw new InputValidationError(messageForReason('branch_closed'), HttpStatusCodesUtil.BAD_REQUEST);
-      }
-      if (branchReason === 'outside_hours' || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchRules)) {
-        throw new InputValidationError(messageForReason('outside_hours'), HttpStatusCodesUtil.BAD_REQUEST);
+      if (isPractical && effectiveTimes) {
+        const n = normalizeTimeHHMM(slot);
+        if (!n || !effectiveTimes.includes(n)) {
+          throw new InputValidationError(
+            'This time is not in the branch and instructor practical schedule.',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
+        }
+      } else {
+        const branchReason = branchScheduleBlockReason(dateIso, slot, branchRules);
+        if (branchReason === 'branch_closed') {
+          throw new InputValidationError(messageForReason('branch_closed'), HttpStatusCodesUtil.BAD_REQUEST);
+        }
+        if (branchReason === 'outside_hours' || isSlotBlockedByBranchScheduleRules(dateIso, slot, branchRules)) {
+          throw new InputValidationError(messageForReason('outside_hours'), HttpStatusCodesUtil.BAD_REQUEST);
+        }
       }
 
+      const slotRange =
+        isPractical && effectiveTimes?.length ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes) : undefined;
       const instructorUnavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
         input.instructorUserId,
         dateIso,
         slot,
+        slotRange,
+        { forPracticalPlan: isPractical },
       );
       if (instructorUnavailable) {
         throw new InputValidationError(messageForReason('instructor_unavailable'), HttpStatusCodesUtil.BAD_REQUEST);
@@ -87,6 +120,15 @@ export default class BookingSlotValidationService {
             : {}),
         },
         attributes: ['id'],
+        include: [
+          {
+            model: Booking,
+            as: 'booking',
+            required: true,
+            attributes: ['id'],
+            where: { status: { [Op.in]: [...SLOT_RESERVING_STATUSES] } },
+          },
+        ],
       });
       if (busy) {
         throw new InputValidationError(messageForReason('booked'), HttpStatusCodesUtil.CONFLICT);
@@ -102,6 +144,7 @@ export default class BookingSlotValidationService {
     instructorUserId: number;
     entries: readonly { dateIso: string; time: string }[];
     excludeBookingId?: number;
+    lessonType?: 'practical' | 'theory' | 'theory_personal';
   }): Promise<void> {
     for (const e of input.entries) {
       await this.assertSlotsBookable({
@@ -110,6 +153,7 @@ export default class BookingSlotValidationService {
         dateIso: e.dateIso,
         slots: [e.time],
         excludeBookingId: input.excludeBookingId,
+        lessonType: input.lessonType,
       });
     }
   }

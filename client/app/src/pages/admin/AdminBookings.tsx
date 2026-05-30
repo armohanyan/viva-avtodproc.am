@@ -40,7 +40,6 @@ import {
   bookingListPaymentLabelKey,
   bookingListPaymentRow,
   bookingMatchesPaymentFilter,
-  bookingOccursOnDateIso,
   defaultAdminBookingPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
@@ -194,7 +193,7 @@ function packagePaymentDescriptionLine(pkgName: string, studentId: string, stude
 }
 
 function studentContact(students: StudentRow[], studentId: string): { name: string; email: string } {
-  const s = students.find((x) => x.id === studentId);
+  const s = students.find((x) => studentIdMatches(x.id, studentId));
   return { name: s?.name ?? "", email: (s?.email ?? "").trim() };
 }
 
@@ -273,6 +272,8 @@ export default function AdminBookings() {
   const [studentNames, setStudentNames] = useState<Record<string, string>>({});
   const [studentsMini, setStudentsMini] = useState<StudentRow[]>([]);
   const [financeTxs, setFinanceTxs] = useState<FinanceTx[]>([]);
+  /** Bumped whenever bookings change so instructor busy grids reload. */
+  const [busyGridReloadKey, setBusyGridReloadKey] = useState(0);
 
   const studentLabel = useCallback((id: string) => studentNames[id] ?? id, [studentNames]);
 
@@ -283,7 +284,17 @@ export default function AdminBookings() {
         vivaApiJson<StudentRow[]>("/students"),
         vivaApiJson<FinanceTx[]>("/finance/transactions"),
       ]);
-      setBookings(Array.isArray(bk) ? bk : []);
+      setBookings(
+        Array.isArray(bk)
+          ? bk.map((b) => ({
+              ...b,
+              id: String(b.id),
+              studentId: String(b.studentId),
+              branchId: String(b.branchId),
+            }))
+          : [],
+      );
+      setBusyGridReloadKey((n) => n + 1);
       const m: Record<string, string> = {};
       if (Array.isArray(st)) {
         setStudentsMini(
@@ -324,13 +335,6 @@ export default function AdminBookings() {
   );
 
   const [search, setSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState(() => todayIsoDate());
-
-  useEffect(() => {
-    if (activeBookingsTab === "debts" && dateFilter === todayIsoDate()) {
-      setDateFilter("");
-    }
-  }, [activeBookingsTab, dateFilter]);
   const [paymentFilter, setPaymentFilter] = useState<BookingPaymentFilter>("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [lessonTypeFilter, setLessonTypeFilter] = useState("all");
@@ -951,7 +955,13 @@ export default function AdminBookings() {
       const row = bookings.find((b) => String(b.id) === editId);
       if (row) {
         setBookingModalTab("booking");
-        setEditBooking({ ...row, status: toCanonicalBookingStatus(row.status) });
+        setEditBooking({
+          ...row,
+          id: String(row.id),
+          studentId: String(row.studentId),
+          branchId: String(row.branchId),
+          status: toCanonicalBookingStatus(row.status),
+        });
       }
       setLocation(absWouterHref(bookingsPathForTab(activeBookingsTab)), { replace: true });
       return;
@@ -1200,7 +1210,6 @@ export default function AdminBookings() {
         .join(" ")
         .toLowerCase();
       const matchSearch = !q || hay.includes(q);
-      const matchDate = !dateFilter.trim() || bookingOccursOnDateIso(b, dateFilter);
       const matchPayment =
         activeBookingsTab === "debts"
           ? bookingHasDebtPaymentStatus(b)
@@ -1221,7 +1230,6 @@ export default function AdminBookings() {
         (instructors.find((ins) => String(ins.id) === instructorFilter)?.name ?? "") === b.instructorName;
       return (
         matchSearch &&
-        matchDate &&
         matchPayment &&
         matchStatus &&
         matchLessonType &&
@@ -1232,7 +1240,6 @@ export default function AdminBookings() {
   }, [
     bookings,
     search,
-    dateFilter,
     activeBookingsTab,
     paymentFilter,
     statusFilter,
@@ -1841,35 +1848,7 @@ export default function AdminBookings() {
             />
           </DataTableToolbar>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                {t("adminBookingsFilterDate")}
-              </label>
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className={cn(filterSelectClass, "tabular-nums")}
-                aria-label={t("adminBookingsFilterDate")}
-              />
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
-                <button
-                  type="button"
-                  className="text-xs font-medium text-primary hover:underline"
-                  onClick={() => setDateFilter(todayIsoDate())}
-                >
-                  {t("adminBookingsFilterToday")}
-                </button>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
-                  onClick={() => setDateFilter("")}
-                >
-                  {t("adminBookingsFilterAllDates")}
-                </button>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 {t("adminClassScheduleFiltersLessonType")}
@@ -2757,6 +2736,7 @@ export default function AdminBookings() {
                           <>
                             <p className="text-sm font-semibold text-foreground">Գործնական դասեր</p>
                             <SlotSelector
+                              slotSource="practical"
                               hint={t("adminBookingPackagePracticalSlotsHint").replace(
                                 /%n/g,
                                 String(selectedAddPackage.lessons),
@@ -2791,6 +2771,7 @@ export default function AdminBookings() {
                               calendarKey={`add-pkg-prac-${addSlotSessionId}-${addPackageId}`}
                               maxSelectableSlots={packageSelectionStats.practical.remainingBeforeSelection}
                               maxSelectableSlotsErrorKey="adminBookingValPackagePracticalCount"
+                              reloadKey={busyGridReloadKey}
                               t={t}
                             />
                             {addInlineErrors.packagePracticalSlots ? (
@@ -2833,6 +2814,7 @@ export default function AdminBookings() {
                               calendarKey={`add-pkg-th-${addSlotSessionId}-${addPackageId}`}
                               maxSelectableSlots={packageSelectionStats.theory.remainingBeforeSelection}
                               maxSelectableSlotsErrorKey="adminBookingValPackageTheoryCount"
+                              reloadKey={busyGridReloadKey}
                               t={t}
                             />
                             {addInlineErrors.packageTheorySlots ? (
@@ -2846,6 +2828,7 @@ export default function AdminBookings() {
                     {addFlowKind === "practical" ? (
                       <div>
                         <SlotSelector
+                          slotSource="practical"
                           selectedInstructorId={calendarInstructorId}
                           instructors={practicalInstructorsForGrid}
                           onInstructorChange={(id, opts) => {
@@ -2883,6 +2866,7 @@ export default function AdminBookings() {
                             setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                           }}
                           calendarKey={`add-practical-${addSlotSessionId}`}
+                          reloadKey={busyGridReloadKey}
                           t={t}
                         />
                         {addInlineErrors.slots ? (
@@ -2934,6 +2918,7 @@ export default function AdminBookings() {
                             setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                           }}
                           calendarKey={`add-personal-${addSlotSessionId}`}
+                          reloadKey={busyGridReloadKey}
                           t={t}
                         />
                         {addInlineErrors.slots ? (

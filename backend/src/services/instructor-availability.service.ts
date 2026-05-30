@@ -112,12 +112,15 @@ export function isSlotBlockedByScheduleRules(
   dateIso: string,
   timeSlot: string,
   rules: readonly InstructorScheduleRuleDto[],
+  slotRangeOverride?: { start: number; end: number },
+  options?: { forPracticalPlan?: boolean },
 ): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
-  const slotRange = slotRangeMinutes(timeSlot);
+  const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
+  const forPracticalPlan = options?.forPracticalPlan === true;
 
   for (const b of rules) {
-    if (b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
+    if (!forPracticalPlan && b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
@@ -140,14 +143,16 @@ export function isSlotBlockedByScheduleRules(
     }
   }
 
-  const hasAnyWorkHours = rules.some((b) => b.ruleKind === 'work_hours');
-  if (hasAnyWorkHours) {
-    const workRows = rules.filter((b) => b.ruleKind === 'work_hours' && b.weekday === weekday && b.timeStart && b.timeEnd);
-    if (workRows.length === 0) {
-      return true;
+  if (!forPracticalPlan) {
+    const hasAnyWorkHours = rules.some((b) => b.ruleKind === 'work_hours');
+    if (hasAnyWorkHours) {
+      const workRows = rules.filter((b) => b.ruleKind === 'work_hours' && b.weekday === weekday && b.timeStart && b.timeEnd);
+      if (workRows.length === 0) {
+        return true;
+      }
+      const insideSome = workRows.some((b) => slotFullyInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
+      if (!insideSome) return true;
     }
-    const insideSome = workRows.some((b) => slotFullyInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
-    if (!insideSome) return true;
   }
 
   return false;
@@ -321,8 +326,10 @@ export default class InstructorAvailabilityService {
     instructorUserId: number,
     dateIso: string,
     timeSlot: string,
+    slotRangeOverride?: { start: number; end: number },
+    options?: { forPracticalPlan?: boolean },
   ): Promise<boolean> {
     const rules = await this.listForInstructor(instructorUserId);
-    return isSlotBlockedByScheduleRules(dateIso, timeSlot, rules);
+    return isSlotBlockedByScheduleRules(dateIso, timeSlot, rules, slotRangeOverride, options);
   }
 }

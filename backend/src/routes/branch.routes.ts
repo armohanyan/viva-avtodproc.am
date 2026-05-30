@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/', BranchController.list);
 router.get('/:id/booking-schedule', BranchController.bookingSchedule);
+router.get('/:id/practical-slot-plan', BranchController.practicalSlotPlan);
 router.post('/', BranchController.create);
 router.patch('/:id', BranchController.update);
 router.delete('/:id', BranchController.remove);

@@ -155,12 +155,19 @@ function slotFullyInsideWorkWindow(
 /**
  * Returns true if this hour slot cannot be booked due to admin-defined schedule rules.
  */
-export function isSlotBlockedByAvailabilityRules(dateIso: string, timeSlot: string, blocks: readonly AvailabilityBlock[]): boolean {
+export function isSlotBlockedByAvailabilityRules(
+  dateIso: string,
+  timeSlot: string,
+  blocks: readonly AvailabilityBlock[],
+  slotRangeOverride?: { start: number; end: number },
+  options?: { forPracticalPlan?: boolean },
+): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
-  const slotRange = slotRangeMinutes(timeSlot);
+  const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
+  const forPracticalPlan = options?.forPracticalPlan === true;
 
   for (const b of blocks) {
-    if (b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
+    if (!forPracticalPlan && b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
       if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
@@ -183,7 +190,7 @@ export function isSlotBlockedByAvailabilityRules(dateIso: string, timeSlot: stri
     }
   }
 
-  const hasAnyWorkHours = blocks.some((b) => b.ruleKind === "work_hours");
+  const hasAnyWorkHours = !forPracticalPlan && blocks.some((b) => b.ruleKind === "work_hours");
   if (hasAnyWorkHours) {
     const workRows = blocks.filter((b) => b.ruleKind === "work_hours" && b.weekday === weekday && b.timeStart && b.timeEnd);
     if (workRows.length === 0) {

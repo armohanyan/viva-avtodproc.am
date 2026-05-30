@@ -72,6 +72,7 @@ export default function AdminDriving() {
             selectedEntries={[]}
             onEntriesChange={() => {}}
             onInstructorPicked={() => {}}
+            slotSource="practical"
             onCellClick={({ instructor, branchId, dateIso }) => {
               setSlotModalTarget({ instructor, branchId, dateIso });
             }}
@@ -90,6 +91,7 @@ export default function AdminDriving() {
           instructorName={slotModalTarget.instructor.name}
           branchId={slotModalTarget.branchId}
           dateIso={slotModalTarget.dateIso}
+          slotSource="practical"
           initialSelected={
             pendingSelection?.instructor.id === slotModalTarget.instructor.id
               ? pendingSelection.entries
