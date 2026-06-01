@@ -13,6 +13,8 @@ import { useLocation } from "wouter";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import { absWouterHref } from "src/lib/wouterFullPath";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
+import { StudentBookingPausedCallout } from "src/components/booking/StudentBookingPausedCallout";
 
 export function DashboardBookingsPackageTab() {
   const { t, lang } = useLang();
@@ -58,6 +60,7 @@ export function DashboardBookingsPackageTab() {
 
   return (
     <Reveal delay={0.06}>
+      {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
       <SimulatedAcbaPosDialog
         open={pendingPackageId !== null}
         onOpenChange={(open) => {
@@ -147,7 +150,13 @@ export function DashboardBookingsPackageTab() {
                   </li>
                 ))}
               </ul>
-              <Button type="button" className="w-full mt-4" size="sm" onClick={() => buyPackage(pkg.id)}>
+              <Button
+                type="button"
+                className="w-full mt-4"
+                size="sm"
+                disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED}
+                onClick={() => buyPackage(pkg.id)}
+              >
                 {t("bookingsBuyPackageCta")} · {pkg.name}
               </Button>
               <Button
@@ -155,6 +164,7 @@ export function DashboardBookingsPackageTab() {
                 variant="outline"
                 className="w-full mt-2"
                 size="sm"
+                disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED}
                 onClick={() => setLocation(absWouterHref("/dashboard/bookings/practical"))}
               >
                 {t("dashboardLessonsBookPractical")}

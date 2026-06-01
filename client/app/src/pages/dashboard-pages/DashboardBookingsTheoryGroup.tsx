@@ -13,6 +13,8 @@ import { computeBookingTotalAmd } from "src/modules/admin/booking/useBookingPric
 import type { TheoryCohortOption } from "src/modules/admin/booking/types";
 import { branchOptionLabel, branchesInCity, branchNameById, useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
+import { StudentBookingPausedCallout } from "src/components/booking/StudentBookingPausedCallout";
 
 type TheoryCohortRow = {
   id: number;
@@ -157,6 +159,10 @@ export function DashboardBookingsTheoryGroupTab() {
   }, [refreshPendingGuard]);
 
   const onStartBooking = async (cohortId: number) => {
+    if (!STUDENT_SELF_SERVICE_BOOKING_ENABLED) {
+      showToast(t("studentBookingPausedBody"), "error");
+      return;
+    }
     if (pendingPaymentElsewhere) {
       showToast(t("bookingPendingBlocksNew"), "error");
       return;
@@ -209,6 +215,7 @@ export function DashboardBookingsTheoryGroupTab() {
         busy={payBusy}
         onApprove={onApprove}
       />
+      {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
       <Card className="p-5 border-border mb-6 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -282,7 +289,7 @@ export function DashboardBookingsTheoryGroupTab() {
                     </p>
                     <Button
                       className="w-full"
-                      disabled={pendingPaymentElsewhere}
+                      disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED || pendingPaymentElsewhere}
                       onClick={() => void onStartBooking(row.id)}
                     >
                       {t("confirmBooking")}

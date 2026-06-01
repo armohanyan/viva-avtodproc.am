@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
+import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import PersonalTheoryLessonRequestService from '../services/personal-theory-lesson-request.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
@@ -67,6 +68,7 @@ export default class PersonalTheoryLessonRequestController {
     try {
       const studentUserId = requireStudentUserId(req, next);
       if (studentUserId === undefined) return;
+      assertStudentSelfServiceBookingEnabled();
       const body = parseBody(createSchema, req.body);
       const row = await PersonalTheoryLessonRequestService.createFromStudent({
         studentUserId,

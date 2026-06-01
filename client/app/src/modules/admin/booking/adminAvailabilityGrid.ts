@@ -86,8 +86,13 @@ export function armenianWeekdayShort(dateIso: string): string {
 export function buildBranchInstructorGroups(
   branches: readonly Branch[],
   instructors: readonly Instructor[],
+  /** When set (admin global branch filter), only that branch column is shown. */
+  branchIdFilter?: string | null,
 ): GridBranchGroup[] {
-  const sortedBranches = [...branches].sort((a, b) => a.name.localeCompare(b.name, "hy"));
+  const filterId = branchIdFilter?.trim() || null;
+  const sortedBranches = [...branches]
+    .filter((b) => !filterId || String(b.id) === filterId)
+    .sort((a, b) => a.name.localeCompare(b.name, "hy"));
   const groups: GridBranchGroup[] = [];
   for (const branch of sortedBranches) {
     const cols = instructors

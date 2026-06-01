@@ -14,6 +14,8 @@ import {
 } from "src/modules/instructors/instructor-booking";
 import { getFilteredInstructors } from "src/modules/instructors/instructor.api";
 import { useAccount } from "src/modules/accounts";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
+import { StudentBookingPausedCallout } from "src/components/booking/StudentBookingPausedCallout";
 
 export function DashboardBookingsPracticalTab() {
   const { t } = useLang();
@@ -126,7 +128,8 @@ export function DashboardBookingsPracticalTab() {
         )}
       </Card>
 
-      {readyForCalendar ? (
+      {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-6" /> : null}
+      {STUDENT_SELF_SERVICE_BOOKING_ENABLED && readyForCalendar ? (
         <LessonBookingCalendar
           mode="student"
           instructors={filteredInstructors}
@@ -136,9 +139,9 @@ export function DashboardBookingsPracticalTab() {
           branchId={selectedBranchIds[0] ?? ""}
           instructorPickerVariant="cards"
         />
-      ) : (
+      ) : STUDENT_SELF_SERVICE_BOOKING_ENABLED ? (
         <Card className="p-6 border-border text-sm text-muted-foreground">{t("bookingNoInstructorsByFilter")}</Card>
-      )}
+      ) : null}
     </>
   );
 }

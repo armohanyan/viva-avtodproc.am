@@ -9,6 +9,7 @@ import { Button } from "src/components/ui/button";
 import { useLocation } from "wouter";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { absWouterHref } from "src/lib/wouterFullPath";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
 
 export type BookingsShellActive = "home" | "package" | "practical" | "theory-personal" | "theory-group";
 
@@ -46,7 +47,7 @@ export default function DashboardBookingsShell({ active, children }: Props) {
       <Reveal>
         <PanelPageHeader icon={CalendarDays} title={pageTitle(active, t)} subtitle={subtitle} />
       </Reveal>
-      {hasRemaining ? (
+      {STUDENT_SELF_SERVICE_BOOKING_ENABLED && hasRemaining ? (
         <Reveal delay={0.03}>
           <Card className="mb-4 border-border p-3 sm:p-4 bg-amber-50/60 dark:bg-amber-950/20">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -1643,6 +1643,9 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   bookingStartPaymentWindowHint: "Starts the 10-minute server payment window for this booking.",
   bookingSlotsMustBeConsecutive: "Select consecutive full hours on the same day (e.g. 09:00, 10:00).",
   bookingStudentAuthRequired: "Sign in as a student to book.",
+  studentBookingPausedTitle: "Online booking is temporarily unavailable",
+  studentBookingPausedBody:
+    "We are setting up card payments. To book a lesson or buy a package, please contact the office — we will help you schedule manually.",
   bookingBranchRequired: "Select at least one branch before booking.",
   bookingPendingBlocksNew: "You already have a booking awaiting payment. Complete or cancel it before choosing another lesson.",
   bookingTotalLabel: "Total",
@@ -3572,6 +3575,9 @@ const ru: typeof en = {
   bookingStartPaymentWindowHint: "Запускает на сервере 10-минутное окно оплаты для этой записи.",
   bookingSlotsMustBeConsecutive: "Выберите подряд идущие полные часы в один день (напр. 09:00, 10:00).",
   bookingStudentAuthRequired: "Войдите как ученик, чтобы забронировать.",
+  studentBookingPausedTitle: "Онлайн-запись временно недоступна",
+  studentBookingPausedBody:
+    "Мы подключаем оплату картой. Чтобы записаться на урок или купить пакет, свяжитесь с офисом — мы поможем оформить запись вручную.",
   bookingBranchRequired: "Выберите хотя бы один филиал перед бронированием.",
   bookingPendingBlocksNew:
     "У вас уже есть бронь, ожидающая оплаты. Завершите оплату или отмените её, прежде чем выбрать новый урок.",
@@ -5482,6 +5488,9 @@ const am: typeof en = {
   bookingStartPaymentWindowHint: "Սերվերում սկսում է 10 րոպե վճարման պատուհանը այս ամրագրման համար։",
   bookingSlotsMustBeConsecutive: "Ընտրեք նույն օրվա հաջորդական ամբողջ ժամեր (օր․ 09:00, 10:00)։",
   bookingStudentAuthRequired: "Ամրագրելու համար մուտք գործեք որպես ուսանող։",
+  studentBookingPausedTitle: "Առցանց ամրագրումը ժամանակավորապես անհասանելի է",
+  studentBookingPausedBody:
+    "Մենք միացնում ենք քարտային վճարումը։ Դաս ամրագրելու կամ փաթեթ գնելու համար կապվեք մասնաճյուղի հետ — ձեզ կօգնենք ձեռքով։",
   bookingBranchRequired: "Ամրագրելուց առաջ ընտրեք առնվազն մեկ մասնաճյուղ։",
   bookingPendingBlocksNew: "Դուք արդեն ունեք վճարման սպասող ամրագրում։ Նախ վճարեք կամ չեղարկեք այն, նախքան նոր դաս ընտրելը։",
   bookingTotalLabel: "Ընդամենը",

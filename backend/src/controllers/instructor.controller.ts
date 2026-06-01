@@ -190,11 +190,13 @@ export default class InstructorController {
         to: req.query.to,
         excludeBookingId: req.query.excludeBookingId,
       });
+      const branchId = await resolveBranchIdFilter(req);
       const data = await BookingService.listBusySlotsForInstructor(
         instructorUserId,
         q.from.slice(0, 10),
         q.to.slice(0, 10),
         q.excludeBookingId,
+        branchId,
       );
 
       SuccessHandlerUtil.handleList(res, next, data);

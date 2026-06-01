@@ -6,6 +6,7 @@ import type { Instructor } from "src/data/instructors";
 import type { TranslationKey } from "src/lib/i18n";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { useBranches } from "src/modules/branches";
+import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import { cn } from "src/lib/utils";
 import { yerevanAddCalendarMonths } from "src/lib/yerevanLessonCalendar";
 import AdminInstructorDaySlotsModal from "./AdminInstructorDaySlotsModal";
@@ -81,6 +82,8 @@ export default function AdminInstructorAvailabilityTable({
 }: Props) {
   const cellClickMode = Boolean(onCellClick);
   const { branches } = useBranches();
+  const { branchId: adminBranchId, revision: branchFilterRevision } = useAdminBranchFilter();
+  const branchIdFilter = bookingBranchId.trim() || adminBranchId;
   const [rangeStartIso, setRangeStartIso] = useState(defaultGridRangeStart);
   const [busyByInstructor, setBusyByInstructor] = useState<Map<string, InstructorBusySlotRow[]>>(new Map());
   const [gridLoading, setGridLoading] = useState(false);
@@ -96,8 +99,8 @@ export default function AdminInstructorAvailabilityTable({
   const rangeEndIso = dates[dates.length - 1] ?? rangeStartIso;
 
   const branchGroups = useMemo(
-    () => buildBranchInstructorGroups(branches, instructors),
-    [branches, instructors],
+    () => buildBranchInstructorGroups(branches, instructors, branchIdFilter),
+    [branches, instructors, branchIdFilter],
   );
 
   const instructorIds = useMemo(() => instructors.map((i) => i.id), [instructors]);
@@ -127,11 +130,11 @@ export default function AdminInstructorAvailabilityTable({
     } finally {
       setGridLoading(false);
     }
-  }, [instructorIds, rangeStartIso, rangeEndIso]);
+  }, [instructorIds, rangeStartIso, rangeEndIso, branchFilterRevision]);
 
   useEffect(() => {
     void loadBusy();
-  }, [loadBusy, reloadKey]);
+  }, [loadBusy, reloadKey, branchFilterRevision]);
 
   const lessonCounts = useMemo(
     () => aggregateBusyCountsByInstructorDay(instructorIds, busyByInstructor),

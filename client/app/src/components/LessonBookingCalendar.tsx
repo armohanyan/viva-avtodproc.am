@@ -42,6 +42,8 @@ import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
+import { StudentBookingPausedCallout } from "src/components/booking/StudentBookingPausedCallout";
 
 export type LessonBookingPayload = {
   instructorUserId: string;
@@ -732,7 +734,9 @@ export default function LessonBookingCalendar({
     return "bg-card text-muted-foreground border-border hover:border-primary/40 hover:bg-primary/10 cursor-pointer";
   };
 
-  const canClick = (meta: SlotCellMeta) => meta.status === "available" && !meta.outsideBranchDayHours;
+  const studentBookingPaused = mode === "student" && !STUDENT_SELF_SERVICE_BOOKING_ENABLED;
+  const canClick = (meta: SlotCellMeta) =>
+    !studentBookingPaused && meta.status === "available" && !meta.outsideBranchDayHours;
 
   const selectedInstructorName = useMemo(
     () => instructors.find((i) => i.id === selectedInstructorId)?.name ?? "",
@@ -803,6 +807,10 @@ export default function LessonBookingCalendar({
     if (mode === "admin" && !studentName.trim()) return;
 
     if (mode === "student") {
+      if (studentBookingPaused) {
+        showToast(t("studentBookingPausedBody"), "error");
+        return;
+      }
       if (!selected) return;
       if (pendingBookingBlocksNew) {
         showToast(t("bookingPendingBlocksNew"), "error");
@@ -1174,6 +1182,7 @@ export default function LessonBookingCalendar({
       onApprove={onCompletePayment}
     />
     <div className="@container min-w-0">
+    {studentBookingPaused ? <StudentBookingPausedCallout className="mb-4" /> : null}
     <div
       className={
         adminSuppressSummaryCard
@@ -1465,6 +1474,7 @@ export default function LessonBookingCalendar({
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
                   disabled={
                     submitting ||
+                    studentBookingPaused ||
                     (mode === "admin" && (!adminReady || !adminHasSlotSelection)) ||
                     (mode === "student" && !selected) ||
                     (mode === "student" && pendingBookingBlocksNew)

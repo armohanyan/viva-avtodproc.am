@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, parseParams, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
+import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
 import StudentEntitlementsService from '../services/student-entitlements.service';
@@ -366,6 +367,8 @@ export default class StudentController {
       const { id } = parseParams(studentIdParamsSchema, req.params);
 
       if (!assertStudentSelfAccess(req, id, next)) return;
+
+      assertStudentSelfServiceBookingEnabled();
 
       const body = parseBody(entitlementsPackageSchema, req.body);
       const data = await StudentEntitlementsService.purchasePackageAfterOnlinePayment(id, body.packageId);

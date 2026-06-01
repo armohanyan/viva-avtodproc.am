@@ -8,16 +8,18 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Users, Calendar, TrendingUp, Car, LayoutDashboard, Edit2, Trash2, Undo2 } from "lucide-react";
+import { Users, Calendar, TrendingUp, LayoutDashboard, Edit2, Trash2, Undo2 } from "lucide-react";
+import type { FinanceTx } from "src/pages/admin/finance/adminFinanceShared";
+import { dashboardRevenueAmdInPeriod } from "src/modules/admin/dashboard/adminDashboardKpi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { formatShortDateFromIso, localeForLang } from "src/lib/adminFormat";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { branchNameById, useBranches } from "src/modules/branches";
 import { Button } from "src/components/ui/button";
 import {
-	hasLessonWindowEnded,
 	yerevanTodayIso,
 	yerevanWeekRangeContaining,
 	yerevanMonthRangeContaining,
@@ -32,11 +34,6 @@ function isSlotReservingStatus(s: string): boolean {
 	return (SLOT_LIKE as readonly string[]).includes(s);
 }
 
-function displayTimeHHMM(time: string): string {
-	const t = time.trim();
-	return t.length >= 5 ? t.slice(0, 5) : t;
-}
-
 type BookingAdminRow = {
 	id: number;
 	studentId: number;
@@ -47,33 +44,24 @@ type BookingAdminRow = {
 	type: string;
 	status: string;
 	branchId: number;
-	lessonPassedSuccessfully?: boolean | null;
-};
-
-type AdminTodayLessonRow = {
-	id: number;
-	studentId: number;
-	studentName: string;
-	instructorName: string;
-	dateIso: string;
-	time: string;
-	endTime: string | null;
-	type: string;
-	status: string;
-	lessonPassedSuccessfully: boolean | null;
+	paymentStatus?: string | null;
+	paidAmountAmd?: number | null;
+	totalPriceAmd?: number | null;
+	paidAtIso?: string | null;
 };
 
 type StudentMini = { id: string; name: string; joinedIso?: string };
 type KpiPeriod = "day" | "week" | "month";
-type FinanceTx = {
-  status: string;
-  grossAmd: number;
-  createdAt: string;
-  entryType?: "income" | "expense";
-  expenseKind?: string | null;
-};
 
-type RecentBookingRow = { id: number; student: string; instructor: string; date: string; time: string; status: string };
+type RecentBookingRow = {
+  id: number;
+  student: string;
+  instructor: string;
+  branchId: number;
+  date: string;
+  time: string;
+  status: string;
+};
 type RecentBookedCallRow = {
   id: number;
   name: string | null;
@@ -103,14 +91,9 @@ function canonicalBookingStatusForDashboard(raw: string): TranslationKey {
   return "pending";
 }
 
-function lessonTypeLabelKey(type: string): TranslationKey {
-  if (type === "theory") return "lessonTypeTheory";
-  if (type === "theory_personal") return "lessonTypeTheoryPersonal";
-  return "lessonTypePractical";
-}
-
 export default function AdminDashboard() {
   const branchFilterRevision = useOptionalAdminBranchFilterRevision();
+  const { branches } = useBranches();
   const [, setLocation] = useLocation();
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -121,8 +104,6 @@ export default function AdminDashboard() {
   const [recentContactRequests, setRecentContactRequests] = useState<RecentContactRequestRow[]>([]);
   const [bookedCallsPage, setBookedCallsPage] = useState(1);
   const [contactRequestsPage, setContactRequestsPage] = useState(1);
-  const [todayLessons, setTodayLessons] = useState<AdminTodayLessonRow[]>([]);
-  const [outcomeBusyId, setOutcomeBusyId] = useState<number | null>(null);
   const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("day");
   const [rawStudents, setRawStudents] = useState<StudentMini[]>([]);
   const [rawBookings, setRawBookings] = useState<BookingAdminRow[]>([]);
@@ -148,35 +129,12 @@ export default function AdminDashboard() {
       );
       const bookingList = Array.isArray(bookings) ? bookings : [];
       setRawBookings(bookingList);
-      const todayY = yerevanTodayIso();
-      const todayRows: AdminTodayLessonRow[] = bookingList
-        .filter((b) => String(b.dateIso).slice(0, 10) === todayY && isSlotReservingStatus(String(b.status)))
-        .map((b) => {
-          const sid = typeof b.studentId === "number" ? b.studentId : Number(b.studentId);
-          return {
-            id: typeof b.id === "number" ? b.id : Number(b.id),
-            studentId: Number.isFinite(sid) ? sid : 0,
-            studentName: byStudent.get(String(b.studentId)) ?? String(b.studentId),
-            instructorName: b.instructorName,
-            dateIso: String(b.dateIso).slice(0, 10),
-            time: b.time,
-            endTime: b.endTime ?? null,
-            type: b.type,
-            status: b.status,
-            lessonPassedSuccessfully:
-              b.lessonPassedSuccessfully === null || b.lessonPassedSuccessfully === undefined
-                ? null
-                : Boolean(b.lessonPassedSuccessfully),
-          };
-        })
-        .filter((b) => b.id > 0)
-        .sort((a, b) => a.time.localeCompare(b.time));
-      setTodayLessons(todayRows);
 
       const rows = bookingList.slice(0, 12).map((b) => ({
         id: typeof b.id === "number" ? b.id : Number(b.id),
         student: byStudent.get(String(b.studentId)) ?? String(b.studentId),
         instructor: b.instructorName,
+        branchId: typeof b.branchId === "number" ? b.branchId : Number(b.branchId),
         date: formatShortDateFromIso(b.dateIso, lang),
         time: b.time,
         status: b.status,
@@ -194,41 +152,7 @@ export default function AdminDashboard() {
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
-  }, [lang, showToast]);
-
-  const saveLessonPassed = useCallback(
-    async (row: AdminTodayLessonRow, value: boolean | null) => {
-      setOutcomeBusyId(row.id);
-      try {
-        const updated = await vivaApiJson<BookingAdminRow>(
-          `/bookings/${encodeURIComponent(String(row.id))}/lesson-passed`,
-          {
-            method: "PATCH",
-            body: { lessonPassedSuccessfully: value },
-          },
-        );
-        setTodayLessons((prev) =>
-          prev.map((r) =>
-            r.id === row.id
-              ? {
-                  ...r,
-                  lessonPassedSuccessfully:
-                    updated.lessonPassedSuccessfully === null || updated.lessonPassedSuccessfully === undefined
-                      ? null
-                      : Boolean(updated.lessonPassedSuccessfully),
-                }
-              : r,
-          ),
-        );
-        showToast(t("lessonPassedSaved"), "success");
-      } catch (e) {
-        showToast(getApiErrorMessage(e), "error");
-      } finally {
-        setOutcomeBusyId(null);
-      }
-    },
-    [showToast, t],
-  );
+  }, [lang, showToast, branchFilterRevision]);
 
   useEffect(() => {
     void loadDashboard();
@@ -263,9 +187,13 @@ export default function AdminDashboard() {
       return ts >= fromMs && ts <= toMs;
     });
 
-    const incomeCompletedSum = txsInPeriod
-      .filter((x) => (x.entryType ?? "income") === "income" && x.status === "completed")
-      .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
+    const revenue = dashboardRevenueAmdInPeriod(
+      rawBookings,
+      rawTxs,
+      fromMs,
+      toMs,
+      isSlotReservingStatus,
+    );
 
     const bookingRefundSum = txsInPeriod
       .filter(
@@ -281,36 +209,26 @@ export default function AdminDashboard() {
       .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
 
     const refundMoney = bookingRefundSum + legacyRefundedIncomeSum;
-    const revenue = incomeCompletedSum - bookingRefundSum - legacyRefundedIncomeSum;
-
-    const instructorNames = new Set(
-      bookingsInPeriod
-        .map((b) => String(b.instructorName ?? "").trim())
-        .filter((n) => n.length > 0),
-    );
 
     return {
       newStudents,
       bookingsCount: bookingsInPeriod.length,
       revenue,
       refundMoney,
-      instructorsTeaching: instructorNames.size,
     };
   }, [rawStudents, rawBookings, rawTxs, kpiPeriod]);
-
-  const kpiFootnoteKey =
-    kpiPeriod === "day" ? ("adminKpiScopeDay" as const) : kpiPeriod === "week" ? ("adminKpiScopeWeek" as const) : ("adminKpiScopeMonth" as const);
 
   const filteredRecentBookings = useMemo(() => {
     const q = bookingSearch.trim().toLowerCase();
     return recentBookingsData.filter((b) => {
-      const hay = [b.student, b.instructor, b.date, b.time, b.status].join(" ").toLowerCase();
+      const branchLabel = branchNameById(branches, String(b.branchId)) ?? "";
+      const hay = [b.student, b.instructor, branchLabel, b.date, b.time, b.status].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchStatus =
         bookingStatus === "all" || canonicalBookingStatusForDashboard(b.status) === bookingStatus;
       return matchSearch && matchStatus;
     });
-  }, [bookingSearch, bookingStatus, recentBookingsData]);
+  }, [bookingSearch, bookingStatus, recentBookingsData, branches]);
 
   const PAGE_SIZE = 10;
   const activeBookedCalls = useMemo(
@@ -345,7 +263,6 @@ export default function AdminDashboard() {
           icon: Users,
           color: "text-primary",
           bg: "bg-primary/10",
-          footnote: kpiFootnoteKey,
         },
         {
           label: t("adminKpiLessonBookings"),
@@ -353,7 +270,6 @@ export default function AdminDashboard() {
           icon: Calendar,
           color: "text-primary",
           bg: "bg-primary/10",
-          footnote: kpiFootnoteKey,
         },
         {
           label: t("revenue"),
@@ -361,7 +277,6 @@ export default function AdminDashboard() {
           icon: TrendingUp,
           color: "text-primary",
           bg: "bg-primary/10",
-          footnote: "adminKpiRevenueNetFootnote" as const,
         },
         {
           label: t("adminKpiRefundMoney"),
@@ -369,18 +284,9 @@ export default function AdminDashboard() {
           icon: Undo2,
           color: "text-rose-600 dark:text-rose-400",
           bg: "bg-rose-500/10",
-          footnote: kpiFootnoteKey,
-        },
-        {
-          label: t("adminKpiInstructorsTeaching"),
-          value: String(kpiStats.instructorsTeaching),
-          icon: Car,
-          color: "text-primary",
-          bg: "bg-primary/10",
-          footnote: kpiFootnoteKey,
         },
       ] as const,
-    [kpiStats, kpiFootnoteKey, t],
+    [kpiStats, t],
   );
 
   const statusColor: Record<string, string> = {
@@ -392,11 +298,10 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <PanelPageHeader icon={LayoutDashboard} title={t("adminDashboard")} subtitle={t("adminDashboardPageSubtitle")} />
+      <PanelPageHeader icon={LayoutDashboard} title={t("adminDashboard")} />
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <p className="text-sm text-muted-foreground">{t("adminKpiFilterHint")}</p>
-        <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/50 shrink-0" role="group" aria-label={t("adminKpiFilterAria")}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 mb-4">
+        <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/50 shrink-0" role="group">
           {(["day", "week", "month"] as const).map((p) => (
             <Button
               key={p}
@@ -413,7 +318,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map((s, i) => (
           <Card key={i} className="p-5 border-border">
             <div className="flex items-start justify-between">
@@ -422,7 +327,6 @@ export default function AdminDashboard() {
                 <p className="text-2xl font-bold text-foreground">
                   {s.value}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">{t(s.footnote)}</p>
               </div>
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center shrink-0`}>
                 <s.icon className={`w-5 h-5 ${s.color}`} />
@@ -541,105 +445,7 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Today's lessons — shared lesson-passed flag (instructor or staff) */}
-        <Card className="border-border overflow-hidden min-w-0">
-          <div className="p-5 border-b border-border">
-            <h3 className="font-semibold text-foreground">{t("adminTodayLessonsTitle")}</h3>
-          </div>
-          <AdminTableScroll>
-            <table className="w-full text-sm min-w-[48rem]">
-              <thead className="bg-muted/40">
-                <tr>
-                  <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("bookingColStudent")}</th>
-                  <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("cohortColInstructor")}</th>
-                  <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("bookingColTime")}</th>
-                  <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("bookingsTableColType")}</th>
-                  <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("status")}</th>
-                  <th className="px-5 py-3 text-left font-medium text-muted-foreground">{t("lessonPassedColumnTitle")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {todayLessons.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground">
-                      {t("tableNoMatches")}
-                    </td>
-                  </tr>
-                ) : (
-                  todayLessons.map((row) => {
-                    const ended = hasLessonWindowEnded(row.dateIso, row.time, row.endTime);
-                    const st = canonicalBookingStatusForDashboard(row.status);
-                    return (
-                      <tr key={row.id} className="hover:bg-muted/30 transition-colors align-top">
-                        <td className="px-5 py-3.5 font-medium text-foreground">{row.studentName}</td>
-                        <td className="px-5 py-3.5 text-muted-foreground">{row.instructorName}</td>
-                        <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
-                          {displayTimeHHMM(row.time)}
-                          {row.endTime ? `–${displayTimeHHMM(row.endTime)}` : null}
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <Badge className="text-xs bg-muted text-foreground">{t(lessonTypeLabelKey(row.type))}</Badge>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <Badge className={`text-xs ${statusColor[st] ?? statusColor.pending}`}>{t(st)}</Badge>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          {!ended ? (
-                            <span className="text-muted-foreground text-sm">—</span>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={row.lessonPassedSuccessfully === true ? "default" : "outline"}
-                                  disabled={outcomeBusyId === row.id}
-                                  onClick={() => void saveLessonPassed(row, true)}
-                                >
-                                  {t("lessonPassedPass")}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={row.lessonPassedSuccessfully === false ? "destructive" : "outline"}
-                                  className={row.lessonPassedSuccessfully === false ? "" : "border-destructive/50 text-destructive"}
-                                  disabled={outcomeBusyId === row.id}
-                                  onClick={() => void saveLessonPassed(row, false)}
-                                >
-                                  {t("lessonPassedFail")}
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={outcomeBusyId === row.id || row.lessonPassedSuccessfully === null}
-                                  onClick={() => void saveLessonPassed(row, null)}
-                                >
-                                  {t("lessonPassedClear")}
-                                </Button>
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {row.lessonPassedSuccessfully === null
-                                  ? t("lessonPassedNotSet")
-                                  : row.lessonPassedSuccessfully
-                                    ? t("lessonPassedPass")
-                                    : t("lessonPassedFail")}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </AdminTableScroll>
-        </Card>
-
-        {/* Recent Bookings Table */}
-        <Card className="border-border overflow-hidden min-w-0">
+      <Card className="border-border overflow-hidden min-w-0">
           <div className="p-5 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="font-semibold text-foreground">{t("adminRecentBookingsTitle")}</h3>
             <a href="/admin/bookings" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
@@ -647,9 +453,17 @@ export default function AdminDashboard() {
           <DataTableToolbar value={bookingSearch} onChange={setBookingSearch} placeholder={`${t("search")}…`}>
             <CsvExportButton
               filename="admin-dashboard-recent-bookings.csv"
-              headers={[t("bookingColStudent"), t("cohortColInstructor"), t("tableColId"), t("date"), t("bookingColTime"), t("status")]}
+              headers={[
+                t("bookingColStudent"),
+                t("filterByBranch"),
+                t("cohortColInstructor"),
+                t("date"),
+                t("bookingColTime"),
+                t("status"),
+              ]}
               rows={filteredRecentBookings.map((b) => [
                 b.student,
+                branchNameById(branches, String(b.branchId)) ?? String(b.branchId),
                 b.instructor,
                 b.date,
                 b.time,
@@ -658,10 +472,11 @@ export default function AdminDashboard() {
             />
           </DataTableToolbar>
           <AdminTableScroll>
-            <table className="w-full text-sm min-w-[40rem]">
+            <table className="w-full text-sm min-w-[48rem]">
               <thead className="bg-muted/40">
                 <tr>
                   <TableColumnHeaderWithFilter title={t("bookingColStudent")} className="px-5 py-3" />
+                  <TableColumnHeaderWithFilter title={t("filterByBranch")} className="px-5 py-3" />
                   <TableColumnHeaderWithFilter title={t("cohortColInstructor")} className="px-5 py-3" />
                   <TableColumnHeaderWithFilter title={t("date")} className="px-5 py-3" />
                   <TableColumnHeaderWithFilter title={t("bookingColTime")} className="px-5 py-3" />
@@ -710,6 +525,12 @@ export default function AdminDashboard() {
                   >
                     <tr className="hover:bg-muted/30 transition-colors">
                       <td className="px-5 py-3.5 font-medium text-foreground">{b.student}</td>
+                      <td
+                        className="px-5 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate"
+                        title={branchNameById(branches, String(b.branchId)) ?? String(b.branchId)}
+                      >
+                        {branchNameById(branches, String(b.branchId)) ?? String(b.branchId)}
+                      </td>
                       <td className="px-5 py-3.5 text-muted-foreground">{b.instructor}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{b.date}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{b.time}</td>
@@ -747,8 +568,7 @@ export default function AdminDashboard() {
               </tbody>
             </table>
           </AdminTableScroll>
-        </Card>
-      </div>
+      </Card>
     </AdminLayout>
   );
 }

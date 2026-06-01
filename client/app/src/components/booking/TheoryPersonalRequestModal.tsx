@@ -5,6 +5,7 @@ import { useLang } from "src/lib/i18n";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import type { Instructor } from "src/data/instructors";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
 
 type Props = {
   open: boolean;
@@ -38,6 +39,10 @@ export function TheoryPersonalRequestModal({
   };
 
   const handleSubmit = async () => {
+    if (!STUDENT_SELF_SERVICE_BOOKING_ENABLED) {
+      showToast(t("studentBookingPausedBody"), "error");
+      return;
+    }
     if (!instructor || !branchId) return;
     setSubmitting(true);
     try {

@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
+import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import BookingService from '../services/booking.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
@@ -327,6 +328,8 @@ export default class BookingController {
         const studentUserId = requireStudentUserId(req, next);
         if (studentUserId === undefined) return;
 
+        assertStudentSelfServiceBookingEnabled();
+
         if (body.bookingType === 'theory_personal') {
           return next(
             new InputValidationError(
@@ -388,6 +391,7 @@ export default class BookingController {
       }
       const studentUserId = requireStudentUserId(req, next);
       if (studentUserId === undefined) return;
+      assertStudentSelfServiceBookingEnabled();
       const row = await BookingService.createTheoryGroupFromStudentSelection({ studentUserId, cohortId });
       SuccessHandlerUtil.handleAdd(res, next, row);
     } catch (e) {

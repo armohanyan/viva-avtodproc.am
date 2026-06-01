@@ -537,8 +537,13 @@ export default function AdminBookings() {
     return m?.id ?? practicalInstructorsForCalendar[0]?.id ?? "";
   }, [addPackagePracticalSlotPick, draft?.instructorName, instructors, practicalInstructorsForCalendar]);
 
+  const needsTheoryCohortsFetch =
+    (addOpen && addFlowKind === "theory_group") || editBooking?.type === "theory";
+  const needsThematicTitlesFetch =
+    (addOpen && addFlowKind === "theory_personal") || editBooking?.type === "theory_personal";
+
   useEffect(() => {
-    if (!addOpen && !editBooking) return;
+    if (!needsTheoryCohortsFetch) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -582,7 +587,7 @@ export default function AdminBookings() {
     return () => {
       cancelled = true;
     };
-  }, [addOpen, editBooking, branchFilterRevision]);
+  }, [needsTheoryCohortsFetch, branchFilterRevision]);
 
   useEffect(() => {
     if (!addOpen || addFlowKind !== "theory_group" || !theoryCohortId || !draft?.branchId) return;
@@ -652,7 +657,7 @@ export default function AdminBookings() {
   ]);
 
   useEffect(() => {
-    if (!addOpen && !editBooking) return;
+    if (!needsThematicTitlesFetch) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -670,7 +675,7 @@ export default function AdminBookings() {
     return () => {
       cancelled = true;
     };
-  }, [addOpen, editBooking]);
+  }, [needsThematicTitlesFetch]);
 
   useEffect(() => {
     if (!addOpen) return;

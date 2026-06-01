@@ -269,6 +269,8 @@ export type BookingAdminDto = {
   slotEntries?: { dateIso: string; time: string }[];
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
+  /** Set when the booking is fully paid (admin or online). */
+  paidAtIso?: string | null;
   paymentNotes?: string | null;
   paymentReminderDateIso?: string | null;
   paymentRequiredAt?: string | null;
@@ -1160,6 +1162,7 @@ export default class BookingService {
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
       paymentStatus: pay.paymentStatus,
       paidAmountAmd: pay.paidAmountAmd,
+      paidAtIso: b.paidAt ? new Date(b.paidAt).toISOString() : null,
       paymentNotes: b.paymentNotes?.trim() ? b.paymentNotes.trim() : null,
       paymentReminderDateIso: paymentReminderDateIsoForApi(b.paymentReminderAt ?? null),
       paymentRequiredAt: b.paymentRequiredAt ? String(b.paymentRequiredAt).slice(0, 10) : null,
@@ -1297,6 +1300,7 @@ export default class BookingService {
     fromIso: string,
     toIso: string,
     excludeBookingId?: number,
+    branchId?: number,
   ): Promise<{ dateIso: string; time: string; studentUserId: number }[]> {
     const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
     if (!exists) return [];
@@ -1304,6 +1308,9 @@ export default class BookingService {
     const bookingWhere: Record<string, unknown> = { status: { [Op.in]: [...SLOT_RESERVING_STATUSES] } };
     if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
       bookingWhere.id = { [Op.ne]: excludeBookingId };
+    }
+    if (branchId !== undefined) {
+      bookingWhere.branchId = branchId;
     }
 
     const slotRows = await BookingSlot.findAll({
@@ -1342,6 +1349,9 @@ export default class BookingService {
     };
     if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
       legacyWhere.id = { [Op.ne]: excludeBookingId };
+    }
+    if (branchId !== undefined) {
+      legacyWhere.branchId = branchId;
     }
 
     const legacyBookings = await Booking.findAll({

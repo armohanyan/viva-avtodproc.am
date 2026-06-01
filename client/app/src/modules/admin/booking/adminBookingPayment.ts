@@ -175,6 +175,20 @@ export type BookingListPaymentRow = {
   status: AdminBookingPaymentStatus | "pending" | "failed" | "na";
 };
 
+/** Cash-like income from booking payment fields (paid or partial only). */
+export function recognizedBookingIncomeAmd(booking: {
+  status?: string;
+  paymentStatus?: string | null;
+  paidAmountAmd?: number | null;
+  totalPriceAmd?: number | null;
+}): number {
+  const lifecycle = String(booking.status ?? "").trim().toLowerCase();
+  if (lifecycle === "cancelled" || lifecycle === "refunded") return 0;
+  const row = bookingListPaymentRow(booking);
+  if (row.status === "paid" || row.status === "partial") return row.paidAmd;
+  return 0;
+}
+
 export function bookingListPaymentRow(booking: {
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;

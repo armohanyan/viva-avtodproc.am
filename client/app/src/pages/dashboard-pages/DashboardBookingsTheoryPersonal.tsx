@@ -11,6 +11,8 @@ import { useInstructors } from "src/modules/instructors/useInstructors";
 import { defaultExamQuestionMeta, loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 import { useLang } from "src/lib/i18n";
 import type { Instructor } from "src/data/instructors";
+import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
+import { StudentBookingPausedCallout } from "src/components/booking/StudentBookingPausedCallout";
 
 export function DashboardBookingsTheoryPersonalTab() {
   const { t } = useLang();
@@ -76,6 +78,7 @@ export function DashboardBookingsTheoryPersonalTab() {
 
   return (
     <>
+      {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
       <StudentTheoryPersonalRequestsPanel />
       <Reveal delay={0.06}>
         <h2 className="text-base font-semibold text-foreground mb-3">{t("bookingsTheoryPersonalNewRequestTitle")}</h2>
@@ -139,7 +142,7 @@ export function DashboardBookingsTheoryPersonalTab() {
                 requestMode
                 compact
                 onRequest={() => openRequestFor(ins)}
-                requestDisabled={!selectedBranchId}
+                requestDisabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED || !selectedBranchId}
               />
             </div>
           ))}
