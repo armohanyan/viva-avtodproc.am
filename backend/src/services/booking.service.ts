@@ -87,6 +87,50 @@ async function resolveTheoryCohortInstructorUser(cohort: TheoryCohort): Promise<
   return instructor;
 }
 
+/** Resolve instructor account id from a display name; tolerates trim/space differences vs stored User.name. */
+async function resolveInstructorUserIdByName(
+  instructorName: string | undefined,
+  existingInstructorUserId?: number | null,
+): Promise<number | null> {
+  const raw = String(instructorName ?? '');
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    if (existingInstructorUserId != null && Number.isFinite(existingInstructorUserId) && existingInstructorUserId > 0) {
+      return existingInstructorUserId;
+    }
+    return null;
+  }
+
+  if (existingInstructorUserId != null && Number.isFinite(existingInstructorUserId) && existingInstructorUserId > 0) {
+    const existing = await User.findOne({
+      where: { id: existingInstructorUserId, accountType: 'instructor' },
+      attributes: ['id', 'name'],
+    });
+    if (existing?.name != null) {
+      const existingTrimmed = existing.name.trim();
+      if (raw === existing.name || trimmed === existingTrimmed) {
+        return existing.id;
+      }
+    }
+  }
+
+  if (raw) {
+    const exact = await User.findOne({
+      where: { name: raw, accountType: 'instructor' },
+      attributes: ['id'],
+    });
+    if (exact) return exact.id;
+  }
+
+  const instructors = await User.findAll({
+    where: { accountType: 'instructor' },
+    attributes: ['id', 'name'],
+  });
+  const needle = trimmed.toLowerCase();
+  const match = instructors.find((i) => i.name?.trim().toLowerCase() === needle);
+  return match?.id ?? null;
+}
+
 function meetLinkOrNull(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
@@ -2514,26 +2558,20 @@ export default class BookingService {
         }
       }
     } else {
-      let instructorName = patch.instructorName?.trim();
-      if (!instructorName) {
-        if (row.instructorUserId != null) {
-          const prev = await User.findByPk(row.instructorUserId, { attributes: ['name'] });
-          instructorName = prev?.name?.trim() ?? '';
-        } else {
-          instructorName = '';
+      const resolvedInstructorUserId = await resolveInstructorUserIdByName(
+        patch.instructorName,
+        row.instructorUserId,
+      );
+      if (resolvedInstructorUserId == null) {
+        if (!patch.instructorName?.trim() && row.instructorUserId == null) {
+          throw new InputValidationError(
+            'instructorName is required for practical or personal theory bookings.',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
         }
+        return null;
       }
-      if (!instructorName) {
-        throw new InputValidationError(
-          'instructorName is required for practical or personal theory bookings.',
-          HttpStatusCodesUtil.BAD_REQUEST,
-        );
-      }
-      const instructor = await User.findOne({
-        where: { name: instructorName, accountType: 'instructor' },
-      });
-      if (!instructor) return null;
-      instructorUserId = instructor.id;
+      instructorUserId = resolvedInstructorUserId;
     }
 
     const sorted = await normalizeAndSortSlotsForLesson(
@@ -2649,11 +2687,12 @@ export default class BookingService {
 
     let instructorUserId: number;
     if (patch.instructorName !== undefined) {
-      const instructor = await User.findOne({
-        where: { name: patch.instructorName.trim(), accountType: 'instructor' },
-      });
-      if (!instructor) return null;
-      instructorUserId = instructor.id;
+      const resolvedInstructorUserId = await resolveInstructorUserIdByName(
+        patch.instructorName,
+        row.instructorUserId,
+      );
+      if (resolvedInstructorUserId == null) return null;
+      instructorUserId = resolvedInstructorUserId;
     } else if (row.instructorUserId != null) {
       instructorUserId = row.instructorUserId;
     } else {
@@ -2764,11 +2803,7 @@ export default class BookingService {
     if (effectiveType === 'practical' && (patch.slotEntries?.length ?? 0) > 0) {
       let instructorUserId = row.instructorUserId;
       if (patch.instructorName !== undefined) {
-        const inst = await User.findOne({
-          where: { name: patch.instructorName.trim(), accountType: 'instructor' },
-          attributes: ['id'],
-        });
-        instructorUserId = inst?.id ?? null;
+        instructorUserId = await resolveInstructorUserIdByName(patch.instructorName, row.instructorUserId);
       }
       const branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
       if (instructorUserId != null && Number.isFinite(instructorUserId)) {
@@ -2811,11 +2846,12 @@ export default class BookingService {
 
     let instructorUserId = row.instructorUserId;
     if (patch.instructorName !== undefined) {
-      const instructor = await User.findOne({
-        where: { name: patch.instructorName, accountType: 'instructor' },
-      });
-      if (!instructor) return null;
-      instructorUserId = instructor.id;
+      const resolvedInstructorUserId = await resolveInstructorUserIdByName(
+        patch.instructorName,
+        row.instructorUserId,
+      );
+      if (resolvedInstructorUserId == null) return null;
+      instructorUserId = resolvedInstructorUserId;
     }
 
     const touchesSchedule =

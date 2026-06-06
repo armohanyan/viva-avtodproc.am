@@ -75,7 +75,12 @@ export default class BookingSlotValidationService {
         : null;
 
     for (const slot of input.slots) {
-      if (isSlotDateBeforeToday(dateIso) || isSlotStartInPast(dateIso, slot)) {
+      const editingExistingBooking =
+        input.excludeBookingId != null && Number.isFinite(input.excludeBookingId) && input.excludeBookingId > 0;
+      if (
+        !editingExistingBooking &&
+        (isSlotDateBeforeToday(dateIso) || isSlotStartInPast(dateIso, slot))
+      ) {
         throw new InputValidationError(messageForReason('past'), HttpStatusCodesUtil.BAD_REQUEST);
       }
 

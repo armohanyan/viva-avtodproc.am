@@ -80,6 +80,11 @@ function pathWithoutQuery(suffix: string): string {
 	return q >= 0 ? path.slice(0, q) : path;
 }
 
+/** Single booking mutations/reads should not receive the list-page branch filter query. */
+function isSingleBookingResourcePath(path: string): boolean {
+	return /^\/bookings\/\d+(?:\/|$)/.test(path);
+}
+
 function queryHasScopedUserId(suffix: string): boolean {
 	const q = suffix.indexOf("?");
 	if (q < 0) return false;
@@ -92,6 +97,7 @@ export function shouldAppendAdminBranchFilter(suffix: string): boolean {
 	if (queryHasScopedUserId(suffix)) return false;
 	const path = pathWithoutQuery(suffix);
 	if (path.includes("branchId=")) return false;
+	if (isSingleBookingResourcePath(path)) return false;
 	return BRANCH_FILTER_PATH_PREFIXES.some(
 		(prefix) => path === prefix || path.startsWith(`${prefix}/`),
 	);
