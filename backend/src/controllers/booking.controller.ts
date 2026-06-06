@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
+import { parseBody, parsePaginationQuery, paginationRequested, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import BookingService from '../services/booking.service';
 import { SuccessHandlerUtil } from '../utils';
@@ -270,8 +270,63 @@ export default class BookingController {
       }
 
       const branchId = await resolveBranchIdFilter(req);
+      if (paginationRequested(req)) {
+        const { page, pageSize } = parsePaginationQuery(req);
+        const tabRaw = String(req.query.tab ?? '').trim().toLowerCase();
+        const tab = tabRaw === 'debts' ? 'debts' : 'all';
+        const search = String(req.query.search ?? '').trim();
+        const status = String(req.query.status ?? '').trim();
+        const lessonType = String(req.query.lessonType ?? '').trim();
+        const payment = String(req.query.payment ?? '').trim();
+        const filterStudentRaw = req.query.filterStudentUserId;
+        const filterStudentUserId =
+          typeof filterStudentRaw === 'string'
+            ? Number(filterStudentRaw)
+            : Array.isArray(filterStudentRaw) && typeof filterStudentRaw[0] === 'string'
+              ? Number(filterStudentRaw[0])
+              : undefined;
+        const filterInstructorRaw = req.query.filterInstructorUserId;
+        const filterInstructorUserId =
+          typeof filterInstructorRaw === 'string'
+            ? Number(filterInstructorRaw)
+            : Array.isArray(filterInstructorRaw) && typeof filterInstructorRaw[0] === 'string'
+              ? Number(filterInstructorRaw[0])
+              : undefined;
+        const data = await BookingService.listAdminPaginated({
+          page,
+          pageSize,
+          branchId,
+          tab,
+          ...(search ? { search } : {}),
+          ...(status && status !== 'all' ? { status } : {}),
+          ...(lessonType && lessonType !== 'all' ? { lessonType } : {}),
+          ...(payment && payment !== 'all' ? { payment } : {}),
+          ...(filterStudentUserId != null && Number.isFinite(filterStudentUserId) && filterStudentUserId > 0
+            ? { studentUserId: filterStudentUserId }
+            : {}),
+          ...(filterInstructorUserId != null && Number.isFinite(filterInstructorUserId) && filterInstructorUserId > 0
+            ? { instructorUserId: filterInstructorUserId }
+            : {}),
+        });
+        SuccessHandlerUtil.handleGet(res, next, data);
+        return;
+      }
       const data = await BookingService.listAdmin(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async getByIdForAdmin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const row = await BookingService.getAdminById(id);
+      if (!row) {
+        return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      SuccessHandlerUtil.handleGet(res, next, row);
     } catch (e) {
       next(e);
     }

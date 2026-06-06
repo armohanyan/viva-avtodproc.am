@@ -1348,6 +1348,53 @@ async function ensureBookingsMeetLinkColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `meet_link` VARCHAR(512) NULL DEFAULT NULL');
 }
 
+/** Indexes for admin bookings list filters and pagination. */
+async function ensureBookingsAdminListIndexes(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const specs: Array<{ name: string; sql: string }> = [
+    {
+      name: 'bookings_branch_created_id_idx',
+      sql: 'CREATE INDEX `bookings_branch_created_id_idx` ON `bookings` (`branch_id`, `created_at` DESC, `id` DESC)',
+    },
+    {
+      name: 'bookings_status_idx',
+      sql: 'CREATE INDEX `bookings_status_idx` ON `bookings` (`status`)',
+    },
+    {
+      name: 'bookings_lesson_type_idx',
+      sql: 'CREATE INDEX `bookings_lesson_type_idx` ON `bookings` (`lesson_type`)',
+    },
+    {
+      name: 'bookings_student_user_id_idx',
+      sql: 'CREATE INDEX `bookings_student_user_id_idx` ON `bookings` (`student_user_id`)',
+    },
+    {
+      name: 'bookings_instructor_user_id_idx',
+      sql: 'CREATE INDEX `bookings_instructor_user_id_idx` ON `bookings` (`instructor_user_id`)',
+    },
+  ];
+  for (const spec of specs) {
+    const existing = await sequelize.query<{ INDEX_NAME: string }>(
+      `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings' AND INDEX_NAME = :name
+       LIMIT 1`,
+      { type: QueryTypes.SELECT, replacements: { name: spec.name } },
+    );
+    if (existing.length > 0) continue;
+    await sequelize.query(spec.sql);
+  }
+}
+
 /**
  * Lets staff delete an instructor user while keeping booking rows: null `instructor_user_id` and
  * `ON DELETE SET NULL` on the FK to `users`.
@@ -2143,6 +2190,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsLessonCompletionColumns();
   await ensureBookingsPrepaidMetaColumn();
   await ensureBookingsMeetLinkColumn();
+  await ensureBookingsAdminListIndexes();
   await ensureNotificationsTable();
   await ensureNotificationsTypeEnumValues();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();

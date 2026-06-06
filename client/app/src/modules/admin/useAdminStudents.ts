@@ -19,16 +19,23 @@ export type UseAdminStudentsMiniOptions = {
 	 * `"active"` limits pickers to active (ակտիվ) students; `"all"` returns every row from the API.
 	 */
 	enrollmentStatus?: "active" | "all";
+	/** When false, skips the network request until enabled (e.g. booking modal closed). */
+	enabled?: boolean;
 };
 
 export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) {
 	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
-	const { enrollmentStatus = "active" } = options;
+	const { enrollmentStatus = "active", enabled = true } = options;
 	const [students, setStudents] = useState<AdminStudentMini[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 
 	const refresh = useCallback(async () => {
+		if (!enabled) {
+			setStudents([]);
+			setLoading(false);
+			return;
+		}
 		setLoading(true);
 		setError(null);
 		try {
@@ -44,7 +51,7 @@ export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) 
 		} finally {
 			setLoading(false);
 		}
-	}, [enrollmentStatus]);
+	}, [enrollmentStatus, enabled]);
 
 	useEffect(() => {
 		void refresh();

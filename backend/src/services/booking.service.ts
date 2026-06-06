@@ -1,5 +1,5 @@
 import { setImmediate } from 'node:timers';
-import { Op, Transaction, UniqueConstraintError, literal } from 'sequelize';
+import { Op, Transaction, UniqueConstraintError, literal, type WhereOptions } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import {
   Booking,
@@ -320,6 +320,43 @@ export type BookingAdminDto = {
   paymentRequiredAt?: string | null;
   cancellationReason?: string | null;
   meetLink?: string | null;
+};
+
+export type AdminBookingFinanceLinkDto = {
+  id: number;
+  source: 'manual' | 'system';
+  method: string;
+  createdAt: string;
+  grossAmd: number;
+};
+
+export type BookingAdminListItemDto = BookingAdminDto & {
+  studentName: string;
+  studentEmail: string;
+  studentPhone: string;
+  manualFinanceTx: AdminBookingFinanceLinkDto | null;
+  systemFinanceTx: AdminBookingFinanceLinkDto | null;
+};
+
+export type AdminBookingListQuery = {
+  page: number;
+  pageSize: number;
+  branchId?: number;
+  tab?: 'all' | 'debts';
+  search?: string;
+  status?: string;
+  lessonType?: string;
+  payment?: string;
+  studentUserId?: number;
+  instructorUserId?: number;
+};
+
+export type AdminBookingListResult = {
+  items: BookingAdminListItemDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+  debtsCount: number;
 };
 
 /** Canonical booking row statuses (DB + API). */
@@ -1279,6 +1316,247 @@ export default class BookingService {
       }
       return dto;
     });
+  }
+
+  private static adminListStudentInclude() {
+    return {
+      model: User,
+      as: 'student' as const,
+      required: true,
+      attributes: ['id', 'name', 'email', 'phone'],
+    };
+  }
+
+  private static adminListInstructorInclude() {
+    return {
+      model: User,
+      as: 'instructor' as const,
+      required: false,
+      attributes: ['id', 'name'],
+    };
+  }
+
+  private static debtsBookingWhere(): WhereOptions {
+    return {
+      [Op.and]: [
+        { totalPriceAmd: { [Op.gt]: 0 } },
+        { status: { [Op.notIn]: ['cancelled', 'refunded'] } },
+        { prepaidMeta: null },
+        literal(`(
+          LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) IN ('unpaid', 'partial')
+          OR COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) < COALESCE(\`Booking\`.\`total_price_amd\`, 0)
+        )`),
+      ],
+    };
+  }
+
+  private static buildAdminListWhere(query: AdminBookingListQuery): WhereOptions {
+    const andParts: WhereOptions[] = [];
+    if (query.branchId !== undefined) {
+      andParts.push({ branchId: query.branchId });
+    }
+    if (query.tab === 'debts') {
+      andParts.push(BookingService.debtsBookingWhere());
+    }
+    if (query.lessonType === 'practical' || query.lessonType === 'theory' || query.lessonType === 'theory_personal') {
+      andParts.push({ lessonType: query.lessonType });
+    }
+    if (query.studentUserId != null && Number.isFinite(query.studentUserId) && query.studentUserId > 0) {
+      andParts.push({ studentUserId: query.studentUserId });
+    }
+    if (query.instructorUserId != null && Number.isFinite(query.instructorUserId) && query.instructorUserId > 0) {
+      andParts.push({ instructorUserId: query.instructorUserId });
+    }
+    const status = String(query.status ?? '').trim();
+    if (status === 'pending_student_cancel') {
+      andParts.push({ cancellationRequestedAt: { [Op.ne]: null } });
+    } else if (status === 'pending') {
+      andParts.push({ status: { [Op.in]: ['pending', 'pending_payment', 'pending_prebook'] } });
+    } else if (status === 'confirmed' || status === 'cancelled' || status === 'refunded') {
+      andParts.push({ status });
+    }
+    const payment = String(query.payment ?? '').trim();
+    if (payment === 'unpaid') {
+      andParts.push(
+        literal(`(
+          \`Booking\`.\`prepaid_meta\` IS NULL
+          AND COALESCE(\`Booking\`.\`total_price_amd\`, 0) > 0
+          AND (
+            LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) = 'unpaid'
+            OR COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) <= 0
+          )
+        )`),
+      );
+    } else if (payment === 'partial') {
+      andParts.push(
+        literal(`(
+          \`Booking\`.\`prepaid_meta\` IS NULL
+          AND COALESCE(\`Booking\`.\`total_price_amd\`, 0) > 0
+          AND (
+            LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) = 'partial'
+            OR (
+              COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) > 0
+              AND COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) < COALESCE(\`Booking\`.\`total_price_amd\`, 0)
+            )
+          )
+        )`),
+      );
+    } else if (payment === 'paid') {
+      andParts.push(
+        literal(`(
+          \`Booking\`.\`prepaid_meta\` IS NOT NULL
+          OR LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) = 'paid'
+          OR COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) >= COALESCE(\`Booking\`.\`total_price_amd\`, 0)
+        )`),
+      );
+    } else if (payment === 'outstanding') {
+      andParts.push(
+        literal(`(
+          \`Booking\`.\`prepaid_meta\` IS NULL
+          AND COALESCE(\`Booking\`.\`total_price_amd\`, 0) > 0
+          AND COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) < COALESCE(\`Booking\`.\`total_price_amd\`, 0)
+        )`),
+      );
+    }
+    const search = String(query.search ?? '').trim();
+    if (search) {
+      const idNum = Number(search);
+      const orParts: WhereOptions[] = [
+        { '$student.name$': { [Op.like]: `%${search}%` } },
+        { '$instructor.name$': { [Op.like]: `%${search}%` } },
+        { time: { [Op.like]: `%${search}%` } },
+        literal(`DATE_FORMAT(\`Booking\`.\`date_iso\`, '%Y-%m-%d') LIKE ${sequelize.escape(`%${search}%`)}`),
+      ];
+      if (Number.isFinite(idNum) && idNum > 0) {
+        orParts.unshift({ id: idNum });
+      }
+      andParts.push({ [Op.or]: orParts });
+    }
+    if (andParts.length === 0) return {};
+    if (andParts.length === 1) return andParts[0]!;
+    return { [Op.and]: andParts };
+  }
+
+  private static mapFinanceLink(row: FinanceTransaction): AdminBookingFinanceLinkDto {
+    const created = (row as unknown as { createdAt?: Date | string }).createdAt;
+    const createdAt =
+      created instanceof Date ? created.toISOString() : typeof created === 'string' ? created : new Date().toISOString();
+    return {
+      id: row.id,
+      source: row.source,
+      method: row.method,
+      createdAt,
+      grossAmd: row.grossAmd,
+    };
+  }
+
+  private static async attachSlotsAndFinance(items: BookingAdminListItemDto[]): Promise<BookingAdminListItemDto[]> {
+    const bookingIds = items.map((b) => b.id);
+    if (bookingIds.length === 0) return items;
+    const slotByBooking = new Map<number, { dateIso: string; time: string }[]>();
+    const [slotRows, financeRows] = await Promise.all([
+      BookingSlot.findAll({
+        where: { bookingId: { [Op.in]: bookingIds } },
+        order: [
+          ['dateIso', 'ASC'],
+          ['slotTime', 'ASC'],
+        ],
+      }),
+      FinanceTransaction.findAll({
+        where: { bookingId: { [Op.in]: bookingIds }, entryType: 'income' },
+        order: [['createdAt', 'DESC']],
+      }),
+    ]);
+    for (const s of slotRows) {
+      const list = slotByBooking.get(s.bookingId) ?? [];
+      list.push({ dateIso: dateIsoString(s.dateIso), time: s.slotTime });
+      slotByBooking.set(s.bookingId, list);
+    }
+    const manualByBooking = new Map<number, AdminBookingFinanceLinkDto>();
+    const systemByBooking = new Map<number, AdminBookingFinanceLinkDto>();
+    for (const tx of financeRows) {
+      const bid = tx.bookingId;
+      if (bid == null) continue;
+      if (tx.source === 'manual' && !manualByBooking.has(bid)) {
+        manualByBooking.set(bid, BookingService.mapFinanceLink(tx));
+      } else if (tx.source === 'system' && !systemByBooking.has(bid)) {
+        systemByBooking.set(bid, BookingService.mapFinanceLink(tx));
+      }
+    }
+    return items.map((dto) => {
+      const se = slotByBooking.get(dto.id);
+      return {
+        ...dto,
+        ...(se && se.length > 0 ? { slotEntries: se } : {}),
+        manualFinanceTx: manualByBooking.get(dto.id) ?? null,
+        systemFinanceTx: systemByBooking.get(dto.id) ?? null,
+      };
+    });
+  }
+
+  private static mapRowToAdminListItemDto(b: BookingWithUsers): BookingAdminListItemDto {
+    const base = BookingService.mapRowToAdminDto(b);
+    const stu = b.student;
+    return {
+      ...base,
+      studentName: stu?.name?.trim() ?? '',
+      studentEmail: stu?.email?.trim() ?? '',
+      studentPhone: stu?.phone?.trim() ?? '',
+      manualFinanceTx: null,
+      systemFinanceTx: null,
+    };
+  }
+
+  static async countAdminDebts(branchId?: number): Promise<number> {
+    const whereParts: WhereOptions[] = [BookingService.debtsBookingWhere()];
+    if (branchId !== undefined) {
+      whereParts.push({ branchId });
+    }
+    return Booking.count({
+      where: whereParts.length === 1 ? whereParts[0]! : { [Op.and]: whereParts },
+    });
+  }
+
+  static async listAdminPaginated(query: AdminBookingListQuery): Promise<AdminBookingListResult> {
+    const page = Math.max(1, Math.floor(query.page));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(query.pageSize)));
+    const where = BookingService.buildAdminListWhere(query);
+    const [debtsCount, result] = await Promise.all([
+      BookingService.countAdminDebts(query.branchId),
+      Booking.findAndCountAll({
+        where,
+        include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
+        order: [
+          ['createdAt', 'DESC'],
+          ['id', 'DESC'],
+        ],
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+        distinct: true,
+        subQuery: false,
+      }),
+    ]);
+    const items = await BookingService.attachSlotsAndFinance(
+      result.rows.map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
+    );
+    return {
+      items,
+      page,
+      pageSize,
+      total: result.count,
+      debtsCount,
+    };
+  }
+
+  static async getAdminById(id: number): Promise<BookingAdminListItemDto | null> {
+    const row = await Booking.findByPk(id, {
+      include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
+    });
+    if (!row) return null;
+    const [item] = await BookingService.attachSlotsAndFinance([
+      BookingService.mapRowToAdminListItemDto(row as BookingWithUsers),
+    ]);
+    return item ?? null;
   }
 
   static async setLessonPassedSuccessfully(
