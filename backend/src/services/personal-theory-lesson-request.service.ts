@@ -393,6 +393,7 @@ export default class PersonalTheoryLessonRequestService {
         status: input.status,
         branchId: locked.branchId,
         slots: input.slots,
+        createdByUserId: input.adminUserId > 0 ? input.adminUserId : null,
       });
       if (!booking) {
         throw new InputValidationError('Could not create booking.', HttpStatusCodesUtil.BAD_REQUEST);

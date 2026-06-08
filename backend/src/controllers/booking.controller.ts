@@ -147,6 +147,19 @@ function readBearerToken(req: Request): string | undefined {
   return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
 }
 
+function readStaffUserIdFromToken(req: Request): number | null {
+  const token = readBearerToken(req);
+  if (!token) return null;
+  try {
+    const payload = verifyAccessToken(token);
+    if (payload.accountType !== 'admin' && payload.accountType !== 'super_admin') return null;
+    const id = Number(payload.sub);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 function requireStudentUserId(req: Request, next: NextFunction): number | undefined {
   const token = readBearerToken(req);
   if (!token) {
@@ -191,6 +204,7 @@ export default class BookingController {
         branchId: body.branchId,
         status: body.status,
         packageOrderId: body.packageOrderId,
+        createdByUserId: readStaffUserIdFromToken(req),
         practical: body.practical,
         theoryPersonal: body.theoryPersonal,
       });
@@ -278,6 +292,9 @@ export default class BookingController {
         const status = String(req.query.status ?? '').trim();
         const lessonType = String(req.query.lessonType ?? '').trim();
         const payment = String(req.query.payment ?? '').trim();
+        const createdByTypeRaw = String(req.query.createdByType ?? '').trim().toLowerCase();
+        const createdByType =
+          createdByTypeRaw === 'student' || createdByTypeRaw === 'admin' ? createdByTypeRaw : undefined;
         const filterStudentRaw = req.query.filterStudentUserId;
         const filterStudentUserId =
           typeof filterStudentRaw === 'string'
@@ -301,6 +318,7 @@ export default class BookingController {
           ...(status && status !== 'all' ? { status } : {}),
           ...(lessonType && lessonType !== 'all' ? { lessonType } : {}),
           ...(payment && payment !== 'all' ? { payment } : {}),
+          ...(createdByType ? { createdByType } : {}),
           ...(filterStudentUserId != null && Number.isFinite(filterStudentUserId) && filterStudentUserId > 0
             ? { studentUserId: filterStudentUserId }
             : {}),
@@ -364,6 +382,7 @@ export default class BookingController {
             paymentNotes: body.paymentNotes,
             paymentReminderDate: body.paymentReminderDate,
             totalPriceAmd: body.totalPriceAmd,
+            createdByUserId: readStaffUserIdFromToken(req),
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -428,6 +447,7 @@ export default class BookingController {
         paymentNotes: body.paymentNotes,
         paymentReminderDate: body.paymentReminderDate,
         totalPriceAmd: body.totalPriceAmd,
+        createdByUserId: readStaffUserIdFromToken(req),
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

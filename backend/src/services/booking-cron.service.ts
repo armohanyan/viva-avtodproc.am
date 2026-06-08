@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { Booking } from '../models';
 import NotificationService from './notification.service';
 import LoggerUtil from '../utils/logger.util';
+import AuditLogService from './audit-log.service';
 import BookingNotificationService from './booking-notification.service';
 import BookingService from './booking.service';
 import LessonCompletionService from './lesson-completion.service';
@@ -124,7 +125,7 @@ export default class BookingCronService {
       LoggerUtil.info(`Booking cron: created ${upcomingLessonRemindersCreated} upcoming-lesson reminder notification(s)`);
     }
 
-    return {
+    const result = {
       legacyNormalized,
       deletedExpiredHolds,
       remindersCreated,
@@ -135,5 +136,14 @@ export default class BookingCronService {
       bookingsMarkedMissed: lessonCompletion.bookingsMarkedMissed,
       cohortSessionsMarkedCompleted: lessonCompletion.cohortSessionsMarkedCompleted,
     };
+
+    AuditLogService.recordFireAndForget({
+      category: 'cron',
+      action: 'booking_jobs',
+      message: `Booking cron completed deletedHolds=${deletedExpiredHolds} autoCancelled=${autoCancelledUnpaidReserved}`,
+      details: result,
+    });
+
+    return result;
   }
 }

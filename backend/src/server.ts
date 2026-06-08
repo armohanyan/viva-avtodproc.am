@@ -6,6 +6,7 @@ import { connectDatabase } from './database/sequelize';
 import { syncModels } from './models';
 import { seedDatabaseIfEmpty } from './seed/seed-database';
 import BookingCronService from './services/booking-cron.service';
+import AuditLogService from './services/audit-log.service';
 import { LoggerUtil } from './utils';
 
 const { PORT } = config;
@@ -35,6 +36,12 @@ async function start() {
     LoggerUtil.info('MySQL connection established');
     await syncModels();
     LoggerUtil.info('Database models synchronized');
+    AuditLogService.recordFireAndForget({
+      category: 'system',
+      action: 'startup_sync',
+      message: 'Application started; database models synchronized',
+      details: { nodeEnv: config.NODE_ENV, port: config.PORT },
+    });
     if (config.MYSQL.AUTO_SEED) {
       await seedDatabaseIfEmpty();
       LoggerUtil.info('Seed check completed');

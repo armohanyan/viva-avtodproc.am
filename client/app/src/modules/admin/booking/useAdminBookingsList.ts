@@ -8,6 +8,7 @@ import {
   fetchAdminBookingsPage,
   normalizeAdminBookingRow,
   type AdminBookingRow,
+  type BookingCreatedByFilter,
 } from "src/modules/admin/booking/adminBookings.api";
 
 export type AdminBookingsListFilters = {
@@ -18,6 +19,7 @@ export type AdminBookingsListFilters = {
   payment: BookingPaymentFilter;
   studentUserId: string;
   instructorUserId: string;
+  createdByType: BookingCreatedByFilter;
 };
 
 type State = {
@@ -63,6 +65,7 @@ export function useAdminBookingsList(filters: AdminBookingsListFilters) {
     filters.payment,
     filters.studentUserId,
     filters.instructorUserId,
+    filters.createdByType,
     branchFilterRevision,
   ]);
 

@@ -138,6 +138,18 @@ const typeColor: Record<string, string> = {
   theory_personal: "bg-amber-100 text-amber-800",
 };
 
+const BOOKING_SOURCE_BADGE_CLASS: Record<string, string> = {
+  student: "bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-100",
+  admin: "bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-100",
+  unknown: "bg-muted text-muted-foreground",
+};
+
+function bookingSourceLabelKey(source: Booking["createdByType"]): TranslationKey {
+  if (source === "admin") return "adminBookingSourceAdmin";
+  if (source === "student") return "adminBookingSourceStudent";
+  return "adminBookingSourceUnknown";
+}
+
 function bookingLessonTypeTKey(type: Booking["type"]): TranslationKey {
   if (type === "theory") return "lessonTypeTheory";
   if (type === "theory_personal") return "lessonTypeTheoryPersonal";
@@ -260,6 +272,7 @@ export default function AdminBookings() {
   const [lessonTypeFilter, setLessonTypeFilter] = useState("all");
   const [studentFilter, setStudentFilter] = useState("");
   const [instructorFilter, setInstructorFilter] = useState("");
+  const [createdByFilter, setCreatedByFilter] = useState<"all" | "student" | "admin">("all");
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
@@ -272,8 +285,9 @@ export default function AdminBookings() {
       payment: paymentFilter,
       studentUserId: studentFilter,
       instructorUserId: instructorFilter,
+      createdByType: createdByFilter,
     }),
-    [activeBookingsTab, search, statusFilter, lessonTypeFilter, paymentFilter, studentFilter, instructorFilter],
+    [activeBookingsTab, search, statusFilter, lessonTypeFilter, paymentFilter, studentFilter, instructorFilter, createdByFilter],
   );
 
   const {
@@ -1389,12 +1403,14 @@ export default function AdminBookings() {
         showToast(t("fillRequired"), "error");
         return;
       }
-      const hasSlots =
-        editSlotPick &&
-        ((editSlotPick.slotEntries?.length ?? 0) > 0 || editSlotPick.times.length > 0);
-      if (!hasSlots) {
-        showToast(t("adminBookingSlotsNotSelected"), "error");
-        return;
+      if (bookingModalTab !== "payment") {
+        const hasSlots =
+          editSlotPick &&
+          ((editSlotPick.slotEntries?.length ?? 0) > 0 || editSlotPick.times.length > 0);
+        if (!hasSlots) {
+          showToast(t("adminBookingSlotsNotSelected"), "error");
+          return;
+        }
       }
       if (editBooking.type === "theory" && !editTheoryCohortId.trim()) {
         showToast(t("adminBookingTheoryCohortRequired"), "error");
@@ -1414,14 +1430,22 @@ export default function AdminBookings() {
     }
     setEditPaymentErrorKey(null);
 
+    const paymentOnlySave = bookingModalTab === "payment";
+
     try {
       const pick = editSlotPick!;
       const useArbitrarySlots =
         (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
         (pick.slotEntries?.length ?? 0) > 0;
       const paymentBody = adminPaymentApiPayload(editBookingPayment, editTotal);
-      const body =
-        editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
+      const body = paymentOnlySave
+        ? {
+            studentId: editBooking.studentId,
+            status: editBooking.status,
+            branchId: Number(editBooking.branchId),
+            ...paymentBody,
+          }
+        : editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
           ? {
               studentId: editBooking.studentId,
               branchId: Number(editBooking.branchId),
@@ -1779,6 +1803,7 @@ export default function AdminBookings() {
                 t("date"),
                 t("bookingColTime"),
                 t("bookingColType"),
+                t("adminBookingsColSource"),
                 t("status"),
                 t("adminBookingsColPayment"),
                 t("adminBookingPaymentTotalPrice"),
@@ -1795,6 +1820,7 @@ export default function AdminBookings() {
                   formatShortDateFromIso(b.dateIso, lang),
                   formatBookingSlotRangeLabel(b.time, b.endTime),
                   t(bookingLessonTypeTKey(b.type)),
+                  t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
                   t(toCanonicalBookingStatus(b.status) as TranslationKey),
                   t(bookingListPaymentLabelKey(pay.status)),
                   pay.totalAmd > 0 ? String(pay.totalAmd) : "",
@@ -1805,7 +1831,22 @@ export default function AdminBookings() {
             />
           </DataTableToolbar>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                {t("adminBookingsFilterSource")}
+              </label>
+              <select
+                value={createdByFilter}
+                onChange={(e) => setCreatedByFilter(e.target.value as "all" | "student" | "admin")}
+                className={filterSelectClass}
+                aria-label={t("adminBookingsFilterSource")}
+              >
+                <option value="all">{t("accountsFilterAll")}</option>
+                <option value="student">{t("adminBookingsFilterSourceStudent")}</option>
+                <option value="admin">{t("adminBookingsFilterSourceAdmin")}</option>
+              </select>
+            </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 {t("adminClassScheduleFiltersLessonType")}
@@ -1899,7 +1940,7 @@ export default function AdminBookings() {
         </div>
 
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[68rem]">
+          <table className="w-full text-sm min-w-[74rem]">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("tableColId")}</th>
@@ -1909,6 +1950,7 @@ export default function AdminBookings() {
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("date")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColTime")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColType")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminBookingsColSource")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("status")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminBookingsColPayment")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap text-right">{t("actions")}</th>
@@ -1917,7 +1959,7 @@ export default function AdminBookings() {
             <tbody className="divide-y divide-border">
               {bookingsLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
                     {t("loading")}…
                   </td>
                 </tr>
@@ -1984,6 +2026,13 @@ export default function AdminBookings() {
                     </td>
                     <td className="px-4 py-3.5">
                       <Badge className={`text-xs ${typeColor[b.type] ?? typeColor.practical}`}>{t(bookingLessonTypeTKey(b.type))}</Badge>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge
+                        className={`text-xs ${BOOKING_SOURCE_BADGE_CLASS[b.createdByType ?? "unknown"] ?? BOOKING_SOURCE_BADGE_CLASS.unknown}`}
+                      >
+                        {t(bookingSourceLabelKey(b.createdByType ?? "unknown"))}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex flex-col gap-1.5 items-start">

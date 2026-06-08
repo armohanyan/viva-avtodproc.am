@@ -10,6 +10,8 @@ const rawEnvSchema = z.object({
     return Number.isFinite(n) && n > 0 ? n : 3001;
   }, z.number().int().positive()),
   LOG_LEVEL: z.string().default('info'),
+  LOG_DIR: z.string().default('logs'),
+  AUDIT_LOG_RETENTION_DAYS: z.string().optional(),
   DISABLE_REQUEST_LOG: z.string().optional(),
   CORS_ORIGINS: z.string().optional(),
   CORS: z.string().optional(),
@@ -91,6 +93,12 @@ const config = {
   /** Safe to enable in dev/staging; never rely on it in production unless debugging. */
   EXPOSE_ERROR_DETAILS: exposeErrorDetails,
   LOG_LEVEL: raw.LOG_LEVEL,
+  LOG_DIR: raw.LOG_DIR?.trim() || 'logs',
+  /** Delete audit log files older than this many days (default 90). */
+  AUDIT_LOG_RETENTION_DAYS: (() => {
+    const n = Number(raw.AUDIT_LOG_RETENTION_DAYS);
+    return Number.isFinite(n) && n >= 7 ? Math.floor(n) : 90;
+  })(),
   PORT: raw.PORT,
   DISABLE_REQUEST_LOG: raw.DISABLE_REQUEST_LOG,
   ONE_WAY_HASH_SECRET: raw.ONE_WAY_HASH_SECRET,

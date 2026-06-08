@@ -26,6 +26,7 @@ import StudentPracticalCreditsService, { type PrepaidMeta } from './student-prac
 import LessonCompletionService from './lesson-completion.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil, LoggerUtil } from '../utils';
+import AuditLogService from './audit-log.service';
 import { todayIsoUtc } from '../utils/calendar-month.util';
 import {
   getPaymentRequiredCalendarIso,
@@ -294,9 +295,27 @@ type BookingWithUsers = Booking & { instructor: User | null; student: User };
 type BookingWithInstructor = Booking & { instructor: User | null };
 type BookingWithStudent = Booking & { student: User };
 
+export type BookingCreatedByType = 'student' | 'admin' | 'unknown';
+
+function studentCreatedByPatch(userId: number): {
+  createdByType: 'student';
+  createdByUserId: number;
+} {
+  return { createdByType: 'student', createdByUserId: userId };
+}
+
+function adminCreatedByPatch(userId?: number | null): {
+  createdByType: 'admin';
+  createdByUserId: number | null;
+} {
+  return { createdByType: 'admin', createdByUserId: userId ?? null };
+}
+
 export type BookingAdminDto = {
   id: number;
   studentId: number;
+  createdByType: BookingCreatedByType;
+  createdByUserId: number | null;
   instructorName: string;
   dateIso: string;
   time: string;
@@ -349,6 +368,7 @@ export type AdminBookingListQuery = {
   payment?: string;
   studentUserId?: number;
   instructorUserId?: number;
+  createdByType?: 'student' | 'admin';
 };
 
 export type AdminBookingListResult = {
@@ -649,6 +669,99 @@ function rawBookingStatusReservesSlot(status: unknown): boolean {
   return (SLOT_RESERVING_STATUSES as readonly string[]).includes(s as (typeof SLOT_RESERVING_STATUSES)[number]);
 }
 
+function bookingSlotRowKey(dateIso: string, slotTime: string): string {
+  return `${dateIsoString(dateIso)}\t${slotTime}`;
+}
+
+/** Diff-based slot sync — preserves row ids; only inserts/deletes/updates what changed. */
+async function syncBookingSlotRowsFromDesired(
+  bookingId: number,
+  instructorUserId: number,
+  desired: readonly { dateIso: string; slotTime: string }[],
+  transaction: Transaction,
+): Promise<void> {
+  const existing = await BookingSlot.findAll({
+    where: { bookingId },
+    transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+  const wantByKey = new Map<string, { dateIso: string; slotTime: string }>();
+  for (const d of desired) {
+    wantByKey.set(bookingSlotRowKey(d.dateIso, d.slotTime), {
+      dateIso: dateIsoString(d.dateIso),
+      slotTime: d.slotTime,
+    });
+  }
+  const haveByKey = new Map<string, BookingSlot>();
+  for (const row of existing) {
+    haveByKey.set(bookingSlotRowKey(dateIsoString(row.dateIso), row.slotTime), row);
+  }
+
+  const removed: Array<{ id: number; dateIso: string; slotTime: string; instructorUserId: number | null }> = [];
+  const added: Array<{ dateIso: string; slotTime: string }> = [];
+  const instructorUpdated: Array<{ id: number; dateIso: string; slotTime: string; from: number | null; to: number }> =
+    [];
+
+  for (const [key, row] of haveByKey) {
+    if (!wantByKey.has(key)) {
+      removed.push({
+        id: row.id,
+        dateIso: dateIsoString(row.dateIso),
+        slotTime: row.slotTime,
+        instructorUserId: row.instructorUserId ?? null,
+      });
+      await row.destroy({ transaction });
+    }
+  }
+  for (const [key, d] of wantByKey) {
+    const row = haveByKey.get(key);
+    if (row) {
+      if (row.instructorUserId !== instructorUserId) {
+        instructorUpdated.push({
+          id: row.id,
+          dateIso: d.dateIso,
+          slotTime: d.slotTime,
+          from: row.instructorUserId ?? null,
+          to: instructorUserId,
+        });
+        await row.update({ instructorUserId }, { transaction });
+      }
+      continue;
+    }
+    added.push({ dateIso: d.dateIso, slotTime: d.slotTime });
+    await BookingSlot.create(
+      {
+        bookingId,
+        instructorUserId,
+        dateIso: d.dateIso,
+        slotTime: d.slotTime,
+      },
+      { transaction },
+    );
+  }
+
+  if (removed.length > 0 || added.length > 0 || instructorUpdated.length > 0) {
+    const severity = removed.length > added.length ? 'warn' : 'info';
+    AuditLogService.recordFireAndForget({
+      category: 'booking_slot',
+      action: 'slot_sync',
+      entityType: 'booking',
+      entityId: bookingId,
+      severity,
+      message: `booking_slots sync bookingId=${bookingId} +${added.length} -${removed.length} ~${instructorUpdated.length}`,
+      details: {
+        bookingId,
+        instructorUserId,
+        removed,
+        added,
+        instructorUpdated,
+        desiredCount: desired.length,
+        previousCount: existing.length,
+      },
+    });
+  }
+}
+
 async function replaceBookingSlotRows(
   bookingId: number,
   instructorUserId: number,
@@ -656,15 +769,11 @@ async function replaceBookingSlotRows(
   sortedSlotTimes: string[],
   transaction: Transaction,
 ): Promise<void> {
-  await BookingSlot.destroy({ where: { bookingId }, transaction });
-  await BookingSlot.bulkCreate(
-    sortedSlotTimes.map((slotTime) => ({
-      bookingId,
-      instructorUserId,
-      dateIso: dateIso.slice(0, 10),
-      slotTime,
-    })),
-    { transaction },
+  await syncBookingSlotRowsFromDesired(
+    bookingId,
+    instructorUserId,
+    sortedSlotTimes.map((slotTime) => ({ dateIso: dateIso.slice(0, 10), slotTime })),
+    transaction,
   );
 }
 
@@ -732,17 +841,69 @@ async function replaceBookingSlotRowsFromEntries(
   entries: readonly AdminSlotEntry[],
   transaction: Transaction,
 ): Promise<void> {
-  await BookingSlot.destroy({ where: { bookingId }, transaction });
-  if (entries.length === 0) return;
-  await BookingSlot.bulkCreate(
-    entries.map((e) => ({
-      bookingId,
-      instructorUserId,
-      dateIso: e.dateIso.slice(0, 10),
-      slotTime: e.time,
-    })),
-    { transaction },
+  await syncBookingSlotRowsFromDesired(
+    bookingId,
+    instructorUserId,
+    entries.map((e) => ({ dateIso: e.dateIso.slice(0, 10), slotTime: e.time })),
+    transaction,
   );
+}
+
+/** True when the patch changes calendar slots / instructor / lesson time — not payment or metadata alone. */
+function adminPatchTouchesSchedule(
+  patch: Partial<{
+    instructorName?: string;
+    dateIso?: string;
+    time?: string;
+    type?: string;
+    slots?: readonly string[];
+    theoryCohortId?: number;
+    slotEntries?: readonly { dateIso: string; time: string }[];
+    meetLink?: string | null;
+  }>,
+): boolean {
+  if (
+    patch.dateIso !== undefined ||
+    patch.time !== undefined ||
+    patch.instructorName !== undefined ||
+    patch.theoryCohortId !== undefined ||
+    patch.type !== undefined ||
+    patch.meetLink !== undefined
+  ) {
+    return true;
+  }
+  const slotList = patch.slots?.filter((s) => typeof s === 'string' && s.trim().length > 0) ?? [];
+  if (slotList.length > 0) return true;
+  if ((patch.slotEntries?.length ?? 0) > 0) return true;
+  return false;
+}
+
+async function auditBookingSlotsCleared(
+  bookingId: number,
+  action: string,
+  reason: string,
+  transaction: Transaction,
+): Promise<void> {
+  const slots = await BookingSlot.findAll({ where: { bookingId }, transaction });
+  if (slots.length === 0) return;
+  AuditLogService.recordFireAndForget({
+    category: 'booking_slot',
+    action,
+    entityType: 'booking',
+    entityId: bookingId,
+    severity: 'warn',
+    message: `${reason} bookingId=${bookingId} clearing ${slots.length} slot(s)`,
+    details: {
+      bookingId,
+      reason,
+      slots: slots.map((s) => ({
+        id: s.id,
+        dateIso: dateIsoString(s.dateIso),
+        slotTime: s.slotTime,
+        instructorUserId: s.instructorUserId ?? null,
+      })),
+    },
+  });
 }
 
 function coercePrepaidMetaFromRow(raw: unknown): PrepaidMeta | null {
@@ -994,6 +1155,12 @@ async function finalizePracticalCancellationInTx(opts: {
     },
     { transaction },
   );
+  await auditBookingSlotsCleared(
+    row.id,
+    'slots_cleared_cancel',
+    recordAutoCancelledAt ? 'Auto-cancel unpaid booking' : 'Booking cancelled',
+    transaction,
+  );
   await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
 
   let refundIssued = false;
@@ -1186,6 +1353,7 @@ export default class BookingService {
             prepaidMeta,
             paymentStatus: coveredByPrepaidCredits ? 'paid' : 'unpaid',
             paymentRequiredAt: null,
+            ...studentCreatedByPatch(input.studentUserId),
           },
           { transaction },
         );
@@ -1228,9 +1396,12 @@ export default class BookingService {
     const inst = row.instructor;
     const stu = row.student;
     const pay = resolveBookingPayment(b);
+    const createdByType = (b.createdByType ?? 'unknown') as BookingCreatedByType;
     return {
       id: b.id,
       studentId: stu.id,
+      createdByType,
+      createdByUserId: b.createdByUserId ?? null,
       instructorName: inst?.name ?? '',
       dateIso: dateIsoString(b.dateIso),
       time: b.time,
@@ -1366,6 +1537,10 @@ export default class BookingService {
     }
     if (query.instructorUserId != null && Number.isFinite(query.instructorUserId) && query.instructorUserId > 0) {
       andParts.push({ instructorUserId: query.instructorUserId });
+    }
+    const createdByType = String(query.createdByType ?? '').trim();
+    if (createdByType === 'student' || createdByType === 'admin') {
+      andParts.push({ createdByType });
     }
     const status = String(query.status ?? '').trim();
     if (status === 'pending_student_cancel') {
@@ -1888,6 +2063,7 @@ export default class BookingService {
                 prepaidMeta: meta as unknown as Record<string, unknown>,
                 paymentStatus: 'paid',
                 paymentRequiredAt: null,
+                ...studentCreatedByPatch(input.studentUserId),
               },
               { transaction },
             );
@@ -1940,6 +2116,7 @@ export default class BookingService {
               prepaidMeta: null,
               paymentStatus: 'unpaid',
               paymentRequiredAt: reserveUnpaid ? paymentReqCal : null,
+              ...studentCreatedByPatch(input.studentUserId),
             },
             { transaction },
           );
@@ -2132,6 +2309,7 @@ export default class BookingService {
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
     totalPriceAmd?: number;
+    createdByUserId?: number | null;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -2216,6 +2394,7 @@ export default class BookingService {
             paymentNotes: paymentExtras.paymentNotes,
             paymentReminderAt: paymentExtras.paymentReminderAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
+            ...adminCreatedByPatch(input.createdByUserId),
           },
           { transaction },
         );
@@ -2257,6 +2436,7 @@ export default class BookingService {
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
     totalPriceAmd?: number;
+    createdByUserId?: number | null;
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
     if (input.type === 'practical') {
@@ -2297,6 +2477,7 @@ export default class BookingService {
         paymentNotes: input.paymentNotes,
         paymentReminderDate: input.paymentReminderDate,
         totalPriceAmd: input.totalPriceAmd,
+        createdByUserId: input.createdByUserId,
       });
     }
 
@@ -2327,6 +2508,7 @@ export default class BookingService {
         paymentNotes: input.paymentNotes,
         paymentReminderDate: input.paymentReminderDate,
         totalPriceAmd: input.totalPriceAmd,
+        createdByUserId: input.createdByUserId,
       });
     }
 
@@ -2387,6 +2569,7 @@ export default class BookingService {
             paymentNotes: paymentExtrasSingle.paymentNotes,
             paymentReminderAt: paymentExtrasSingle.paymentReminderAt,
             ...meetLinkPatchForLessonType(input.type, input.meetLink),
+            ...adminCreatedByPatch(input.createdByUserId),
           },
           { transaction },
         );
@@ -2426,6 +2609,7 @@ export default class BookingService {
     branchId: number;
     status: string;
     packageOrderId?: number;
+    createdByUserId?: number | null;
     practical?: {
       instructorName: string;
       instructorUserId?: number;
@@ -2555,6 +2739,7 @@ export default class BookingService {
               holdExpiresAt: null,
               prepaidMeta,
               paymentStatus: 'paid',
+              ...adminCreatedByPatch(input.createdByUserId),
             },
             { transaction },
           );
@@ -2609,6 +2794,7 @@ export default class BookingService {
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
     totalPriceAmd?: number;
+    createdByUserId?: number | null;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
 
@@ -2749,6 +2935,7 @@ export default class BookingService {
             paymentNotes: paymentExtrasMulti.paymentNotes,
             paymentReminderAt: paymentExtrasMulti.paymentReminderAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
+            ...adminCreatedByPatch(input.createdByUserId),
           },
           { transaction },
         );
@@ -3053,6 +3240,73 @@ export default class BookingService {
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
 
+  /** Admin PATCH without schedule/slot fields — payment, status, student, etc. Does not touch slot rows unless status frees the slot. */
+  private static async updateAdminWithoutScheduleChange(
+    id: number,
+    row: Booking,
+    patch: Partial<{
+      studentId: number;
+      status: string;
+      branchId: number;
+      adminPaymentStatus?: AdminBookingPaymentStatus;
+      paidAmountAmd?: number;
+      paymentNotes?: string | null;
+      paymentReminderDate?: string | null;
+    }>,
+  ): Promise<BookingAdminDto | null> {
+    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
+    const payUpdate = mergeAdminPaymentRowPatch(row, patch, row.totalPriceAmd ?? null);
+
+    AuditLogService.recordFireAndForget({
+      category: 'booking',
+      action: 'admin_update_payment',
+      entityType: 'booking',
+      entityId: id,
+      message: `Admin payment/metadata update bookingId=${id}`,
+      details: {
+        patch: {
+          studentId: patch.studentId,
+          status: patch.status,
+          branchId: patch.branchId,
+          adminPaymentStatus: patch.adminPaymentStatus,
+          paidAmountAmd: patch.paidAmountAmd,
+          paymentNotes: patch.paymentNotes,
+          paymentReminderDate: patch.paymentReminderDate,
+        },
+        previousStatus: row.status,
+        previousPaymentStatus: row.paymentStatus,
+      },
+    });
+
+    await sequelize.transaction(async (transaction) => {
+      await row.update(
+        {
+          ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
+          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
+          ...payUpdate,
+        },
+        { transaction },
+      );
+      if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
+        await auditBookingSlotsCleared(row.id, 'slots_cleared_status', 'Status no longer reserves slot', transaction);
+        await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+      }
+      await recordRefundLedgerWhenAdminMarksRefundedInTx({
+        bookingId: id,
+        prevStatusNorm: prevBookingStatusNorm,
+        nextStatusRaw: patch.status,
+        transaction,
+      });
+    });
+
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+
+    return (await this.listAdmin()).find((x) => x.id === id) ?? null;
+  }
+
   static async updateAdmin(
     id: number,
     patch: Partial<{
@@ -3075,6 +3329,24 @@ export default class BookingService {
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
     if (!row) return null;
+
+    if (!adminPatchTouchesSchedule(patch)) {
+      return BookingService.updateAdminWithoutScheduleChange(id, row, patch);
+    }
+
+    AuditLogService.recordFireAndForget({
+      category: 'booking',
+      action: 'admin_update_schedule',
+      entityType: 'booking',
+      entityId: id,
+      message: `Admin schedule update bookingId=${id}`,
+      details: {
+        patchKeys: Object.keys(patch),
+        slotCount: patch.slots?.length ?? 0,
+        slotEntryCount: patch.slotEntries?.length ?? 0,
+        lessonType: row.lessonType,
+      },
+    });
 
     const effectiveType = patch.type ?? row.lessonType;
     let allowedPracticalTimes: string[] | undefined;
@@ -3646,11 +3918,29 @@ export default class BookingService {
           refundIfPaid: false,
         });
       } else {
+        await auditBookingSlotsCleared(id, 'slots_cleared_delete', 'Admin hard-delete booking', transaction);
         await BookingSlot.destroy({ where: { bookingId: id }, transaction });
       }
 
       await FinanceTransaction.destroy({ where: { bookingId: id }, transaction });
       const n = await Booking.destroy({ where: { id }, transaction });
+      if (n > 0) {
+        AuditLogService.recordFireAndForget({
+          category: 'booking',
+          action: 'booking_delete',
+          entityType: 'booking',
+          entityId: id,
+          severity: 'warn',
+          message: `Admin deleted bookingId=${id}`,
+          details: {
+            studentUserId: row.studentUserId,
+            lessonType: row.lessonType,
+            status: row.status,
+            dateIso: dateIsoString(row.dateIso),
+            time: row.time,
+          },
+        });
+      }
       return n > 0;
     });
   }

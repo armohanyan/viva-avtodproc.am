@@ -11,9 +11,15 @@ export type AdminBookingFinanceLink = {
   grossAmd: number;
 };
 
+export type BookingCreatedByType = "student" | "admin" | "unknown";
+
+export type BookingCreatedByFilter = "all" | "student" | "admin";
+
 export type AdminBookingListItem = {
   id: number;
   studentId: number;
+  createdByType: BookingCreatedByType;
+  createdByUserId?: number | null;
   studentName: string;
   studentEmail: string;
   studentPhone: string;
@@ -48,6 +54,7 @@ export type AdminBookingListFilters = {
   payment: BookingPaymentFilter;
   studentUserId: string;
   instructorUserId: string;
+  createdByType: BookingCreatedByFilter;
 };
 
 export const ADMIN_BOOKINGS_PAGE_SIZE = 25;
@@ -71,6 +78,9 @@ export function buildAdminBookingsQuery(
   }
   if (filters.studentUserId.trim()) qs.set("filterStudentUserId", filters.studentUserId.trim());
   if (filters.instructorUserId.trim()) qs.set("filterInstructorUserId", filters.instructorUserId.trim());
+  if (filters.createdByType && filters.createdByType !== "all") {
+    qs.set("createdByType", filters.createdByType);
+  }
   return qs.toString();
 }
 
@@ -93,6 +103,7 @@ export function normalizeAdminBookingRow(row: AdminBookingListItem) {
     id: String(row.id),
     studentId: String(row.studentId),
     branchId: String(row.branchId),
+    createdByType: row.createdByType ?? "unknown",
   };
 }
 

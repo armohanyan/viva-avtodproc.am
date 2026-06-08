@@ -3,10 +3,10 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import { API_VERSION_PREFIX } from './constants';
 import config from './config';
 import ErrorHandlerMiddleware from './middleware/error-handler.middleware';
+import requestLogMiddleware from './middleware/request-log.middleware';
 import routes from './routes';
 import adminRoutes from './routes/admin.routes';
 
@@ -31,7 +31,7 @@ class App {
 
   private setRequestLogger(): void {
     if (config.DISABLE_REQUEST_LOG !== '1') {
-      this.app.use(morgan('dev'));
+      this.app.use(requestLogMiddleware);
     }
   }
 

@@ -963,21 +963,8 @@ async function ensureBookingSlotsTable(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
   }
-  await sequelize.query(`
-    DELETE s FROM \`booking_slots\` s
-    INNER JOIN \`bookings\` b ON b.\`id\` = s.\`booking_id\`
-    WHERE b.\`status\` NOT IN ('confirmed', 'pending', 'pending_prebook', 'pending_payment', 'completed')
-       OR b.\`instructor_user_id\` IS NULL
-  `);
-  await sequelize.query(`
-    INSERT IGNORE INTO \`booking_slots\`
-      (\`booking_id\`, \`instructor_user_id\`, \`date_iso\`, \`slot_time\`, \`created_at\`, \`updated_at\`)
-    SELECT \`id\`, \`instructor_user_id\`, \`date_iso\`, \`time\`, NOW(), NOW()
-    FROM \`bookings\` b
-    WHERE b.\`instructor_user_id\` IS NOT NULL
-      AND b.\`status\` IN ('confirmed', 'pending', 'pending_prebook', 'pending_payment', 'completed')
-      AND NOT EXISTS (SELECT 1 FROM \`booking_slots\` s WHERE s.\`booking_id\` = b.\`id\`)
-  `);
+  // Do not DELETE/INSERT booking_slots at startup — that caused production slot loss on PM2 restart.
+  // One-time backfill belongs in a versioned migration script, not syncModels().
 }
 
 /**
@@ -1348,6 +1335,49 @@ async function ensureBookingsMeetLinkColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `meet_link` VARCHAR(512) NULL DEFAULT NULL');
 }
 
+/** Tracks who created a booking (student vs admin) for admin list filtering. */
+async function ensureBookingsCreatedByColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+       AND COLUMN_NAME IN ('created_by_type', 'created_by_user_id')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(colRows.map((c) => c.COLUMN_NAME));
+  if (!have.has('created_by_type')) {
+    await sequelize.query(
+      "ALTER TABLE `bookings` ADD COLUMN `created_by_type` VARCHAR(16) NOT NULL DEFAULT 'unknown'",
+    );
+  }
+  if (!have.has('created_by_user_id')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `created_by_user_id` INT UNSIGNED NULL');
+  }
+
+  // Backfill legacy rows where student self-service signals are present.
+  await sequelize.query(`
+    UPDATE \`bookings\`
+    SET \`created_by_type\` = 'student',
+        \`created_by_user_id\` = COALESCE(\`created_by_user_id\`, \`student_user_id\`)
+    WHERE \`created_by_type\` = 'unknown'
+      AND (
+        \`hold_expires_at\` IS NOT NULL
+        OR \`payment_required_at\` IS NOT NULL
+        OR \`hold_extension_count\` > 0
+      )
+  `);
+}
+
 /** Indexes for admin bookings list filters and pagination. */
 async function ensureBookingsAdminListIndexes(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -1381,6 +1411,10 @@ async function ensureBookingsAdminListIndexes(): Promise<void> {
     {
       name: 'bookings_instructor_user_id_idx',
       sql: 'CREATE INDEX `bookings_instructor_user_id_idx` ON `bookings` (`instructor_user_id`)',
+    },
+    {
+      name: 'bookings_created_by_type_idx',
+      sql: 'CREATE INDEX `bookings_created_by_type_idx` ON `bookings` (`created_by_type`)',
     },
   ];
   for (const spec of specs) {
@@ -2190,6 +2224,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsLessonCompletionColumns();
   await ensureBookingsPrepaidMetaColumn();
   await ensureBookingsMeetLinkColumn();
+  await ensureBookingsCreatedByColumns();
   await ensureBookingsAdminListIndexes();
   await ensureNotificationsTable();
   await ensureNotificationsTypeEnumValues();

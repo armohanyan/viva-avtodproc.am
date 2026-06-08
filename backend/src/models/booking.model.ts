@@ -64,6 +64,10 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare cancellationReason: CreationOptional<string | null>;
   /** Online meeting URL for personal theory lessons (`theory_personal`). */
   declare meetLink: CreationOptional<string | null>;
+  /** Who created the booking: student self-service, admin panel, or unknown (legacy). */
+  declare createdByType: CreationOptional<'student' | 'admin' | 'unknown'>;
+  /** User id of the creator (student or staff admin) when known. */
+  declare createdByUserId: CreationOptional<number | null>;
 }
 
 Booking.init(
@@ -96,6 +100,12 @@ Booking.init(
     autoCancelledAt: { type: DataTypes.DATE, allowNull: true },
     cancellationReason: { type: DataTypes.STRING(64), allowNull: true },
     meetLink: { type: DataTypes.STRING(512), allowNull: true, defaultValue: null },
+    createdByType: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: 'unknown',
+    },
+    createdByUserId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );
