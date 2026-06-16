@@ -6,3 +6,7 @@ dist/
 *.log
 logs/
 coverage/
+
+# Runtime uploads (staff images, exam images) — keep on disk, not in git
+upload/*
+!upload/logo.svg
