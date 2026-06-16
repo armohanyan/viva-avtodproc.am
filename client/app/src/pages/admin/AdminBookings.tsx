@@ -14,7 +14,7 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
-import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban } from "lucide-react";
+import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban, FileSpreadsheet } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { type LessonBookingPayload } from "src/components/LessonBookingCalendar";
@@ -61,6 +61,7 @@ import {
 import { useAdminBookingsList } from "src/modules/admin/booking/useAdminBookingsList";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { getAdminBranchFilterId } from "src/modules/admin/adminBranchFilter";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
@@ -77,6 +78,7 @@ import {
   type PracticalLessonType,
 } from "src/modules/instructors/instructor-booking";
 import { cn } from "src/lib/utils";
+import ExcelBookingImportModal from "src/modules/admin/booking/ExcelBookingImportModal";
 import { defaultExamQuestionMeta, loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 import {
   type FinanceTx,
@@ -275,6 +277,13 @@ export default function AdminBookings() {
   const [createdByFilter, setCreatedByFilter] = useState<"all" | "student" | "admin">("all");
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+
+  const importBranchId = useMemo(() => {
+    const fromFilter = getAdminBranchFilterId();
+    if (fromFilter) return fromFilter;
+    return branches[0]?.id != null ? String(branches[0].id) : "";
+  }, [branchFilterRevision, branches]);
 
   const listFilters = useMemo(
     () => ({
@@ -1767,10 +1776,16 @@ export default function AdminBookings() {
         title={t("bookings")}
         subtitle={t(activeBookingsTab === "debts" ? "adminBookingsDebtsPageSubtitle" : "adminBookingsPageSubtitle")}
         actions={
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={() => openAdd()}>
-            <Plus className="w-4 h-4" />
-            {t("addNew")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="w-4 h-4" />
+              {t("adminBookingsImportFromExcel")}
+            </Button>
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={() => openAdd()}>
+              <Plus className="w-4 h-4" />
+              {t("addNew")}
+            </Button>
+          </div>
         }
       />
 
@@ -3015,6 +3030,14 @@ export default function AdminBookings() {
             : t("adminBookingRejectCancellation")
         }
         danger={staffCancellationDialog?.kind === "reject"}
+      />
+
+      <ExcelBookingImportModal
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        branches={branches}
+        defaultBranchId={importBranchId}
+        onImported={() => void refresh()}
       />
     </AdminLayout>
   );

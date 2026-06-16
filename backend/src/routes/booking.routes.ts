@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/', BookingController.list);
 router.get('/:id', requireStaff, BookingController.getByIdForAdmin);
+router.post('/bulk-import', requireStaff, BookingController.bulkImport);
 router.post('/package-atomic', requireStaff, BookingController.createAdminPackageAtomic);
 router.post('/', BookingController.create);
 router.post('/theory-groups/:cohortId/book', BookingController.createTheoryGroupStudentBooking);

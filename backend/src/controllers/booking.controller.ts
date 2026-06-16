@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseBody, parsePaginationQuery, paginationRequested, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
 import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import BookingService from '../services/booking.service';
+import BookingBulkImportService from '../services/booking-bulk-import.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -116,6 +117,19 @@ const studentMultiSlotSchema = z
     path: ['instructorId'],
   });
 
+const bulkImportEntrySchema = z.object({
+  studentName: z.string().min(1),
+  studentPhone: z.string().optional(),
+  instructorName: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  timeSlot: z.string().min(4),
+});
+
+const bulkImportBodySchema = z.object({
+  branchId: z.coerce.number().int().positive(),
+  bookings: z.array(bulkImportEntrySchema).min(1).max(10000),
+});
+
 const adminPackageAtomicSchema = z.object({
   studentId: z.coerce.number().int().positive(),
   packageId: z.coerce.number().int().positive(),
@@ -195,6 +209,20 @@ function parseBookingRouteId(req: Request, next: NextFunction): number | undefin
 }
 
 export default class BookingController {
+  static async bulkImport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(bulkImportBodySchema, req.body);
+      const data = await BookingBulkImportService.bulkImportPractical({
+        branchId: body.branchId,
+        bookings: body.bookings,
+        createdByUserId: readStaffUserIdFromToken(req),
+      });
+      SuccessHandlerUtil.handleAdd(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async createAdminPackageAtomic(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(adminPackageAtomicSchema, req.body);

@@ -108,3 +108,59 @@ export function normalizeAdminBookingRow(row: AdminBookingListItem) {
 }
 
 export type AdminBookingRow = ReturnType<typeof normalizeAdminBookingRow>;
+
+export type BulkImportBookingItem = {
+  studentName: string;
+  studentPhone?: string;
+  instructorName: string;
+  date: string;
+  timeSlot: string;
+};
+
+export type BulkImportBookingsResponse = {
+  imported: number;
+  skippedDuplicates: number;
+  newStudentsCreated: number;
+  errors: Array<{
+    studentName: string;
+    instructorName: string;
+    date: string;
+    timeSlot: string;
+    reason: string;
+  }>;
+  unmappableInstructors: string[];
+};
+
+export async function bulkImportBookings(input: {
+  branchId: number;
+  bookings: BulkImportBookingItem[];
+}): Promise<BulkImportBookingsResponse> {
+  const chunkSize = 500;
+  const aggregated: BulkImportBookingsResponse = {
+    imported: 0,
+    skippedDuplicates: 0,
+    newStudentsCreated: 0,
+    errors: [],
+    unmappableInstructors: [],
+  };
+
+  for (let i = 0; i < input.bookings.length; i += chunkSize) {
+    const chunk = input.bookings.slice(i, i + chunkSize);
+    const result = await vivaApiJson<BulkImportBookingsResponse>("/bookings/bulk-import", {
+      method: "POST",
+      body: { branchId: input.branchId, bookings: chunk },
+    });
+    aggregated.imported += result.imported;
+    aggregated.skippedDuplicates += result.skippedDuplicates;
+    aggregated.newStudentsCreated += result.newStudentsCreated;
+    aggregated.errors.push(...result.errors);
+    for (const name of result.unmappableInstructors) {
+      if (!aggregated.unmappableInstructors.includes(name)) {
+        aggregated.unmappableInstructors.push(name);
+      }
+    }
+  }
+
+  aggregated.unmappableInstructors.sort((a, b) => a.localeCompare(b, "hy"));
+  return aggregated;
+}

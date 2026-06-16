@@ -34,6 +34,7 @@
     "runable-website-runtime": "^0.0.14",
     "tailwind-merge": "^3.5.0",
     "wouter": "^3.9.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
