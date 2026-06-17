@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/thematic-questions/quiz/", "/exam-tests/quiz/"],
+      disallow: ["/thematic-questions/quiz/", "/exam-tests/quiz/", "/road-signs/quiz/"],
     },
     sitemap: `${base}/sitemap.xml`,
   };

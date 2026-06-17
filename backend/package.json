@@ -17,7 +17,9 @@
     "jobs:bookings": "tsx src/scripts/run-booking-jobs.ts",
     "selftest:booking": "tsx src/scripts/booking-rules-selftest.ts",
     "selftest:payment-schedule": "tsx src/scripts/booking-payment-schedule-selftest.ts",
-    "selftest:admin-mfa": "tsx src/scripts/admin-mfa-selftest.ts"
+    "selftest:admin-mfa": "tsx src/scripts/admin-mfa-selftest.ts",
+    "import:road-sign-questions": "tsx src/scripts/import-road-sign-questions.ts",
+    "mirror:exam-question-images": "tsx src/scripts/mirror-exam-question-images-local.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

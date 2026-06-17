@@ -53,6 +53,8 @@ const metaSchema = z.object({
   examCardTitles: z.array(z.string()).length(60).optional(),
   thematicCardQuestionIds: z.array(z.array(z.string())).length(11).optional(),
   examCardQuestionIds: z.array(z.array(z.string())).length(60).optional(),
+  signsCardTitles: z.array(z.string()).length(10).optional(),
+  signsCardQuestionIds: z.array(z.array(z.string())).length(10).optional(),
 });
 
 const packByIdsSchema = z.object({
@@ -151,6 +153,16 @@ export default class ExamQuestionController {
   static async listPackSigns(_req: Request, res: Response, next: NextFunction) {
     try {
       const data = await ExamQuestionService.listPackSigns();
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listPackSignCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const topicId = String(req.params.topicId ?? '').trim();
+      const data = await ExamQuestionService.listPackSignCategory(topicId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

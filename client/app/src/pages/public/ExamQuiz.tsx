@@ -34,18 +34,19 @@ import { cn } from "src/lib/utils";
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
 type QuizLayoutMode = "step" | "scroll";
-type ExamListPath = "/thematic-questions" | "/exam-tests" | "/road-signs";
 
 function isExamMode(s: string): s is ExamQuizMode {
   return VALID_MODES.includes(s as ExamQuizMode);
 }
 
+export type ExamQuizListPath = "/thematic-questions" | "/exam-tests" | "/road-signs";
+
 export type ExamQuizProps = {
   mode?: string | null;
-  examListPath?: ExamListPath;
+  examListPath?: ExamQuizListPath;
 };
 
-function ExamQuizRedirect({ target }: { target: ExamListPath }) {
+function ExamQuizRedirect({ target }: { target: ExamQuizListPath }) {
   const { navigate } = useAppNavigation();
   useEffect(() => {
     navigate(target);
@@ -55,7 +56,7 @@ function ExamQuizRedirect({ target }: { target: ExamListPath }) {
 
 type RunnerProps = {
   mode: ExamQuizMode;
-  listPath: ExamListPath;
+  listPath: ExamQuizListPath;
 };
 
 function ExamQuizRunner({ mode, listPath }: RunnerProps) {
@@ -67,14 +68,11 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ticket") : null;
   const ticketIndex =
     ticketParam != null && /^\d+$/.test(ticketParam) ? Number.parseInt(ticketParam, 10) : null;
-  const roadSignsSlotIndex =
-    topicParam != null && /^\d+$/.test(topicParam) ? Number.parseInt(topicParam, 10) : null;
   const useExamTicket = listPath === "/exam-tests" && mode === "full" && ticketIndex !== null;
-  const useRoadSignsSlot = listPath === "/road-signs" && mode === "topics" && roadSignsSlotIndex !== null;
   const topicId = useExamTicket
     ? `exam-ticket-${ticketIndex}`
-    : useRoadSignsSlot
-      ? `road-signs-${roadSignsSlotIndex}`
+    : listPath === "/road-signs" && mode === "topics" && topicParam
+      ? `road-signs-${topicParam}`
       : listPath === "/road-signs" && mode === "full"
         ? "road-signs-full"
         : listPath === "/exam-tests" && mode === "full" && !useExamTicket
@@ -87,14 +85,12 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                 ? "thematic-signs"
                 : topicParam || (listPath === "/exam-tests" ? "exam-full" : "thematic-full");
   const thematicTopicId = mode === "topics" && topicParam && listPath !== "/road-signs" ? topicParam : undefined;
+  const signCategoryTopicId = mode === "topics" && topicParam && listPath === "/road-signs" ? topicParam : undefined;
   const timedExam = mode === "full";
 
   const [focusMode, setFocusMode] = useState(false);
   const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
     () => defaultExamQuestionMeta().examCardQuestionIds,
-  );
-  const [signsCardQuestionIds, setSignsCardQuestionIds] = useState<string[][]>(
-    () => defaultExamQuestionMeta().signsCardQuestionIds,
   );
   const [examMetaReady, setExamMetaReady] = useState(true);
 
@@ -105,15 +101,14 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   useEffect(() => {
     let mounted = true;
     const sync = async () => {
-      if (!useExamTicket && !useRoadSignsSlot) {
+      if (!useExamTicket) {
         if (mounted) setExamMetaReady(true);
         return;
       }
       if (mounted) setExamMetaReady(false);
       const meta = await loadExamQuestionMeta();
       if (!mounted) return;
-      if (useExamTicket) setExamCardQuestionIds(meta.examCardQuestionIds);
-      if (useRoadSignsSlot) setSignsCardQuestionIds(meta.signsCardQuestionIds);
+      setExamCardQuestionIds(meta.examCardQuestionIds);
       setExamMetaReady(true);
     };
     void sync();
@@ -122,18 +117,19 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
       mounted = false;
       off();
     };
-  }, [useExamTicket, useRoadSignsSlot]);
+  }, [useExamTicket]);
 
   const { pool, loading: poolLoading } = useExamQuizQuestionPool({
     mode,
     thematicTopicId,
+    signCategoryTopicId,
     examTicketActive: useExamTicket,
     examTicketMetaPending: useExamTicket && !examMetaReady,
     examTicketQuestionIds:
       useExamTicket && examMetaReady ? (examCardQuestionIds[ticketIndex!] ?? []) : [],
   });
 
-  const quizLoading = ((useExamTicket || useRoadSignsSlot) && !examMetaReady) || poolLoading;
+  const quizLoading = (useExamTicket && !examMetaReady) || poolLoading;
   const [round, setRound] = useState(0);
   const [endedByTimeout, setEndedByTimeout] = useState(false);
   const questions = useMemo(
@@ -143,18 +139,13 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
         const ids = examCardQuestionIds[ticketIndex!] ?? [];
         return selectQuestionsForMode(mode, pool, { fixedQuestionIds: ids });
       }
-      if (useRoadSignsSlot) {
-        if (!examMetaReady) return [];
-        const ids = signsCardQuestionIds[roadSignsSlotIndex! - 1] ?? [];
-        return selectQuestionsForMode(mode, pool, { fixedQuestionIds: ids });
-      }
       return selectQuestionsForMode(mode, pool);
     },
-    [mode, round, listPath, thematicTopicId, pool, useExamTicket, useRoadSignsSlot, examMetaReady, examCardQuestionIds, signsCardQuestionIds, ticketIndex, roadSignsSlotIndex],
+    [mode, round, pool, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex],
   );
   const topicQuestionIds = useMemo(() => questions.map((q) => q.id), [questions]);
   // Only modes with a stable question set can be resumed across sessions; shuffled modes (signs, ad-hoc full) cannot.
-  const resumable = mode === "topics" || useExamTicket || useRoadSignsSlot;
+  const resumable = mode === "topics" || useExamTicket;
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -184,7 +175,8 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
   const questionDetailHref = useCallback(
     (questionId: string) => {
       if (listPath === "/road-signs") return `/road-signs/question/${questionId}`;
-      return `${mode === "topics" ? "/thematic-questions/question" : "/exam-tests/question"}/${questionId}`;
+      if (mode === "topics") return `/thematic-questions/question/${questionId}`;
+      return `/exam-tests/question/${questionId}`;
     },
     [mode, listPath],
   );
@@ -761,13 +753,17 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
 
 function ExamQuizWouter() {
   const { navigate } = useAppNavigation();
+  const [roadSignsMatch, roadSignsParams] = useRoute("/road-signs/quiz/:mode");
   const [newMatch, newParams] = useRoute("/thematic-questions/quiz/:mode");
   const [oldMatch, oldParams] = useRoute("/exam-tests/quiz/:mode");
-  const wouterMatched = newMatch || oldMatch;
-  const modeParam = (newParams?.mode ?? oldParams?.mode ?? "").trim();
+  const wouterMatched = roadSignsMatch || newMatch || oldMatch;
+  const modeParam = (roadSignsParams?.mode ?? newParams?.mode ?? oldParams?.mode ?? "").trim();
   const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
-  const listPath: ExamListPath =
-    oldMatch && !newMatch ? "/exam-tests" : "/thematic-questions";
+  const listPath: ExamQuizListPath = roadSignsMatch
+    ? "/road-signs"
+    : oldMatch && !newMatch
+      ? "/exam-tests"
+      : "/thematic-questions";
 
   useEffect(() => {
     if (mode !== null) return;

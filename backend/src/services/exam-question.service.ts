@@ -6,6 +6,7 @@ import {
   deleteManagedUploadFiles,
   managedFilenameFromUrl,
 } from '../helpers/managed-upload.helper';
+import { SIGN_CATEGORY_SLUGS, SIGNS_CARD_COUNT } from '../constants/sign-categories';
 import { ExamQuestion, ExamQuestionMeta } from '../models';
 
 export type ExamQuestionDto = {
@@ -24,6 +25,8 @@ export type ExamQuestionMetaDto = {
   examCardTitles: string[];
   thematicCardQuestionIds: string[][];
   examCardQuestionIds: string[][];
+  signsCardTitles: string[];
+  signsCardQuestionIds: string[][];
   /** Total questions in the store (for progress UI without loading full bodies). */
   totalQuestions: number;
 };
@@ -34,6 +37,8 @@ const EXAM_CARD_COUNT = 60;
 const THEMATIC_TOPIC_IDS = ['3', '2', '6', '8', '7', '10', '11', '4', '9', '1', '5'] as const;
 /** Public UI thematic slots are 1..11; map each slot to the stored topic id. */
 const THEMATIC_SLOT_TO_TOPIC_ID = THEMATIC_TOPIC_IDS;
+/** Road-sign category UI slots are 1..10; map each slot to the stored category slug. */
+const SIGN_SLOT_TO_CATEGORY_SLUG = SIGN_CATEGORY_SLUGS;
 const STORAGE_FILE = path.resolve(__dirname, '../../data/exam-questions.store.json');
 
 type QuestionStore = {
@@ -183,19 +188,26 @@ async function migrateFromDatabase(): Promise<QuestionStore | null> {
 }
 
 export default class ExamQuestionService {
-  private static async inferMappings(): Promise<Pick<ExamQuestionMetaDto, 'thematicCardQuestionIds' | 'examCardQuestionIds'>> {
+  private static async inferMappings(): Promise<
+    Pick<ExamQuestionMetaDto, 'thematicCardQuestionIds' | 'examCardQuestionIds' | 'signsCardQuestionIds'>
+  > {
     const store = await readStore();
     const thematicCardQuestionIds = Array.from({ length: THEMATIC_CARD_COUNT }, () => [] as string[]);
     const examCardQuestionIds = Array.from({ length: EXAM_CARD_COUNT }, () => [] as string[]);
+    const signsCardQuestionIds = Array.from({ length: SIGNS_CARD_COUNT }, () => [] as string[]);
     for (const row of store.questions) {
       const qid = row.id;
       const topicIndex = THEMATIC_TOPIC_IDS.findIndex((tid) => tid === (row.topicId ?? ''));
       if (topicIndex >= 0 && (row.category === 'rules' || row.category === 'safety')) {
         thematicCardQuestionIds[topicIndex].push(qid);
       }
+      const signIndex = SIGN_CATEGORY_SLUGS.findIndex((slug) => slug === (row.topicId ?? ''));
+      if (signIndex >= 0 && row.category === 'signs') {
+        signsCardQuestionIds[signIndex].push(qid);
+      }
       examCardQuestionIds[0].push(qid);
     }
-    return { thematicCardQuestionIds, examCardQuestionIds };
+    return { thematicCardQuestionIds, examCardQuestionIds, signsCardQuestionIds };
   }
 
   static async list(): Promise<ExamQuestionDto[]> {
@@ -213,6 +225,19 @@ export default class ExamQuestionService {
   static async listPackSigns(): Promise<ExamQuestionDto[]> {
     const store = await readStore();
     return store.questions.filter((q) => q.category === 'signs');
+  }
+
+  /** One road-sign category: `category === "signs"` with matching `topicId` (slug or UI slot 1..10). */
+  static async listPackSignCategory(topicId: string): Promise<ExamQuestionDto[]> {
+    const raw = topicId.trim();
+    if (!raw) return [];
+    const slot = Number.parseInt(raw, 10);
+    const slug =
+      Number.isInteger(slot) && slot >= 1 && slot <= SIGN_SLOT_TO_CATEGORY_SLUG.length
+        ? SIGN_SLOT_TO_CATEGORY_SLUG[slot - 1]
+        : raw;
+    const store = await readStore();
+    return store.questions.filter((q) => q.category === 'signs' && (q.topicId ?? '') === slug);
   }
 
   /** One thematic topic: rules/safety rows with this `topicId`. */
@@ -327,6 +352,8 @@ export default class ExamQuestionService {
       examCardTitles?: unknown;
       thematicCardQuestionIds?: unknown;
       examCardQuestionIds?: unknown;
+      signsCardTitles?: unknown;
+      signsCardQuestionIds?: unknown;
     };
     const validIds = new Set(store.questions.map((q) => q.id));
     const prune = (rows: string[][]): string[][] => rows.map((row) => row.filter((id) => validIds.has(id)));
@@ -341,6 +368,12 @@ export default class ExamQuestionService {
       examCardQuestionIds: prune(
         normalizeCardQuestions(parsed.examCardQuestionIds, EXAM_CARD_COUNT).map((row, idx) =>
           row.length ? row : inferred.examCardQuestionIds[idx],
+        ),
+      ),
+      signsCardTitles: withLength(parsed.signsCardTitles, SIGNS_CARD_COUNT, 'Նշաններ'),
+      signsCardQuestionIds: prune(
+        normalizeCardQuestions(parsed.signsCardQuestionIds, SIGNS_CARD_COUNT).map((row, idx) =>
+          row.length ? row : inferred.signsCardQuestionIds[idx],
         ),
       ),
       totalQuestions: store.questions.length,
@@ -360,6 +393,10 @@ export default class ExamQuestionService {
       ),
       examCardQuestionIds: prune(
         normalizeCardQuestions(input.examCardQuestionIds ?? current.examCardQuestionIds, EXAM_CARD_COUNT),
+      ),
+      signsCardTitles: withLength(input.signsCardTitles ?? current.signsCardTitles, SIGNS_CARD_COUNT, 'Նշաններ'),
+      signsCardQuestionIds: prune(
+        normalizeCardQuestions(input.signsCardQuestionIds ?? current.signsCardQuestionIds, SIGNS_CARD_COUNT),
       ),
       totalQuestions: store.questions.length,
     };

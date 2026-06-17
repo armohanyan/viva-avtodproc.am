@@ -50,12 +50,17 @@ export default function DashboardSavedQuestions() {
         <div className="space-y-3">
           {rows.map((q) => {
             const loc = getQuestionInLang(q, lang);
-            const href = q.category === "signs" ? `/dashboard/learn/exam-tests/question/${q.id}` : `/dashboard/learn/thematic-tests/question/${q.id}`;
+            const href =
+              q.category === "signs"
+                ? `/dashboard/learn/road-signs/question/${q.id}`
+                : `/dashboard/learn/thematic-tests/question/${q.id}`;
             return (
               <Link key={q.id} href={href}>
                 <Card className="p-4 hover:bg-muted/30 transition-colors">
                   <p className="text-sm font-medium text-foreground">{loc.text}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{q.category === "signs" ? t("dashboardLearnExamTests") : t("dashboardLearnThematicTests")}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {q.category === "signs" ? t("dashboardLearnRoadSigns") : t("dashboardLearnThematicTests")}
+                  </p>
                 </Card>
               </Link>
             );

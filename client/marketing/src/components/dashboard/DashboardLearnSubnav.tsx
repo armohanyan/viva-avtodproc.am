@@ -2,13 +2,14 @@ import { Link, useLocation } from "wouter";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
 
-type ActiveTab = "exam" | "thematic" | "saved";
+type ActiveTab = "exam" | "thematic" | "road-signs" | "saved";
 
 export default function DashboardLearnSubnav({ active }: { active: ActiveTab }) {
   const { t } = useLang();
   const [location] = useLocation();
   const examHref = location.startsWith("/dashboard/learn/") ? "/dashboard/learn/exam-tests" : "/dashboard/exam-tests";
   const thematicHref = "/dashboard/learn/thematic-tests";
+  const roadSignsHref = "/dashboard/learn/road-signs";
   const savedHref = "/dashboard/learn/saved-questions";
 
   const tabClass = (isActive: boolean) =>
@@ -21,12 +22,15 @@ export default function DashboardLearnSubnav({ active }: { active: ActiveTab }) 
 
   return (
     <nav className="flex flex-wrap gap-2 mb-6 sm:mb-8" aria-label={t("learn")}>
+      <Link href={roadSignsHref} className={tabClass(active === "road-signs")}>
+        {t("dashboardLearnRoadSigns")}
+      </Link>
       <Link href={thematicHref} className={tabClass(active === "thematic")}>
         {t("dashboardLearnThematicTests")}
       </Link>
-        <Link href={examHref} className={tabClass(active === "exam")}>
-            {t("dashboardLearnExamTests")}
-        </Link>
+      <Link href={examHref} className={tabClass(active === "exam")}>
+        {t("dashboardLearnExamTests")}
+      </Link>
       <Link href={savedHref} className={tabClass(active === "saved")}>
         {t("questionSavedListTitle")}
       </Link>

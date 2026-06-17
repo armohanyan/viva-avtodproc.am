@@ -7,6 +7,7 @@ router.get('/', ExamQuestionController.list);
 router.get('/meta', ExamQuestionController.getMeta);
 router.get('/saved/mine', ExamQuestionController.listSavedQuestions);
 router.get('/pack/signs', ExamQuestionController.listPackSigns);
+router.get('/pack/signs-category/:topicId', ExamQuestionController.listPackSignCategory);
 router.get('/pack/rules-safety', ExamQuestionController.listPackRulesSafety);
 router.get('/pack/thematic/:topicId', ExamQuestionController.listPackThematic);
 router.post('/pack/by-ids', ExamQuestionController.listPackByIds);

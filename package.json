@@ -15,6 +15,8 @@
     "ci": "npm run build:backend && npm run lint:client && npm run build:web && npm run build:panel",
     "start:backend": "npm run start --prefix backend",
     "typecheck:backend": "npm run typecheck --prefix backend",
-    "sync:exam-questions": "npm run sync:exam-questions --prefix backend --"
+    "sync:exam-questions": "npm run sync:exam-questions --prefix backend --",
+    "import:road-sign-questions": "npm run import:road-sign-questions --prefix backend",
+    "mirror:exam-question-images": "npm run mirror:exam-question-images --prefix backend"
   }
 }

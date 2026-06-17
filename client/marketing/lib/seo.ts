@@ -148,6 +148,23 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
       am: "վարորդական տեսության թեստեր Հայաստան, քննության պրակտիկ հարցեր",
     },
   },
+  "/road-signs": {
+    title: {
+      en: "Road Signs",
+      ru: "Дорожные знаки",
+      am: "Ճանապարհային նշաններ",
+    },
+    description: {
+      en: "Learn Armenian road signs by category and practice with image-based quizzes.",
+      ru: "Изучайте дорожные знаки Армении по категориям и практикуйтесь с тестами по картинкам.",
+      am: "Ուսուցեք հայկական ճանապարհային նշանները ըստ խմբերի և պրակտիկա անցեք պատկերներով թեստերով։",
+    },
+    keywords: {
+      en: "Armenia road signs, driving theory signs practice",
+      ru: "дорожные знаки Армения, практика знаков теории вождения",
+      am: "ճանապարհային նշաններ Հայաստան, վարորդական տեսության նշանների պրակտիկա",
+    },
+  },
   "/thematic-questions": {
     title: {
       en: "Exam Tests & Topic Practice",

@@ -236,9 +236,15 @@ export function selectQuestionsForMode(
   if (mode === "signs") {
     filtered = pool.filter((q) => q.category === "signs");
   } else if (mode === "topics") {
-    filtered = pool.filter((q) => q.category === "rules" || q.category === "safety");
-    if (thematicTopicId) {
-      filtered = filtered.filter((q) => q.topicId === thematicTopicId);
+    // Sign-category packs are pre-filtered by the API (`category: "signs"`).
+    const signCategoryPack = pool.length > 0 && pool.every((q) => q.category === "signs");
+    if (signCategoryPack) {
+      filtered = [...pool];
+    } else {
+      filtered = pool.filter((q) => q.category === "rules" || q.category === "safety");
+      if (thematicTopicId) {
+        filtered = filtered.filter((q) => q.topicId === thematicTopicId);
+      }
     }
   } else {
     filtered = [...pool];

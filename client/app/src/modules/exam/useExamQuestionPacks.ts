@@ -37,6 +37,13 @@ async function fetchPackSigns(): Promise<ExamQuestion[]> {
   return Array.isArray(rows) ? rows.map(mapDto) : [];
 }
 
+async function fetchPackSignCategory(topicId: string): Promise<ExamQuestion[]> {
+  const rows = await vivaApiJson<ExamDto[]>(
+    `/exam-questions/pack/signs-category/${encodeURIComponent(topicId)}`,
+  );
+  return Array.isArray(rows) ? rows.map(mapDto) : [];
+}
+
 async function fetchPackRulesSafety(): Promise<ExamQuestion[]> {
   const rows = await vivaApiJson<ExamDto[]>("/exam-questions/pack/rules-safety");
   return Array.isArray(rows) ? rows.map(mapDto) : [];
@@ -59,8 +66,10 @@ function mergeUniqueById(a: readonly ExamQuestion[], b: readonly ExamQuestion[])
 
 export type ExamQuizPoolOpts = {
   mode: ExamQuizMode | null;
-  /** `?topic=` when mode is `topics`. */
+  /** `?topic=` when mode is `topics` (thematic chapters). */
   thematicTopicId: string | undefined;
+  /** `?topic=` when mode is `topics` on road-signs routes (category slot 1..10). */
+  signCategoryTopicId: string | undefined;
   /** True when URL has `?ticket=` for a full exam card. */
   examTicketActive: boolean;
   /** While meta for exam cards is still loading. */
@@ -74,7 +83,8 @@ export type ExamQuizPoolOpts = {
  * (thematic topic pack, signs pack, rules+safety merge for full practice, or by-ids for exam tickets).
  */
 export function useExamQuizQuestionPool(opts: ExamQuizPoolOpts): { pool: ExamQuestion[]; loading: boolean } {
-  const { mode, thematicTopicId, examTicketActive, examTicketMetaPending, examTicketQuestionIds } = opts;
+  const { mode, thematicTopicId, signCategoryTopicId, examTicketActive, examTicketMetaPending, examTicketQuestionIds } =
+    opts;
 
   const ticketKey = useMemo(() => examTicketQuestionIds.join("\u0001"), [examTicketQuestionIds]);
 
@@ -110,9 +120,11 @@ export function useExamQuizQuestionPool(opts: ExamQuizPoolOpts): { pool: ExamQue
     if (mode === "topics") {
       setLoading(true);
       try {
-        const rows = thematicTopicId
-          ? await fetchPackThematic(thematicTopicId)
-          : await fetchPackRulesSafety();
+        const rows = signCategoryTopicId
+          ? await fetchPackSignCategory(signCategoryTopicId)
+          : thematicTopicId
+            ? await fetchPackThematic(thematicTopicId)
+            : await fetchPackRulesSafety();
         setPool(rows);
       } catch {
         setPool([]);
@@ -149,7 +161,7 @@ export function useExamQuizQuestionPool(opts: ExamQuizPoolOpts): { pool: ExamQue
 
     setPool([]);
     setLoading(false);
-  }, [mode, thematicTopicId, examTicketActive, examTicketMetaPending, ticketKey]);
+  }, [mode, thematicTopicId, signCategoryTopicId, examTicketActive, examTicketMetaPending, ticketKey]);
 
   useEffect(() => {
     void load();

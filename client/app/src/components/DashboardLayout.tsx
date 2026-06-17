@@ -98,6 +98,9 @@ export default function DashboardLayout({ children }: Props) {
 		if (location.startsWith("/dashboard/learn/thematic-tests")) {
 			return t("dashboardLearnThematicTests");
 		}
+		if (location.startsWith("/dashboard/learn/road-signs")) {
+			return t("dashboardLearnRoadSigns");
+		}
 		if (location.startsWith("/dashboard/services")) {
 			return t("dashboardNavServices");
 		}

@@ -8,6 +8,7 @@ import {
   ContactPage,
   ExamTestsPage,
   ExamQuizPage,
+  RoadSignsPage,
   QuestionDetailPage,
   BlogsPage,
   BlogPostPage,
@@ -28,4 +29,7 @@ export const publicRoutes: readonly AppRoute[] = [
   { path: "/exam-tests", component: ExamTestsPage },
   { path: "/exam-tests/question/:id", component: QuestionDetailPage },
   { path: "/exam-tests/quiz/:mode", component: ExamQuizPage },
+  { path: "/road-signs", component: RoadSignsPage },
+  { path: "/road-signs/question/:id", component: QuestionDetailPage },
+  { path: "/road-signs/quiz/:mode", component: ExamQuizPage },
 ];

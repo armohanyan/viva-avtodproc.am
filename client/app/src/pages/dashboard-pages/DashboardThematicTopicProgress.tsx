@@ -21,6 +21,7 @@ export default function DashboardThematicTopicProgress() {
   const { pool, loading } = useExamQuizQuestionPool({
     mode: "topics",
     thematicTopicId: topicId || undefined,
+    signCategoryTopicId: undefined,
     examTicketActive: false,
     examTicketMetaPending: false,
     examTicketQuestionIds: [],

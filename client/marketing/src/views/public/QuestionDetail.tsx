@@ -28,8 +28,11 @@ export default function QuestionDetail({ questionId: providedQuestionId, backHre
   const path = window.location.pathname || "";
   const examMatch = path.match(/^\/exam-tests\/question\/([^/]+)$/);
   const themeMatch = path.match(/^\/thematic-questions\/question\/([^/]+)$/);
-  const questionId = (decodeURIComponent(examMatch?.[1] ?? themeMatch?.[1] ?? "") || "").trim();
-  const backHref = themeMatch ? "/thematic-questions" : "/exam-tests";
+  const roadSignsMatch = path.match(/^\/road-signs\/question\/([^/]+)$/);
+  const questionId = (
+    decodeURIComponent(examMatch?.[1] ?? themeMatch?.[1] ?? roadSignsMatch?.[1] ?? "") || ""
+  ).trim();
+  const backHref = roadSignsMatch ? "/road-signs" : themeMatch ? "/thematic-questions" : "/exam-tests";
 
   if (!questionId) {
     return <Redirect to="/thematic-questions" />;

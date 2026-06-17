@@ -53,12 +53,17 @@ function DashboardExamQuizView() {
   usePanelFocusModeCleanupOnUnmount();
   const [, setLocation] = useLocation();
   const [learnMatch, learnParams] = useRoute("/dashboard/learn/exam-tests/quiz/:mode");
+  const [roadSignsMatch, roadSignsParams] = useRoute("/dashboard/learn/road-signs/quiz/:mode");
   const [legacyMatch, legacyParams] = useRoute("/dashboard/exam-tests/quiz/:mode");
-  const match = learnMatch || legacyMatch;
-  const params = learnMatch ? learnParams : legacyParams;
+  const match = learnMatch || roadSignsMatch || legacyMatch;
+  const params = roadSignsMatch ? roadSignsParams : learnMatch ? learnParams : legacyParams;
   const modeParam = params?.mode ?? "";
   const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
-  const backHref = learnMatch ? "/dashboard/learn/exam-tests" : "/dashboard/exam-tests";
+  const backHref = roadSignsMatch
+    ? "/dashboard/learn/road-signs"
+    : learnMatch
+      ? "/dashboard/learn/exam-tests"
+      : "/dashboard/exam-tests";
   const timedExam = mode === "full";
 
   const topicParam =
@@ -70,15 +75,24 @@ function DashboardExamQuizView() {
   const useExamTicket = mode === "full" && ticketIndex !== null;
   const topicId = useExamTicket
     ? `exam-ticket-${ticketIndex}`
-    : mode === "full" && !useExamTicket
-      ? "exam-full"
-      : mode === "signs"
-        ? "exam-signs"
-        : topicParam || "exam-full";
-  const thematicTopicId = mode === "topics" && topicParam ? topicParam : undefined;
-  const topicBackHref = thematicTopicId
-    ? `/dashboard/learn/thematic-tests/topic/${encodeURIComponent(thematicTopicId)}`
-    : "/dashboard/learn/thematic-tests";
+    : roadSignsMatch && mode === "topics" && topicParam
+      ? `road-signs-${topicParam}`
+      : roadSignsMatch && mode === "full"
+        ? "road-signs-full"
+        : mode === "full" && !useExamTicket
+          ? "exam-full"
+          : mode === "signs"
+            ? "exam-signs"
+            : topicParam || "exam-full";
+  const thematicTopicId = mode === "topics" && topicParam && !roadSignsMatch ? topicParam : undefined;
+  const signCategoryTopicId = mode === "topics" && topicParam && roadSignsMatch ? topicParam : undefined;
+  const topicBackHref = signCategoryTopicId
+    ? `/dashboard/learn/road-signs/category/${encodeURIComponent(signCategoryTopicId)}`
+    : thematicTopicId
+      ? `/dashboard/learn/thematic-tests/topic/${encodeURIComponent(thematicTopicId)}`
+      : roadSignsMatch
+        ? "/dashboard/learn/road-signs"
+        : "/dashboard/learn/thematic-tests";
   const effectiveBackHref = mode === "topics" ? topicBackHref : backHref;
 
   const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
@@ -110,6 +124,7 @@ function DashboardExamQuizView() {
   const { pool, loading: poolLoading } = useExamQuizQuestionPool({
     mode,
     thematicTopicId,
+    signCategoryTopicId,
     examTicketActive: useExamTicket,
     examTicketMetaPending: useExamTicket && !examMetaReady,
     examTicketQuestionIds:
@@ -158,9 +173,12 @@ function DashboardExamQuizView() {
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
   const questionDetailHref = useCallback(
-    (questionId: string) =>
-      `${mode === "topics" ? "/dashboard/learn/thematic-tests/question" : `${backHref}/question`}/${questionId}`,
-    [mode, backHref],
+    (questionId: string) => {
+      if (roadSignsMatch) return `/dashboard/learn/road-signs/question/${questionId}`;
+      if (mode === "topics") return `/dashboard/learn/thematic-tests/question/${questionId}`;
+      return `${backHref}/question/${questionId}`;
+    },
+    [mode, backHref, roadSignsMatch],
   );
 
   const allAnswered = useMemo(() => {

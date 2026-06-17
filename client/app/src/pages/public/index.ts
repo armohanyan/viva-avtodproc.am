@@ -6,6 +6,7 @@ export { default as InstructorsPage } from "./Instructors";
 export { default as ContactPage } from "./Contact";
 export { default as ExamTestsPage } from "./ExamTests";
 export { default as ExamQuizPage } from "./ExamQuiz";
+export { default as RoadSignsPage } from "./RoadSigns";
 export { default as QuestionDetailPage } from "./QuestionDetail";
 export { default as BlogsPage } from "./Blogs";
 export { default as BlogPostPage } from "./BlogPost";

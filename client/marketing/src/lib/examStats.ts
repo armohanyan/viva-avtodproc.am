@@ -35,13 +35,13 @@ export function isThematicScopeTopicKey(topicId: string): boolean {
   return isThematicSlotTopicKey(t);
 }
 
-/** Road-signs practice: category slots and full mix from the road-signs entry. */
+/** Road-sign category practice (`road-signs-1` … `road-signs-10`). */
 export function isRoadSignsScopeTopicKey(topicId: string): boolean {
   const t = topicId.trim();
   if (t === "road-signs-full") return true;
   if (!/^road-signs-\d+$/.test(t)) return false;
   const slot = Number.parseInt(t.slice("road-signs-".length), 10);
-  return Number.isInteger(slot) && slot >= 1;
+  return slot >= 1 && slot <= 10;
 }
 
 export type ExamProgressScope = "thematic" | "exam" | "road-signs";
