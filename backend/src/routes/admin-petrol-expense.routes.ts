@@ -5,6 +5,7 @@ import { requireStaff } from '../middleware/staff-auth.middleware';
 const router = Router();
 
 router.get('/', requireStaff, AdminPetrolExpenseController.list);
+router.post('/bulk-import', requireStaff, AdminPetrolExpenseController.bulkImport);
 router.post('/', requireStaff, AdminPetrolExpenseController.create);
 router.patch('/:id', requireStaff, AdminPetrolExpenseController.update);
 router.delete('/:id', requireStaff, AdminPetrolExpenseController.remove);

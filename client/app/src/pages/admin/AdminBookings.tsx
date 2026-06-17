@@ -12,6 +12,7 @@ import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
+import XlsxExportButton from "src/components/XlsxExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Plus, Edit2, Trash2, CalendarRange, CheckCircle2, Ban, FileSpreadsheet } from "lucide-react";
@@ -59,6 +60,12 @@ import {
   type AdminBookingRow,
 } from "src/modules/admin/booking/adminBookings.api";
 import { useAdminBookingsList } from "src/modules/admin/booking/useAdminBookingsList";
+import {
+  bookingExportHeaderLabels,
+  bookingExportRowInputs,
+  buildBookingExportWorkbook,
+  downloadBookingExportXlsx,
+} from "src/modules/admin/booking/bookingExportImport";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { getAdminBranchFilterId } from "src/modules/admin/adminBranchFilter";
@@ -399,6 +406,17 @@ export default function AdminBookings() {
     const all = await fetchAllBookings();
     return buildBookingCsvRows(all);
   }, [buildBookingCsvRows, fetchAllBookings]);
+
+  const exportAllBookingsXlsx = useCallback(async () => {
+    const all = await fetchAllBookings();
+    const headers = bookingExportHeaderLabels(t);
+    const rows = bookingExportRowInputs(all, {
+      studentLabel,
+      branchLabel: (branchId) => branchNameById(branches, branchId),
+    });
+    const workbook = buildBookingExportWorkbook(headers, rows);
+    downloadBookingExportXlsx("admin-bookings.xlsx", workbook);
+  }, [branches, fetchAllBookings, studentLabel, t]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [staffCancellationDialog, setStaffCancellationDialog] = useState<
     { kind: "approve" | "reject"; booking: Booking } | null
@@ -1856,6 +1874,11 @@ export default function AdminBookings() {
       <Card className="border-border overflow-hidden min-w-0">
         <div className="p-4 space-y-3 border-b border-border">
           <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="p-0 border-0">
+            <XlsxExportButton
+              onExport={exportAllBookingsXlsx}
+              exportRowCount={bookingsTotal}
+              disabled={bookingsLoading}
+            />
             <CsvExportButton
               filename="admin-bookings.csv"
               headers={bookingExportHeaders}

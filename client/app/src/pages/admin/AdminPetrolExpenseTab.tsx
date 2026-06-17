@@ -18,6 +18,11 @@ import {
   PETROL_TYPE_OPTIONS,
   type PetrolTypeValue,
 } from "src/pages/admin/petrolTypeAm";
+import {
+  downloadPetrolExpenseTemplate,
+  exportPetrolExpenseRows,
+} from "src/modules/admin/petrol/excelPetrolExpenseImport";
+import ExcelPetrolExpenseImportModal from "src/modules/admin/petrol/ExcelPetrolExpenseImportModal";
 import type {
   PetrolExpenseBody,
   PetrolExpenseListResponse,
@@ -34,7 +39,7 @@ import {
   Legend,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
-import { Plus, Edit2, Trash2, Users } from "lucide-react";
+import { Plus, Edit2, Trash2, Users, FileSpreadsheet, Download, Upload } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
@@ -149,6 +154,7 @@ export default function AdminPetrolExpenseTab() {
   const [editForm, setEditForm] = useState<PetrolFormState>(() => emptyForm(todayIso));
   const [deleteRow, setDeleteRow] = useState<PetrolExpenseRow | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const practicalInstructors = useMemo(
     () =>
@@ -439,7 +445,28 @@ export default function AdminPetrolExpenseTab() {
   return (
     <>
       <div className="space-y-6">
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => downloadPetrolExpenseTemplate(cars, practicalInstructors)}
+          >
+            <Download className="mr-2 h-4 w-4" aria-hidden />
+            {t("adminPetrolExportTemplate")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || filtered.length === 0}
+            onClick={() => exportPetrolExpenseRows(filtered)}
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4" aria-hidden />
+            {t("adminPetrolExportExcel")}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" aria-hidden />
+            {t("adminPetrolImportFromExcel")}
+          </Button>
           <Button type="button" onClick={() => setAddOpen(true)}>
             <Plus className="mr-2 h-4 w-4" aria-hidden />
             {t("adminPetrolExpenseAddBtn")}
@@ -692,6 +719,14 @@ export default function AdminPetrolExpenseTab() {
         description={t("adminPetrolDeleteDesc")}
         confirmLabel={t("delete")}
         danger
+      />
+
+      <ExcelPetrolExpenseImportModal
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        cars={cars}
+        instructors={practicalInstructors}
+        onImported={() => void load()}
       />
     </>
   );

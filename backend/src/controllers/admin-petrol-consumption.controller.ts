@@ -4,6 +4,7 @@ import { DISTANCE_UNITS, PETROL_VOLUME_UNITS } from '../constants/petrol-consump
 import { parseBody, resolveBranchIdFilter } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import AdminPetrolConsumptionService from '../services/admin-petrol-consumption.service';
+import PetrolConsumptionBulkImportService from '../services/petrol-consumption-bulk-import.service';
 import { SuccessHandlerUtil } from '../utils';
 
 const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -28,6 +29,11 @@ const createSchema = z.object({
 
 const updateSchema = createSchema.partial().refine((obj) => Object.keys(obj).length > 0, {
   message: 'At least one field is required',
+});
+
+const bulkImportEntrySchema = createSchema;
+const bulkImportBodySchema = z.object({
+  records: z.array(bulkImportEntrySchema).min(1).max(10000),
 });
 
 function parseOptionalPositiveInt(value: unknown): number | undefined {
@@ -104,6 +110,28 @@ export default class AdminPetrolConsumptionController {
     try {
       await AdminPetrolConsumptionService.remove(Number(req.params.id));
       res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async bulkImport(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(bulkImportBodySchema, req.body);
+      const staffId = req.staff?.sub != null ? Number(req.staff.sub) : undefined;
+      const createdByUserId = Number.isFinite(staffId) && staffId! > 0 ? staffId : undefined;
+      const records = body.records.map((row) => ({
+        carId: row.carId,
+        instructorUserId: row.instructorUserId,
+        date: row.date,
+        distanceValue: row.distanceValue,
+        distanceUnit: row.distanceUnit,
+        petrolAmount: row.petrolAmount ?? null,
+        petrolUnit: row.petrolUnit,
+        description: row.description ?? null,
+      }));
+      const data = await PetrolConsumptionBulkImportService.bulkImport(records, createdByUserId);
+      SuccessHandlerUtil.handleAdd(res, next, data);
     } catch (e) {
       next(e);
     }

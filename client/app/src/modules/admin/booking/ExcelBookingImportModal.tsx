@@ -27,6 +27,7 @@ import {
   toBulkImportPayload,
   type ParsedExcelBooking,
 } from "src/modules/admin/booking/excelBookingImport";
+import { BOOKING_EXPORT_SHEET_NAME } from "src/modules/admin/booking/bookingExportImport";
 
 export type ExcelBookingImportModalProps = {
   open: boolean;
@@ -210,9 +211,23 @@ export default function ExcelBookingImportModal({
     setFileLabel(file.name);
     try {
       const result = await parseExcelBookingWorkbook(file);
-      setBookings(applyImportPaymentDefaults(result.bookings, instructors));
-      setSelectedIds(new Set(result.bookings.map((b) => b.id)));
+      const fromExportRoundTrip =
+        result.bookings.length > 0 &&
+        result.bookings.every((b) => b.sheetName === BOOKING_EXPORT_SHEET_NAME);
+      const parsedBookings = fromExportRoundTrip
+        ? result.bookings
+        : applyImportPaymentDefaults(result.bookings, instructors);
+      setBookings(parsedBookings);
+      setSelectedIds(new Set(parsedBookings.map((b) => b.id)));
       setMonthFilter("");
+
+      const branchNames = [
+        ...new Set(result.bookings.map((b) => b.branchName?.trim()).filter(Boolean) as string[]),
+      ];
+      if (branchNames.length === 1) {
+        const match = branches.find((b) => b.name.trim() === branchNames[0]);
+        if (match?.id != null) setBranchId(String(match.id));
+      }
 
       const issues: string[] = [];
       if (result.skippedSheets.length > 0) {
@@ -229,7 +244,7 @@ export default function ExcelBookingImportModal({
         showToast(t("adminBookingsImportNoBookings"), "error");
       } else {
         showToast(
-          t("adminBookingsImportParsedToast").replace("{count}", String(result.bookings.length)),
+          t("adminBookingsImportParsedToast").replace("{count}", String(parsedBookings.length)),
           "success",
         );
       }
@@ -302,13 +317,46 @@ export default function ExcelBookingImportModal({
       }
     }
 
+    const groups = new Map<number, ParsedExcelBooking[]>();
+    for (const booking of selected) {
+      const branchName = booking.branchName?.trim();
+      const matched = branchName
+        ? branches.find((b) => b.name.trim() === branchName)
+        : branches.find((b) => String(b.id) === String(branchId));
+      const resolvedId = matched?.id != null ? Number(matched.id) : Number(branchId);
+      const list = groups.get(resolvedId) ?? [];
+      list.push(booking);
+      groups.set(resolvedId, list);
+    }
+
     setImporting(true);
     try {
-      const summary = await bulkImportBookings({
-        branchId: Number(branchId),
-        bookings: toBulkImportPayload(selected, instructors),
-      });
-      showImportSummary(summary);
+      const aggregated: BulkImportBookingsResponse = {
+        imported: 0,
+        skippedDuplicates: 0,
+        newStudentsCreated: 0,
+        errors: [],
+        unmappableInstructors: [],
+      };
+
+      for (const [resolvedBranchId, rows] of groups) {
+        const summary = await bulkImportBookings({
+          branchId: resolvedBranchId,
+          bookings: toBulkImportPayload(rows, instructors),
+        });
+        aggregated.imported += summary.imported;
+        aggregated.skippedDuplicates += summary.skippedDuplicates;
+        aggregated.newStudentsCreated += summary.newStudentsCreated;
+        aggregated.errors.push(...summary.errors);
+        for (const name of summary.unmappableInstructors) {
+          if (!aggregated.unmappableInstructors.includes(name)) {
+            aggregated.unmappableInstructors.push(name);
+          }
+        }
+      }
+
+      aggregated.unmappableInstructors.sort((a, b) => a.localeCompare(b, "hy"));
+      showImportSummary(aggregated);
       onImported?.();
       onOpenChange(false);
     } catch (err) {

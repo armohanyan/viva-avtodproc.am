@@ -1,5 +1,11 @@
 import * as XLSX from "xlsx";
-import type { Instructor } from "src/data/instructors";
+import {
+  BOOKING_EXPORT_COLUMN_KEYS,
+  BOOKING_EXPORT_SHEET_NAME,
+  isBookingExportHeaderRow,
+  resolveBookingExportColumnKey,
+  type BookingExportColumnKey,
+} from "src/modules/admin/booking/bookingExportImport";
 import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 import {
   adminPaymentApiPayload,
@@ -19,6 +25,8 @@ export type ParsedExcelBooking = {
   dateIso: string;
   timeSlot: string;
   sheetName: string;
+  /** Present when parsed from a round-trip export sheet. */
+  branchName?: string;
   /** Editable lesson total; defaults to instructor hourly rate for one slot. */
   totalPriceStr: string;
   paymentStatus: AdminBookingPaymentStatus;
@@ -239,9 +247,180 @@ function parseSheetRows(
   return { bookings, issues };
 }
 
+function exportCellText(value: unknown): string {
+  if (value == null) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value > 40000 && value < 60000) {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (parsed) {
+        return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+      }
+    }
+    return String(Math.round(value));
+  }
+  return String(value).trim();
+}
+
+function parseExportDateIso(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const dotted = parseTabDateToIso(trimmed);
+  if (dotted) return dotted;
+  const m = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(trimmed);
+  if (m) {
+    return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  }
+  const parsed = Date.parse(trimmed);
+  if (Number.isFinite(parsed)) {
+    const d = new Date(parsed);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  return null;
+}
+
+function parseExportTimeSlot(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const direct = normalizeTimeCell(trimmed);
+  if (direct) return direct;
+  const rangeMatch = /^(\d{1,2}:\d{2})/.exec(trimmed.replace(/–/g, "-"));
+  if (rangeMatch) return normalizeTimeCell(rangeMatch[1]);
+  return null;
+}
+
+function parseExportPaymentStatus(raw: string): AdminBookingPaymentStatus {
+  const s = raw.trim().toLowerCase();
+  if (!s) return "unpaid";
+  if (s === "paid" || /վճարված|оплачено|paid in full|полностью/i.test(s)) return "paid";
+  if (s === "partial" || /մասնական|частич|partial/i.test(s)) return "partial";
+  if (s === "unpaid" || /չվճարված|не опла|unpaid/i.test(s)) return "unpaid";
+  return "unpaid";
+}
+
+function parseExportLessonType(raw: string): string {
+  const s = raw.trim().toLowerCase();
+  if (s === "theory" || /տեսական|теор/i.test(s)) return "theory";
+  if (s === "theory_personal" || /անհատական/i.test(s)) return "theory_personal";
+  return "practical";
+}
+
+function parseExportAmount(raw: string): number {
+  const n = Number(String(raw).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : 0;
+}
+
+function isBookingExportSheet(sheet: XLSX.WorkSheet): boolean {
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+  return isBookingExportHeaderRow(rows[0] ?? []);
+}
+
+function parseBookingExportSheet(sheet: XLSX.WorkSheet): ParsedExcelBooking[] {
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+  if (rows.length < 2 || !isBookingExportHeaderRow(rows[0] ?? [])) return [];
+
+  const headerRow = rows[0] ?? [];
+  const colIndex = new Map<BookingExportColumnKey, number>();
+  headerRow.forEach((cell, index) => {
+    const key = resolveBookingExportColumnKey(cell);
+    if (key != null && !colIndex.has(key)) colIndex.set(key, index);
+  });
+  for (let i = 0; i < BOOKING_EXPORT_COLUMN_KEYS.length; i++) {
+    const key = BOOKING_EXPORT_COLUMN_KEYS[i];
+    if (!colIndex.has(key)) colIndex.set(key, i);
+  }
+
+  const get = (row: unknown[], key: BookingExportColumnKey): string => {
+    const idx = colIndex.get(key);
+    if (idx == null) return "";
+    return exportCellText(row[idx]);
+  };
+
+  const bookings: ParsedExcelBooking[] = [];
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r] ?? [];
+    const studentName = get(row, "studentName").trim();
+    const instructorName = get(row, "instructorName").trim();
+    const dateRaw = get(row, "date");
+    const dateIso = parseExportDateIso(dateRaw);
+    const timeSlot = parseExportTimeSlot(get(row, "time"));
+
+    if (!studentName && !instructorName && !dateRaw) continue;
+    if (!studentName || !instructorName || !dateIso || !timeSlot) continue;
+
+    const totalAmd = parseExportAmount(get(row, "totalPrice"));
+    const paidAmd = parseExportAmount(get(row, "paidAmount"));
+    let paymentStatus = parseExportPaymentStatus(get(row, "paymentStatus"));
+    const lessonType = parseExportLessonType(get(row, "lessonType"));
+    if (lessonType !== "practical") continue;
+
+    let paidStr = paidAmd > 0 ? String(paidAmd) : "";
+    if (totalAmd > 0 && paidAmd >= totalAmd) {
+      paymentStatus = "paid";
+      paidStr = String(totalAmd);
+    } else if (paidAmd > 0 && paidAmd < totalAmd) {
+      paymentStatus = "partial";
+      paidStr = String(paidAmd);
+    } else if (paymentStatus === "paid" && totalAmd > 0) {
+      paidStr = String(totalAmd);
+    }
+
+    const branchName = get(row, "branchName").trim();
+    const studentPhone = get(row, "studentPhone").trim();
+
+    bookings.push({
+      id: `export|${dateIso}|${timeSlot}|${instructorName}|${studentName}|${r}`,
+      studentName,
+      studentPhone,
+      rawCellText: studentName,
+      instructorName,
+      date: isoToDisplayDate(dateIso),
+      dateIso,
+      timeSlot,
+      sheetName: BOOKING_EXPORT_SHEET_NAME,
+      branchName: branchName || undefined,
+      totalPriceStr: totalAmd > 0 ? String(totalAmd) : "",
+      paidStr,
+      paymentStatus,
+    });
+  }
+
+  bookings.sort((a, b) => {
+    const byDate = a.dateIso.localeCompare(b.dateIso);
+    if (byDate !== 0) return byDate;
+    const byInstructor = a.instructorName.localeCompare(b.instructorName, "hy");
+    if (byInstructor !== 0) return byInstructor;
+    return a.timeSlot.localeCompare(b.timeSlot);
+  });
+
+  return bookings;
+}
+
 export async function parseExcelBookingWorkbook(file: File): Promise<ExcelParseResult> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+
+  const exportSheetName =
+    workbook.SheetNames.find((name) => name === BOOKING_EXPORT_SHEET_NAME) ??
+    workbook.SheetNames.find((name) => {
+      const sheet = workbook.Sheets[name];
+      return sheet != null && isBookingExportSheet(sheet);
+    }) ??
+    null;
+
+  if (exportSheetName) {
+    const sheet = workbook.Sheets[exportSheetName]!;
+    const bookings = parseBookingExportSheet(sheet);
+    const skippedSheets = workbook.SheetNames.filter((n) => n !== exportSheetName);
+    return { bookings, issues: [], skippedSheets };
+  }
 
   const bookings: ParsedExcelBooking[] = [];
   const issues: ExcelParseIssue[] = [];
