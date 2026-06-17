@@ -9,13 +9,21 @@ import { getApiErrorMessage } from "src/lib/vivaApi";
 import { formatShortDateFromIso } from "src/lib/adminFormat";
 import { cn } from "src/lib/utils";
 import type { Branch } from "src/modules/branches/branch.types";
+import type { Instructor } from "src/data/instructors";
 import {
   bulkImportBookings,
   type BulkImportBookingsResponse,
 } from "src/modules/admin/booking/adminBookings.api";
 import {
+  adminPaymentStatusLabelKey,
+  validateAdminBookingPayment,
+  type AdminBookingPaymentStatus,
+} from "src/modules/admin/booking/adminBookingPayment";
+import {
   applyBookingFieldPatch,
+  applyImportPaymentDefaults,
   parseExcelBookingWorkbook,
+  rowTotalPriceAmd,
   toBulkImportPayload,
   type ParsedExcelBooking,
 } from "src/modules/admin/booking/excelBookingImport";
@@ -24,6 +32,7 @@ export type ExcelBookingImportModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branches: readonly Branch[];
+  instructors: readonly Instructor[];
   defaultBranchId: string;
   onImported?: () => void;
 };
@@ -82,6 +91,7 @@ export default function ExcelBookingImportModal({
   open,
   onOpenChange,
   branches,
+  instructors,
   defaultBranchId,
   onImported,
 }: ExcelBookingImportModalProps) {
@@ -171,11 +181,16 @@ export default function ExcelBookingImportModal({
     });
   };
 
-  const updateBooking = useCallback((id: string, patch: Parameters<typeof applyBookingFieldPatch>[1]) => {
-    setBookings((prev) =>
-      prev.map((booking) => (booking.id === id ? applyBookingFieldPatch(booking, patch) : booking)),
-    );
-  }, []);
+  const updateBooking = useCallback(
+    (id: string, patch: Parameters<typeof applyBookingFieldPatch>[1]) => {
+      setBookings((prev) =>
+        prev.map((booking) =>
+          booking.id === id ? applyBookingFieldPatch(booking, patch, { instructors }) : booking,
+        ),
+      );
+    },
+    [instructors],
+  );
 
   const selectedBookings = useMemo(
     () => bookings.filter((b) => selectedIds.has(b.id)),
@@ -195,7 +210,7 @@ export default function ExcelBookingImportModal({
     setFileLabel(file.name);
     try {
       const result = await parseExcelBookingWorkbook(file);
-      setBookings(result.bookings);
+      setBookings(applyImportPaymentDefaults(result.bookings, instructors));
       setSelectedIds(new Set(result.bookings.map((b) => b.id)));
       setMonthFilter("");
 
@@ -268,12 +283,30 @@ export default function ExcelBookingImportModal({
       showToast(t("adminBookingsImportInstructorRequired"), "error");
       return;
     }
+    for (const booking of selected) {
+      const total = rowTotalPriceAmd(booking, instructors);
+      const payErr = validateAdminBookingPayment(
+        {
+          status: booking.paymentStatus,
+          paidStr: booking.paidStr,
+          method: "cash",
+          datetimeLocal: "",
+          paymentNotes: "",
+          paymentReminderDate: "",
+        },
+        total,
+      );
+      if (payErr) {
+        showToast(t(payErr), "error");
+        return;
+      }
+    }
 
     setImporting(true);
     try {
       const summary = await bulkImportBookings({
         branchId: Number(branchId),
-        bookings: toBulkImportPayload(selected),
+        bookings: toBulkImportPayload(selected, instructors),
       });
       showImportSummary(summary);
       onImported?.();
@@ -446,6 +479,9 @@ export default function ExcelBookingImportModal({
                       <th className="px-3 py-2 text-left font-medium min-w-[8rem]">{t("cohortColInstructor")}</th>
                       <th className="px-3 py-2 text-left font-medium min-w-[10rem]">{t("bookingColStudent")}</th>
                       <th className="px-3 py-2 text-left font-medium min-w-[9rem]">{t("adminStudentPickerPhoneLabel")}</th>
+                      <th className="px-3 py-2 text-left font-medium min-w-[6.5rem]">{t("adminBookingPaymentTotalPrice")}</th>
+                      <th className="px-3 py-2 text-left font-medium min-w-[6rem]">{t("adminBookingPaymentPaidAmount")}</th>
+                      <th className="px-3 py-2 text-left font-medium min-w-[7rem]">{t("adminBookingPaymentStatusLabel")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -461,7 +497,7 @@ export default function ExcelBookingImportModal({
                               row.isMonthStart && row.monthKey === monthFilter && "ring-2 ring-inset ring-primary/30",
                             )}
                           >
-                            <td colSpan={6} className="px-3 py-2 font-semibold text-primary">
+                            <td colSpan={9} className="px-3 py-2 font-semibold text-primary">
                               {row.isMonthStart ? (
                                 <span className="block text-[11px] font-medium uppercase tracking-wide text-primary/70 mb-0.5">
                                   {formatMonthLabel(row.monthKey, lang)}
@@ -475,7 +511,7 @@ export default function ExcelBookingImportModal({
                       if (row.kind === "instructor") {
                         return (
                           <tr key={`inst-${row.dateIso}-${row.instructorName}`} className="bg-muted/40">
-                            <td colSpan={6} className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <td colSpan={9} className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                               {row.instructorName}
                             </td>
                           </tr>
@@ -549,6 +585,47 @@ export default function ExcelBookingImportModal({
                               aria-invalid={phoneMissing}
                               aria-label={`${t("adminStudentPickerPhoneLabel")} ${booking.studentName}`}
                             />
+                          </td>
+                          <td className="px-2 py-1.5 align-top">
+                            <Input
+                              inputMode="decimal"
+                              value={booking.totalPriceStr}
+                              onChange={(e) => updateBooking(booking.id, { totalPriceStr: e.target.value })}
+                              className="h-8 text-xs min-w-[5.5rem] tabular-nums"
+                              disabled={importing}
+                              aria-label={`${t("adminBookingPaymentTotalPrice")} ${booking.studentName}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 align-top">
+                            <Input
+                              inputMode="decimal"
+                              value={booking.paidStr}
+                              onChange={(e) => updateBooking(booking.id, { paidStr: e.target.value })}
+                              className="h-8 text-xs min-w-[5rem] tabular-nums"
+                              disabled={importing}
+                              placeholder="0"
+                              aria-label={`${t("adminBookingPaymentPaidAmount")} ${booking.studentName}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 align-top">
+                            <select
+                              value={booking.paymentStatus}
+                              onChange={(e) =>
+                                updateBooking(booking.id, {
+                                  paymentStatus: e.target.value as AdminBookingPaymentStatus,
+                                })
+                              }
+                              disabled={importing}
+                              className="h-8 w-full min-w-[6.5rem] rounded-lg border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                              aria-label={`${t("adminBookingPaymentStatusLabel")} ${booking.studentName}`}
+                            >
+                              <option value="paid">{t("adminBookingPaymentStatusPaid")}</option>
+                              <option value="partial">{t("adminBookingPaymentStatusPartial")}</option>
+                              <option value="unpaid">{t("adminBookingPaymentStatusUnpaid")}</option>
+                            </select>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                              {t(adminPaymentStatusLabelKey(booking.paymentStatus))}
+                            </p>
                           </td>
                         </tr>
                       );

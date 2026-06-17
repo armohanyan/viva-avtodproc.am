@@ -1,7 +1,9 @@
 import BookingService from './booking.service';
 import StudentAdminService from './student-admin.service';
+import FinanceService from './finance.service';
 import { User } from '../models';
 import { normalizeTimeHHMM } from '../utils/booking-slot.util';
+import type { AdminBookingPaymentStatus } from '../utils/booking-admin-payment.util';
 import ErrorsUtil from '../utils/errors.util';
 
 const { ConflictError, InputValidationError } = ErrorsUtil;
@@ -12,6 +14,11 @@ export type BulkImportBookingInput = {
   instructorName: string;
   date: string;
   timeSlot: string;
+  totalPriceAmd?: number;
+  adminPaymentStatus?: AdminBookingPaymentStatus;
+  paidAmountAmd?: number;
+  paymentNotes?: string | null;
+  paymentReminderDate?: string | null;
 };
 
 export type BulkImportRowError = {
@@ -179,8 +186,11 @@ export default class BookingBulkImportService {
           status: 'confirmed',
           branchId: input.branchId,
           slotEntries: [{ dateIso, time: slotTime }],
-          adminPaymentStatus: 'unpaid',
-          paidAmountAmd: 0,
+          totalPriceAmd: row.totalPriceAmd,
+          adminPaymentStatus: row.adminPaymentStatus ?? 'unpaid',
+          paidAmountAmd: row.paidAmountAmd,
+          paymentNotes: row.paymentNotes,
+          paymentReminderDate: row.paymentReminderDate,
           createdByUserId: input.createdByUserId,
           allowHistoricalSlots: true,
         });
@@ -189,6 +199,28 @@ export default class BookingBulkImportService {
           unmappableSet.add(instructorName);
           result.errors.push({ ...rowRef, reason: `Instructor not found: ${instructorName}` });
           continue;
+        }
+
+        const paidForFinance =
+          row.adminPaymentStatus === 'paid'
+            ? Math.max(0, Math.round(row.totalPriceAmd ?? created.totalPriceAmd ?? 0))
+            : Math.max(0, Math.round(row.paidAmountAmd ?? 0));
+        if (paidForFinance > 0) {
+          const student = await User.findByPk(studentUserId, { attributes: ['name', 'email'] });
+          try {
+            await FinanceService.create({
+              customer: student?.name?.trim() || studentName,
+              email: student?.email ?? '',
+              branchId: input.branchId,
+              method: 'cash',
+              grossAmd: paidForFinance,
+              status: 'completed',
+              source: 'manual',
+              bookingId: created.id,
+            });
+          } catch {
+            // Finance row is best-effort; booking import still counts as success.
+          }
         }
 
         result.imported += 1;

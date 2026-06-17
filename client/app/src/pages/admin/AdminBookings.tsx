@@ -310,6 +310,7 @@ export default function AdminBookings() {
     debtsCount,
     setPage: setBookingsPage,
     refresh,
+    fetchAllBookings,
   } = useAdminBookingsList(listFilters);
 
   const needsStudentsMini =
@@ -351,6 +352,53 @@ export default function AdminBookings() {
     (id: string, row?: Pick<Booking, "studentName">) => row?.studentName?.trim() || studentsMini.find((s) => studentIdMatches(s.id, id))?.name || id,
     [studentsMini],
   );
+
+  const bookingExportHeaders = useMemo(
+    () => [
+      t("tableColId"),
+      t("bookingColStudent"),
+      t("adminColBranch"),
+      t("cohortColInstructor"),
+      t("date"),
+      t("bookingColTime"),
+      t("bookingColType"),
+      t("adminBookingsColSource"),
+      t("status"),
+      t("adminBookingsColPayment"),
+      t("adminBookingPaymentTotalPrice"),
+      t("adminBookingPaymentPaidAmount"),
+      t("adminBookingPaymentRemaining"),
+    ],
+    [t],
+  );
+
+  const buildBookingCsvRows = useCallback(
+    (items: Booking[]) =>
+      items.map((b) => {
+        const pay = bookingListPaymentRow(b);
+        return [
+          b.id,
+          studentLabel(b.studentId, b),
+          branchNameById(branches, b.branchId),
+          b.instructorName,
+          formatShortDateFromIso(b.dateIso, lang),
+          formatBookingSlotRangeLabel(b.time, b.endTime),
+          t(bookingLessonTypeTKey(b.type)),
+          t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
+          t(toCanonicalBookingStatus(b.status) as TranslationKey),
+          t(bookingListPaymentLabelKey(pay.status)),
+          pay.totalAmd > 0 ? String(pay.totalAmd) : "",
+          pay.paidAmd > 0 ? String(pay.paidAmd) : "",
+          pay.remainingAmd > 0 ? String(pay.remainingAmd) : "",
+        ];
+      }),
+    [branches, lang, studentLabel, t],
+  );
+
+  const exportAllBookingsCsv = useCallback(async () => {
+    const all = await fetchAllBookings();
+    return buildBookingCsvRows(all);
+  }, [buildBookingCsvRows, fetchAllBookings]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [staffCancellationDialog, setStaffCancellationDialog] = useState<
     { kind: "approve" | "reject"; booking: Booking } | null
@@ -1810,39 +1858,10 @@ export default function AdminBookings() {
           <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} className="p-0 border-0">
             <CsvExportButton
               filename="admin-bookings.csv"
-              headers={[
-                t("tableColId"),
-                t("bookingColStudent"),
-                t("adminColBranch"),
-                t("cohortColInstructor"),
-                t("date"),
-                t("bookingColTime"),
-                t("bookingColType"),
-                t("adminBookingsColSource"),
-                t("status"),
-                t("adminBookingsColPayment"),
-                t("adminBookingPaymentTotalPrice"),
-                t("adminBookingPaymentPaidAmount"),
-                t("adminBookingPaymentRemaining"),
-              ]}
-              rows={bookings.map((b) => {
-                const pay = bookingListPaymentRow(b);
-                return [
-                  b.id,
-                  studentLabel(b.studentId, b),
-                  branchNameById(branches, b.branchId),
-                  b.instructorName,
-                  formatShortDateFromIso(b.dateIso, lang),
-                  formatBookingSlotRangeLabel(b.time, b.endTime),
-                  t(bookingLessonTypeTKey(b.type)),
-                  t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
-                  t(toCanonicalBookingStatus(b.status) as TranslationKey),
-                  t(bookingListPaymentLabelKey(pay.status)),
-                  pay.totalAmd > 0 ? String(pay.totalAmd) : "",
-                  pay.paidAmd > 0 ? String(pay.paidAmd) : "",
-                  pay.remainingAmd > 0 ? String(pay.remainingAmd) : "",
-                ];
-              })}
+              headers={bookingExportHeaders}
+              getRowsForExportAsync={exportAllBookingsCsv}
+              exportRowCount={bookingsTotal}
+              disabled={bookingsLoading}
             />
           </DataTableToolbar>
 
@@ -3036,6 +3055,7 @@ export default function AdminBookings() {
         open={importOpen}
         onOpenChange={setImportOpen}
         branches={branches}
+        instructors={instructors}
         defaultBranchId={importBranchId}
         onImported={() => void refresh()}
       />

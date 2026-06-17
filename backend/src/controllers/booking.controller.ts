@@ -123,6 +123,13 @@ const bulkImportEntrySchema = z.object({
   instructorName: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timeSlot: z.string().min(4),
+  totalPriceAmd: z.coerce.number().int().nonnegative().optional(),
+  adminPaymentStatus: adminPaymentStatusSchema.optional(),
+  paidAmountAmd: z.coerce.number().int().nonnegative().optional(),
+  paymentNotes: z.string().max(2000).optional().nullable(),
+  paymentReminderDate: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(''), z.null()])
+    .optional(),
 });
 
 const bulkImportBodySchema = z.object({

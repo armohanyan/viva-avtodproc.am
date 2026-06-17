@@ -58,6 +58,8 @@ export type AdminBookingListFilters = {
 };
 
 export const ADMIN_BOOKINGS_PAGE_SIZE = 25;
+/** Backend caps page size at 100 — use for export pagination. */
+export const ADMIN_BOOKINGS_EXPORT_PAGE_SIZE = 100;
 
 export function buildAdminBookingsQuery(
   page: number,
@@ -93,6 +95,27 @@ export async function fetchAdminBookingsPage(
   return vivaApiJson<AdminBookingListResponse>(`/bookings?${query}`);
 }
 
+/** Fetch every booking matching the current filters (paginates through the API). */
+export async function fetchAllAdminBookings(
+  filters: AdminBookingListFilters,
+): Promise<AdminBookingRow[]> {
+  const all: AdminBookingRow[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const data = await fetchAdminBookingsPage(page, ADMIN_BOOKINGS_EXPORT_PAGE_SIZE, filters);
+    const items = Array.isArray(data.items) ? data.items.map(normalizeAdminBookingRow) : [];
+    all.push(...items);
+    const total = data.total ?? items.length;
+    const pageSize = data.pageSize ?? ADMIN_BOOKINGS_EXPORT_PAGE_SIZE;
+    totalPages = Math.max(1, Math.ceil(total / pageSize));
+    page += 1;
+  }
+
+  return all;
+}
+
 export async function fetchAdminBookingById(id: string | number): Promise<AdminBookingListItem> {
   return vivaApiJson<AdminBookingListItem>(`/bookings/${encodeURIComponent(String(id))}`);
 }
@@ -115,6 +138,11 @@ export type BulkImportBookingItem = {
   instructorName: string;
   date: string;
   timeSlot: string;
+  totalPriceAmd: number;
+  adminPaymentStatus: "paid" | "partial" | "unpaid";
+  paidAmountAmd?: number;
+  paymentNotes?: string | null;
+  paymentReminderDate?: string | null;
 };
 
 export type BulkImportBookingsResponse = {

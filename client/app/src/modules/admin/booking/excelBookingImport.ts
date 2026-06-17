@@ -1,4 +1,13 @@
 import * as XLSX from "xlsx";
+import type { Instructor } from "src/data/instructors";
+import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import {
+  adminPaymentApiPayload,
+  adminPaymentStateAfterPaidStrChange,
+  defaultAdminBookingPayment,
+  paidStrForStatusChange,
+  type AdminBookingPaymentStatus,
+} from "src/modules/admin/booking/adminBookingPayment";
 
 export type ParsedExcelBooking = {
   id: string;
@@ -10,6 +19,10 @@ export type ParsedExcelBooking = {
   dateIso: string;
   timeSlot: string;
   sheetName: string;
+  /** Editable lesson total; defaults to instructor hourly rate for one slot. */
+  totalPriceStr: string;
+  paymentStatus: AdminBookingPaymentStatus;
+  paidStr: string;
 };
 
 export type ExcelParseIssue = {
@@ -215,6 +228,9 @@ function parseSheetRows(
           dateIso,
           timeSlot,
           sheetName,
+          totalPriceStr: "",
+          paidStr: "",
+          paymentStatus: "unpaid",
         });
       });
     }
@@ -262,21 +278,107 @@ export type BulkImportBookingPayload = {
   instructorName: string;
   date: string;
   timeSlot: string;
+  totalPriceAmd: number;
+  adminPaymentStatus: AdminBookingPaymentStatus;
+  paidAmountAmd?: number;
+  paymentNotes?: string | null;
+  paymentReminderDate?: string | null;
 };
 
-export function toBulkImportPayload(bookings: ParsedExcelBooking[]): BulkImportBookingPayload[] {
-  return bookings.map((b) => ({
-    studentName: b.studentName.trim(),
-    studentPhone: b.studentPhone.trim() || undefined,
-    instructorName: b.instructorName.trim(),
-    date: b.dateIso,
-    timeSlot: b.timeSlot,
-  }));
+export function instructorHourlyPriceAmd(instructors: readonly Instructor[], instructorName: string): number {
+  const name = instructorName.trim();
+  const ins = instructors.find((i) => i.name.trim() === name);
+  return ins && Number.isFinite(ins.hourlyPrice) ? Math.max(0, Math.round(ins.hourlyPrice)) : 0;
 }
+
+export function defaultTotalPriceStrForImport(instructors: readonly Instructor[], instructorName: string): string {
+  const hourly = instructorHourlyPriceAmd(instructors, instructorName);
+  return hourly > 0 ? String(hourly) : "";
+}
+
+export function parseImportTotalPriceAmd(totalPriceStr: string, fallbackHourly: number): number {
+  const parsed = parseAmdInput(totalPriceStr);
+  if (!Number.isFinite(parsed) || parsed < 0) return Math.max(0, Math.round(fallbackHourly));
+  return Math.max(0, Math.round(parsed));
+}
+
+export function rowTotalPriceAmd(booking: ParsedExcelBooking, instructors: readonly Instructor[]): number {
+  const fallback = instructorHourlyPriceAmd(instructors, booking.instructorName);
+  return parseImportTotalPriceAmd(booking.totalPriceStr, fallback);
+}
+
+export function withImportPaymentDefaults(
+  booking: Omit<ParsedExcelBooking, "totalPriceStr" | "paidStr" | "paymentStatus">,
+  instructors: readonly Instructor[],
+): ParsedExcelBooking {
+  const totalPriceStr = defaultTotalPriceStrForImport(instructors, booking.instructorName);
+  return {
+    ...booking,
+    totalPriceStr,
+    paidStr: "",
+    paymentStatus: "unpaid",
+  };
+}
+
+export function applyImportPaymentDefaults(
+  bookings: ParsedExcelBooking[],
+  instructors: readonly Instructor[],
+): ParsedExcelBooking[] {
+  return bookings.map((booking) =>
+    withImportPaymentDefaults(
+      {
+        id: booking.id,
+        studentName: booking.studentName,
+        studentPhone: booking.studentPhone,
+        rawCellText: booking.rawCellText,
+        instructorName: booking.instructorName,
+        date: booking.date,
+        dateIso: booking.dateIso,
+        timeSlot: booking.timeSlot,
+        sheetName: booking.sheetName,
+      },
+      instructors,
+    ),
+  );
+}
+
+export function toBulkImportPayload(
+  bookings: ParsedExcelBooking[],
+  instructors: readonly Instructor[],
+): BulkImportBookingPayload[] {
+  return bookings.map((b) => {
+    const total = rowTotalPriceAmd(b, instructors);
+    const paymentPayload = adminPaymentApiPayload(
+      {
+        ...defaultAdminBookingPayment(b.paymentStatus),
+        status: b.paymentStatus,
+        paidStr: b.paidStr,
+      },
+      total,
+    );
+    return {
+      studentName: b.studentName.trim(),
+      studentPhone: b.studentPhone.trim() || undefined,
+      instructorName: b.instructorName.trim(),
+      date: b.dateIso,
+      timeSlot: b.timeSlot,
+      totalPriceAmd: total,
+      ...paymentPayload,
+    };
+  });
+}
+
+type BookingFieldPatch = Partial<
+  Pick<
+    ParsedExcelBooking,
+    "studentName" | "studentPhone" | "instructorName" | "date" | "timeSlot" | "totalPriceStr" | "paymentStatus" | "paidStr"
+  >
+>;
 
 export function applyBookingFieldPatch(
   booking: ParsedExcelBooking,
-  patch: Partial<Pick<ParsedExcelBooking, "studentName" | "studentPhone" | "instructorName" | "date" | "timeSlot">>,
+  patch: BookingFieldPatch,
+  opts?: { instructors?: readonly Instructor[] },
 ): ParsedExcelBooking {
   const next: ParsedExcelBooking = { ...booking, ...patch };
 
@@ -301,6 +403,50 @@ export function applyBookingFieldPatch(
 
   if (patch.instructorName !== undefined) {
     next.instructorName = patch.instructorName.trim();
+    if (opts?.instructors) {
+      next.totalPriceStr = defaultTotalPriceStrForImport(opts.instructors, next.instructorName);
+      if (next.paymentStatus === "paid") {
+        next.paidStr = next.totalPriceStr;
+      }
+    }
+  }
+
+  if (patch.totalPriceStr !== undefined) {
+    next.totalPriceStr = patch.totalPriceStr;
+  }
+
+  if (patch.paymentStatus !== undefined) {
+    const total = opts?.instructors
+      ? rowTotalPriceAmd({ ...next, totalPriceStr: next.totalPriceStr }, opts.instructors)
+      : parseImportTotalPriceAmd(next.totalPriceStr, 0);
+    next.paymentStatus = patch.paymentStatus;
+    next.paidStr = paidStrForStatusChange(patch.paymentStatus, total, next.paidStr);
+  }
+
+  if (patch.paidStr !== undefined) {
+    const total = opts?.instructors
+      ? rowTotalPriceAmd({ ...next, totalPriceStr: next.totalPriceStr }, opts.instructors)
+      : parseImportTotalPriceAmd(next.totalPriceStr, 0);
+    const synced = adminPaymentStateAfterPaidStrChange(
+      { ...defaultAdminBookingPayment(next.paymentStatus), status: next.paymentStatus, paidStr: next.paidStr },
+      patch.paidStr,
+      total,
+    );
+    next.paidStr = synced.paidStr;
+    next.paymentStatus = synced.status;
+  }
+
+  if (patch.totalPriceStr !== undefined && patch.paymentStatus === undefined && patch.paidStr === undefined) {
+    const total = opts?.instructors
+      ? rowTotalPriceAmd({ ...next, totalPriceStr: next.totalPriceStr }, opts.instructors)
+      : parseImportTotalPriceAmd(next.totalPriceStr, 0);
+    const synced = adminPaymentStateAfterPaidStrChange(
+      { ...defaultAdminBookingPayment(next.paymentStatus), status: next.paymentStatus, paidStr: next.paidStr },
+      next.paidStr,
+      total,
+    );
+    next.paidStr = synced.paidStr;
+    next.paymentStatus = synced.status;
   }
 
   return next;

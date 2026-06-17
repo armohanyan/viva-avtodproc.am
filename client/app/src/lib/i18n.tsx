@@ -1189,7 +1189,7 @@ adminPackagesPageSubtitle: "Configure lesson packages, pricing, and included fea
   adminBookingsImportBranchRequired: "Select a branch before importing.",
   adminBookingsImportBranchLabel: "Import branch",
   adminBookingsImportPaymentNote:
-    "Each imported row creates a confirmed practical booking for the selected branch — with booking slots, instructor hourly price, and unpaid payment status — the same as manual admin booking.",
+    "Each row creates a confirmed practical booking. Total price defaults to the instructor hourly rate (editable). Set payment status per row — same rules as manual admin booking.",
   adminBookingsImportMissingPhoneWarning:
     "{count} selected row(s) have no phone number. Fill in the phone column before importing, or leave empty if not available.",
   adminBookingsImportStudentNameRequired: "Every selected row must have a student name.",
@@ -3155,7 +3155,7 @@ const ru: typeof en = {
   adminBookingsImportBranchRequired: "Выберите филиал перед импортом.",
   adminBookingsImportBranchLabel: "Филиал для импорта",
   adminBookingsImportPaymentNote:
-    "Каждая строка создаёт подтверждённую практическую запись в выбранном филиале — со слотами, ценой по тарифу инструктора и статусом «не оплачено», как при ручном создании.",
+    "Каждая строка создаёт подтверждённую практическую запись. Сумма по умолчанию — почасовая ставка инструктора (можно изменить). Статус оплаты задаётся по строкам — те же правила, что при ручном создании.",
   adminBookingsImportMissingPhoneWarning:
     "У {count} выбранных строк нет телефона. Заполните колонку телефона перед импортом или оставьте пустым.",
   adminBookingsImportStudentNameRequired: "У каждой выбранной строки должно быть имя студента.",
@@ -5135,7 +5135,7 @@ const am: typeof en = {
   adminBookingsImportBranchRequired: "Ներմուծելուց առաջ ընտրեք մասնաճյուղ։",
   adminBookingsImportBranchLabel: "Ներմուծման մասնաճյուղ",
   adminBookingsImportPaymentNote:
-    "Յուրաքանչյուր տողը ստեղծում է հաստատված գործնական ամրագրում ընտրված մասնաճյուղում՝ ամրագրային սլոտներով, դասավանդողի սակագնով և «չվճարված» կարգավիճակով, ինչպես ձեռքով ստեղծելիս։",
+    "Յուրաքանչյուր տողը ստեղծում է հաստատված գործնական ամրագրում։ Գումարը լռելյայն՝ դասավանդողի ժամային սակագինը (խմբագրելի)։ Վճարման կարգավիճակը՝ տող առ տող, ինչպես ձեռքով ստեղծելիս։",
   adminBookingsImportMissingPhoneWarning:
     "{count} ընտրված տող(եր)ում հեռախոսահամար չկա։ Ներմուծելուց առաջ լրացրեք հեռախոսի սյունը կամ թողեք դատարկ։",
   adminBookingsImportStudentNameRequired: "Յուրաքանչյուր ընտրված տողում պետք է լինի ուսանողի անուն։",

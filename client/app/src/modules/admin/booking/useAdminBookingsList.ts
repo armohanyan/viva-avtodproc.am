@@ -6,6 +6,7 @@ import type { BookingPaymentFilter } from "src/modules/admin/booking/adminBookin
 import {
   ADMIN_BOOKINGS_PAGE_SIZE,
   fetchAdminBookingsPage,
+  fetchAllAdminBookings,
   normalizeAdminBookingRow,
   type AdminBookingRow,
   type BookingCreatedByFilter,
@@ -108,6 +109,10 @@ export function useAdminBookingsList(filters: AdminBookingsListFilters) {
     await load();
   }, [load]);
 
+  const fetchAllBookings = useCallback(async () => {
+    return fetchAllAdminBookings(queryFilters);
+  }, [queryFilters]);
+
   const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
 
   return {
@@ -121,5 +126,6 @@ export function useAdminBookingsList(filters: AdminBookingsListFilters) {
     debtsCount: state.debtsCount,
     setPage,
     refresh,
+    fetchAllBookings,
   };
 }
