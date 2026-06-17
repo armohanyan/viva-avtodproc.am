@@ -35,7 +35,16 @@ export function isThematicScopeTopicKey(topicId: string): boolean {
   return isThematicSlotTopicKey(t);
 }
 
-export type ExamProgressScope = "thematic" | "exam";
+/** Road-signs practice: category slots and full mix from the road-signs entry. */
+export function isRoadSignsScopeTopicKey(topicId: string): boolean {
+  const t = topicId.trim();
+  if (t === "road-signs-full") return true;
+  if (!/^road-signs-\d+$/.test(t)) return false;
+  const slot = Number.parseInt(t.slice("road-signs-".length), 10);
+  return Number.isInteger(slot) && slot >= 1;
+}
+
+export type ExamProgressScope = "thematic" | "exam" | "road-signs";
 
 export interface ScopedExamProgress {
   /** Distinct questions answered correctly (sum of per-topic correct counts in scope). */
@@ -46,7 +55,12 @@ export interface ScopedExamProgress {
 
 /** Uses per-topic cumulative `questionResults` (not last-attempt-only aggregates). */
 export function getScopedExamProgress(stats: ExamStats, scope: ExamProgressScope): ScopedExamProgress {
-  const pred = scope === "thematic" ? isThematicScopeTopicKey : isExamScopeTopicKey;
+  const pred =
+    scope === "thematic"
+      ? isThematicScopeTopicKey
+      : scope === "exam"
+        ? isExamScopeTopicKey
+        : isRoadSignsScopeTopicKey;
   let passed = 0;
   let failed = 0;
   for (const [topicId, ts] of Object.entries(stats.topicStats)) {

@@ -1,10 +1,13 @@
 import { vivaApiJson } from "src/lib/vivaApi";
+import { SIGNS_CARD_COUNT } from "src/data/signCategories";
 
 export type ExamQuestionMeta = {
   thematicCardTitles: string[];
   examCardTitles: string[];
   thematicCardQuestionIds: string[][];
   examCardQuestionIds: string[][];
+  signsCardTitles: string[];
+  signsCardQuestionIds: string[][];
   /** From API: total questions in store (avoids loading all bodies for progress). */
   totalQuestions: number;
 };
@@ -23,6 +26,8 @@ export function defaultExamQuestionMeta(): ExamQuestionMeta {
     examCardTitles: defaults("Թեստ", EXAM_CARD_COUNT),
     thematicCardQuestionIds: Array.from({ length: THEMATIC_CARD_COUNT }, () => []),
     examCardQuestionIds: Array.from({ length: EXAM_CARD_COUNT }, () => []),
+    signsCardTitles: defaults("Նշաններ", SIGNS_CARD_COUNT),
+    signsCardQuestionIds: Array.from({ length: SIGNS_CARD_COUNT }, () => []),
     totalQuestions: 0,
   };
 }
@@ -46,6 +51,8 @@ export async function loadExamQuestionMeta(): Promise<ExamQuestionMeta> {
       examCardTitles: normalize(raw.examCardTitles, EXAM_CARD_COUNT, "Թեստ"),
       thematicCardQuestionIds: normalizeMatrix(raw.thematicCardQuestionIds, THEMATIC_CARD_COUNT),
       examCardQuestionIds: normalizeMatrix(raw.examCardQuestionIds, EXAM_CARD_COUNT),
+      signsCardTitles: normalize(raw.signsCardTitles, SIGNS_CARD_COUNT, "Նշաններ"),
+      signsCardQuestionIds: normalizeMatrix(raw.signsCardQuestionIds, SIGNS_CARD_COUNT),
       totalQuestions:
         typeof raw.totalQuestions === "number" && Number.isFinite(raw.totalQuestions) && raw.totalQuestions >= 0
           ? raw.totalQuestions
@@ -63,6 +70,8 @@ export async function updateExamQuestionMeta(next: ExamQuestionMeta): Promise<Ex
     examCardTitles: normalize(data.examCardTitles, EXAM_CARD_COUNT, "Թեստ"),
     thematicCardQuestionIds: normalizeMatrix(data.thematicCardQuestionIds, THEMATIC_CARD_COUNT),
     examCardQuestionIds: normalizeMatrix(data.examCardQuestionIds, EXAM_CARD_COUNT),
+    signsCardTitles: normalize(data.signsCardTitles, SIGNS_CARD_COUNT, "Նշաններ"),
+    signsCardQuestionIds: normalizeMatrix(data.signsCardQuestionIds, SIGNS_CARD_COUNT),
     totalQuestions:
       typeof data.totalQuestions === "number" && Number.isFinite(data.totalQuestions) && data.totalQuestions >= 0
         ? data.totalQuestions
