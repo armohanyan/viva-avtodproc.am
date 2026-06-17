@@ -2310,6 +2310,7 @@ export default class BookingService {
     paymentReminderDate?: string | null;
     totalPriceAmd?: number;
     createdByUserId?: number | null;
+    allowHistoricalSlots?: boolean;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -2337,15 +2338,21 @@ export default class BookingService {
       instructorUserId,
       entries,
       lessonType: input.lessonType,
+      allowHistoricalSlots: input.allowHistoricalSlots,
     });
 
     const first = entries[0];
     const endTime =
       input.lessonType === 'practical'
-        ? endTimeExclusiveForPracticalSlotEntries(
-            entries,
-            await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
-          )
+        ? input.allowHistoricalSlots
+          ? endTimeExclusiveForPracticalSlotEntries(
+              entries,
+              await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
+            ) ?? endTimeExclusiveForSlotEntries(entries)
+          : endTimeExclusiveForPracticalSlotEntries(
+              entries,
+              await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
+            )
         : endTimeExclusiveForSlotEntries(entries);
 
     let newId = 0;
@@ -2408,7 +2415,7 @@ export default class BookingService {
       throw e;
     }
 
-    if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
+    if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
 
@@ -2437,9 +2444,10 @@ export default class BookingService {
     paymentReminderDate?: string | null;
     totalPriceAmd?: number;
     createdByUserId?: number | null;
+    allowHistoricalSlots?: boolean;
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
-    if (input.type === 'practical') {
+    if (input.type === 'practical' && input.allowHistoricalSlots !== true) {
       let instructorUserId = input.instructorUserId;
       if (!Number.isFinite(instructorUserId)) {
         const inst = await User.findOne({
@@ -2478,6 +2486,7 @@ export default class BookingService {
         paymentReminderDate: input.paymentReminderDate,
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
+        allowHistoricalSlots: input.allowHistoricalSlots,
       });
     }
 
@@ -2519,8 +2528,17 @@ export default class BookingService {
             where: { name: input.instructorName, accountType: 'instructor' },
           });
     if (!instructor) return null;
-    const sorted = await normalizeAndSortSlotsForLesson(input.type, [input.time], input.branchId, instructor.id);
-    const exclusiveEnd = await exclusiveEndForLesson(input.type, sorted, input.branchId, instructor.id);
+    const sorted =
+      input.allowHistoricalSlots === true
+        ? [normalizeTimeHHMM(input.time) ?? input.time].filter((t) => TIME_RE.test(t))
+        : await normalizeAndSortSlotsForLesson(input.type, [input.time], input.branchId, instructor.id);
+    if (sorted.length === 0) {
+      throw new InputValidationError('Invalid time slot.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const exclusiveEnd =
+      input.allowHistoricalSlots === true
+        ? exclusiveEndFromSortedStarts(sorted)
+        : await exclusiveEndForLesson(input.type, sorted, input.branchId, instructor.id);
 
     await BookingSlotValidationService.assertSlotsBookable({
       branchId: input.branchId,
@@ -2528,6 +2546,7 @@ export default class BookingService {
       dateIso,
       slots: sorted,
       lessonType: input.type,
+      allowHistoricalSlots: input.allowHistoricalSlots,
     });
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
@@ -2591,7 +2610,7 @@ export default class BookingService {
       throw e;
     }
 
-    if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
+    if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
 

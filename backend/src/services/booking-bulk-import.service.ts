@@ -182,6 +182,7 @@ export default class BookingBulkImportService {
           adminPaymentStatus: 'unpaid',
           paidAmountAmd: 0,
           createdByUserId: input.createdByUserId,
+          allowHistoricalSlots: true,
         });
 
         if (!created) {
