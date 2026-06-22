@@ -4,6 +4,7 @@ import { parseBody, parsePaginationQuery, paginationRequested, resolveBranchIdFi
 import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import BookingService from '../services/booking.service';
 import BookingBulkImportService from '../services/booking-bulk-import.service';
+import { assertDirectPaymentAllowed } from '../utils/vpos.util';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -608,6 +609,7 @@ export default class BookingController {
       if (studentUserId === undefined) return;
       const id = parseBookingRouteId(req, next);
       if (id === undefined) return;
+      assertDirectPaymentAllowed();
       const data = await BookingService.completePracticalStudentPayment(id, studentUserId);
       SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {

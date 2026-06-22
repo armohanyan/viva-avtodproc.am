@@ -52,6 +52,12 @@ const rawEnvSchema = z.object({
   EMAIL_LOGO_URL: z.string().optional(),
   EMAIL_SUPPORT_EMAIL: z.string().optional(),
   EMAIL_COMPANY_NAME: z.string().optional(),
+  VPOS_ENABLED: z.string().optional(),
+  VPOS_TEST_MODE: z.string().optional(),
+  VPOS_USERNAME: z.string().optional(),
+  VPOS_PASSWORD: z.string().optional(),
+  VPOS_API_BASE_URL: z.string().optional(),
+  VPOS_CURRENCY: z.string().optional(),
 });
 
 function parseCorsOrigins(primary?: string, fallback?: string): CorsOptions['origin'] {
@@ -160,6 +166,20 @@ const config = {
     LOGO_URL: raw.EMAIL_LOGO_URL?.trim() || '',
     SUPPORT_EMAIL: raw.EMAIL_SUPPORT_EMAIL?.trim() || 'support@viva.am',
     COMPANY_NAME: raw.EMAIL_COMPANY_NAME?.trim() || 'Viva',
+  },
+  VPOS: {
+    ENABLED: raw.VPOS_ENABLED === '1',
+    TEST_MODE: raw.VPOS_TEST_MODE !== '0',
+    USERNAME: raw.VPOS_USERNAME?.trim() || '',
+    PASSWORD: raw.VPOS_PASSWORD?.trim() || '',
+    API_BASE_URL: (() => {
+      const override = raw.VPOS_API_BASE_URL?.trim();
+      if (override) return override.replace(/\/+$/, '') + '/';
+      return raw.VPOS_TEST_MODE === '0'
+        ? 'https://epg.arca.am/payment/rest/'
+        : 'https://testepg.arca.am/payment/rest/';
+    })(),
+    CURRENCY: raw.VPOS_CURRENCY?.trim() || '051',
   },
 };
 

@@ -61,6 +61,9 @@ const nextConfig: NextConfig = {
       ...config.resolve.alias,
       src: path.resolve(__dirname, "./src"),
       "src/pages/admin": path.resolve(__dirname, "../app/src/pages/admin"),
+      "src/pages/dashboard-pages": path.resolve(__dirname, "../app/src/pages/dashboard-pages"),
+      "src/modules/payments": path.resolve(__dirname, "../app/src/modules/payments"),
+      "src/components/payments": path.resolve(__dirname, "../app/src/components/payments"),
     };
     return config;
   },
@@ -69,6 +72,9 @@ const nextConfig: NextConfig = {
     resolveAlias: {
       src: path.resolve(__dirname, "./src"),
       "src/pages/admin": path.resolve(__dirname, "../app/src/pages/admin"),
+      "src/pages/dashboard-pages": path.resolve(__dirname, "../app/src/pages/dashboard-pages"),
+      "src/modules/payments": path.resolve(__dirname, "../app/src/modules/payments"),
+      "src/components/payments": path.resolve(__dirname, "../app/src/components/payments"),
     },
   },
   /**

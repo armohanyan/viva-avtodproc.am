@@ -11,6 +11,8 @@ import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlement
 import { useActivePackages } from "src/modules/packages/useActivePackages";
 import { useLocation } from "wouter";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { useVposCheckout } from "src/modules/payments/useVposCheckout";
+import { useAccount } from "src/modules/accounts";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "src/components/ui/dialog";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
@@ -19,7 +21,13 @@ import { StudentBookingPausedCallout } from "src/components/booking/StudentBooki
 export function DashboardBookingsPackageTab() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
-  const { completePackagePurchase, packagePracticalRemaining, theoryLessonsRemaining } = useStudentEntitlements();
+  const { packagePracticalRemaining, theoryLessonsRemaining, refreshEntitlements } = useStudentEntitlements();
+  const { user } = useAccount();
+  const {
+    config: vposConfig,
+    initiateCheckout,
+    completePackagePurchaseSimulated,
+  } = useVposCheckout();
   const { packages, loading, error } = useActivePackages();
   const [, setLocation] = useLocation();
   const [pendingPackageId, setPendingPackageId] = useState<number | null>(null);
@@ -37,17 +45,33 @@ export function DashboardBookingsPackageTab() {
     [packages, pendingPackageId],
   );
 
-  const buyPackage = (packageId: number) => {
+  const [posDialogOpen, setPosDialogOpen] = useState(false);
+
+  const buyPackage = async (packageId: number) => {
     setPendingPackageId(packageId);
+    setPosBusy(true);
+    try {
+      const result = await initiateCheckout({ kind: "package", packageId });
+      if (result.mode === "simulated") {
+        setPosDialogOpen(true);
+      }
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+      setPendingPackageId(null);
+    } finally {
+      setPosBusy(false);
+    }
   };
 
   const approvePackagePayment = async (): Promise<boolean> => {
-    if (pendingPackageId == null) return false;
+    if (pendingPackageId == null || !user?.id || user.accountType !== "student") return false;
     setPosBusy(true);
     try {
-      await completePackagePurchase(pendingPackageId);
+      await completePackagePurchaseSimulated(user.id, pendingPackageId);
+      await refreshEntitlements();
       showToast(t("bookingsPackageSimulatedToast"), "success");
       setPendingPackageId(null);
+      setPosDialogOpen(false);
       setSlotPromptOpen(true);
       return true;
     } catch (e) {
@@ -62,14 +86,16 @@ export function DashboardBookingsPackageTab() {
     <Reveal delay={0.06}>
       {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
       <SimulatedAcbaPosDialog
-        open={pendingPackageId !== null}
+        open={posDialogOpen && pendingPackageId !== null}
         onOpenChange={(open) => {
+          setPosDialogOpen(open);
           if (!open && !posBusy) setPendingPackageId(null);
         }}
         amountAmd={pendingPackage?.priceAmd ?? null}
         locale={locale}
         busy={posBusy}
         onApprove={approvePackagePayment}
+        variant={vposConfig?.simulated === false ? "live" : "simulated"}
       />
       <Dialog open={slotPromptOpen} onOpenChange={setSlotPromptOpen}>
         <DialogContent className="sm:max-w-md">

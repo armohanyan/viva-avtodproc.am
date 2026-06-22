@@ -13,6 +13,7 @@ export { DashboardBookingsListTab } from "./DashboardBookings";
 export { DashboardBookingsPackageTab } from "./DashboardBookingsPackage";
 export { DashboardBookingsPracticalTab } from "./DashboardBookingsPractical";
 export { default as DashboardPaymentsPage } from "./DashboardPayments";
+export { default as DashboardPaymentsResultPage } from "./DashboardPaymentsResult";
 export { default as DashboardProfilePage } from "./DashboardProfile";
 export { default as DashboardServicesPage } from "./DashboardServices";
 export { default as DashboardLessonsPage } from "./DashboardLessons";

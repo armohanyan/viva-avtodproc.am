@@ -13,6 +13,7 @@ import {
   DashboardSavedQuestionsPage,
   DashboardBookingsPage,
   DashboardPaymentsPage,
+  DashboardPaymentsResultPage,
   DashboardProfilePage,
   DashboardServicesPage,
   DashboardLessonsPage,
@@ -45,6 +46,7 @@ export const dashboardRoutes: readonly AppRoute[] = [
   { path: "/dashboard/exam-tests", component: DashboardExamTestsPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/bookings", component: DashboardBookingsPage, allowedAccountTypes: STUDENT, nest: true },
   { path: "/dashboard/payments", component: DashboardPaymentsPage, allowedAccountTypes: STUDENT },
+  { path: "/dashboard/payments/result", component: DashboardPaymentsResultPage, allowedAccountTypes: STUDENT },
   { path: "/dashboard/profile", component: DashboardProfilePage, allowedAccountTypes: STUDENT },
 ];
 

@@ -12,6 +12,7 @@ import { cn } from "src/lib/utils";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { useVposCheckout } from "src/modules/payments/useVposCheckout";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
 import { StudentBookingCancelDialog } from "src/components/dashboard/StudentBookingCancelDialog";
 import {
@@ -36,6 +37,11 @@ export function DashboardBookingsListTab() {
   const { user } = useAccount();
   const { bookings, loading, refresh } = useStudentBookings(user?.accountType === "student" ? user.id : undefined);
   const { refreshEntitlements } = useStudentEntitlements();
+  const {
+    config: vposConfig,
+    initiateCheckout,
+    completeBookingPaymentSimulated,
+  } = useVposCheckout();
   const locale = localeFromLang(lang);
   const { upcoming, past } = useMemo(() => partitionStudentBookings(bookings), [bookings]);
   const [busyId, setBusyId] = useState<string | number | null>(null);
@@ -71,13 +77,27 @@ export function DashboardBookingsListTab() {
   const completePaymentFor = async (b: StudentDemoBooking): Promise<boolean> => {
     setBusyId(b.id);
     try {
-      await vivaApiJson(`/bookings/${encodeURIComponent(String(b.id))}/complete-payment`, { method: "POST" });
+      await completeBookingPaymentSimulated(Number(b.id));
       showToast(t("bookingPaymentCompletedToast"), "success");
       await refresh();
       return true;
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
       return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onPayBooking = async (b: StudentDemoBooking) => {
+    setBusyId(b.id);
+    try {
+      const result = await initiateCheckout({ kind: "booking", bookingId: Number(b.id) });
+      if (result.mode === "simulated") {
+        setPayPosTarget(b);
+      }
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
     } finally {
       setBusyId(null);
     }
@@ -131,6 +151,7 @@ export function DashboardBookingsListTab() {
           if (!payPosTarget) return false;
           return completePaymentFor(payPosTarget);
         }}
+        variant={vposConfig?.simulated === false ? "live" : "simulated"}
       />
       <StudentBookingCancelDialog
         booking={cancelTarget}
@@ -240,7 +261,7 @@ export function DashboardBookingsListTab() {
                                   variant="default"
                                   className="h-8 text-xs"
                                   disabled={busyId === b.id}
-                                  onClick={() => setPayPosTarget(b)}
+                                  onClick={() => void onPayBooking(b)}
                                 >
                                   {t("bookingCompletePaymentCta")}
                                 </Button>

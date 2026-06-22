@@ -34,6 +34,7 @@ import { cn } from "src/lib/utils";
 import { absWouterHref, fullBrowserPathFromRouter } from "src/lib/wouterFullPath";
 import NotificationBell from "src/components/NotificationBell";
 import { PanelFocusModeProvider } from "src/components/panel/PanelFocusModeContext";
+import { AcbaPaymentAcceptanceMarks } from "src/components/payments/AcbaPaymentAcceptanceMarks";
 
 interface Props {
 	children: ReactNode;
@@ -262,6 +263,11 @@ export default function DashboardLayout({ children }: Props) {
 			)}
 		>
 			{children}
+			{user?.accountType === "student" ? (
+				<div className="mt-10 pt-6 border-t border-border">
+					<AcbaPaymentAcceptanceMarks compact showHint showPolicyLink show3ds />
+				</div>
+			) : null}
 		</PanelShell>
 		</PanelFocusModeProvider>
 	);

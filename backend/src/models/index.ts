@@ -30,6 +30,7 @@ import { MarketingStat } from './marketing-stat.model';
 import { MarketingTestimonial } from './marketing-testimonial.model';
 import { Notification, NOTIFICATION_TYPES } from './notification.model';
 import { Package } from './package.model';
+import { PaymentSession } from './payment-session.model';
 import { PersonalTheoryLessonRequest } from './personal-theory-lesson-request.model';
 import { PackageLessonBalance } from './package-lesson-balance.model';
 import { PackageOrder } from './package-order.model';
@@ -183,6 +184,9 @@ User.hasMany(InstructorStudentRating, { foreignKey: 'instructorUserId', sourceKe
 
 FinanceTransaction.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
+User.hasMany(PaymentSession, { foreignKey: 'studentUserId', sourceKey: 'id', as: 'paymentSessions' });
+PaymentSession.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
+
 User.hasMany(FinanceExpense, { foreignKey: 'createdByUserId', sourceKey: 'id' });
 FinanceExpense.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
@@ -222,6 +226,7 @@ export {
   AdminMfaChallenge,
   OAuthAccount,
   Package,
+  PaymentSession,
   PersonalTheoryLessonRequest,
   RefreshToken,
   StudentInvitation,
@@ -2231,6 +2236,49 @@ export async function syncModels(): Promise<void> {
   await ensureStudentProfilesPackageIdOnDeleteSetNull();
   await ensureStudentExamStatsTable();
   await ensurePersonalTheoryLessonRequestsTable();
+  await ensurePaymentSessionsTable();
+}
+
+async function ensurePaymentSessionsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_sessions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length > 0) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table payment_sessions …');
+  await sequelize.query(`
+    CREATE TABLE \`payment_sessions\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`order_number\` VARCHAR(64) NOT NULL,
+      \`epg_order_id\` VARCHAR(64) NULL,
+      \`student_user_id\` INT UNSIGNED NOT NULL,
+      \`kind\` ENUM('booking', 'package', 'extra_practical') NOT NULL,
+      \`reference_id\` INT UNSIGNED NULL,
+      \`amount_amd\` INT UNSIGNED NOT NULL,
+      \`amount_minor\` INT UNSIGNED NOT NULL,
+      \`currency\` VARCHAR(3) NOT NULL DEFAULT '051',
+      \`status\` ENUM('pending', 'paid', 'failed', 'expired') NOT NULL DEFAULT 'pending',
+      \`provider_ref\` VARCHAR(255) NULL,
+      \`language\` VARCHAR(8) NULL,
+      \`meta\` JSON NULL,
+      \`raw_register_response\` JSON NULL,
+      \`raw_status_response\` JSON NULL,
+      \`paid_at\` DATETIME NULL,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      UNIQUE KEY \`payment_sessions_order_number\` (\`order_number\`),
+      KEY \`payment_sessions_epg_order_id\` (\`epg_order_id\`),
+      KEY \`payment_sessions_student_user_id\` (\`student_user_id\`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 async function ensurePersonalTheoryLessonRequestsTable(): Promise<void> {

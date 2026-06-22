@@ -11,6 +11,7 @@ import { countUpcomingStudentBookings } from "src/data/studentDemoBookings";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useAccount } from "src/modules/accounts";
 import { useStudentBookings } from "src/modules/bookings/useStudentBookings";
+import { useVposCheckout } from "src/modules/payments/useVposCheckout";
 import type { TranslationKey } from "src/lib/i18n";
 
 export type PackageTierId = "basic" | "standard" | "premium";
@@ -68,6 +69,7 @@ const StudentEntitlementsContext = createContext<StudentEntitlementsContextValue
 export function StudentEntitlementsProvider({ children }: { children: ReactNode }) {
   const { user } = useAccount();
   const { bookings } = useStudentBookings(user?.accountType === "student" ? user.id : undefined);
+  const { initiateCheckout, purchaseExtraPracticalSimulated } = useVposCheckout();
   const [ownedPackages, setOwnedPackages] = useState<OwnedPackage[]>([]);
   const [extraPracticalBlocks, setExtraPracticalBlocks] = useState<OwnedExtraPractical[]>([]);
   const [entitlementsLoading, setEntitlementsLoading] = useState(false);
@@ -166,12 +168,15 @@ export function StudentEntitlementsProvider({ children }: { children: ReactNode 
 
   const purchaseExtraPracticalBlock = useCallback(async () => {
     if (!user?.id || user.accountType !== "student") return;
-    await vivaApiJson<EntitlementsApi>(`/students/${encodeURIComponent(user.id)}/entitlements/extra-practical`, {
-      method: "POST",
-      body: { practicalTotal: EXTRA_PRACTICAL_BLOCK.lessons },
+    const result = await initiateCheckout({
+      kind: "extra_practical",
+      practicalTotal: EXTRA_PRACTICAL_BLOCK.lessons,
     });
-    await refreshEntitlements();
-  }, [user?.id, user?.accountType, refreshEntitlements]);
+    if (result.mode === "simulated") {
+      await purchaseExtraPracticalSimulated(user.id, EXTRA_PRACTICAL_BLOCK.lessons);
+      await refreshEntitlements();
+    }
+  }, [user?.id, user?.accountType, initiateCheckout, purchaseExtraPracticalSimulated, refreshEntitlements]);
 
   const value = useMemo(
     () =>

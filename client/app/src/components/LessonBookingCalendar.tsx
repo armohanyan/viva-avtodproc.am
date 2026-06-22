@@ -40,6 +40,8 @@ import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-h
 import { TooltipProvider } from "src/components/ui/tooltip";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { AcbaPaymentTrustStrip } from "src/components/payments/AcbaPaymentTrustStrip";
+import { useVposCheckout } from "src/modules/payments/useVposCheckout";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
@@ -218,6 +220,11 @@ export default function LessonBookingCalendar({
 }: LessonBookingCalendarProps) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
+  const {
+    config: vposConfig,
+    initiateCheckout,
+    completeBookingPaymentSimulated,
+  } = useVposCheckout();
   const { refreshEntitlements } = useStudentEntitlements();
   const locale = localeFromLang(lang);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -955,9 +962,7 @@ export default function LessonBookingCalendar({
     if (!studentPaySession) return false;
     setPayBusy(true);
     try {
-      await vivaApiJson(`/bookings/${encodeURIComponent(String(studentPaySession.id))}/complete-payment`, {
-        method: "POST",
-      });
+      await completeBookingPaymentSimulated(studentPaySession.id);
       setServerPaidConfirmed(true);
       setBusySlotsRefreshKey((k) => k + 1);
       await refreshEntitlements();
@@ -966,6 +971,21 @@ export default function LessonBookingCalendar({
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
       return false;
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
+  const onStartCardPayment = async () => {
+    if (!studentPaySession) return;
+    setPayBusy(true);
+    try {
+      const result = await initiateCheckout({ kind: "booking", bookingId: studentPaySession.id });
+      if (result.mode === "simulated") {
+        setPosDialogOpen(true);
+      }
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
     } finally {
       setPayBusy(false);
     }
@@ -1180,6 +1200,7 @@ export default function LessonBookingCalendar({
       locale={locale}
       busy={payBusy}
       onApprove={onCompletePayment}
+      variant={vposConfig?.simulated === false ? "live" : "simulated"}
     />
     <div className="@container min-w-0">
     {studentBookingPaused ? <StudentBookingPausedCallout className="mb-4" /> : null}
@@ -1301,10 +1322,11 @@ export default function LessonBookingCalendar({
                           <Button
                             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                             disabled={payBusy || remainingMs <= 0}
-                            onClick={() => setPosDialogOpen(true)}
+                            onClick={() => void onStartCardPayment()}
                           >
-                            {t("bookingCompletePaymentCta")}
+                            {payBusy ? t("vposRedirectBusy") : t("bookingCompletePaymentCta")}
                           </Button>
+                          <AcbaPaymentTrustStrip className="pt-1" compact />
                           {canExtend ? (
                             <Button
                               variant="outline"

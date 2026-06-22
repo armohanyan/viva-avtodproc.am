@@ -13,6 +13,7 @@ import StudentExamStatsService, {
   studentExamTopicProgressSchema,
   studentExamStatsPayloadSchema,
 } from '../services/student-exam-stats.service';
+import { assertDirectPaymentAllowed } from '../utils/vpos.util';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -371,6 +372,7 @@ export default class StudentController {
       assertStudentSelfServiceBookingEnabled();
 
       const body = parseBody(entitlementsPackageSchema, req.body);
+      assertDirectPaymentAllowed();
       const data = await StudentEntitlementsService.purchasePackageAfterOnlinePayment(id, body.packageId);
 
       if (!data) {

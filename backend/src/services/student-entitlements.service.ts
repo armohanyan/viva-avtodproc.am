@@ -5,6 +5,7 @@ import { Branch, Package, PackageLessonBalance, PackageOrder, StudentExtraPracti
 import FinanceService from './finance.service';
 import NotificationService from './notification.service';
 import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
+import { assertDirectPaymentAllowed } from '../utils/vpos.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
@@ -252,10 +253,14 @@ export default class StudentEntitlementsService {
   }
 
   /** vPOS checkout: records package payment then enrolls the student in the package. */
-  static async purchasePackageAfterOnlinePayment(userId: number, packageId: number): Promise<StudentEntitlementsDto | null> {
-    const user = await User.findByPk(userId);
+  static async purchasePackageAfterOnlinePayment(
+    userId: number,
+    packageId: number,
+    options?: { providerRef?: string; transaction?: Transaction },
+  ): Promise<StudentEntitlementsDto | null> {
+    const user = await User.findByPk(userId, options?.transaction ? { transaction: options.transaction } : undefined);
     if (!user || user.accountType !== 'student') return null;
-    const pkg = await Package.findByPk(packageId);
+    const pkg = await Package.findByPk(packageId, options?.transaction ? { transaction: options.transaction } : undefined);
     if (!pkg) return null;
     const gross = parseAmdFromPriceDisplay(pkg.priceDisplay);
     if (gross <= 0) {
@@ -265,11 +270,13 @@ export default class StudentEntitlementsService {
       );
     }
 
-    await sequelize.transaction(async (transaction) => {
+    const run = async (transaction: Transaction) => {
       const applied = await this.applyPackageAssignment(userId, packageId, 'paid', transaction);
       if (!applied) {
         throw new InputValidationError('Could not enroll in package.', HttpStatusCodesUtil.BAD_REQUEST);
       }
+      const providerRef =
+        options?.providerRef?.trim() || `package-vpos:${userId}:${packageId}:${Date.now()}`;
       await FinanceService.create({
         customer: user.name.trim() || 'Student',
         email: user.email ?? '',
@@ -280,12 +287,18 @@ export default class StudentEntitlementsService {
         grossAmd: gross,
         feeAmd: 0,
         status: 'completed',
-        providerRef: `package-vpos:${userId}:${packageId}:${Date.now()}`,
+        providerRef,
         source: 'system',
         bookingId: null,
         transaction,
       });
-    });
+    };
+
+    if (options?.transaction) {
+      await run(options.transaction);
+    } else {
+      await sequelize.transaction(run);
+    }
     await this.notifyPackagePurchase(user, pkg).catch(() => {});
 
     return this.get(userId);
@@ -378,14 +391,27 @@ export default class StudentEntitlementsService {
   }
 
   static async addExtraPractical(userId: number, practicalTotal = 3): Promise<StudentEntitlementsDto | null> {
-    const user = await User.findByPk(userId);
+    assertDirectPaymentAllowed();
+    return this.purchaseExtraPracticalAfterOnlinePayment(userId, practicalTotal);
+  }
+
+  /** vPOS checkout: records payment then creates the extra practical block. */
+  static async purchaseExtraPracticalAfterOnlinePayment(
+    userId: number,
+    practicalTotal = 3,
+    options?: { providerRef?: string; transaction?: Transaction },
+  ): Promise<StudentEntitlementsDto | null> {
+    const user = await User.findByPk(userId, options?.transaction ? { transaction: options.transaction } : undefined);
 
     if (!user || user.accountType !== 'student') return null;
 
-    const profile = await StudentProfile.findOne({ where: { userId } });
+    const profile = await StudentProfile.findOne({
+      where: { userId },
+      ...(options?.transaction ? { transaction: options.transaction } : {}),
+    });
     if (!profile) return null;
 
-    await sequelize.transaction(async (transaction) => {
+    const run = async (transaction: Transaction) => {
       const purchasedAt = new Date().toISOString().slice(0, 10);
       const extra = await StudentExtraPractical.create(
         {
@@ -398,6 +424,8 @@ export default class StudentEntitlementsService {
       );
 
       const gross = parseAmdFromPriceDisplay('12,000 ֏');
+      const providerRef =
+        options?.providerRef?.trim() || `extra-vpos:${userId}:${extra.id}:${Date.now()}`;
       await FinanceService.create({
         customer: user.name.trim() || 'Student',
         email: user.email ?? '',
@@ -408,12 +436,18 @@ export default class StudentEntitlementsService {
         grossAmd: gross,
         feeAmd: 0,
         status: 'completed',
-        providerRef: `extra-vpos:${userId}:${extra.id}:${Date.now()}`,
+        providerRef,
         source: 'system',
         bookingId: null,
         transaction,
       });
-    });
+    };
+
+    if (options?.transaction) {
+      await run(options.transaction);
+    } else {
+      await sequelize.transaction(run);
+    }
     return this.get(userId);
   }
 

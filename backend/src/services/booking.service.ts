@@ -3619,10 +3619,14 @@ export default class BookingService {
     });
   }
 
-  /** Student: mark payment completed (dev / placeholder until a real PSP webhook exists). */
-  static async completePracticalStudentPayment(bookingId: number, studentUserId: number): Promise<StudentBookingDto> {
+  /** Student: mark payment completed (simulated dev flow or vPOS fulfillment after bank verification). */
+  static async completePracticalStudentPayment(
+    bookingId: number,
+    studentUserId: number,
+    options?: { providerRef?: string; transaction?: Transaction },
+  ): Promise<StudentBookingDto> {
     let updatedId = bookingId;
-    await sequelize.transaction(async (transaction) => {
+    const run = async (transaction: Transaction) => {
       const row = await Booking.findOne({
         where: { id: bookingId, studentUserId, lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] } },
         transaction,
@@ -3662,36 +3666,43 @@ export default class BookingService {
         { transaction },
       );
       updatedId = row.id;
-    });
+
+      const stu = await User.findByPk(studentUserId, { transaction, attributes: ['name', 'email'] });
+      const gross = row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
+      if (gross > 0 && stu) {
+        const providerRef = options?.providerRef?.trim() || `booking-vpos:${row.id}`;
+        try {
+          await FinanceService.create({
+            customer: stu.name.trim() || 'Student',
+            email: stu.email ?? '',
+            description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — vPOS`,
+            branchId: row.branchId,
+            channel: 'pos',
+            method: 'card',
+            grossAmd: gross,
+            feeAmd: 0,
+            status: 'completed',
+            providerRef,
+            source: 'system',
+            bookingId: row.id,
+            transaction,
+          });
+        } catch {
+          // Finance row is best-effort for local/dev; booking remains confirmed.
+        }
+      }
+    };
+
+    if (options?.transaction) {
+      await run(options.transaction);
+    } else {
+      await sequelize.transaction(run);
+    }
 
     const list = await BookingService.listForStudent(studentUserId);
     const dto = list.find((b) => b.id === updatedId);
     if (!dto) {
       throw new InputValidationError('Booking not found after update.', HttpStatusCodesUtil.NOT_FOUND);
-    }
-
-    const row = await Booking.findByPk(updatedId, { include: [{ model: User, as: 'student', attributes: ['name', 'email'] }] });
-    const stu = row ? ((row as unknown as { student?: User }).student ?? null) : null;
-    const gross = row?.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
-    if (row && gross > 0 && stu) {
-      try {
-        await FinanceService.create({
-          customer: stu.name.trim() || 'Student',
-          email: stu.email ?? '',
-          description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — vPOS`,
-          branchId: row.branchId,
-          channel: 'pos',
-          method: 'card',
-          grossAmd: gross,
-          feeAmd: 0,
-          status: 'completed',
-          providerRef: `booking-vpos:${row.id}`,
-          source: 'system',
-          bookingId: row.id,
-        });
-      } catch {
-        // Finance row is best-effort for local/dev; booking remains confirmed.
-      }
     }
 
     void BookingNotificationService.onBookingConfirmed(updatedId).catch(() => {});

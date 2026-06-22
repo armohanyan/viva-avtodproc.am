@@ -4,6 +4,7 @@ import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { Phone, Mail, MapPin } from "lucide-react";
 import { legalDoc } from "src/lib/legalDocsContent";
 import { MarketingSocialLinks, hasMarketingSocialLinks } from "src/components/MarketingSocialLinks";
+import { AcbaPaymentAcceptanceMarks } from "src/components/payments/AcbaPaymentAcceptanceMarks";
 
 export default function Footer() {
   const { t, lang } = useLang();
@@ -30,8 +31,16 @@ export default function Footer() {
             <div className="flex items-center gap-2 mb-4">
               <img src="/logo.svg" alt={t("brandName")} className="w-9 h-9 object-contain" />
             </div>
-            <p className="text-sm text-hero-foreground/80 leading-relaxed mb-5">{t("aboutSub")}</p>
-            {showSocial ? <MarketingSocialLinks social={mkt?.social} variant="footer" /> : null}
+            <p className="text-sm text-hero-foreground/80 leading-relaxed mb-4">{t("aboutSub")}</p>
+            <p className="text-xs text-hero-foreground/70 leading-relaxed">{t("footerLegalEntity")}</p>
+            {addr1 || addr2 ? (
+              <p className="text-xs text-hero-foreground/60 leading-relaxed mt-1">
+                {addr1 ? <span>{addr1}</span> : null}
+                {addr1 && addr2 ? <br /> : null}
+                {addr2 ? <span>{addr2}</span> : null}
+              </p>
+            ) : null}
+            {showSocial ? <MarketingSocialLinks social={mkt?.social} className="mt-5" variant="footer" /> : null}
           </div>
 
           <div>
@@ -87,6 +96,11 @@ export default function Footer() {
               </ul>
             </div>
           ) : null}
+        </div>
+
+        <div className="border-t border-border/60 mt-12 pt-8">
+          <h4 className="font-semibold text-hero-foreground mb-3 text-sm">{t("vposFooterPaymentsHeading")}</h4>
+          <AcbaPaymentAcceptanceMarks variant="dark" compact showHint showPolicyLink show3ds />
         </div>
       </div>
 

@@ -19,11 +19,12 @@ echo \"== pull latest ==\"
 git pull --ff-only
 
 echo \"== backend build ==\"
-npm --prefix backend ci
+# Build tools (tsc, etc.) live in devDependencies; include them even when NODE_ENV=production.
+npm --prefix backend ci --include=dev
 npm --prefix backend run build
 
 echo \"== client install/build ==\"
-npm --prefix client ci
+npm --prefix client ci --include=dev
 npm run build:all --prefix client
 
 echo \"== restart pm2 ==\"

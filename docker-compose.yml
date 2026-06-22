@@ -75,6 +75,12 @@ services:
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
       PANEL_DEFAULT_ORIGIN: ${PANEL_DEFAULT_ORIGIN:-http://localhost:5173}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3001,http://127.0.0.1:3001}
+      VPOS_ENABLED: ${VPOS_ENABLED:-0}
+      VPOS_TEST_MODE: ${VPOS_TEST_MODE:-1}
+      VPOS_USERNAME: ${VPOS_USERNAME:-}
+      VPOS_PASSWORD: ${VPOS_PASSWORD:-}
+      VPOS_API_BASE_URL: ${VPOS_API_BASE_URL:-}
+      VPOS_CURRENCY: ${VPOS_CURRENCY:-051}
     ports:
       - "${BACKEND_PUBLISH_PORT:-3001}:3001"
     volumes:

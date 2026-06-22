@@ -6,6 +6,7 @@ import { useLang } from "src/lib/i18n";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
+import { useVposCheckout } from "src/modules/payments/useVposCheckout";
 import { useAccount } from "src/modules/accounts";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -57,6 +58,11 @@ export function DashboardBookingsTheoryGroupTab() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
+  const {
+    config: vposConfig,
+    initiateCheckout,
+    completeBookingPaymentSimulated,
+  } = useVposCheckout();
   const { instructors } = useInstructors();
   const { branches } = useBranches();
   const { cities } = useCities();
@@ -173,7 +179,10 @@ export function DashboardBookingsTheoryGroupTab() {
       });
       if (res.paymentRequiredNow && !res.coveredByPrepaidCredits) {
         setPendingBooking(res);
-        setPayDialogOpen(true);
+        const checkout = await initiateCheckout({ kind: "booking", bookingId: res.id });
+        if (checkout.mode === "simulated") {
+          setPayDialogOpen(true);
+        }
       } else {
         showToast(t("bookingPaymentCompletedToast"), "success");
       }
@@ -188,7 +197,7 @@ export function DashboardBookingsTheoryGroupTab() {
     if (!pendingBooking) return false;
     setPayBusy(true);
     try {
-      await vivaApiJson(`/bookings/${encodeURIComponent(String(pendingBooking.id))}/complete-payment`, { method: "POST" });
+      await completeBookingPaymentSimulated(pendingBooking.id);
       showToast(t("bookingPaymentCompletedToast"), "success");
       setPayDialogOpen(false);
       setPendingBooking(null);
@@ -214,6 +223,7 @@ export function DashboardBookingsTheoryGroupTab() {
         locale={locale}
         busy={payBusy}
         onApprove={onApprove}
+        variant={vposConfig?.simulated === false ? "live" : "simulated"}
       />
       {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
       <Card className="p-5 border-border mb-6 space-y-4">
