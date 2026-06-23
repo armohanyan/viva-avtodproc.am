@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "src/modules/accounts";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatAmd } from "src/utils/currency.utils";
+import { AcbaPaymentTrustStrip } from "src/components/payments/AcbaPaymentTrustStrip";
 
 type FinanceTx = {
   id: number;
@@ -133,6 +134,10 @@ export default function DashboardPayments() {
             )}
           </div>
         </Card>
+      </Reveal>
+
+      <Reveal delay={0.1}>
+        <AcbaPaymentTrustStrip className="mt-6 max-w-2xl" />
       </Reveal>
     </DashboardLayout>
   );

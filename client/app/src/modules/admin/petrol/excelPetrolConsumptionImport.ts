@@ -224,7 +224,7 @@ export async function parsePetrolConsumptionWorkbook(
   const lookupCars = toLookupCars(cars);
   const instructorLookup = buildInstructorLookup(toLookupInstructors(instructors));
 
-  let sheet = findDataSheet(workbook, CONSUMPTION_SHEET_NAMES);
+  const sheet = findDataSheet(workbook, CONSUMPTION_SHEET_NAMES);
   if (!sheet) {
     return { rows: [], issues: ["No fuel consumption sheet found in workbook."] };
   }

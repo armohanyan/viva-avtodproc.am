@@ -21,6 +21,7 @@ import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
 import { InstructorScheduleRule } from './instructor-schedule-rule.model';
 import { InstructorBranch } from './instructor-branch.model';
+import { InstructorKmLog } from './instructor-km-log.model';
 import { InstructorPracticalSlotPlan } from './instructor-practical-slot-plan.model';
 import { InstructorProfile } from './instructor-profile.model';
 import { InstructorStudentRating } from './instructor-student-rating.model';
@@ -139,6 +140,19 @@ User.hasMany(PetrolConsumption, {
 });
 PetrolConsumption.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
+User.hasMany(InstructorKmLog, {
+  foreignKey: 'instructorUserId',
+  sourceKey: 'id',
+  as: 'instructorKmLogsAsInstructor',
+});
+InstructorKmLog.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+User.hasMany(InstructorKmLog, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'instructorKmLogsCreated',
+});
+InstructorKmLog.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
 User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -212,6 +226,7 @@ export {
   FleetCarInstructor,
   InstructorScheduleRule,
   InstructorBranch,
+  InstructorKmLog,
   InstructorPracticalSlotPlan,
   InstructorProfile,
   InstructorStudentRating,
@@ -700,6 +715,59 @@ async function ensurePetrolExpensesTypeAndNullableCount(): Promise<void> {
         MODIFY COLUMN \`petrol_count\` DECIMAL(10,2) NULL
     `);
   }
+}
+
+async function ensurePetrolExpensesPaymentType(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) return;
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'
+       AND COLUMN_NAME = 'payment_type'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length > 0) return;
+
+  await sequelize.query(`
+    ALTER TABLE \`petrol_expenses\`
+      ADD COLUMN \`payment_type\` ENUM('card','cash','pos') NOT NULL DEFAULT 'cash' AFTER \`petrol_count\`
+  `);
+}
+
+async function ensureInstructorKmLogsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_km_logs'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table instructor_km_logs …');
+  await sequelize.query(`
+    CREATE TABLE \`instructor_km_logs\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`date\` DATE NOT NULL,
+      \`km\` DECIMAL(10,2) NOT NULL,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`instructor_km_logs_date_idx\` (\`date\`),
+      KEY \`instructor_km_logs_instructor_date_idx\` (\`instructor_user_id\`, \`date\`),
+      CONSTRAINT \`instructor_km_logs_instructor_fk\` FOREIGN KEY (\`instructor_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`instructor_km_logs_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 async function ensurePetrolConsumptionsTable(): Promise<void> {
@@ -2211,8 +2279,10 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceExpensesTable();
   await ensurePetrolExpensesTable();
   await ensurePetrolExpensesTypeAndNullableCount();
+  await ensurePetrolExpensesPaymentType();
   await ensurePetrolConsumptionsTable();
   await ensurePetrolConsumptionsPetrolAmountNullable();
+  await ensureInstructorKmLogsTable();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
   await ensureBookingsPaymentNotesAndReminderAtColumns();

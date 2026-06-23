@@ -1,4 +1,6 @@
 import { Op } from 'sequelize';
+import type { PetrolPaymentType } from '../constants/petrol-payment-type';
+import { petrolPaymentTypeLabelAm } from '../constants/petrol-payment-type';
 import type { PetrolType } from '../constants/petrol-type';
 import { petrolTypeLabelAm } from '../constants/petrol-type';
 import {
@@ -24,6 +26,8 @@ export type PetrolExpenseDto = {
   petrolType: PetrolType;
   petrolTypeLabel: string;
   petrolCount: number | null;
+  paymentType: PetrolPaymentType;
+  paymentTypeLabel: string;
   price: number;
   description: string | null;
   createdAt: string;
@@ -56,6 +60,7 @@ export type PetrolExpenseInput = {
   date: string;
   petrolType: PetrolType;
   petrolCount: number | null;
+  paymentType?: PetrolPaymentType;
   price: number;
   description?: string | null;
 };
@@ -99,6 +104,7 @@ function rowToDto(
   createdBy?: User,
 ): PetrolExpenseDto {
   const petrolType = row.petrolType as PetrolType;
+  const paymentType = (row.paymentType ?? 'cash') as PetrolPaymentType;
   return {
     id: row.id,
     carId: row.carId,
@@ -109,6 +115,8 @@ function rowToDto(
     petrolType,
     petrolTypeLabel: petrolTypeLabelAm(petrolType),
     petrolCount: toNullableNumber(row.petrolCount),
+    paymentType,
+    paymentTypeLabel: petrolPaymentTypeLabelAm(paymentType),
     price: row.price,
     description: row.description?.trim() || null,
     createdAt:
@@ -246,6 +254,7 @@ export default class AdminPetrolExpenseService {
       date: input.date,
       petrolType: input.petrolType,
       petrolCount: input.petrolCount,
+      paymentType: input.paymentType ?? 'cash',
       price: Math.round(input.price),
       description: input.description?.trim() || null,
       createdByUserId: createdByUserId ?? null,
@@ -275,6 +284,7 @@ export default class AdminPetrolExpenseService {
     if (patch.date !== undefined) row.date = patch.date;
     if (patch.petrolType !== undefined) row.petrolType = patch.petrolType;
     if (patch.petrolCount !== undefined) row.petrolCount = patch.petrolCount;
+    if (patch.paymentType !== undefined) row.paymentType = patch.paymentType;
     if (patch.price !== undefined) row.price = Math.round(patch.price);
     if (patch.description !== undefined) row.description = patch.description?.trim() || null;
 

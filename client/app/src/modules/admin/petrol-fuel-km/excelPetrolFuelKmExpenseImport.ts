@@ -3,6 +3,11 @@ import type { Instructor } from "src/data/instructors";
 import type { FleetCar } from "src/modules/cars";
 import type { PetrolExpenseBody, PetrolExpenseRow } from "src/types/petrol-expense.types";
 import {
+  PETROL_PAYMENT_CASH,
+  PETROL_PAYMENT_OPTIONS,
+  type PetrolPaymentTypeValue,
+} from "src/pages/admin/petrolPaymentType";
+import {
   PETROL_TYPE_BENZIN,
   PETROL_TYPE_LPG,
   PETROL_TYPE_OPTIONS,
@@ -15,14 +20,12 @@ import {
   buildReferenceSheet,
   carPlateLabel,
   downloadWorkbook,
-  findSheetByNames,
   instructorMatchError,
   isRowEmpty,
   isTemplateExampleRow,
   normalizeCellText,
   normalizePersonName,
   parseExcelDateCell,
-  parseOptionalNumber,
   parseRequiredNumber,
   REFERENCE_SHEET_NAMES,
   resolveCarId,
@@ -32,24 +35,29 @@ import {
   type InstructorLookup,
   type LookupCar,
   type LookupInstructor,
-} from "./excelPetrolShared";
+} from "src/modules/admin/petrol/excelPetrolShared";
 
-export const EXPENSE_SHEET_NAMES = ["Վառելիքի ծախս", "Fuel expense", "Expense"] as const;
+/** Excel sheet tab name — must not contain \\ / ? * [ ] */
+export const FUEL_KM_EXPENSE_SHEET_NAME = "Վառելիք ԿՄ";
 
-export const EXPENSE_HEADERS = [
+export const FUEL_KM_EXPENSE_SHEET_NAMES = [FUEL_KM_EXPENSE_SHEET_NAME, "Վառելիք", "Fuel KM"] as const;
+
+export const FUEL_KM_EXPENSE_HEADERS = [
   "Ամսաթիվ",
   "Մեքենա (պետանշան)",
   "Հրահանգիչ",
   "Տեսակ",
-  "Վառելիքի քանակ",
-  "Գին (֏)",
+  "Լիտր",
+  "Գումար (֏)",
+  "Վճարում",
   "Նշում",
 ] as const;
 
 const BENZIN_LABEL = PETROL_TYPE_OPTIONS[0]!.label;
 const LPG_LABEL = PETROL_TYPE_OPTIONS[1]!.label;
+const PAYMENT_LABELS = PETROL_PAYMENT_OPTIONS.map((o) => o.label);
 
-export type ParsedPetrolExpenseRow = {
+export type ParsedFuelKmExpenseRow = {
   id: string;
   rowNumber: number;
   date: string;
@@ -58,8 +66,10 @@ export type ParsedPetrolExpenseRow = {
   instructorName: string;
   petrolType: PetrolTypeValue;
   petrolTypeLabel: string;
-  petrolCount: number | null;
+  petrolCount: number;
   price: number;
+  paymentType: PetrolPaymentTypeValue;
+  paymentTypeLabel: string;
   description: string;
   carId: number | null;
   instructorUserId: number | null;
@@ -68,8 +78,8 @@ export type ParsedPetrolExpenseRow = {
   errors: string[];
 };
 
-export type PetrolExpenseParseResult = {
-  rows: ParsedPetrolExpenseRow[];
+export type FuelKmExpenseParseResult = {
+  rows: ParsedFuelKmExpenseRow[];
   issues: string[];
 };
 
@@ -97,8 +107,21 @@ function parsePetrolType(raw: string): PetrolTypeValue | null {
   return null;
 }
 
+function parsePaymentType(raw: string): PetrolPaymentTypeValue | null {
+  const text = raw.trim().toLowerCase();
+  if (!text) return PETROL_PAYMENT_CASH;
+  if (text === "card" || text.includes("քարտ")) return "card";
+  if (text === "cash" || text.includes("կանխիկ")) return "cash";
+  if (text === "pos") return "pos";
+  return null;
+}
+
 function petrolTypeLabel(type: PetrolTypeValue): string {
   return type === PETROL_TYPE_BENZIN ? "Բենզին" : "Գազ (Հեղուկ Գազ)";
+}
+
+function paymentTypeLabel(type: PetrolPaymentTypeValue): string {
+  return PETROL_PAYMENT_OPTIONS.find((o) => o.value === type)?.label ?? type;
 }
 
 function toLookupCars(cars: readonly FleetCar[]): LookupCar[] {
@@ -131,7 +154,7 @@ function templateExampleContext(
   };
 }
 
-export function downloadPetrolExpenseTemplate(
+export function downloadFuelKmExpenseTemplate(
   cars: readonly FleetCar[],
   instructors: readonly Instructor[],
 ): void {
@@ -140,23 +163,45 @@ export function downloadPetrolExpenseTemplate(
   const { plate, instructorName, date } = templateExampleContext(cars, instructors, instructorLookup);
   const wb = XLSX.utils.book_new();
   const dataSheet = XLSX.utils.aoa_to_sheet([
-    [...EXPENSE_HEADERS],
-    [date, plate, instructorName, BENZIN_LABEL, "40", "15000", `${TEMPLATE_EXAMPLE_MARKER} — ${BENZIN_LABEL}`],
-    [date, plate, instructorName, LPG_LABEL, "35", "12000", `${TEMPLATE_EXAMPLE_MARKER} — ${LPG_LABEL}`],
+    [...FUEL_KM_EXPENSE_HEADERS],
+    [
+      date,
+      plate,
+      instructorName,
+      BENZIN_LABEL,
+      "40",
+      "15000",
+      PAYMENT_LABELS[1],
+      `${TEMPLATE_EXAMPLE_MARKER} — ${BENZIN_LABEL}`,
+    ],
+    [
+      date,
+      plate,
+      instructorName,
+      LPG_LABEL,
+      "35",
+      "12000",
+      "POS",
+      `${TEMPLATE_EXAMPLE_MARKER} — ${LPG_LABEL}`,
+    ],
   ]);
   applyInstructorNameValidation(dataSheet, "C", instructorLookup.registeredNames);
-  XLSX.utils.book_append_sheet(wb, dataSheet, EXPENSE_SHEET_NAMES[0]);
+  XLSX.utils.book_append_sheet(wb, dataSheet, FUEL_KM_EXPENSE_SHEET_NAME);
   const refSheet = XLSX.utils.aoa_to_sheet(
-    buildReferenceSheet(toLookupCars(cars), lookupInstructors, [BENZIN_LABEL, LPG_LABEL]),
+    buildReferenceSheet(toLookupCars(cars), lookupInstructors, [
+      BENZIN_LABEL,
+      LPG_LABEL,
+      ...PAYMENT_LABELS,
+    ]),
   );
   XLSX.utils.book_append_sheet(wb, refSheet, REFERENCE_SHEET_NAMES[0]);
-  downloadWorkbook(wb, "vayeliq-zexs-template.xlsx");
+  downloadWorkbook(wb, "vayeliq-km-template.xlsx");
 }
 
-export function exportPetrolExpenseRows(rows: readonly PetrolExpenseRow[]): void {
+export function exportFuelKmExpenseRows(rows: readonly PetrolExpenseRow[]): void {
   const wb = XLSX.utils.book_new();
   const aoa: unknown[][] = [
-    [...EXPENSE_HEADERS],
+    [...FUEL_KM_EXPENSE_HEADERS],
     ...rows.map((row) => [
       row.date.slice(0, 10),
       row.carLabel.split(" · ")[0] ?? row.carLabel,
@@ -164,12 +209,13 @@ export function exportPetrolExpenseRows(rows: readonly PetrolExpenseRow[]): void
       row.petrolTypeLabel,
       row.petrolCount ?? "",
       row.price,
+      row.paymentTypeLabel,
       row.description ?? "",
     ]),
   ];
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
-  XLSX.utils.book_append_sheet(wb, sheet, EXPENSE_SHEET_NAMES[0]);
-  downloadWorkbook(wb, `petrol-expense-export-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, sheet, FUEL_KM_EXPENSE_SHEET_NAME);
+  downloadWorkbook(wb, `petrol-fuel-km-export-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function parseExpenseRow(
@@ -177,16 +223,17 @@ function parseExpenseRow(
   rowNumber: number,
   cars: readonly LookupCar[],
   instructorLookup: InstructorLookup,
-): ParsedPetrolExpenseRow {
+): ParsedFuelKmExpenseRow {
   const dateIso = parseExcelDateCell(row[0]) ?? "";
   const carPlate = normalizeCellText(row[1]);
   const instructorName = normalizePersonName(normalizeCellText(row[2]));
   const petrolTypeRaw = normalizeCellText(row[3]);
   const petrolType = parsePetrolType(petrolTypeRaw);
-  const petrolCountRaw = parseOptionalNumber(row[4]);
-  const petrolCount = petrolCountRaw != null && petrolCountRaw > 0 ? petrolCountRaw : null;
+  const petrolCount = parseRequiredNumber(row[4]);
   const price = parseRequiredNumber(row[5]);
-  const description = normalizeCellText(row[6]);
+  const paymentTypeRaw = normalizeCellText(row[6]);
+  const paymentType = parsePaymentType(paymentTypeRaw);
+  const description = normalizeCellText(row[7]);
   const isExample = isTemplateExampleRow(description);
 
   const errors: string[] = [];
@@ -194,7 +241,9 @@ function parseExpenseRow(
   if (!carPlate) errors.push("Car plate is required");
   if (!instructorName) errors.push("Instructor is required");
   if (!petrolType) errors.push("Invalid fuel type");
+  if (petrolCount == null || petrolCount <= 0) errors.push("Liters is required");
   if (price == null) errors.push("Invalid price");
+  if (!paymentType) errors.push("Invalid payment type");
 
   const carId = carPlate ? resolveCarId(cars, carPlate) : null;
   const instructorMatch = instructorName ? resolveInstructorMatch(instructorLookup, instructorName) : null;
@@ -204,9 +253,10 @@ function parseExpenseRow(
   }
 
   const resolvedType = petrolType ?? PETROL_TYPE_BENZIN;
+  const resolvedPayment = paymentType ?? PETROL_PAYMENT_CASH;
 
   return {
-    id: `expense-${rowNumber}`,
+    id: `fuel-km-expense-${rowNumber}`,
     rowNumber,
     date: dateIso,
     dateIso,
@@ -214,8 +264,10 @@ function parseExpenseRow(
     instructorName: instructorMatch?.registeredName ?? instructorName,
     petrolType: resolvedType,
     petrolTypeLabel: petrolTypeLabel(resolvedType),
-    petrolCount,
+    petrolCount: petrolCount ?? 0,
     price: price ?? 0,
+    paymentType: resolvedPayment,
+    paymentTypeLabel: paymentTypeLabel(resolvedPayment),
     description,
     carId,
     instructorUserId: instructorMatch?.userId ?? null,
@@ -225,23 +277,23 @@ function parseExpenseRow(
   };
 }
 
-export async function parsePetrolExpenseWorkbook(
+export async function parseFuelKmExpenseWorkbook(
   file: File,
   cars: readonly FleetCar[],
   instructors: readonly Instructor[],
-): Promise<PetrolExpenseParseResult> {
+): Promise<FuelKmExpenseParseResult> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const lookupCars = toLookupCars(cars);
   const instructorLookup = buildInstructorLookup(toLookupInstructors(instructors));
 
-  const sheet = findDataSheet(workbook, EXPENSE_SHEET_NAMES);
+  const sheet = findDataSheet(workbook, FUEL_KM_EXPENSE_SHEET_NAMES);
   if (!sheet) {
     return { rows: [], issues: ["No fuel expense sheet found in workbook."] };
   }
 
   const rows = sheetRows(sheet);
-  const parsed: ParsedPetrolExpenseRow[] = [];
+  const parsed: ParsedFuelKmExpenseRow[] = [];
   const issues: string[] = [];
   let exampleCount = 0;
 
@@ -271,7 +323,7 @@ export async function parsePetrolExpenseWorkbook(
   return { rows: parsed, issues };
 }
 
-export function toPetrolExpenseBulkPayload(row: ParsedPetrolExpenseRow): PetrolExpenseBody | null {
+export function toFuelKmExpenseBulkPayload(row: ParsedFuelKmExpenseRow): PetrolExpenseBody | null {
   if (row.isExample || !row.valid || row.carId == null || row.instructorUserId == null) return null;
   return {
     carId: row.carId,
@@ -279,6 +331,7 @@ export function toPetrolExpenseBulkPayload(row: ParsedPetrolExpenseRow): PetrolE
     date: row.dateIso,
     petrolType: row.petrolType,
     petrolCount: row.petrolCount,
+    paymentType: row.paymentType,
     price: Math.round(row.price),
     description: row.description || null,
   };

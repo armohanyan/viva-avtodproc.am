@@ -4,10 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs
 import { useLang } from "src/lib/i18n";
 import AdminPetrolConsumptionTab from "src/pages/admin/AdminPetrolConsumptionTab";
 import AdminPetrolExpenseTab from "src/pages/admin/AdminPetrolExpenseTab";
+import AdminPetrolFuelKmTab from "src/pages/admin/petrol-fuel-km/AdminPetrolFuelKmTab";
 import { Fuel } from "lucide-react";
 import { useState } from "react";
 
-type PetrolTab = "expense" | "consumption";
+type PetrolTab = "expense" | "consumption" | "fuelKm";
 
 export default function AdminPetrolPage() {
   const { t } = useLang();
@@ -26,6 +27,7 @@ export default function AdminPetrolPage() {
           <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="expense">{t("adminPetrolTabExpense")}</TabsTrigger>
             <TabsTrigger value="consumption">{t("adminPetrolTabConsumption")}</TabsTrigger>
+            <TabsTrigger value="fuelKm">{t("adminPetrolTabFuelKm")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="expense" className="mt-0">
@@ -34,6 +36,10 @@ export default function AdminPetrolPage() {
 
           <TabsContent value="consumption" className="mt-0">
             <AdminPetrolConsumptionTab />
+          </TabsContent>
+
+          <TabsContent value="fuelKm" className="mt-0">
+            <AdminPetrolFuelKmTab />
           </TabsContent>
         </Tabs>
       </div>

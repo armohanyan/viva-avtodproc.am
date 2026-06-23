@@ -809,6 +809,27 @@ export default function LessonBookingCalendar({
     });
   };
 
+  const shouldAutoStartBookingPayment = (res: StudentPracticalBookingCreateResponse): boolean =>
+    !res.coveredByPrepaidCredits &&
+    !!res.holdExpiresAt &&
+    (res.status === "pending" || res.status === "pending_payment");
+
+  const onStartCardPayment = async (bookingId?: number) => {
+    const id = bookingId ?? studentPaySession?.id;
+    if (id == null) return;
+    setPayBusy(true);
+    try {
+      const result = await initiateCheckout({ kind: "booking", bookingId: id });
+      if (result.mode === "simulated") {
+        setPosDialogOpen(true);
+      }
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setPayBusy(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (!selectedInstructorId) return;
     if (mode === "admin" && !studentName.trim()) return;
@@ -866,6 +887,9 @@ export default function LessonBookingCalendar({
         setBusySlotsRefreshKey((k) => k + 1);
         await refreshEntitlements();
         showToast(t("bookingCreatedToast"), "success");
+        if (shouldAutoStartBookingPayment(res)) {
+          await onStartCardPayment(res.id);
+        }
       } catch (e) {
         showToast(getApiErrorMessage(e), "error");
       } finally {
@@ -971,21 +995,6 @@ export default function LessonBookingCalendar({
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
       return false;
-    } finally {
-      setPayBusy(false);
-    }
-  };
-
-  const onStartCardPayment = async () => {
-    if (!studentPaySession) return;
-    setPayBusy(true);
-    try {
-      const result = await initiateCheckout({ kind: "booking", bookingId: studentPaySession.id });
-      if (result.mode === "simulated") {
-        setPosDialogOpen(true);
-      }
-    } catch (e) {
-      showToast(getApiErrorMessage(e), "error");
     } finally {
       setPayBusy(false);
     }

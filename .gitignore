@@ -45,3 +45,5 @@ Thumbs.db
 *.tgz
 .eslintcache
 .stylelintcache
+
+.vpos-docs/

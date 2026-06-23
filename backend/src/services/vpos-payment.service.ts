@@ -143,10 +143,12 @@ export default class VposPaymentService {
     const errorCode = String(register.errorCode ?? '0');
     if (errorCode !== '0' || !register.formUrl || !register.orderId) {
       await session.update({ status: 'failed' });
-      throw new InputValidationError(
-        register.errorMessage?.trim() || 'Could not start payment with the bank.',
-        HttpStatusCodesUtil.BAD_GATEWAY,
-      );
+      const bankMsg = register.errorMessage?.trim() || 'Could not start payment with the bank.';
+      const hint =
+        errorCode === '5'
+          ? ' ACBA rejected the merchant API login (error 5). Verify VPOS_USERNAME/VPOS_PASSWORD with the bank or reset the API password in the merchant portal.'
+          : '';
+      throw new InputValidationError(`${bankMsg}${hint}`, HttpStatusCodesUtil.BAD_GATEWAY);
     }
 
     await session.update({

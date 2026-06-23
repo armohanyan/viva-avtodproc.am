@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import AdminTableScroll from "src/components/AdminTableScroll";
 import { Button } from "src/components/ui/button";
 import type { Instructor } from "src/data/instructors";
 import type { TranslationKey } from "src/lib/i18n";
@@ -220,13 +219,13 @@ export default function AdminInstructorAvailabilityTable({
       {branchGroups.length === 0 ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
       ) : (
-        <AdminTableScroll className="rounded-lg border border-primary/30">
-          <table className="w-full text-sm border-collapse min-w-max">
+        <div className="rounded-lg border border-primary/30 max-h-[min(calc(100dvh-14rem),720px)] overflow-auto overscroll-contain touch-pan-x touch-pan-y">
+          <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
             <thead>
-              <tr className="border-b border-primary/20">
+              <tr>
                 <th
                   rowSpan={2}
-                  className="sticky left-0 z-20 bg-background text-left text-primary font-semibold px-3 py-2 border-r border-primary/20 min-w-[7.5rem]"
+                  className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[7.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]"
                 >
                   {t("adminBookingAvailabilityGridDateCol")}
                 </th>
@@ -234,18 +233,18 @@ export default function AdminInstructorAvailabilityTable({
                   <th
                     key={g.branchId}
                     colSpan={g.instructors.length}
-                    className="text-center text-primary font-semibold px-2 py-2 border-r border-primary/15 last:border-r-0"
+                    className="sticky top-0 z-30 bg-card text-center text-primary font-semibold px-2 py-2 border-r border-b border-primary/15 last:border-r-0 shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                   >
                     {g.branchName}
                   </th>
                 ))}
               </tr>
-              <tr className="border-b border-primary/20">
+              <tr>
                 {branchGroups.flatMap((g) =>
                   g.instructors.map((ins) => (
                     <th
                       key={`${g.branchId}-${ins.id}`}
-                      className="text-center text-primary/90 text-xs font-medium px-1 py-1.5 border-r border-primary/10 last:border-r-0 min-w-[3.25rem] max-w-[5rem] truncate"
+                      className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[3.25rem] max-w-[5rem] truncate shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                       title={ins.name}
                     >
                       {ins.name.split(" ")[0]}
@@ -256,8 +255,8 @@ export default function AdminInstructorAvailabilityTable({
             </thead>
             <tbody>
               {dates.map((dateIso) => (
-                <tr key={dateIso} className="border-b border-border/40 hover:bg-primary/5">
-                  <td className="sticky left-0 z-10 bg-background px-3 py-2 border-r border-primary/15 whitespace-nowrap">
+                <tr key={dateIso} className="hover:bg-primary/5">
+                  <td className="sticky left-0 z-20 bg-card px-3 py-2 border-r border-b border-primary/15 whitespace-nowrap shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
                     <div className="text-primary font-medium tabular-nums">{formatGridDateLabel(dateIso)}</div>
                     <div className="text-[11px] text-primary/70">{armenianWeekdayShort(dateIso)}</div>
                   </td>
@@ -272,7 +271,7 @@ export default function AdminInstructorAvailabilityTable({
                         selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`);
                       const disabled = !cellClickMode && !studentName.trim();
                       return (
-                        <td key={`${dateIso}-${g.branchId}-${ins.id}`} className="p-0 border-r border-border/30 last:border-r-0">
+                        <td key={`${dateIso}-${g.branchId}-${ins.id}`} className="p-0 border-r border-b border-border/30 last:border-r-0">
                           <button
                             type="button"
                             disabled={disabled}
@@ -320,7 +319,7 @@ export default function AdminInstructorAvailabilityTable({
               ))}
             </tbody>
           </table>
-        </AdminTableScroll>
+        </div>
       )}
 
       {!cellClickMode && pendingSource && pendingSource.entries.length > 0 ? (

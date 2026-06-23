@@ -1,3 +1,4 @@
+import type { PetrolPaymentTypeValue } from "src/pages/admin/petrolPaymentType";
 import type { PetrolTypeValue } from "src/pages/admin/petrolTypeAm";
 
 export type PetrolExpenseRow = {
@@ -10,6 +11,8 @@ export type PetrolExpenseRow = {
   petrolType: PetrolTypeValue;
   petrolTypeLabel: string;
   petrolCount: number | null;
+  paymentType: PetrolPaymentTypeValue;
+  paymentTypeLabel: string;
   price: number;
   description: string | null;
   createdAt: string;
@@ -42,6 +45,7 @@ export type PetrolExpenseBody = {
   date: string;
   petrolType: PetrolTypeValue;
   petrolCount?: number | null;
+  paymentType?: PetrolPaymentTypeValue;
   price: number;
   description?: string | null;
 };

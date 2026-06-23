@@ -1,7 +1,6 @@
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
 import { Card } from "src/components/ui/card";
-import { CountUpText } from "src/lib/motion";
 import { useLang } from "src/lib/i18n";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { Star, CalendarDays, Car, Gauge } from "lucide-react";
@@ -100,11 +99,11 @@ export default function InstructorCard({
                 }`}
               />
             ))}
-            <CountUpText
-              value={instructor.rating}
-              decimals={1}
+            <span
               className={`text-muted-foreground ml-0.5 ${compact ? "text-[10px]" : "text-xs"}`}
-            />
+            >
+              {instructor.rating.toFixed(1)}
+            </span>
           </div>
         </div>
 
@@ -118,7 +117,7 @@ export default function InstructorCard({
               ֏
             </span>
             <span className="break-words">
-              {t("lessonPrice")}: <CountUpText value={instructor.hourlyPrice} /> ֏ / {t("perHour")}
+              {t("lessonPrice")}: {instructor.hourlyPrice.toLocaleString("en-US")} ֏ / {t("perHour")}
             </span>
           </div>
           {instructor.car && (
@@ -139,7 +138,7 @@ export default function InstructorCard({
           <div className={`flex items-center gap-1.5 ${compact ? "" : "col-span-2"}`}>
             <CalendarDays className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
             <span>
-              <CountUpText value={instructor.years} /> {t("experience")}
+              {instructor.years.toLocaleString("en-US")} {t("experience")}
             </span>
           </div>
         </div>

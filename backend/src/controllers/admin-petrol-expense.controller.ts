@@ -1,5 +1,6 @@
 import type { NextFunction, Response } from 'express';
 import { z } from 'zod';
+import { PETROL_PAYMENT_TYPES } from '../constants/petrol-payment-type';
 import { PETROL_TYPES } from '../constants/petrol-type';
 import { parseBody, resolveBranchIdFilter } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
@@ -20,6 +21,7 @@ const createSchema = z.object({
   date: dateField,
   petrolType: z.enum(PETROL_TYPES),
   petrolCount: petrolCountField.optional(),
+  paymentType: z.enum(PETROL_PAYMENT_TYPES).optional(),
   price: z.coerce.number().min(0),
   description: z.string().max(4000).nullish(),
 });
@@ -58,6 +60,7 @@ export default class AdminPetrolExpenseController {
           date: body.date,
           petrolType: body.petrolType,
           petrolCount: body.petrolCount ?? null,
+          paymentType: body.paymentType,
           price: body.price,
           description: body.description ?? null,
         },
@@ -78,6 +81,7 @@ export default class AdminPetrolExpenseController {
         ...(body.date !== undefined ? { date: body.date } : {}),
         ...(body.petrolType !== undefined ? { petrolType: body.petrolType } : {}),
         ...(body.petrolCount !== undefined ? { petrolCount: body.petrolCount ?? null } : {}),
+        ...(body.paymentType !== undefined ? { paymentType: body.paymentType } : {}),
         ...(body.price !== undefined ? { price: body.price } : {}),
         ...(body.description !== undefined ? { description: body.description ?? null } : {}),
       });
@@ -107,6 +111,7 @@ export default class AdminPetrolExpenseController {
         date: row.date,
         petrolType: row.petrolType,
         petrolCount: row.petrolCount ?? null,
+        paymentType: row.paymentType,
         price: row.price,
         description: row.description ?? null,
       }));
