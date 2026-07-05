@@ -18,6 +18,7 @@
     "selftest:booking": "tsx src/scripts/booking-rules-selftest.ts",
     "selftest:payment-schedule": "tsx src/scripts/booking-payment-schedule-selftest.ts",
     "selftest:admin-mfa": "tsx src/scripts/admin-mfa-selftest.ts",
+    "vpos:smoke-test": "tsx src/scripts/vpos-smoke-test.ts",
     "import:road-sign-questions": "tsx src/scripts/import-road-sign-questions.ts",
     "mirror:exam-question-images": "tsx src/scripts/mirror-exam-question-images-local.ts"
   },

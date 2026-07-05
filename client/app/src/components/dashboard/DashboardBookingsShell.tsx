@@ -10,6 +10,7 @@ import { useLocation } from "wouter";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
+import { VposTestModeBanner } from "src/components/payments/VposTestModeBanner";
 
 export type BookingsShellActive = "home" | "package" | "practical" | "theory-personal" | "theory-group";
 
@@ -77,6 +78,8 @@ export default function DashboardBookingsShell({ active, children }: Props) {
           </Card>
         </Reveal>
       ) : null}
+
+      <VposTestModeBanner className="mb-4" />
 
       {children}
     </DashboardLayout>

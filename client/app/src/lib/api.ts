@@ -80,6 +80,12 @@ function tr(key: string): string {
 			bookingAlreadyPending: "There is already a pending booking. Complete or cancel it first.",
 			bookingPaymentWindowExpired: "Payment time window has expired. Please book again.",
 			bookingPaymentWindowMissing: "No active payment window for this booking.",
+			packageAlreadyOwned: "You already have an active driving package. Contact the office to change packages.",
+			vposSessionExpired: "This payment session has expired. Start checkout again.",
+			bookingTheoryGroupAlreadyActive:
+				"You already have a booking for this theory group. Open My bookings to complete payment or manage it.",
+			bookingTheoryGroupFull: "This group is full. There are no seats left.",
+			bookingTheoryGroupNotOpen: "This theory group is not open for new bookings.",
 		},
 		ru: {
 			errorEmailAlreadyInUse: "Этот email уже используется.",
@@ -102,6 +108,12 @@ function tr(key: string): string {
 			bookingAlreadyPending: "Уже есть ожидающее бронирование. Сначала завершите или отмените его.",
 			bookingPaymentWindowExpired: "Окно оплаты истекло. Забронируйте снова.",
 			bookingPaymentWindowMissing: "Для этого бронирования нет активного окна оплаты.",
+			packageAlreadyOwned: "У вас уже есть активный пакет. Для смены пакета свяжитесь с офисом.",
+			vposSessionExpired: "Сессия оплаты истекла. Начните оплату заново.",
+			bookingTheoryGroupAlreadyActive:
+				"У вас уже есть запись в эту теоретическую группу. Откройте «Мои записи», чтобы оплатить или управлять ею.",
+			bookingTheoryGroupFull: "Группа заполнена. Свободных мест нет.",
+			bookingTheoryGroupNotOpen: "Эта теоретическая группа не принимает новые записи.",
 		},
 		am: {
 			errorEmailAlreadyInUse: "Այս էլ. հասցեն արդեն օգտագործվում է։",
@@ -124,15 +136,51 @@ function tr(key: string): string {
 			bookingAlreadyPending: "Արդեն կա սպասող ամրագրում։ Ավարտեք կամ չեղարկեք այն։",
 			bookingPaymentWindowExpired: "Վճարման ժամկետը ավարտվել է։ Խնդրում ենք ամրագրել նորից։",
 			bookingPaymentWindowMissing: "Այս ամրագրման համար ակտիվ վճարման պատուհան չկա։",
+			packageAlreadyOwned: "Դուք արդեն ունեք ակտիվ փաթեթ։ Փաթեթը փոխելու համար կապվեք գրասենյակի հետ։",
+			vposSessionExpired: "Վճարման սեսիան ավարտվել է։ Սկսեք վճարումը նորից։",
+			bookingTheoryGroupAlreadyActive:
+				"Դուք արդեն ունեք այս տեսական խմբի ամրագրում։ Բացեք «Իմ ամրագրումները»՝ վճարումն ավարտելու կամ կառավարելու համար։",
+			bookingTheoryGroupFull: "Խումբը լիքն է։ Ազատ տեղեր չկան։",
+			bookingTheoryGroupNotOpen: "Այս տեսական խումբը նոր ամրագրումներ չի ընդունում։",
 		},
 	};
 	return m[lang][key] ?? m.en[key] ?? key;
 }
 
+type ApiErrorPayload = {
+	message?: string;
+	data?: {
+		acba?: {
+			endpoint?: string;
+			errorCode?: string;
+			errorMessage?: string;
+		};
+	};
+};
+
+function parseApiErrorPayload(bodyText?: string): ApiErrorPayload | null {
+	if (!bodyText) return null;
+	try {
+		return JSON.parse(bodyText) as ApiErrorPayload;
+	} catch {
+		return null;
+	}
+}
+
+function formatAcbaErrorMessage(payload: ApiErrorPayload | null, fallback: string): string {
+	const acba = payload?.data?.acba;
+	if (!acba?.errorMessage?.trim()) return fallback;
+	const code = acba.errorCode?.trim();
+	const bank = acba.errorMessage.trim();
+	return code ? `[ACBA ${code}] ${bank}` : bank;
+}
+
 export function getApiErrorMessage(err: unknown): string {
 	if (err instanceof ApiRequestError) {
+		const payload = parseApiErrorPayload(err.bodyText);
+		const acbaMsg = formatAcbaErrorMessage(payload, "");
 		const status = err.status;
-		const raw = (err.message || "").trim();
+		const raw = (acbaMsg || payload?.message || err.message || "").trim();
 		const m = raw.toLowerCase();
 
 		if (
@@ -167,6 +215,15 @@ export function getApiErrorMessage(err: unknown): string {
 		if (m.includes("already have a pending booking")) return tr("bookingAlreadyPending");
 		if (m.includes("payment window has expired")) return tr("bookingPaymentWindowExpired");
 		if (m.includes("no active payment window")) return tr("bookingPaymentWindowMissing");
+		if (m.includes("already have an active driving package")) return tr("packageAlreadyOwned");
+		if (m.includes("payment session has expired")) return tr("vposSessionExpired");
+		if (m.includes("already has an active booking for this theory group")) {
+			return tr("bookingTheoryGroupAlreadyActive");
+		}
+		if (m.includes("cohort is full")) return tr("bookingTheoryGroupFull");
+		if (m.includes("theory group is not open for new bookings") || m.includes("theory group is not open for bookings")) {
+			return tr("bookingTheoryGroupNotOpen");
+		}
 
 		if (status === 401) return tr("errorUnauthorized");
 		if (status === 403) return tr("errorForbidden");

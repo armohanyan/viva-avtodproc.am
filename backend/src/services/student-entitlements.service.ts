@@ -1,7 +1,7 @@
 import type { Transaction } from 'sequelize';
 import { Op } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { Branch, Package, PackageLessonBalance, PackageOrder, StudentExtraPractical, StudentProfile, User } from '../models';
+import { Branch, FinanceTransaction, Package, PackageLessonBalance, PackageOrder, StudentExtraPractical, StudentProfile, User } from '../models';
 import FinanceService from './finance.service';
 import NotificationService from './notification.service';
 import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
@@ -271,18 +271,36 @@ export default class StudentEntitlementsService {
     }
 
     const run = async (transaction: Transaction) => {
+      const providerRef =
+        options?.providerRef?.trim() || `package-vpos:${userId}:${packageId}:${Date.now()}`;
+
+      const existingFinance = await FinanceTransaction.findOne({
+        where: { providerRef, status: 'completed' },
+        transaction,
+      });
+      if (existingFinance) return;
+
+      const existingPaidOrder = await PackageOrder.findOne({
+        where: {
+          studentUserId: userId,
+          packageId,
+          status: { [Op.in]: ['paid', 'confirmed'] },
+          source: 'student_checkout',
+        },
+        transaction,
+      });
+      if (existingPaidOrder) return;
+
       const applied = await this.applyPackageAssignment(userId, packageId, 'paid', transaction);
       if (!applied) {
         throw new InputValidationError('Could not enroll in package.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      const providerRef =
-        options?.providerRef?.trim() || `package-vpos:${userId}:${packageId}:${Date.now()}`;
       await FinanceService.create({
         customer: user.name.trim() || 'Student',
         email: user.email ?? '',
         description: `Driving package: ${pkg.name} — vPOS`,
         branchId: applied.branchId,
-        channel: 'pos',
+        channel: 'online',
         method: 'card',
         grossAmd: gross,
         feeAmd: 0,
@@ -412,8 +430,17 @@ export default class StudentEntitlementsService {
     if (!profile) return null;
 
     const run = async (transaction: Transaction) => {
+      const providerRef =
+        options?.providerRef?.trim() || `extra-vpos:${userId}:${Date.now()}`;
+
+      const existingFinance = await FinanceTransaction.findOne({
+        where: { providerRef, status: 'completed' },
+        transaction,
+      });
+      if (existingFinance) return;
+
       const purchasedAt = new Date().toISOString().slice(0, 10);
-      const extra = await StudentExtraPractical.create(
+      await StudentExtraPractical.create(
         {
           userId,
           practicalTotal,
@@ -424,14 +451,12 @@ export default class StudentEntitlementsService {
       );
 
       const gross = parseAmdFromPriceDisplay('12,000 ֏');
-      const providerRef =
-        options?.providerRef?.trim() || `extra-vpos:${userId}:${extra.id}:${Date.now()}`;
       await FinanceService.create({
         customer: user.name.trim() || 'Student',
         email: user.email ?? '',
         description: `Extra practical lessons (${practicalTotal}) — vPOS`,
         branchId: profile.branchId,
-        channel: 'pos',
+        channel: 'online',
         method: 'card',
         grossAmd: gross,
         feeAmd: 0,

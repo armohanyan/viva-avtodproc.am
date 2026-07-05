@@ -6,6 +6,7 @@ import AuditLogService from './audit-log.service';
 import BookingNotificationService from './booking-notification.service';
 import BookingService from './booking.service';
 import LessonCompletionService from './lesson-completion.service';
+import VposPaymentService from './vpos-payment.service';
 import { todayIsoUtc } from '../utils/calendar-month.util';
 import { shouldAutoCancelUnpaidAfterPaymentDeadline } from '../utils/booking-payment-schedule.util';
 import {
@@ -31,7 +32,11 @@ export default class BookingCronService {
     bookingsMarkedCompleted: number;
     bookingsMarkedMissed: number;
     cohortSessionsMarkedCompleted: number;
+    vposReconciled: number;
+    vposFulfilled: number;
   }> {
+    const vposResult = await VposPaymentService.reconcilePendingSessions();
+
     const [legacyNormalized] = await Booking.update(
       { status: 'pending' },
       {
@@ -42,12 +47,19 @@ export default class BookingCronService {
       },
     );
 
+    const protectedBookingIds = await VposPaymentService.bookingIdsWithPendingPayment();
+
+    const expiredHoldWhere: Record<string, unknown> = {
+      status: { [Op.in]: ['pending', 'pending_payment'] },
+      paidAt: { [Op.is]: null },
+      holdExpiresAt: { [Op.and]: [{ [Op.ne]: null }, { [Op.lt]: new Date() }] },
+    };
+    if (protectedBookingIds.length > 0) {
+      expiredHoldWhere.id = { [Op.notIn]: protectedBookingIds };
+    }
+
     const deletedExpiredHolds = await Booking.destroy({
-      where: {
-        status: { [Op.in]: ['pending', 'pending_payment'] },
-        paidAt: { [Op.is]: null },
-        holdExpiresAt: { [Op.and]: [{ [Op.ne]: null }, { [Op.lt]: new Date() }] },
-      },
+      where: expiredHoldWhere,
     });
 
     if (legacyNormalized > 0 || deletedExpiredHolds > 0) {
@@ -135,6 +147,8 @@ export default class BookingCronService {
       bookingsMarkedCompleted: lessonCompletion.bookingsMarkedCompleted,
       bookingsMarkedMissed: lessonCompletion.bookingsMarkedMissed,
       cohortSessionsMarkedCompleted: lessonCompletion.cohortSessionsMarkedCompleted,
+      vposReconciled: vposResult.checked,
+      vposFulfilled: vposResult.fulfilled,
     };
 
     AuditLogService.recordFireAndForget({

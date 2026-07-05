@@ -1327,12 +1327,12 @@ export default class BookingService {
                   unknown
                 >)
               : consumedMeta;
+            coveredByPrepaidCredits = true;
           } catch (e) {
             if (!isPackageCoverageUnavailableError(e)) throw e;
             prepaidMeta = prepaidBase;
           }
         }
-        coveredByPrepaidCredits = prepaidMeta != null;
         status = coveredByPrepaidCredits ? 'confirmed' : 'pending';
         holdExpiresAt = coveredByPrepaidCredits ? null : holdExp.toISOString();
         totalPriceAmd = coveredByPrepaidCredits ? 0 : input.totalPriceAmd;
@@ -3677,7 +3677,7 @@ export default class BookingService {
             email: stu.email ?? '',
             description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — vPOS`,
             branchId: row.branchId,
-            channel: 'pos',
+            channel: 'online',
             method: 'card',
             grossAmd: gross,
             feeAmd: 0,

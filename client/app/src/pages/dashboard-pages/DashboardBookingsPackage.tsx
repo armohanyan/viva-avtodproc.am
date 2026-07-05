@@ -21,7 +21,12 @@ import { StudentBookingPausedCallout } from "src/components/booking/StudentBooki
 export function DashboardBookingsPackageTab() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
-  const { packagePracticalRemaining, theoryLessonsRemaining, refreshEntitlements } = useStudentEntitlements();
+  const {
+    packagePracticalRemaining,
+    theoryLessonsRemaining,
+    ownedPackages,
+    refreshEntitlements,
+  } = useStudentEntitlements();
   const { user } = useAccount();
   const {
     config: vposConfig,
@@ -33,6 +38,8 @@ export function DashboardBookingsPackageTab() {
   const [pendingPackageId, setPendingPackageId] = useState<number | null>(null);
   const [posBusy, setPosBusy] = useState(false);
   const [slotPromptOpen, setSlotPromptOpen] = useState(false);
+
+  const hasActivePackage = ownedPackages.length > 0;
 
   const locale = useMemo(() => {
     if (lang === "am") return "hy-AM";
@@ -48,6 +55,10 @@ export function DashboardBookingsPackageTab() {
   const [posDialogOpen, setPosDialogOpen] = useState(false);
 
   const buyPackage = async (packageId: number) => {
+    if (hasActivePackage) {
+      showToast(t("packageAlreadyOwnedHint"), "error");
+      return;
+    }
     setPendingPackageId(packageId);
     setPosBusy(true);
     try {
@@ -85,6 +96,11 @@ export function DashboardBookingsPackageTab() {
   return (
     <Reveal delay={0.06}>
       {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
+      {hasActivePackage ? (
+        <p className="text-sm text-muted-foreground mb-4" role="status">
+          {t("packageAlreadyOwnedHint")}
+        </p>
+      ) : null}
       <SimulatedAcbaPosDialog
         open={posDialogOpen && pendingPackageId !== null}
         onOpenChange={(open) => {
@@ -100,23 +116,22 @@ export function DashboardBookingsPackageTab() {
       <Dialog open={slotPromptOpen} onOpenChange={setSlotPromptOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Ընտրեք դասերի ժամերը</DialogTitle>
-            <DialogDescription className="text-left">
-              Փաթեթը ակտիվ է։ Կարող եք ընտրել ժամերը հիմա կամ ավելի ուշ։
-            </DialogDescription>
+            <DialogTitle>{t("packageSlotPromptTitle")}</DialogTitle>
+            <DialogDescription className="text-left">{t("packageSlotPromptBody")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              Գործնական դասեր մնացել է: <span className="font-semibold text-foreground">{packagePracticalRemaining}</span>
+              {t("packageSlotPromptPracticalRemaining")}:{" "}
+              <span className="font-semibold text-foreground">{packagePracticalRemaining}</span>
             </p>
             <p className="text-muted-foreground">
-              Տեսական անհատական դասեր մնացել է:{" "}
+              {t("packageSlotPromptTheoryRemaining")}:{" "}
               <span className="font-semibold text-foreground">{theoryLessonsRemaining}</span>
             </p>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setSlotPromptOpen(false)}>
-              Ավելի ուշ
+              {t("packageSlotPromptLater")}
             </Button>
             {packagePracticalRemaining > 0 ? (
               <Button
@@ -126,7 +141,7 @@ export function DashboardBookingsPackageTab() {
                   setLocation(absWouterHref("/dashboard/bookings/practical"));
                 }}
               >
-                Գործնական դաս
+                {t("packageSlotPromptPracticalCta")}
               </Button>
             ) : null}
             {theoryLessonsRemaining > 0 ? (
@@ -180,7 +195,7 @@ export function DashboardBookingsPackageTab() {
                 type="button"
                 className="w-full mt-4"
                 size="sm"
-                disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED}
+                disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED || hasActivePackage || posBusy}
                 onClick={() => buyPackage(pkg.id)}
               >
                 {t("bookingsBuyPackageCta")} · {pkg.name}

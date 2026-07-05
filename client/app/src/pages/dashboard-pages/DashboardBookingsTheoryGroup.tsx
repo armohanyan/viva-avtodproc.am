@@ -16,6 +16,7 @@ import { branchOptionLabel, branchesInCity, branchNameById, useBranches } from "
 import { cityNameById, useCities } from "src/modules/cities";
 import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
 import { StudentBookingPausedCallout } from "src/components/booking/StudentBookingPausedCallout";
+import { AcbaPaymentTrustStrip } from "src/components/payments/AcbaPaymentTrustStrip";
 
 type TheoryCohortRow = {
   id: number;
@@ -32,13 +33,25 @@ type TheoryCohortRow = {
   sessionEndTime: string | null;
 };
 
-type CreateResponse = {
+type BookResponse = {
   id: number;
   totalPriceAmd: number;
   status: string;
   paymentRequiredNow: boolean;
   coveredByPrepaidCredits?: boolean;
 };
+
+type PendingCheckout = {
+  bookingId: number;
+  totalPriceAmd: number;
+};
+
+/** True when the book API created an unpaid row that still needs card checkout. */
+function needsPaymentAfterBook(res: BookResponse): boolean {
+  if (res.coveredByPrepaidCredits || res.status === "confirmed") return false;
+  if ((res.totalPriceAmd ?? 0) <= 0) return false;
+  return res.paymentRequiredNow || res.status === "pending" || res.status === "pending_payment";
+}
 
 function cohortToOption(row: TheoryCohortRow): TheoryCohortOption {
   return {
@@ -66,13 +79,14 @@ export function DashboardBookingsTheoryGroupTab() {
   const { instructors } = useInstructors();
   const { branches } = useBranches();
   const { cities } = useCities();
+
   const [cityId, setCityId] = useState("");
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<TheoryCohortRow[]>([]);
   const [payBusy, setPayBusy] = useState(false);
-  const [payDialogOpen, setPayDialogOpen] = useState(false);
-  const [pendingBooking, setPendingBooking] = useState<CreateResponse | null>(null);
+  const [pendingCheckout, setPendingCheckout] = useState<PendingCheckout | null>(null);
+  const [posDialogOpen, setPosDialogOpen] = useState(false);
   const [pendingPaymentElsewhere, setPendingPaymentElsewhere] = useState(false);
 
   const locale = lang === "ru" ? "ru-RU" : lang === "am" ? "hy-AM" : "en-US";
@@ -114,8 +128,13 @@ export function DashboardBookingsTheoryGroupTab() {
       const list = await vivaApiJson<{ status: string }[]>(
         `/bookings?${new URLSearchParams({ studentUserId }).toString()}`,
       );
-      const has = Array.isArray(list) && list.some((b) => toCanonicalBookingStatus(b.status) === "pending");
-      setPendingPaymentElsewhere(has);
+      const hasPending =
+        Array.isArray(list) &&
+        list.some((b) => {
+          const s = toCanonicalBookingStatus(b.status);
+          return s === "pending" || s === "pending_payment";
+        });
+      setPendingPaymentElsewhere(hasPending);
     } catch {
       setPendingPaymentElsewhere(false);
     }
@@ -164,7 +183,7 @@ export function DashboardBookingsTheoryGroupTab() {
     void refreshPendingGuard();
   }, [refreshPendingGuard]);
 
-  const onStartBooking = async (cohortId: number) => {
+  const onBookCohort = async (cohortId: number) => {
     if (!STUDENT_SELF_SERVICE_BOOKING_ENABLED) {
       showToast(t("studentBookingPausedBody"), "error");
       return;
@@ -173,34 +192,43 @@ export function DashboardBookingsTheoryGroupTab() {
       showToast(t("bookingPendingBlocksNew"), "error");
       return;
     }
+    setPayBusy(true);
     try {
-      const res = await vivaApiJson<CreateResponse>(`/bookings/theory-groups/${encodeURIComponent(String(cohortId))}/book`, {
-        method: "POST",
-      });
-      if (res.paymentRequiredNow && !res.coveredByPrepaidCredits) {
-        setPendingBooking(res);
-        const checkout = await initiateCheckout({ kind: "booking", bookingId: res.id });
-        if (checkout.mode === "simulated") {
-          setPayDialogOpen(true);
-        }
-      } else {
+      const res = await vivaApiJson<BookResponse>(
+        `/bookings/theory-groups/${encodeURIComponent(String(cohortId))}/book`,
+        { method: "POST" },
+      );
+      const needsPayment = needsPaymentAfterBook(res);
+
+      if (!needsPayment) {
         showToast(t("bookingPaymentCompletedToast"), "success");
+        setPendingCheckout(null);
+      } else {
+        setPendingCheckout({ bookingId: res.id, totalPriceAmd: res.totalPriceAmd });
+        showToast(t("bookingCreatedToast"), "success");
+        const result = await initiateCheckout({ kind: "booking", bookingId: res.id });
+        if (result.mode === "simulated") {
+          setPosDialogOpen(true);
+        }
       }
       await refreshPendingGuard();
       await refresh();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+      setPendingCheckout(null);
+    } finally {
+      setPayBusy(false);
     }
   };
 
-  const onApprove = async (): Promise<boolean> => {
-    if (!pendingBooking) return false;
+  const onApproveSimulatedPayment = async (): Promise<boolean> => {
+    if (!pendingCheckout) return false;
     setPayBusy(true);
     try {
-      await completeBookingPaymentSimulated(pendingBooking.id);
+      await completeBookingPaymentSimulated(pendingCheckout.bookingId);
       showToast(t("bookingPaymentCompletedToast"), "success");
-      setPayDialogOpen(false);
-      setPendingBooking(null);
+      setPosDialogOpen(false);
+      setPendingCheckout(null);
       await refresh();
       await refreshPendingGuard();
       return true;
@@ -217,15 +245,20 @@ export function DashboardBookingsTheoryGroupTab() {
   return (
     <>
       <SimulatedAcbaPosDialog
-        open={payDialogOpen}
-        onOpenChange={setPayDialogOpen}
-        amountAmd={pendingBooking?.totalPriceAmd ?? null}
+        open={posDialogOpen && pendingCheckout !== null}
+        onOpenChange={(open) => {
+          setPosDialogOpen(open);
+          if (!open && !payBusy) setPendingCheckout(null);
+        }}
+        amountAmd={pendingCheckout?.totalPriceAmd ?? null}
         locale={locale}
         busy={payBusy}
-        onApprove={onApprove}
+        onApprove={onApproveSimulatedPayment}
         variant={vposConfig?.simulated === false ? "live" : "simulated"}
       />
+
       {!STUDENT_SELF_SERVICE_BOOKING_ENABLED ? <StudentBookingPausedCallout className="mb-4" /> : null}
+
       <Card className="p-5 border-border mb-6 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -263,6 +296,7 @@ export function DashboardBookingsTheoryGroupTab() {
           <p className="text-xs text-muted-foreground">{t("bookingNoBranchesInCityHint")}</p>
         ) : null}
       </Card>
+
       {ready ? (
         loading ? (
           <Card className="p-6 border-border text-sm text-muted-foreground">{t("loading")}</Card>
@@ -297,12 +331,13 @@ export function DashboardBookingsTheoryGroupTab() {
                     <p className="text-sm font-medium text-foreground">
                       {t("cohortGroupPriceAmdLabel")}: {displayPrice.toLocaleString(locale)} ֏
                     </p>
+                    <AcbaPaymentTrustStrip compact />
                     <Button
                       className="w-full"
-                      disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED || pendingPaymentElsewhere}
-                      onClick={() => void onStartBooking(row.id)}
+                      disabled={!STUDENT_SELF_SERVICE_BOOKING_ENABLED || pendingPaymentElsewhere || payBusy}
+                      onClick={() => void onBookCohort(row.id)}
                     >
-                      {t("confirmBooking")}
+                      {payBusy ? t("vposRedirectBusy") : t("confirmBooking")}
                     </Button>
                   </Card>
                 );
