@@ -21,6 +21,7 @@ export type AuthUserDto = {
   name: string;
   accountType: AccountType;
   phone: string | null;
+  phone2: string | null;
   /** False for OAuth-only accounts (`passwordHash` unset). */
   hasPassword: boolean;
 };
@@ -53,6 +54,7 @@ function toDto(user: User): AuthUserDto {
     name: user.name,
     accountType: user.accountType,
     phone: user.phone ?? null,
+    phone2: user.phone2 ?? null,
     hasPassword: Boolean(user.passwordHash),
   };
 }
@@ -146,6 +148,7 @@ export default class AuthService {
     password: string;
     name: string;
     phone?: string;
+    phone2?: string;
   }): Promise<AuthTokensDto> {
     const email = input.email.trim().toLowerCase();
     const existing = await User.findOne({ where: { email } });
@@ -160,6 +163,7 @@ export default class AuthService {
       email,
       name: input.name.trim(),
       phone: input.phone?.trim() || null,
+      phone2: input.phone2?.trim() || null,
       accountType: 'student',
       passwordHash,
     });
@@ -234,6 +238,7 @@ export default class AuthService {
             email,
             name: nameTrim,
             phone: null,
+            phone2: null,
             accountType: 'student',
             passwordHash: null,
           },
@@ -292,7 +297,7 @@ export default class AuthService {
 
   static async updateMe(
     userId: number,
-    patch: { name?: string; phone?: string | null },
+    patch: { name?: string; phone?: string | null; phone2?: string | null },
   ): Promise<AuthUserDto | null> {
     const user = await User.findByPk(userId);
 
@@ -304,6 +309,9 @@ export default class AuthService {
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.phone !== undefined
         ? { phone: patch.phone === null || patch.phone === '' ? null : String(patch.phone).trim() }
+        : {}),
+      ...(patch.phone2 !== undefined
+        ? { phone2: patch.phone2 === null || patch.phone2 === '' ? null : String(patch.phone2).trim() }
         : {}),
     });
 

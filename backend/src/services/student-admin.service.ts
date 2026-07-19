@@ -25,6 +25,7 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import FinanceService from './finance.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 import StudentEntitlementsService from './student-entitlements.service';
+import { normalizeOptionalPhone } from '../utils/student-phones.util';
 
 const { ConflictError } = ErrorsUtil;
 const { InputValidationError } = ErrorsUtil;
@@ -52,6 +53,8 @@ export type AdminStudentRow = {
   name: string;
   email: string;
   phone: string;
+  /** Optional secondary phone; empty string when unset. */
+  phone2: string;
   instructor: string;
   package: string;
   lessons: string;
@@ -133,6 +136,7 @@ export default class StudentAdminService {
           name: stu.name,
           email: stu.email,
           phone: stu.phone ?? '',
+          phone2: stu.phone2 ?? '',
           instructor: inst?.name ?? '',
           package: pkg?.name ?? '',
           lessons: `${sp.lessonsCompleted}/${sp.lessonsTotal} · T ${sp.theoryLessonsCompleted ?? 0}/${sp.theoryLessonsTotal ?? 0}`,
@@ -232,6 +236,7 @@ export default class StudentAdminService {
     email?: string;
     inviteToSystem?: boolean;
     phone?: string;
+    phone2?: string | null;
     branchId: number;
     packageId?: number | null;
     instructorUserId?: number | null;
@@ -257,7 +262,8 @@ export default class StudentAdminService {
     const user = await User.create({
       email,
       name: input.name.trim(),
-      phone: input.phone?.trim() || null,
+      phone: normalizeOptionalPhone(input.phone),
+      phone2: normalizeOptionalPhone(input.phone2),
       accountType: 'student',
       passwordHash: null,
     });
@@ -294,6 +300,7 @@ export default class StudentAdminService {
       email: string;
       inviteToSystem: boolean;
       phone: string | null;
+      phone2: string | null;
       branchId: number;
       packageId: number | null;
       instructorUserId: number | null;
@@ -323,11 +330,18 @@ export default class StudentAdminService {
         throw new ConflictError('Email already in use', HttpStatusCodesUtil.CONFLICT);
       }
     }
-    if (patch.name !== undefined || patch.email !== undefined || patch.phone !== undefined || nextEmail !== undefined) {
+    if (
+      patch.name !== undefined ||
+      patch.email !== undefined ||
+      patch.phone !== undefined ||
+      patch.phone2 !== undefined ||
+      nextEmail !== undefined
+    ) {
       await user.update({
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(nextEmail !== undefined ? { email: nextEmail } : {}),
-        ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+        ...(patch.phone !== undefined ? { phone: normalizeOptionalPhone(patch.phone) } : {}),
+        ...(patch.phone2 !== undefined ? { phone2: normalizeOptionalPhone(patch.phone2) } : {}),
       });
     }
     let nextPackageId: number | null | undefined;

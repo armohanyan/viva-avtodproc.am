@@ -4,6 +4,7 @@ import FinanceService from './finance.service';
 import { User } from '../models';
 import { normalizeTimeHHMM } from '../utils/booking-slot.util';
 import type { AdminBookingPaymentStatus } from '../utils/booking-admin-payment.util';
+import { parseStudentPhones } from '../utils/student-phones.util';
 import ErrorsUtil from '../utils/errors.util';
 
 const { ConflictError, InputValidationError } = ErrorsUtil;
@@ -11,6 +12,7 @@ const { ConflictError, InputValidationError } = ErrorsUtil;
 export type BulkImportBookingInput = {
   studentName: string;
   studentPhone?: string;
+  studentPhone2?: string;
   instructorName: string;
   date: string;
   timeSlot: string;
@@ -40,6 +42,7 @@ export type BulkImportResult = {
 type StudentCacheEntry = {
   userId: number;
   phoneSet: boolean;
+  phone2Set: boolean;
 };
 
 async function findStudentByName(name: string): Promise<User | null> {
@@ -48,22 +51,17 @@ async function findStudentByName(name: string): Promise<User | null> {
 
   const exact = await User.findOne({
     where: { accountType: 'student', name: trimmed },
-    attributes: ['id', 'name', 'phone'],
+    attributes: ['id', 'name', 'phone', 'phone2'],
   });
   if (exact) return exact;
 
   const students = await User.findAll({
     where: { accountType: 'student' },
-    attributes: ['id', 'name', 'phone'],
+    attributes: ['id', 'name', 'phone', 'phone2'],
   });
   const needle = trimmed.toLowerCase();
   const matches = students.filter((s) => s.name?.trim().toLowerCase() === needle);
   return matches[0] ?? null;
-}
-
-function normalizePhoneInput(raw: string | undefined): string | null {
-  const trimmed = String(raw ?? '').trim();
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 function isDuplicateBookingError(e: unknown): boolean {
@@ -75,29 +73,45 @@ function isDuplicateBookingError(e: unknown): boolean {
 async function resolveStudentUserId(input: {
   studentName: string;
   studentPhone?: string;
+  studentPhone2?: string;
   branchId: number;
   cache: Map<string, StudentCacheEntry>;
   onCreated: () => void;
 }): Promise<number | null> {
   const studentName = input.studentName.trim();
-  const phone = normalizePhoneInput(input.studentPhone);
+  const { phone, phone2 } = parseStudentPhones(input.studentPhone, input.studentPhone2);
   const studentKey = studentName.toLowerCase();
 
   const cached = input.cache.get(studentKey);
   if (cached) {
+    const patch: { phone?: string; phone2?: string } = {};
     if (phone && !cached.phoneSet) {
-      await StudentAdminService.update(cached.userId, { phone });
+      patch.phone = phone;
       cached.phoneSet = true;
+    }
+    if (phone2 && !cached.phone2Set) {
+      patch.phone2 = phone2;
+      cached.phone2Set = true;
+    }
+    if (Object.keys(patch).length > 0) {
+      await StudentAdminService.update(cached.userId, patch);
     }
     return cached.userId;
   }
 
   const existing = await findStudentByName(studentName);
   if (existing) {
-    if (phone && !existing.phone?.trim()) {
-      await StudentAdminService.update(existing.id, { phone });
+    const patch: { phone?: string; phone2?: string } = {};
+    if (phone && !existing.phone?.trim()) patch.phone = phone;
+    if (phone2 && !existing.phone2?.trim()) patch.phone2 = phone2;
+    if (Object.keys(patch).length > 0) {
+      await StudentAdminService.update(existing.id, patch);
     }
-    input.cache.set(studentKey, { userId: existing.id, phoneSet: Boolean(phone || existing.phone?.trim()) });
+    input.cache.set(studentKey, {
+      userId: existing.id,
+      phoneSet: Boolean(phone || existing.phone?.trim()),
+      phone2Set: Boolean(phone2 || existing.phone2?.trim()),
+    });
     return existing.id;
   }
 
@@ -106,11 +120,16 @@ async function resolveStudentUserId(input: {
     branchId: input.branchId,
     inviteToSystem: false,
     ...(phone ? { phone } : {}),
+    ...(phone2 ? { phone2 } : {}),
   });
   if (!created) return null;
 
   input.onCreated();
-  input.cache.set(studentKey, { userId: created.id, phoneSet: Boolean(phone) });
+  input.cache.set(studentKey, {
+    userId: created.id,
+    phoneSet: Boolean(phone),
+    phone2Set: Boolean(phone2),
+  });
   return created.id;
 }
 
@@ -164,6 +183,7 @@ export default class BookingBulkImportService {
       const studentUserId = await resolveStudentUserId({
         studentName,
         studentPhone: row.studentPhone,
+        studentPhone2: row.studentPhone2,
         branchId: input.branchId,
         cache: studentCache,
         onCreated: () => {

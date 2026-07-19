@@ -23,6 +23,7 @@ export type AdminBookingListItem = {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
+  studentPhone2: string;
   instructorName: string;
   dateIso: string;
   time: string;
@@ -135,6 +136,7 @@ export type AdminBookingRow = ReturnType<typeof normalizeAdminBookingRow>;
 export type BulkImportBookingItem = {
   studentName: string;
   studentPhone?: string;
+  studentPhone2?: string;
   instructorName: string;
   date: string;
   timeSlot: string;

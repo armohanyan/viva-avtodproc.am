@@ -41,6 +41,7 @@ export type TheoryCohortEnrollmentStudentDto = {
   name: string;
   email: string;
   phone: string | null;
+  phone2: string | null;
   isActive: boolean;
 };
 
@@ -462,7 +463,7 @@ export default class TheoryCohortService {
     if (!exists) return null;
     const rows = await TheoryCohortEnrollment.findAll({
       where: { cohortId },
-      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'phone', 'isActive'] }],
+      include: [{ model: User, as: 'student', attributes: ['id', 'name', 'email', 'phone', 'phone2', 'isActive'] }],
     });
     const out: TheoryCohortEnrollmentStudentDto[] = [];
     for (const row of rows) {
@@ -473,6 +474,7 @@ export default class TheoryCohortService {
         name: student.name,
         email: student.email,
         phone: student.phone ?? null,
+        phone2: student.phone2 ?? null,
         isActive: student.isActive ?? true,
       });
     }

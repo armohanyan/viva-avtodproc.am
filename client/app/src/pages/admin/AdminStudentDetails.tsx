@@ -46,6 +46,7 @@ type StudentRow = {
   name: string;
   email: string;
   phone: string;
+  phone2: string;
   instructor: string;
   package: string;
   lessons: string;
@@ -177,6 +178,8 @@ export default function AdminStudentDetails() {
               ...found,
               id: String(found.id),
               email: displayStudentEmail(found.email),
+              phone: found.phone ?? "",
+              phone2: found.phone2 ?? "",
             }
           : null,
       );
@@ -371,6 +374,15 @@ export default function AdminStudentDetails() {
                     <dd className="text-foreground truncate">{student.phone || "—"}</dd>
                   </div>
                 </div>
+                {student.phone2 ? (
+                  <div className="flex items-start gap-2">
+                    <Phone className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <dt className="text-xs text-muted-foreground">{t("phoneNumber2")}</dt>
+                      <dd className="text-foreground truncate">{student.phone2}</dd>
+                    </div>
+                  </div>
+                ) : null}
                 <div>
                   <dt className="text-xs text-muted-foreground">{t("adminColBranch")}</dt>
                   <dd className="text-foreground">{branchNameById(branches, student.branchId) || "—"}</dd>

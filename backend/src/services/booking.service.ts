@@ -353,6 +353,7 @@ export type BookingAdminListItemDto = BookingAdminDto & {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
+  studentPhone2: string;
   manualFinanceTx: AdminBookingFinanceLinkDto | null;
   systemFinanceTx: AdminBookingFinanceLinkDto | null;
 };
@@ -1494,7 +1495,7 @@ export default class BookingService {
       model: User,
       as: 'student' as const,
       required: true,
-      attributes: ['id', 'name', 'email', 'phone'],
+      attributes: ['id', 'name', 'email', 'phone', 'phone2'],
     };
   }
 
@@ -1677,6 +1678,7 @@ export default class BookingService {
       studentName: stu?.name?.trim() ?? '',
       studentEmail: stu?.email?.trim() ?? '',
       studentPhone: stu?.phone?.trim() ?? '',
+      studentPhone2: stu?.phone2?.trim() ?? '',
       manualFinanceTx: null,
       systemFinanceTx: null,
     };

@@ -22,6 +22,7 @@ type RequestRow = {
   studentUserId: number;
   studentName: string;
   studentPhone: string | null;
+  studentPhone2: string | null;
   studentEmail: string;
   instructorUserId: number;
   instructorName: string;
@@ -189,6 +190,7 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
                         <td className="px-3 py-2 text-muted-foreground">
                           <div className="space-y-0.5">
                             {r.studentPhone ? <div>{r.studentPhone}</div> : null}
+                            {r.studentPhone2 ? <div>{r.studentPhone2}</div> : null}
                             <div className="break-all">{r.studentEmail}</div>
                           </div>
                         </td>

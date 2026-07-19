@@ -121,6 +121,7 @@ const studentMultiSlotSchema = z
 const bulkImportEntrySchema = z.object({
   studentName: z.string().min(1),
   studentPhone: z.string().optional(),
+  studentPhone2: z.string().optional(),
   instructorName: z.string().min(1),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   timeSlot: z.string().min(4),

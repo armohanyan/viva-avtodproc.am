@@ -203,6 +203,7 @@ export type FinancialReportStudentRowDto = {
   id: number;
   name: string;
   phone: string;
+  phone2: string;
   registrationDateIso: string;
   branchId: number;
   branchName: string;
@@ -443,7 +444,7 @@ export default class AdminFinancialReportService {
         joinedAt: { [Op.between]: [startDate, endDate] },
       },
       include: [
-        { model: User, as: 'studentAccount', attributes: ['id', 'name', 'phone', 'createdAt'], required: true },
+        { model: User, as: 'studentAccount', attributes: ['id', 'name', 'phone', 'phone2', 'createdAt'], required: true },
         { model: Branch, attributes: ['id', 'name'], required: false },
       ],
       order: [['joinedAt', 'DESC']],
@@ -472,6 +473,7 @@ export default class AdminFinancialReportService {
         id: stu.id,
         name: stu.name,
         phone: stu.phone ?? '',
+        phone2: stu.phone2 ?? '',
         registrationDateIso: reg,
         branchId: bid,
         branchName: branch?.name?.trim() || `Branch #${bid}`,

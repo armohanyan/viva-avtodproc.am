@@ -117,7 +117,7 @@ type OpenAddOptions = {
   theoryRequestId?: string;
 };
 
-type StudentRow = { id: string; name: string; email?: string; phone?: string };
+type StudentRow = { id: string; name: string; email?: string; phone?: string; phone2?: string };
 
 type Booking = AdminBookingRow;
 
@@ -322,7 +322,7 @@ export default function AdminBookings() {
 
   const needsStudentsMini =
     addOpen || !!editBooking || Boolean(studentFilter) || hookBookingSearch.includes("student=");
-  const { students: studentsMiniRaw } = useAdminStudentsMini({
+  const { students: studentsMiniRaw, refresh: refreshStudentsMini } = useAdminStudentsMini({
     enrollmentStatus: "all",
     enabled: needsStudentsMini,
   });
@@ -333,6 +333,7 @@ export default function AdminBookings() {
         name: s.name,
         email: s.email,
         phone: s.phone,
+        phone2: s.phone2,
       })),
     [studentsMiniRaw],
   );
@@ -2310,6 +2311,7 @@ export default function AdminBookings() {
                       name: s.name,
                       email: s.email ?? "",
                       phone: s.phone ?? "",
+                      phone2: s.phone2 ?? "",
                     }))}
                     value={editBooking.studentId}
                     onChange={(s) => {
@@ -2318,10 +2320,7 @@ export default function AdminBookings() {
                     }}
                     branchIdForNewStudent={editBooking.branchId}
                     onStudentCreated={(s) => {
-                      setStudentsMini((prev) => {
-                        if (prev.some((p) => p.id === s.id)) return prev;
-                        return [...prev, { id: s.id, name: s.name, email: s.email, phone: s.phone }];
-                      });
+                      void refreshStudentsMini();
                       setStudentNames((prev) => ({ ...prev, [s.id]: s.name }));
                     }}
                   />
@@ -2620,6 +2619,7 @@ export default function AdminBookings() {
                           name: s.name,
                           email: s.email ?? "",
                           phone: s.phone ?? "",
+                          phone2: s.phone2 ?? "",
                         }))}
                         value={draft.studentId}
                         onChange={(s) => {
@@ -2629,10 +2629,7 @@ export default function AdminBookings() {
                         branchIdForNewStudent={draft.branchId}
                         invalid={addFieldInvalid.student}
                         onStudentCreated={(s) => {
-                          setStudentsMini((prev) => {
-                            if (prev.some((p) => p.id === s.id)) return prev;
-                            return [...prev, { id: s.id, name: s.name, email: s.email, phone: s.phone }];
-                          });
+                          void refreshStudentsMini();
                           setStudentNames((prev) => ({ ...prev, [s.id]: s.name }));
                         }}
                       />

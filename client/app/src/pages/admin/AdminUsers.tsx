@@ -21,6 +21,7 @@ import { absWouterHref } from "src/lib/wouterFullPath";
 import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { formatStudentPhones } from "src/lib/studentPhones";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
@@ -40,6 +41,7 @@ type User = {
   name: string;
   email: string;
   phone: string;
+  phone2: string;
   instructor: string;
   package: string;
   lessons: string;
@@ -121,6 +123,8 @@ export default function AdminUsers() {
               ...u,
               id: String(u.id),
               email: displayStudentEmail(u.email),
+              phone: u.phone ?? "",
+              phone2: u.phone2 ?? "",
             }))
           : [],
       );
@@ -149,6 +153,7 @@ export default function AdminUsers() {
     email: "",
     inviteToSystem: true,
     phone: "",
+    phone2: "",
     status: "active",
     branchId: "",
     skillRating: 0,
@@ -158,7 +163,7 @@ export default function AdminUsers() {
   const filtered = users.filter((u) => {
     const q = search.trim().toLowerCase();
     const branchLabel = branchNameById(branches, u.branchId);
-    const hay = [u.id, u.name, u.email, u.phone, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel, String(u.skillRating), u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")].join(" ").toLowerCase();
+    const hay = [u.id, u.name, u.email, u.phone, u.phone2, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel, String(u.skillRating), u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")].join(" ").toLowerCase();
     const matchesSearch = !q || hay.includes(q);
     const matchesInstructor = instructorFilter === "all" || u.instructor === instructorFilter;
     return matchesSearch && matchesInstructor;
@@ -199,6 +204,7 @@ export default function AdminUsers() {
           email: newUser.email?.trim() || undefined,
           inviteToSystem: newUser.inviteToSystem,
           phone: newUser.phone || "",
+          phone2: newUser.phone2?.trim() || undefined,
           branchId: newUser.branchId || branches[0]?.id || "",
           packageId: null,
           instructorUserId: null,
@@ -218,6 +224,7 @@ export default function AdminUsers() {
         email: "",
         inviteToSystem: true,
         phone: "",
+        phone2: "",
         status: "active",
         branchId: branches[0]?.id ?? "",
         skillRating: 0,
@@ -269,6 +276,7 @@ export default function AdminUsers() {
               t("name"),
               t("email"),
               t("phone"),
+              t("phone2"),
               t("adminColBranch"),
               t("cohortColInstructor"),
               t("adminColPackage"),
@@ -282,6 +290,7 @@ export default function AdminUsers() {
               u.name,
               u.email,
               u.phone,
+              u.phone2,
               branchNameById(branches, u.branchId),
               u.instructor,
               u.package,
@@ -384,7 +393,7 @@ export default function AdminUsers() {
                       </div>
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.email}</td>
-                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{u.phone}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{formatStudentPhones(u.phone, u.phone2) || "—"}</td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, u.branchId)}>
                       {branchNameById(branches, u.branchId)}
                     </td>
@@ -496,6 +505,8 @@ export default function AdminUsers() {
               /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber")}</label>
               <Input value={newUser.phone} onChange={e => setNewUser({ ...newUser, phone: e.target.value })} placeholder="+374 99 000 000" className="h-10" /></div>
+            <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("phoneNumber2")}</label>
+              <Input value={newUser.phone2 ?? ""} onChange={e => setNewUser({ ...newUser, phone2: e.target.value })} placeholder="+374 99 000 000" className="h-10" /></div>
             <div><label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminSelectBranch")}</label>
               <select value={newUser.branchId} onChange={e => setNewUser({ ...newUser, branchId: e.target.value })}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">

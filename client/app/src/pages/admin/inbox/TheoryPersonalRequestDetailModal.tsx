@@ -12,6 +12,7 @@ export type TheoryPersonalRequestRow = {
   studentUserId: number;
   studentName: string;
   studentPhone: string | null;
+  studentPhone2: string | null;
   studentEmail: string;
   instructorUserId: number;
   instructorName: string;
@@ -126,6 +127,7 @@ export function TheoryPersonalRequestDetailModal({
             <DetailRow label={t("theoryPersonalRequestColContact")}>
               <div className="space-y-0.5">
                 {row.studentPhone ? <div>{row.studentPhone}</div> : null}
+                {row.studentPhone2 ? <div>{row.studentPhone2}</div> : null}
                 <div className="break-all">{row.studentEmail}</div>
               </div>
             </DetailRow>
