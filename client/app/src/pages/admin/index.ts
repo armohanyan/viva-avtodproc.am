@@ -5,6 +5,7 @@ export { default as AdminInstructorsPage } from "./AdminInstructors";
 export { default as AdminBookingsPage } from "./AdminBookings";
 export { default as AdminDrivingPage } from "./AdminDriving";
 export { default as AdminSettingsPage } from "./AdminSettings";
+export { default as AdminImportPracticalXlsxPage } from "./AdminImportPracticalXlsx";
 export { default as AdminClassSchedulePage } from "./AdminClassSchedule";
 export { default as AdminReportPage } from "./AdminReport";
 export { default as AdminBookedCallsPage } from "./AdminBookedCalls";

@@ -20,6 +20,7 @@
     "selftest:admin-mfa": "tsx src/scripts/admin-mfa-selftest.ts",
     "vpos:smoke-test": "tsx src/scripts/vpos-smoke-test.ts",
     "import:road-sign-questions": "tsx src/scripts/import-road-sign-questions.ts",
+    "import:practical-xlsx": "tsx src/scripts/import-practical-from-ready-xlsx.ts",
     "mirror:exam-question-images": "tsx src/scripts/mirror-exam-question-images-local.ts"
   },
   "dependencies": {
@@ -38,6 +39,7 @@
     "mysql2": "^3.22.0",
     "sequelize": "^6.37.8",
     "winston": "^3.19.0",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

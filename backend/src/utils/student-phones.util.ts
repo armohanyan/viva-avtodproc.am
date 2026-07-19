@@ -74,6 +74,36 @@ export function normalizeOptionalPhone(raw?: string | null): string | null {
   return truncatePhone(cleaned || null);
 }
 
+/** Digits-only form for comparing phones (`094 061 330` ≈ `94061330`). */
+export function phoneDigits(raw?: string | null): string {
+  return String(raw ?? '').replace(/\D/g, '');
+}
+
+/** True when any phone on A overlaps any phone on B (7+ digit numbers). */
+export function studentPhonesOverlap(
+  a: { phone?: string | null; phone2?: string | null },
+  b: { phone?: string | null; phone2?: string | null },
+): boolean {
+  const toSet = (p?: string | null, p2?: string | null): string[] =>
+    [phoneDigits(p), phoneDigits(p2)].filter((d) => d.length >= 7);
+  const left = toSet(a.phone, a.phone2);
+  const right = toSet(b.phone, b.phone2);
+  if (left.length === 0 || right.length === 0) return false;
+  return left.some((d) => right.includes(d));
+}
+
+/** Stable cache / dedupe key: name + sorted phone digits. */
+export function studentIdentityKey(
+  name: string,
+  phone?: string | null,
+  phone2?: string | null,
+): string {
+  const digits = [phoneDigits(phone), phoneDigits(phone2)]
+    .filter((d) => d.length >= 7)
+    .sort();
+  return `${name.trim().toLowerCase()}|${digits.join('|')}`;
+}
+
 /** Join phones for compact display / search haystacks. */
 export function formatStudentPhones(
   phone?: string | null,

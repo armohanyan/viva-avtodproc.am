@@ -4,6 +4,7 @@ import { parseBody, parsePaginationQuery, paginationRequested, resolveBranchIdFi
 import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import BookingService from '../services/booking.service';
 import BookingBulkImportService from '../services/booking-bulk-import.service';
+import PracticalFlatXlsxImportService from '../services/practical-flat-xlsx-import.service';
 import { assertDirectPaymentAllowed } from '../utils/vpos.util';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
@@ -224,6 +225,33 @@ export default class BookingController {
       const data = await BookingBulkImportService.bulkImportPractical({
         branchId: body.branchId,
         bookings: body.bookings,
+        createdByUserId: readStaffUserIdFromToken(req),
+      });
+      SuccessHandlerUtil.handleAdd(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** Temporary: upload flat practical XLSX (optional Branch column) and import. */
+  static async importPracticalXlsx(req: Request, res: Response, next: NextFunction) {
+    try {
+      const file = (req as Request & { file?: Express.Multer.File }).file;
+      if (!file?.buffer?.length) {
+        throw new InputValidationError('XLSX file is required (field: file)', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+
+      const dryRunRaw = String(req.query.dryRun ?? req.body?.dryRun ?? '').trim().toLowerCase();
+      const dryRun = dryRunRaw === '1' || dryRunRaw === 'true' || dryRunRaw === 'yes';
+
+      const forceRaw = req.query.branchId ?? req.body?.branchId;
+      const forceParsed = forceRaw != null && String(forceRaw).trim() !== '' ? Number(forceRaw) : null;
+      const forceBranchId =
+        forceParsed != null && Number.isFinite(forceParsed) && forceParsed > 0 ? Math.floor(forceParsed) : null;
+
+      const data = await PracticalFlatXlsxImportService.importFromBuffer(file.buffer, {
+        dryRun,
+        forceBranchId,
         createdByUserId: readStaffUserIdFromToken(req),
       });
       SuccessHandlerUtil.handleAdd(res, next, data);

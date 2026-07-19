@@ -1,4 +1,5 @@
-import { vivaApiJson } from "src/lib/vivaApi";
+import { ApiRequestError } from "src/lib/api";
+import { vivaApiFetch, vivaApiJson } from "src/lib/vivaApi";
 import type { PaginatedList } from "src/types/pagination.types";
 import type { AdminBookingsTab } from "src/modules/admin/booking/bookingsTabs";
 import type { BookingPaymentFilter } from "src/modules/admin/booking/adminBookingPayment";
@@ -193,4 +194,59 @@ export async function bulkImportBookings(input: {
 
   aggregated.unmappableInstructors.sort((a, b) => a.localeCompare(b, "hy"));
   return aggregated;
+}
+
+/** Temporary flat practical XLSX import (optional Branch column). */
+export type PracticalFlatXlsxImportResult = {
+  dryRun: boolean;
+  parsedRows: number;
+  importableRows: number;
+  skippedUnresolved: number;
+  dualPhoneRows: number;
+  paidRows: number;
+  parseIssues: string[];
+  resolveWarnings: string[];
+  resolveErrors: string[];
+  instructorMappings: Array<{
+    excelName: string;
+    canonicalName: string;
+    branchId: number | null;
+    branchName: string | null;
+  }>;
+  imported: number;
+  skippedDuplicates: number;
+  newStudentsCreated: number;
+  errors: BulkImportBookingsResponse["errors"];
+  unmappableInstructors: string[];
+};
+
+export async function importPracticalFlatXlsx(input: {
+  file: File;
+  dryRun?: boolean;
+}): Promise<PracticalFlatXlsxImportResult> {
+  const body = new FormData();
+  body.append("file", input.file);
+  const q = input.dryRun ? "?dryRun=1" : "";
+  const res = await vivaApiFetch(`/bookings/import-practical-xlsx${q}`, {
+    method: "POST",
+    body,
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let message = text || res.statusText;
+    if (text) {
+      try {
+        const j = JSON.parse(text) as { message?: string };
+        if (typeof j.message === "string" && j.message.trim()) message = j.message.trim();
+      } catch {
+        /* keep raw */
+      }
+    }
+    throw new ApiRequestError(message, res.status, text || undefined);
+  }
+  try {
+    return JSON.parse(text) as PracticalFlatXlsxImportResult;
+  } catch {
+    throw new ApiRequestError("Invalid import response", res.status, text || undefined);
+  }
 }
