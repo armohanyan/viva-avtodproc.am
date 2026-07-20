@@ -28,6 +28,7 @@ import {
   type ParsedExcelBooking,
 } from "src/modules/admin/booking/excelBookingImport";
 import { BOOKING_EXPORT_SHEET_NAME } from "src/modules/admin/booking/bookingExportImport";
+import { matchBranchFromExcelCell } from "src/lib/excelBranchCodes";
 
 export type ExcelBookingImportModalProps = {
   open: boolean;
@@ -225,8 +226,10 @@ export default function ExcelBookingImportModal({
         ...new Set(result.bookings.map((b) => b.branchName?.trim()).filter(Boolean) as string[]),
       ];
       if (branchNames.length === 1) {
-        const match = branches.find((b) => b.name.trim() === branchNames[0]);
-        if (match?.id != null) setBranchId(String(match.id));
+        const resolved = matchBranchFromExcelCell(branchNames[0]!, branches);
+        if ("branch" in resolved && resolved.branch.id != null) {
+          setBranchId(String(resolved.branch.id));
+        }
       }
 
       const issues: string[] = [];
@@ -318,15 +321,30 @@ export default function ExcelBookingImportModal({
     }
 
     const groups = new Map<number, ParsedExcelBooking[]>();
+    const unresolvedBranchRows: string[] = [];
     for (const booking of selected) {
       const branchName = booking.branchName?.trim();
-      const matched = branchName
-        ? branches.find((b) => b.name.trim() === branchName)
-        : branches.find((b) => String(b.id) === String(branchId));
-      const resolvedId = matched?.id != null ? Number(matched.id) : Number(branchId);
+      let resolvedId = Number(branchId);
+      if (branchName) {
+        const matched = matchBranchFromExcelCell(branchName, branches);
+        if ("branch" in matched && matched.branch.id != null) {
+          resolvedId = Number(matched.branch.id);
+        } else if ("error" in matched) {
+          unresolvedBranchRows.push(`${booking.studentName}: ${matched.error}`);
+          continue;
+        }
+      }
+      if (!Number.isFinite(resolvedId) || resolvedId <= 0) {
+        unresolvedBranchRows.push(`${booking.studentName}: branch not resolved`);
+        continue;
+      }
       const list = groups.get(resolvedId) ?? [];
       list.push(booking);
       groups.set(resolvedId, list);
+    }
+    if (unresolvedBranchRows.length > 0) {
+      showToast(unresolvedBranchRows.slice(0, 3).join(" · "), "error");
+      return;
     }
 
     setImporting(true);
