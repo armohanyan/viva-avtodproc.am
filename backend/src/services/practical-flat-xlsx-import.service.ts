@@ -5,7 +5,7 @@
  *   date | time | instructor | student | phone | status | amount | [branch] | …
  *
  * Branch resolution:
- *   - non-empty Branch cell → match Branch by name (instructor must serve it)
+ *   - non-empty Branch cell → match by id/code (1–4), address, or name (instructor must serve it)
  *   - empty / missing → instructor must have exactly one linked branch
  */
 import * as XLSX from 'xlsx';
@@ -18,6 +18,7 @@ import BookingBulkImportService, {
 } from './booking-bulk-import.service';
 import InstructorBranchService from './instructor-branch.service';
 import { normalizeTimeHHMM } from '../utils/booking-slot.util';
+import { matchBranchFromExcelCell } from '../utils/excel-branch-codes.util';
 import { parseStudentPhones } from '../utils/student-phones.util';
 import type { AdminBookingPaymentStatus } from '../utils/booking-admin-payment.util';
 
@@ -26,6 +27,21 @@ export type PracticalFlatXlsxImportOptions = {
   /** CLI override: force one branch for every row (still checks instructor link unless skipped). */
   forceBranchId?: number | null;
   createdByUserId?: number | null;
+};
+
+export type PracticalFlatXlsxSkippedRow = {
+  rowNumber: number | null;
+  kind: 'parse' | 'resolve' | 'duplicate' | 'error';
+  studentName: string;
+  instructorName: string;
+  date: string;
+  timeSlot: string;
+  reason: string;
+  studentPhone?: string;
+  studentPhone2?: string;
+  totalPriceAmd?: number;
+  adminPaymentStatus?: string;
+  branchName?: string;
 };
 
 export type PracticalFlatXlsxImportResult = {
@@ -48,6 +64,8 @@ export type PracticalFlatXlsxImportResult = {
   skippedDuplicates: number;
   newStudentsCreated: number;
   errors: BulkImportRowError[];
+  /** Every row that did not import (parse / resolve / duplicate / error), with Excel row + reason. */
+  skippedRows: PracticalFlatXlsxSkippedRow[];
   unmappableInstructors: string[];
 };
 
@@ -61,7 +79,7 @@ const HEADER_ALIASES: Record<ColKey, readonly string[]> = {
   phone: ['հեռախոս', 'phone', 'телефон'],
   status: ['статус', 'status', 'վիճակ', 'կարգավիճակ'],
   amount: ['сумма', 'amount', 'գումար', 'price', 'цена'],
-  branch: ['մասնաճյուղ', 'branch', 'филиал', 'բրենչ'],
+  branch: ['մասնաճյուղ', 'branch', 'филиал', 'բրենչ', 'հասցե'],
 };
 
 type ParsedRow = {
@@ -213,21 +231,27 @@ function resolveColumnMap(headerRow: unknown[]): { cols: Partial<Record<ColKey, 
   return { cols: detected, usedFallback: false };
 }
 
-function parseWorkbookBuffer(buffer: Buffer): { rows: ParsedRow[]; issues: string[]; hasBranchColumn: boolean } {
+function parseWorkbookBuffer(buffer: Buffer): {
+  rows: ParsedRow[];
+  issues: string[];
+  parseFailures: PracticalFlatXlsxSkippedRow[];
+  hasBranchColumn: boolean;
+} {
   const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true, sheetRows: 20000 });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    return { rows: [], issues: ['Workbook has no sheets'], hasBranchColumn: false };
+    return { rows: [], issues: ['Workbook has no sheets'], parseFailures: [], hasBranchColumn: false };
   }
 
   const sheet = workbook.Sheets[sheetName]!;
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
   if (matrix.length === 0) {
-    return { rows: [], issues: ['Sheet is empty'], hasBranchColumn: false };
+    return { rows: [], issues: ['Sheet is empty'], parseFailures: [], hasBranchColumn: false };
   }
 
   const { cols, usedFallback } = resolveColumnMap(matrix[0] ?? []);
   const issues: string[] = [];
+  const parseFailures: PracticalFlatXlsxSkippedRow[] = [];
   if (usedFallback) {
     issues.push('Header row not recognized; using fixed column order (date, time, instructor, student, phone, status, amount)');
   }
@@ -264,20 +288,39 @@ function parseWorkbookBuffer(buffer: Buffer): { rows: ParsedRow[]; issues: strin
     const adminPaymentStatus = parsePaymentStatus(statusRaw);
     const { phone, phone2 } = parseStudentPhones(phoneRaw);
 
+    const fail = (reason: string) => {
+      const msg = `Row ${rowNumber}: ${reason}`;
+      issues.push(msg);
+      parseFailures.push({
+        rowNumber,
+        kind: 'parse',
+        studentName,
+        instructorName,
+        date: dateIso ?? dateRaw,
+        timeSlot: timeSlot ?? timeRaw,
+        reason,
+        ...(phone ? { studentPhone: phone } : {}),
+        ...(phone2 ? { studentPhone2: phone2 } : {}),
+        totalPriceAmd,
+        adminPaymentStatus,
+        ...(branchName ? { branchName } : {}),
+      });
+    };
+
     if (!dateIso) {
-      issues.push(`Row ${rowNumber}: invalid date "${dateRaw}"`);
+      fail(`invalid date "${dateRaw}"`);
       continue;
     }
     if (!timeSlot) {
-      issues.push(`Row ${rowNumber}: invalid time "${timeRaw}"`);
+      fail(`invalid time "${timeRaw}"`);
       continue;
     }
     if (!instructorName) {
-      issues.push(`Row ${rowNumber}: missing instructor`);
+      fail('missing instructor');
       continue;
     }
     if (!studentName) {
-      issues.push(`Row ${rowNumber}: missing student`);
+      fail('missing student');
       continue;
     }
 
@@ -296,7 +339,7 @@ function parseWorkbookBuffer(buffer: Buffer): { rows: ParsedRow[]; issues: strin
     });
   }
 
-  return { rows, issues, hasBranchColumn };
+  return { rows, issues, parseFailures, hasBranchColumn };
 }
 
 function matchInstructorUser(
@@ -341,26 +384,7 @@ function matchBranchByName(
   branchName: string,
   branches: Array<{ id: number; name: string }>,
 ): { branch: { id: number; name: string } } | { error: string } {
-  const needle = branchName.trim();
-  if (!needle) return { error: 'Empty branch name' };
-
-  const exact = branches.find((b) => b.name.trim() === needle);
-  if (exact) return { branch: exact };
-
-  const lower = needle.toLowerCase();
-  const ciExact = branches.filter((b) => b.name.trim().toLowerCase() === lower);
-  if (ciExact.length === 1) return { branch: ciExact[0]! };
-  if (ciExact.length > 1) {
-    return { error: `Ambiguous branch "${needle}" (matches: ${ciExact.map((b) => b.name).join(', ')})` };
-  }
-
-  const contains = branches.filter((b) => b.name.trim().toLowerCase().includes(lower) || lower.includes(b.name.trim().toLowerCase()));
-  if (contains.length === 1) return { branch: contains[0]! };
-  if (contains.length > 1) {
-    return { error: `Ambiguous branch "${needle}" (candidates: ${contains.map((b) => b.name).join(', ')})` };
-  }
-
-  return { error: `Branch not found: "${needle}"` };
+  return matchBranchFromExcelCell(branchName, branches);
 }
 
 function toBulkInput(row: ParsedRow, canonicalInstructorName: string): BulkImportBookingInput {
@@ -374,6 +398,7 @@ function toBulkInput(row: ParsedRow, canonicalInstructorName: string): BulkImpor
     totalPriceAmd: row.totalPriceAmd,
     adminPaymentStatus: row.adminPaymentStatus,
     paidAmountAmd: row.paidAmountAmd,
+    rowNumber: row.rowNumber,
   };
 }
 
@@ -383,6 +408,7 @@ function emptyBulkResult(): BulkImportResult {
     skippedDuplicates: 0,
     newStudentsCreated: 0,
     errors: [],
+    skippedRows: [],
     unmappableInstructors: [],
   };
 }
@@ -392,6 +418,7 @@ function mergeBulkResults(into: BulkImportResult, from: BulkImportResult): void 
   into.skippedDuplicates += from.skippedDuplicates;
   into.newStudentsCreated += from.newStudentsCreated;
   into.errors.push(...from.errors);
+  into.skippedRows.push(...from.skippedRows);
   for (const name of from.unmappableInstructors) {
     if (!into.unmappableInstructors.includes(name)) into.unmappableInstructors.push(name);
   }
@@ -399,12 +426,48 @@ function mergeBulkResults(into: BulkImportResult, from: BulkImportResult): void 
 
 function rowError(row: ParsedRow, reason: string, instructorName?: string): BulkImportRowError {
   return {
+    rowNumber: row.rowNumber,
     studentName: row.studentName,
     instructorName: instructorName ?? row.instructorName,
     date: row.dateIso,
     timeSlot: row.timeSlot,
     reason,
+    kind: 'error',
+    ...(row.studentPhone ? { studentPhone: row.studentPhone } : {}),
+    ...(row.studentPhone2 ? { studentPhone2: row.studentPhone2 } : {}),
+    totalPriceAmd: row.totalPriceAmd,
+    adminPaymentStatus: row.adminPaymentStatus,
+    ...(row.branchName ? { branchName: row.branchName } : {}),
   };
+}
+
+function toSkippedRow(
+  entry: BulkImportRowError,
+  kind: PracticalFlatXlsxSkippedRow['kind'],
+): PracticalFlatXlsxSkippedRow {
+  return {
+    rowNumber: entry.rowNumber ?? null,
+    kind: entry.kind === 'duplicate' ? 'duplicate' : kind,
+    studentName: entry.studentName,
+    instructorName: entry.instructorName,
+    date: entry.date,
+    timeSlot: entry.timeSlot,
+    reason: entry.reason,
+    ...(entry.studentPhone ? { studentPhone: entry.studentPhone } : {}),
+    ...(entry.studentPhone2 ? { studentPhone2: entry.studentPhone2 } : {}),
+    ...(entry.totalPriceAmd != null ? { totalPriceAmd: entry.totalPriceAmd } : {}),
+    ...(entry.adminPaymentStatus ? { adminPaymentStatus: entry.adminPaymentStatus } : {}),
+    ...(entry.branchName ? { branchName: entry.branchName } : {}),
+  };
+}
+
+function sortSkippedRows(rows: PracticalFlatXlsxSkippedRow[]): PracticalFlatXlsxSkippedRow[] {
+  return [...rows].sort((a, b) => {
+    const ar = a.rowNumber ?? Number.MAX_SAFE_INTEGER;
+    const br = b.rowNumber ?? Number.MAX_SAFE_INTEGER;
+    if (ar !== br) return ar - br;
+    return a.reason.localeCompare(b.reason);
+  });
 }
 
 export default class PracticalFlatXlsxImportService {
@@ -418,7 +481,9 @@ export default class PracticalFlatXlsxImportService {
         ? Math.floor(options.forceBranchId)
         : null;
 
-    const { rows, issues: parseIssues, hasBranchColumn } = parseWorkbookBuffer(buffer);
+    const { rows, issues: parseIssues, parseFailures, hasBranchColumn } = parseWorkbookBuffer(buffer);
+
+    const skippedRows: PracticalFlatXlsxSkippedRow[] = [...parseFailures];
 
     const result: PracticalFlatXlsxImportResult = {
       dryRun,
@@ -435,15 +500,19 @@ export default class PracticalFlatXlsxImportService {
       skippedDuplicates: 0,
       newStudentsCreated: 0,
       errors: [],
+      skippedRows: [],
       unmappableInstructors: [],
     };
 
     if (hasBranchColumn) {
-      result.resolveWarnings.push('Branch column detected; non-empty cells override instructor branch lookup');
+      result.resolveWarnings.push(
+        'Branch column detected; cells may be codes 1–4 (or address). Non-empty cells override instructor branch lookup',
+      );
     }
 
     if (rows.length === 0) {
       result.resolveErrors.push('No importable rows found');
+      result.skippedRows = sortSkippedRows(skippedRows);
       return result;
     }
 
@@ -498,7 +567,9 @@ export default class PracticalFlatXlsxImportService {
       const cached = instructorCache.get(row.instructorName);
       if (!cached || 'error' in cached) {
         result.skippedUnresolved += 1;
-        result.errors.push(rowError(row, cached && 'error' in cached ? cached.error : 'Instructor not found'));
+        const err = rowError(row, cached && 'error' in cached ? cached.error : 'Instructor not found');
+        result.errors.push(err);
+        skippedRows.push(toSkippedRow(err, 'resolve'));
         continue;
       }
 
@@ -555,7 +626,9 @@ export default class PracticalFlatXlsxImportService {
 
       if (resolveReason || branchId == null || branchName == null) {
         result.skippedUnresolved += 1;
-        result.errors.push(rowError(row, resolveReason ?? 'Branch unresolved', cached.canonicalName));
+        const err = rowError(row, resolveReason ?? 'Branch unresolved', cached.canonicalName);
+        result.errors.push(err);
+        skippedRows.push(toSkippedRow(err, 'resolve'));
         continue;
       }
 
@@ -570,6 +643,7 @@ export default class PracticalFlatXlsxImportService {
 
     if (resolved.length === 0) {
       result.resolveErrors.push('Nothing to import (no rows resolved to a branch)');
+      result.skippedRows = sortSkippedRows(skippedRows);
       return result;
     }
 
@@ -597,6 +671,10 @@ export default class PracticalFlatXlsxImportService {
     result.newStudentsCreated = dryRun ? 0 : totals.newStudentsCreated;
     result.errors.push(...totals.errors);
     result.unmappableInstructors = totals.unmappableInstructors;
+    for (const s of totals.skippedRows) {
+      skippedRows.push(toSkippedRow(s, s.kind === 'duplicate' ? 'duplicate' : 'error'));
+    }
+    result.skippedRows = sortSkippedRows(skippedRows);
     return result;
   }
 }

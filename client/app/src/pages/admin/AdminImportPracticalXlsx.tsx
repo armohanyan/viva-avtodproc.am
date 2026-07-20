@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { FileSpreadsheet } from "lucide-react";
 import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
@@ -10,7 +11,61 @@ import { getApiErrorMessage } from "src/lib/vivaApi";
 import {
   importPracticalFlatXlsx,
   type PracticalFlatXlsxImportResult,
+  type PracticalFlatXlsxSkippedRow,
 } from "src/modules/admin/booking/adminBookings.api";
+
+function formatSkippedLine(row: PracticalFlatXlsxSkippedRow): string {
+  const excelRow = row.rowNumber != null ? `#${row.rowNumber}` : "#?";
+  const when = [row.date, row.timeSlot].filter(Boolean).join(" ");
+  const who = [row.instructorName, row.studentName].filter(Boolean).join(" | ");
+  return `${excelRow} [${row.kind}] ${when}${who ? ` | ${who}` : ""}: ${row.reason}`;
+}
+
+function isoToDisplayDate(dateIso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateIso.trim());
+  if (!m) return dateIso;
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
+function paymentStatusLabel(status?: string): string {
+  if (status === "paid") return "վճարված";
+  if (status === "partial") return "մասնական";
+  if (status === "unpaid") return "չվճարված";
+  return status ?? "";
+}
+
+function phoneCell(row: PracticalFlatXlsxSkippedRow): string {
+  const a = (row.studentPhone ?? "").trim();
+  const b = (row.studentPhone2 ?? "").trim();
+  if (a && b) return `${a}/${b}`;
+  return a || b || "";
+}
+
+/** Non-duplicate failures only — ready to fix phones and re-import. */
+function downloadFailedRowsExcel(rows: PracticalFlatXlsxSkippedRow[], filename: string): void {
+  const exportRows = rows.filter((r) => r.kind !== "duplicate");
+  const aoa: (string | number)[][] = [
+    ["Ամսաթիվ", "Ժամ", "Հրահանգիչ", "Ուսանող", "Հեռախոս", "Статус", "Сумма", "Մասնաճյուղ", "ExcelRow", "Reason"],
+  ];
+  for (const row of exportRows) {
+    aoa.push([
+      /^\d{4}-\d{2}-\d{2}$/.test(row.date) ? isoToDisplayDate(row.date) : row.date,
+      row.timeSlot,
+      row.instructorName,
+      row.studentName,
+      phoneCell(row),
+      paymentStatusLabel(row.adminPaymentStatus),
+      row.totalPriceAmd ?? "",
+      row.branchName ?? "",
+      row.rowNumber ?? "",
+      row.reason,
+    ]);
+  }
+  const sheet = XLSX.utils.aoa_to_sheet(aoa);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, "NotImported");
+  XLSX.writeFile(book, filename);
+}
 
 export default function AdminImportPracticalXlsx() {
   const { t } = useLang();
@@ -20,6 +75,12 @@ export default function AdminImportPracticalXlsx() {
   const [dryRun, setDryRun] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PracticalFlatXlsxImportResult | null>(null);
+
+  const skippedRows = result?.skippedRows ?? [];
+  const failedForExport = useMemo(
+    () => skippedRows.filter((r) => r.kind !== "duplicate"),
+    [skippedRows],
+  );
 
   const onRun = async () => {
     if (!file) {
@@ -31,15 +92,25 @@ export default function AdminImportPracticalXlsx() {
     try {
       const data = await importPracticalFlatXlsx({ file, dryRun });
       setResult(data);
+      const skipped = data.skippedRows?.length ?? 0;
       showToast(
         dryRun ? t("adminImportPracticalXlsxDryRunDone") : t("adminImportPracticalXlsxImportDone"),
-        data.errors.length > 0 || data.skippedUnresolved > 0 ? "error" : "success",
+        skipped > 0 || data.errors.length > 0 || data.skippedUnresolved > 0 ? "error" : "success",
       );
     } catch (err) {
       showToast(getApiErrorMessage(err), "error");
     } finally {
       setBusy(false);
     }
+  };
+
+  const onDownloadFailed = () => {
+    if (failedForExport.length === 0) {
+      showToast(t("adminImportPracticalXlsxDownloadEmpty"), "error");
+      return;
+    }
+    downloadFailedRowsExcel(failedForExport, "practical-not-imported.xlsx");
+    showToast(t("adminImportPracticalXlsxDownloadDone"), "success");
   };
 
   return (
@@ -83,7 +154,7 @@ export default function AdminImportPracticalXlsx() {
           {t("adminImportPracticalXlsxDryRun")}
         </label>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => void onRun()} disabled={busy || !file}>
             {busy
               ? t("adminImportPracticalXlsxRunning")
@@ -103,11 +174,19 @@ export default function AdminImportPracticalXlsx() {
           >
             {t("adminImportPracticalXlsxClear")}
           </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy || failedForExport.length === 0}
+            onClick={onDownloadFailed}
+          >
+            {t("adminImportPracticalXlsxDownloadFailed")} ({failedForExport.length})
+          </Button>
         </div>
       </div>
 
       {result ? (
-        <div className="mt-6 max-w-3xl space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
+        <div className="mt-6 max-w-4xl space-y-3 rounded-xl border border-border bg-card p-4 text-sm">
           <p className="font-medium">{t("adminImportPracticalXlsxResultTitle")}</p>
           <ul className="grid gap-1 text-muted-foreground sm:grid-cols-2">
             <li>
@@ -134,11 +213,15 @@ export default function AdminImportPracticalXlsx() {
             <li>
               {t("adminImportPracticalXlsxUnresolved")}: {result.skippedUnresolved}
             </li>
+            <li className={skippedRows.length > 0 ? "font-medium text-destructive" : undefined}>
+              {t("adminImportPracticalXlsxNotImported")}: {skippedRows.length}
+            </li>
             <li>
               {t("adminImportPracticalXlsxErrors")}: {result.errors.length}
             </li>
           </ul>
           <p className="text-xs text-muted-foreground">{t("adminImportPracticalXlsxDupHint")}</p>
+          <p className="text-xs text-muted-foreground">{t("adminImportPracticalXlsxAmbiguousHint")}</p>
 
           {result.instructorMappings.length > 0 ? (
             <div>
@@ -155,27 +238,32 @@ export default function AdminImportPracticalXlsx() {
             </div>
           ) : null}
 
-          {result.parseIssues.length > 0 ||
-          result.resolveWarnings.length > 0 ||
-          result.resolveErrors.length > 0 ||
-          result.errors.length > 0 ? (
+          {skippedRows.length > 0 ? (
+            <div>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">{t("adminImportPracticalXlsxSkippedTitle")}</p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={failedForExport.length === 0}
+                  onClick={onDownloadFailed}
+                >
+                  {t("adminImportPracticalXlsxDownloadFailed")} ({failedForExport.length})
+                </Button>
+              </div>
+              <p className="mb-2 text-xs text-muted-foreground">{t("adminImportPracticalXlsxSkippedHint")}</p>
+              <pre className="max-h-96 overflow-auto rounded-lg bg-muted/50 p-2 text-xs whitespace-pre-wrap">
+                {skippedRows.map(formatSkippedLine).join("\n")}
+              </pre>
+            </div>
+          ) : null}
+
+          {result.resolveWarnings.length > 0 ? (
             <div>
               <p className="mb-1 font-medium">{t("adminImportPracticalXlsxIssues")}</p>
-              <pre className="max-h-64 overflow-auto rounded-lg bg-muted/50 p-2 text-xs whitespace-pre-wrap">
-                {[
-                  ...result.parseIssues.map((s) => `parse: ${s}`),
-                  ...result.resolveWarnings.map((s) => `warn: ${s}`),
-                  ...result.resolveErrors.map((s) => `resolve: ${s}`),
-                  ...result.errors
-                    .slice(0, 50)
-                    .map(
-                      (e) =>
-                        `row: ${e.date} ${e.timeSlot} | ${e.instructorName} | ${e.studentName}: ${e.reason}`,
-                    ),
-                  result.errors.length > 50 ? `… +${result.errors.length - 50} more errors` : "",
-                ]
-                  .filter(Boolean)
-                  .join("\n")}
+              <pre className="max-h-40 overflow-auto rounded-lg bg-muted/50 p-2 text-xs whitespace-pre-wrap">
+                {result.resolveWarnings.map((s) => `warn: ${s}`).join("\n")}
               </pre>
             </div>
           ) : null}

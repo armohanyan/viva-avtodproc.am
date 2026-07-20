@@ -41,8 +41,8 @@ export type BookingExportHeaderLabels = Record<BookingExportColumnKey, string>;
 export const BOOKING_EXPORT_HEADER_ALIASES: Record<BookingExportColumnKey, string[]> = {
   studentName: ["studentName", "student", "Ուսանող", "Ученик"],
   studentPhone: ["studentPhone", "phone", "Հեռախոս", "Հեռախոսահամար", "Телефон"],
-  branchName: ["branchName", "branch", "Մասնաճյուղ", "Филиал"],
-  instructorName: ["instructorName", "instructor", "Դասavանդող", "Инструктор"],
+  branchName: ["branchName", "branch", "Մասնաճյուղ", "Филиал", "Հասցե"],
+  instructorName: ["instructorName", "instructor", "Հրահանգիչ", "Դասավանդող", "Инструктор"],
   date: ["date", "dateIso", "Ամսաթիվ", "Дата"],
   time: ["time", "timeSlot", "Ժամ", "Время"],
   lessonType: ["lessonType", "type", "Տեսակ", "Тип"],

@@ -26,6 +26,8 @@ export type BulkImportBookingInput = {
   paidAmountAmd?: number;
   paymentNotes?: string | null;
   paymentReminderDate?: string | null;
+  /** Excel 1-based row number when imported from XLSX. */
+  rowNumber?: number;
 };
 
 export type BulkImportRowError = {
@@ -34,6 +36,14 @@ export type BulkImportRowError = {
   date: string;
   timeSlot: string;
   reason: string;
+  rowNumber?: number | null;
+  /** duplicate = instructor+date+time already taken / repeated in file */
+  kind?: 'duplicate' | 'error';
+  studentPhone?: string;
+  studentPhone2?: string;
+  totalPriceAmd?: number;
+  adminPaymentStatus?: AdminBookingPaymentStatus;
+  branchName?: string;
 };
 
 export type BulkImportResult = {
@@ -41,6 +51,8 @@ export type BulkImportResult = {
   skippedDuplicates: number;
   newStudentsCreated: number;
   errors: BulkImportRowError[];
+  /** All non-imported rows from this batch (duplicates + errors), with reasons. */
+  skippedRows: BulkImportRowError[];
   unmappableInstructors: string[];
 };
 
@@ -62,9 +74,9 @@ async function findStudentByNameAndPhones(
   name: string,
   phone: string | null,
   phone2: string | null,
-): Promise<{ user: User | null; ambiguous: boolean }> {
+): Promise<{ user: User | null; ambiguous: boolean; matchCount: number }> {
   const trimmed = name.trim();
-  if (!trimmed) return { user: null, ambiguous: false };
+  if (!trimmed) return { user: null, ambiguous: false, matchCount: 0 };
 
   const students = await User.findAll({
     where: { accountType: 'student' },
@@ -72,7 +84,7 @@ async function findStudentByNameAndPhones(
   });
   const needle = trimmed.toLowerCase();
   const byName = students.filter((s) => s.name?.trim().toLowerCase() === needle);
-  if (byName.length === 0) return { user: null, ambiguous: false };
+  if (byName.length === 0) return { user: null, ambiguous: false, matchCount: 0 };
 
   const importHasPhone = phoneDigits(phone).length >= 7 || phoneDigits(phone2).length >= 7;
 
@@ -80,18 +92,18 @@ async function findStudentByNameAndPhones(
     const phoneMatches = byName.filter((s) =>
       studentPhonesOverlap({ phone, phone2 }, { phone: s.phone, phone2: s.phone2 }),
     );
-    if (phoneMatches.length === 1) return { user: phoneMatches[0]!, ambiguous: false };
-    if (phoneMatches.length > 1) return { user: null, ambiguous: true };
+    if (phoneMatches.length === 1) return { user: phoneMatches[0]!, ambiguous: false, matchCount: 1 };
+    if (phoneMatches.length > 1) return { user: null, ambiguous: true, matchCount: phoneMatches.length };
 
     const emptyPhone = byName.filter((s) => !hasStoredPhone(s));
-    if (emptyPhone.length === 1) return { user: emptyPhone[0]!, ambiguous: false };
-    if (emptyPhone.length > 1) return { user: null, ambiguous: true };
+    if (emptyPhone.length === 1) return { user: emptyPhone[0]!, ambiguous: false, matchCount: 1 };
+    if (emptyPhone.length > 1) return { user: null, ambiguous: true, matchCount: emptyPhone.length };
 
-    return { user: null, ambiguous: false };
+    return { user: null, ambiguous: false, matchCount: 0 };
   }
 
-  if (byName.length === 1) return { user: byName[0]!, ambiguous: false };
-  return { user: null, ambiguous: true };
+  if (byName.length === 1) return { user: byName[0]!, ambiguous: false, matchCount: 1 };
+  return { user: null, ambiguous: true, matchCount: byName.length };
 }
 
 function isDuplicateBookingError(e: unknown): boolean {
@@ -161,14 +173,14 @@ async function resolveStudentUserId(input: {
     return { userId: cached.userId };
   }
 
-  const { user: existing, ambiguous } = await findStudentByNameAndPhones(studentName, phone, phone2);
+  const { user: existing, ambiguous, matchCount } = await findStudentByNameAndPhones(studentName, phone, phone2);
   if (ambiguous) {
+    const hasPhone = Boolean(phone || phone2);
     return {
       userId: null,
-      error:
-        'Ambiguous student: multiple profiles match this name' +
-        (phone || phone2 ? ' / phone' : '') +
-        '. Disambiguate with phone numbers.',
+      error: hasPhone
+        ? `Ambiguous student: ${matchCount} profiles named "${studentName}" match the phone. Check duplicate student records.`
+        : `Ambiguous student: ${matchCount} profiles named "${studentName}" exist, but Excel phone is empty. Add the correct phone to this row.`,
     };
   }
 
@@ -219,61 +231,89 @@ export default class BookingBulkImportService {
       skippedDuplicates: 0,
       newStudentsCreated: 0,
       errors: [],
+      skippedRows: [],
       unmappableInstructors: [],
     };
 
     const unmappableSet = new Set<string>();
     const studentCache = new Map<string, StudentCacheEntry>();
     const instructorIdCache = new Map<string, number | null>();
-    /** Within-file + DB: instructorUserId|date|time */
-    const seenSlots = new Set<string>();
+    /** Within-file + DB: instructorUserId|date|time → first Excel row that claimed it */
+    const seenSlots = new Map<string, number | null>();
+
+    const pushSkip = (entry: BulkImportRowError) => {
+      result.skippedRows.push(entry);
+      if (entry.kind === 'duplicate') {
+        result.skippedDuplicates += 1;
+      } else {
+        result.errors.push(entry);
+      }
+    };
 
     for (const row of input.bookings) {
       const studentName = row.studentName?.trim();
       const instructorName = row.instructorName?.trim();
       const dateIso = row.date?.trim().slice(0, 10);
       const slotTime = normalizeTimeHHMM(row.timeSlot?.trim() ?? '');
+      const rowNumber = row.rowNumber ?? null;
 
       const rowRef = {
+        rowNumber,
         studentName: studentName ?? '',
         instructorName: instructorName ?? '',
         date: dateIso ?? '',
         timeSlot: slotTime ?? row.timeSlot ?? '',
+        ...(row.studentPhone ? { studentPhone: row.studentPhone } : {}),
+        ...(row.studentPhone2 ? { studentPhone2: row.studentPhone2 } : {}),
+        ...(row.totalPriceAmd != null ? { totalPriceAmd: row.totalPriceAmd } : {}),
+        ...(row.adminPaymentStatus ? { adminPaymentStatus: row.adminPaymentStatus } : {}),
       };
 
       if (!studentName) {
-        result.errors.push({ ...rowRef, reason: 'Student name is required' });
+        pushSkip({ ...rowRef, kind: 'error', reason: 'Student name is required' });
         continue;
       }
       if (!instructorName) {
-        result.errors.push({ ...rowRef, reason: 'Instructor name is required' });
+        pushSkip({ ...rowRef, kind: 'error', reason: 'Instructor name is required' });
         continue;
       }
       if (!dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
-        result.errors.push({ ...rowRef, reason: 'Invalid date' });
+        pushSkip({ ...rowRef, kind: 'error', reason: 'Invalid date' });
         continue;
       }
       if (!slotTime) {
-        result.errors.push({ ...rowRef, reason: 'Invalid time slot' });
+        pushSkip({ ...rowRef, kind: 'error', reason: 'Invalid time slot' });
         continue;
       }
 
       const instructorUserId = await resolveInstructorUserId(instructorName, instructorIdCache);
       if (!instructorUserId) {
         unmappableSet.add(instructorName);
-        result.errors.push({ ...rowRef, reason: `Instructor not found: ${instructorName}` });
+        pushSkip({ ...rowRef, kind: 'error', reason: `Instructor not found: ${instructorName}` });
         continue;
       }
 
       const slotKey = instructorSlotKey(instructorUserId, dateIso, slotTime);
       if (seenSlots.has(slotKey)) {
-        result.skippedDuplicates += 1;
+        const firstRow = seenSlots.get(slotKey);
+        pushSkip({
+          ...rowRef,
+          kind: 'duplicate',
+          reason:
+            firstRow != null
+              ? `Duplicate slot in file (same instructor + date + time as Excel row ${firstRow})`
+              : 'Duplicate slot in file (same instructor + date + time)',
+        });
         continue;
       }
-      seenSlots.add(slotKey);
+      seenSlots.set(slotKey, rowNumber);
 
       if (await instructorSlotTaken(instructorUserId, dateIso, slotTime)) {
-        result.skippedDuplicates += 1;
+        pushSkip({
+          ...rowRef,
+          kind: 'duplicate',
+          reason: 'Duplicate slot: instructor already booked at this date + time',
+        });
         continue;
       }
 
@@ -294,7 +334,11 @@ export default class BookingBulkImportService {
         },
       });
       if (!resolved.userId) {
-        result.errors.push({ ...rowRef, reason: resolved.error ?? 'Failed to create student profile' });
+        pushSkip({
+          ...rowRef,
+          kind: 'error',
+          reason: resolved.error ?? 'Failed to create student profile',
+        });
         continue;
       }
       const studentUserId = resolved.userId;
@@ -321,7 +365,7 @@ export default class BookingBulkImportService {
 
         if (!created) {
           unmappableSet.add(instructorName);
-          result.errors.push({ ...rowRef, reason: `Instructor not found: ${instructorName}` });
+          pushSkip({ ...rowRef, kind: 'error', reason: `Instructor not found: ${instructorName}` });
           continue;
         }
 
@@ -350,7 +394,11 @@ export default class BookingBulkImportService {
         result.imported += 1;
       } catch (e) {
         if (isDuplicateBookingError(e)) {
-          result.skippedDuplicates += 1;
+          pushSkip({
+            ...rowRef,
+            kind: 'duplicate',
+            reason: 'Duplicate slot: instructor already booked at this date + time',
+          });
           continue;
         }
         if (e instanceof InputValidationError) {
@@ -358,11 +406,11 @@ export default class BookingBulkImportService {
           if (/instructor not found|does not serve this branch/i.test(msg)) {
             unmappableSet.add(instructorName);
           }
-          result.errors.push({ ...rowRef, reason: msg });
+          pushSkip({ ...rowRef, kind: 'error', reason: msg });
           continue;
         }
         const msg = e instanceof Error ? e.message : 'Failed to create booking';
-        result.errors.push({ ...rowRef, reason: msg });
+        pushSkip({ ...rowRef, kind: 'error', reason: msg });
       }
     }
 

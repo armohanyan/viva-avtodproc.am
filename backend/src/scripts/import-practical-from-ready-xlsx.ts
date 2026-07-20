@@ -115,8 +115,19 @@ async function main(): Promise<void> {
   for (const e of result.resolveErrors) console.log(`  ERROR: ${e}`);
 
   console.log(
-    `\nImportable=${result.importableRows}; wouldImportOrImported=${result.imported}; duplicates=${result.skippedDuplicates}; skippedUnresolved=${result.skippedUnresolved}; dualPhones=${result.dualPhoneRows}; paid=${result.paidRows}`,
+    `\nImportable=${result.importableRows}; wouldImportOrImported=${result.imported}; duplicates=${result.skippedDuplicates}; skippedUnresolved=${result.skippedUnresolved}; dualPhones=${result.dualPhoneRows}; paid=${result.paidRows}; notImported=${result.skippedRows.length}`,
   );
+
+  if (result.skippedRows.length > 0) {
+    console.log(`\nNot imported (${result.skippedRows.length}):`);
+    for (const row of result.skippedRows.slice(0, 100)) {
+      const excelRow = row.rowNumber != null ? `#${row.rowNumber}` : '#?';
+      console.log(
+        `  ${excelRow} [${row.kind}] ${row.date} ${row.timeSlot} | ${row.instructorName} | ${row.studentName}: ${row.reason}`,
+      );
+    }
+    if (result.skippedRows.length > 100) console.log(`  … and ${result.skippedRows.length - 100} more`);
+  }
 
   if (args.dryRun) {
     console.log('\nDry-run complete (no DB writes). Duplicates = instructor+date+time already in booking_slots.');
@@ -147,12 +158,22 @@ async function main(): Promise<void> {
   if (result.errors.length > 0) {
     console.log('\nErrors (first 40):');
     for (const err of result.errors.slice(0, 40)) {
-      console.log(`  - ${err.date} ${err.timeSlot} | ${err.instructorName} | ${err.studentName}: ${err.reason}`);
+      const excelRow = err.rowNumber != null ? `#${err.rowNumber} ` : '';
+      console.log(
+        `  - ${excelRow}${err.date} ${err.timeSlot} | ${err.instructorName} | ${err.studentName}: ${err.reason}`,
+      );
     }
     if (result.errors.length > 40) console.log(`  … and ${result.errors.length - 40} more`);
   }
 
-  process.exit(result.errors.length > 0 || result.skippedUnresolved > 0 || result.resolveErrors.length > 0 ? 1 : 0);
+  process.exit(
+    result.errors.length > 0 ||
+      result.skippedUnresolved > 0 ||
+      result.resolveErrors.length > 0 ||
+      result.skippedRows.some((r) => r.kind === 'error' || r.kind === 'parse' || r.kind === 'resolve')
+      ? 1
+      : 0,
+  );
 }
 
 void main().catch((e) => {

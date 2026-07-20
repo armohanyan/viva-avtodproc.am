@@ -197,6 +197,21 @@ export async function bulkImportBookings(input: {
 }
 
 /** Temporary flat practical XLSX import (optional Branch column). */
+export type PracticalFlatXlsxSkippedRow = {
+  rowNumber: number | null;
+  kind: "parse" | "resolve" | "duplicate" | "error";
+  studentName: string;
+  instructorName: string;
+  date: string;
+  timeSlot: string;
+  reason: string;
+  studentPhone?: string;
+  studentPhone2?: string;
+  totalPriceAmd?: number;
+  adminPaymentStatus?: string;
+  branchName?: string;
+};
+
 export type PracticalFlatXlsxImportResult = {
   dryRun: boolean;
   parsedRows: number;
@@ -217,6 +232,7 @@ export type PracticalFlatXlsxImportResult = {
   skippedDuplicates: number;
   newStudentsCreated: number;
   errors: BulkImportBookingsResponse["errors"];
+  skippedRows: PracticalFlatXlsxSkippedRow[];
   unmappableInstructors: string[];
 };
 
