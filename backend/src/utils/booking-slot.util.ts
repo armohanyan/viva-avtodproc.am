@@ -29,8 +29,10 @@ export function yerevanTodayIso(now = new Date()): string {
 }
 
 export function normalizeTimeHHMM(v: string): string | null {
-  const t = v.trim();
-  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(t);
+  // Accept `:`, `;`, Armenian full stop `։`, and `.` as hour/minute separators (Excel exports).
+  // Minutes may be 1 digit (e.g. `14;0` → 14:00).
+  const t = v.trim().replace(/[;։.]/g, ':');
+  const m = /^(\d{1,2}):(\d{1,2})(?::\d{2})?/.exec(t);
   if (!m) return null;
   const h = Number(m[1]);
   const min = Number(m[2]);

@@ -23,6 +23,7 @@ export type InstructorPanelStudent = {
 	name: string;
 	email: string;
 	phone: string;
+	phone2: string;
 	instructor: string;
 	package: string;
 	lessons: string;

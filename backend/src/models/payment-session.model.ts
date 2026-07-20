@@ -25,6 +25,8 @@ export class PaymentSession extends Model<
   declare rawRegisterResponse: CreationOptional<Record<string, unknown> | null>;
   declare rawStatusResponse: CreationOptional<Record<string, unknown> | null>;
   declare paidAt: CreationOptional<Date | null>;
+  declare createdAt: CreationOptional<Date>;
+  declare updatedAt: CreationOptional<Date>;
 }
 
 PaymentSession.init(
@@ -52,6 +54,8 @@ PaymentSession.init(
     rawRegisterResponse: { type: DataTypes.JSON, allowNull: true },
     rawStatusResponse: { type: DataTypes.JSON, allowNull: true },
     paidAt: { type: DataTypes.DATE, allowNull: true },
+    createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'created_at' },
+    updatedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW, field: 'updated_at' },
   },
   {
     sequelize,

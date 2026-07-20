@@ -53,9 +53,15 @@ const rawEnvSchema = z.object({
   EMAIL_SUPPORT_EMAIL: z.string().optional(),
   EMAIL_COMPANY_NAME: z.string().optional(),
   VPOS_ENABLED: z.string().optional(),
+  /** `development` (test EPG) or `production` (live EPG). Falls back to VPOS_TEST_MODE, then NODE_ENV. */
+  VPOS_MODE: z.string().optional(),
   VPOS_TEST_MODE: z.string().optional(),
+  /** ACBA API login — used for register.do / getOrderStatusExtended.do */
   VPOS_USERNAME: z.string().optional(),
   VPOS_PASSWORD: z.string().optional(),
+  /** ACBA binding login — reserved for saved-card / binding API calls (same REST base URL). */
+  VPOS_BINDING_USERNAME: z.string().optional(),
+  VPOS_BINDING_PASSWORD: z.string().optional(),
   VPOS_API_BASE_URL: z.string().optional(),
   VPOS_CURRENCY: z.string().optional(),
 });
@@ -93,6 +99,24 @@ const exposeErrorDetails = !isProduction || raw.EXPOSE_ERROR_DETAILS === '1';
 const apiPublicUrl = (raw.API_PUBLIC_URL?.trim() || `http://localhost:${raw.PORT}`).replace(/\/+$/, '');
 /** Default matches Vite dev (`client`); Docker/production should set `PANEL_DEFAULT_ORIGIN` explicitly. */
 const panelDefaultOrigin = (raw.PANEL_DEFAULT_ORIGIN?.trim() || 'http://localhost:5173').replace(/\/+$/, '');
+
+const VPOS_EPG_URLS = {
+  development: 'https://testepg.arca.am/payment/rest/',
+  production: 'https://epg.arca.am/payment/rest/',
+} as const;
+
+type VposMode = keyof typeof VPOS_EPG_URLS;
+
+function resolveVposMode(): VposMode {
+  const explicit = raw.VPOS_MODE?.trim().toLowerCase();
+  if (explicit === 'production' || explicit === 'prod' || explicit === 'live') return 'production';
+  if (explicit === 'development' || explicit === 'dev' || explicit === 'test') return 'development';
+  if (raw.VPOS_TEST_MODE === '0') return 'production';
+  if (raw.VPOS_TEST_MODE === '1') return 'development';
+  return isProduction ? 'production' : 'development';
+}
+
+const vposMode = resolveVposMode();
 
 const config = {
   NODE_ENV: raw.NODE_ENV,
@@ -169,15 +193,17 @@ const config = {
   },
   VPOS: {
     ENABLED: raw.VPOS_ENABLED === '1',
-    TEST_MODE: raw.VPOS_TEST_MODE !== '0',
+    MODE: vposMode,
+    /** @deprecated Use MODE === 'development' */
+    TEST_MODE: vposMode === 'development',
     USERNAME: raw.VPOS_USERNAME?.trim() || '',
     PASSWORD: raw.VPOS_PASSWORD?.trim() || '',
+    BINDING_USERNAME: raw.VPOS_BINDING_USERNAME?.trim() || '',
+    BINDING_PASSWORD: raw.VPOS_BINDING_PASSWORD?.trim() || '',
     API_BASE_URL: (() => {
       const override = raw.VPOS_API_BASE_URL?.trim();
       if (override) return override.replace(/\/+$/, '') + '/';
-      return raw.VPOS_TEST_MODE === '0'
-        ? 'https://epg.arca.am/payment/rest/'
-        : 'https://testepg.arca.am/payment/rest/';
+      return VPOS_EPG_URLS[vposMode];
     })(),
     CURRENCY: raw.VPOS_CURRENCY?.trim() || '051',
   },

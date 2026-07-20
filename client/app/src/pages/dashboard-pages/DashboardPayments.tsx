@@ -12,6 +12,7 @@ import { useAccount } from "src/modules/accounts";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatAmd } from "src/utils/currency.utils";
 import { AcbaPaymentTrustStrip } from "src/components/payments/AcbaPaymentTrustStrip";
+import { VposTestModeBanner } from "src/components/payments/VposTestModeBanner";
 
 type FinanceTx = {
   id: number;
@@ -95,6 +96,7 @@ export default function DashboardPayments() {
       ) : null}
 
       <Reveal delay={0.06}>
+        <VposTestModeBanner className="mb-4 max-w-2xl" />
         <Card className="border-border overflow-hidden">
           <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />
           <div className="divide-y divide-border">

@@ -28,6 +28,7 @@ export type AdminStudentEditModalUser = {
   name: string;
   email: string;
   phone: string;
+  phone2: string;
   instructor: string;
   package: string;
   lessons: string;
@@ -79,6 +80,8 @@ export default function AdminStudentEditModal({
         ? {
             ...user,
             email: displayStudentEmail(user.email),
+            phone: user.phone ?? "",
+            phone2: user.phone2 ?? "",
           }
         : null,
     );
@@ -123,6 +126,7 @@ export default function AdminStudentEditModal({
           name: draft.name,
           email: draft.email,
           phone: draft.phone,
+          phone2: draft.phone2.trim() === "" ? null : draft.phone2.trim(),
           branchId: draft.branchId,
           packageId: pkg?.id,
           instructorUserId: ins?.id ?? null,
@@ -229,6 +233,17 @@ export default function AdminStudentEditModal({
               value={draft.phone}
               onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
               className="h-10"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">
+              {t("phoneNumber2")}
+            </label>
+            <Input
+              value={draft.phone2}
+              onChange={(e) => setDraft({ ...draft, phone2: e.target.value })}
+              className="h-10"
+              placeholder="+374 99 000 000"
             />
           </div>
           <div>

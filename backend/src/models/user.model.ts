@@ -17,6 +17,8 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare name: string;
   declare accountType: AccountType;
   declare phone: CreationOptional<string | null>;
+  /** Optional secondary contact number; students may have 0–2 phones. */
+  declare phone2: CreationOptional<string | null>;
   declare isActive: CreationOptional<boolean>;
   /** SHA-256 hex of opaque reset token; plain token only in email. */
   declare passwordResetTokenHash: CreationOptional<string | null>;
@@ -34,6 +36,7 @@ User.init(
       allowNull: false,
     },
     phone: { type: DataTypes.STRING(64), allowNull: true },
+    phone2: { type: DataTypes.STRING(64), allowNull: true },
     isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     passwordResetTokenHash: { type: DataTypes.STRING(128), allowNull: true },
     passwordResetExpiresAt: { type: DataTypes.DATE, allowNull: true },

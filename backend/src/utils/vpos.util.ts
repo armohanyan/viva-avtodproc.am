@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import config from '../config';
 import ErrorsUtil from './errors.util';
 import HttpStatusCodesUtil from './http-status-codes.util';
@@ -30,4 +31,9 @@ export function amdToMinorUnits(amountAmd: number): number {
 
 export function minorUnitsToAmd(amountMinor: number): number {
   return Math.round(amountMinor / 100);
+}
+
+/** ACBA EPG orderNumber: alphanumeric only (AN..32), unique per merchant. */
+export function buildEpgOrderNumber(): string {
+  return `${Date.now()}${randomBytes(4).toString('hex')}`.slice(0, 32);
 }

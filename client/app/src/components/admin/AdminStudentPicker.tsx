@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Phone, Plus, X } from "lucide-react";
 import { cn } from "src/lib/utils";
+import { formatStudentPhones } from "src/lib/studentPhones";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import { useLang, type TranslationKey } from "src/lib/i18n";
@@ -28,8 +29,8 @@ type CreateMode = "closed" | "open";
 
 const TRIGGER_DEFAULT_PLACEHOLDER_KEY: TranslationKey = "adminStudentPickerSelectPlaceholder";
 
-function formatPhone(phone: string): string {
-  return phone.trim();
+function formatPhone(phone: string, phone2?: string): string {
+  return formatStudentPhones(phone, phone2);
 }
 
 function normalizeForSearch(s: string): string {
@@ -45,9 +46,13 @@ function studentMatchesQuery(student: AdminStudentPickerStudent, query: string):
   if (!q) return true;
   if (student.name.toLowerCase().includes(q)) return true;
   if (student.email && student.email.toLowerCase().includes(q)) return true;
-  if (student.phone && student.phone.toLowerCase().includes(q)) return true;
+  const phones = formatPhone(student.phone, student.phone2);
+  if (phones && phones.toLowerCase().includes(q)) return true;
   const qDigits = digitsOnly(query);
-  if (qDigits && student.phone && digitsOnly(student.phone).includes(qDigits)) return true;
+  if (qDigits) {
+    if (digitsOnly(student.phone).includes(qDigits)) return true;
+    if (student.phone2 && digitsOnly(student.phone2).includes(qDigits)) return true;
+  }
   return false;
 }
 
@@ -68,6 +73,7 @@ export default function AdminStudentPicker({
   const [createMode, setCreateMode] = useState<CreateMode>("closed");
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [newPhone2, setNewPhone2] = useState("");
   const [creating, setCreating] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -116,7 +122,7 @@ export default function AdminStudentPicker({
 
   const triggerLabel = useMemo(() => {
     if (selected) {
-      const phone = formatPhone(selected.phone);
+      const phone = formatPhone(selected.phone, selected.phone2);
       return phone ? `${selected.name} · ${phone}` : selected.name;
     }
     return t(placeholderKey ?? TRIGGER_DEFAULT_PLACEHOLDER_KEY);
@@ -128,6 +134,7 @@ export default function AdminStudentPicker({
     setQuery("");
     setNewName("");
     setNewPhone("");
+    setNewPhone2("");
   };
 
   const openCreate = () => {
@@ -144,6 +151,7 @@ export default function AdminStudentPicker({
   const handleCreate = async () => {
     const name = newName.trim();
     const phone = newPhone.trim();
+    const phone2 = newPhone2.trim();
     if (!name) {
       showToast(t("adminStudentPickerErrorNameRequired"), "error");
       return;
@@ -154,23 +162,28 @@ export default function AdminStudentPicker({
     }
     setCreating(true);
     try {
-      const row = await vivaApiJson<{ id: number | string; name: string; email?: string; phone?: string | null }>(
-        "/students",
-        {
-          method: "POST",
-          body: {
-            name,
-            branchId: Number(branchIdForNewStudent),
-            inviteToSystem: false,
-            ...(phone ? { phone } : {}),
-          },
+      const row = await vivaApiJson<{
+        id: number | string;
+        name: string;
+        email?: string;
+        phone?: string | null;
+        phone2?: string | null;
+      }>("/students", {
+        method: "POST",
+        body: {
+          name,
+          branchId: Number(branchIdForNewStudent),
+          inviteToSystem: false,
+          ...(phone ? { phone } : {}),
+          ...(phone2 ? { phone2 } : {}),
         },
-      );
+      });
       const created: AdminStudentPickerStudent = {
         id: String(row.id),
         name: row.name,
         email: (row.email ?? "").trim(),
         phone: (row.phone ?? phone ?? "").trim(),
+        phone2: (row.phone2 ?? phone2 ?? "").trim(),
       };
       onStudentCreated?.(created);
       onChange(created);
@@ -268,6 +281,25 @@ export default function AdminStudentPicker({
                   className="h-9"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">
+                  {t("phoneNumber2")}
+                </label>
+                <Input
+                  value={newPhone2}
+                  onChange={(e) => setNewPhone2(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleCreate();
+                    }
+                  }}
+                  placeholder={t("adminStudentPickerPhonePlaceholder")}
+                  inputMode="tel"
+                  className="h-9"
+                />
+              </div>
               {!branchIdForNewStudent ? (
                 <p className="text-xs text-amber-600 dark:text-amber-500">
                   {t("adminStudentPickerErrorBranchRequired")}
@@ -341,10 +373,10 @@ export default function AdminStudentPicker({
                       >
                         <span className="block truncate font-medium text-foreground">{s.name}</span>
                         <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-                          {formatPhone(s.phone) ? (
+                          {formatPhone(s.phone, s.phone2) ? (
                             <>
                               <Phone className="h-3 w-3 shrink-0" aria-hidden />
-                              <span className="truncate tabular-nums">{formatPhone(s.phone)}</span>
+                              <span className="truncate tabular-nums">{formatPhone(s.phone, s.phone2)}</span>
                             </>
                           ) : s.email ? (
                             <span className="truncate">{s.email}</span>

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLang } from "src/lib/i18n";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 
 export type VposPublicConfig = {
   enabled: boolean;
+  mode?: "development" | "production";
   testMode: boolean;
   simulated: boolean;
 };
@@ -26,6 +27,10 @@ export function useVposCheckout() {
   const [config, setConfig] = useState<VposPublicConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
+  const configRef = useRef(config);
+  const configLoadingRef = useRef(configLoading);
+  configRef.current = config;
+  configLoadingRef.current = configLoading;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +58,13 @@ export function useVposCheckout() {
 
   const initiateCheckout = useCallback(
     async (input: VposCheckoutInput): Promise<VposCheckoutResult> => {
-      if (!config || config.simulated) {
+      let waited = 0;
+      while (configLoadingRef.current && waited < 5000) {
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+        waited += 50;
+      }
+      const cfg = configRef.current;
+      if (!cfg || cfg.simulated) {
         return { mode: "simulated" };
       }
       const data = await vivaApiJson<InitiateResponse>("/payments/initiate", {
@@ -63,7 +74,7 @@ export function useVposCheckout() {
       window.location.assign(data.redirectUrl);
       return { mode: "redirect" };
     },
-    [config, lang],
+    [lang],
   );
 
   const completeBookingPaymentSimulated = useCallback(async (bookingId: number) => {
@@ -84,6 +95,13 @@ export function useVposCheckout() {
     });
   }, []);
 
+  const syncPaymentSession = useCallback(async (sessionId: number) => {
+    return vivaApiJson<{ status: "paid" | "failed"; sessionId: number; orderNumber: string; amountAmd: number }>(
+      "/payments/sync",
+      { method: "POST", body: { sessionId } },
+    );
+  }, []);
+
   return {
     config,
     configLoading,
@@ -92,5 +110,6 @@ export function useVposCheckout() {
     completeBookingPaymentSimulated,
     completePackagePurchaseSimulated,
     purchaseExtraPracticalSimulated,
+    syncPaymentSession,
   };
 }

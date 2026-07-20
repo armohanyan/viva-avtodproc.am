@@ -59,7 +59,7 @@ type ClassScheduleItem = {
 	date: string;
 	startTime: string;
 	endTime: string;
-	student: { id: number; name: string; phone: string | null };
+	student: { id: number; name: string; phone: string | null; phone2: string | null };
 	instructor: { id: number | null; name: string };
 	branch: { id: number; name: string; address: string };
 	package: { id: number; name: string; isIncludedLesson: boolean } | null;
@@ -791,6 +791,12 @@ export default function AdminClassSchedule() {
 								<>
 									<dt className="text-muted-foreground">{t("phoneNumber")}</dt>
 									<dd>{detail.student.phone}</dd>
+								</>
+							) : null}
+							{detail.student.phone2 ? (
+								<>
+									<dt className="text-muted-foreground">{t("phoneNumber2")}</dt>
+									<dd>{detail.student.phone2}</dd>
 								</>
 							) : null}
 							<dt className="text-muted-foreground">{t("adminClassScheduleColInstructor")}</dt>

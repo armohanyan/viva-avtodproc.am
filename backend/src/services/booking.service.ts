@@ -353,6 +353,7 @@ export type BookingAdminListItemDto = BookingAdminDto & {
   studentName: string;
   studentEmail: string;
   studentPhone: string;
+  studentPhone2: string;
   manualFinanceTx: AdminBookingFinanceLinkDto | null;
   systemFinanceTx: AdminBookingFinanceLinkDto | null;
 };
@@ -1327,12 +1328,12 @@ export default class BookingService {
                   unknown
                 >)
               : consumedMeta;
+            coveredByPrepaidCredits = true;
           } catch (e) {
             if (!isPackageCoverageUnavailableError(e)) throw e;
             prepaidMeta = prepaidBase;
           }
         }
-        coveredByPrepaidCredits = prepaidMeta != null;
         status = coveredByPrepaidCredits ? 'confirmed' : 'pending';
         holdExpiresAt = coveredByPrepaidCredits ? null : holdExp.toISOString();
         totalPriceAmd = coveredByPrepaidCredits ? 0 : input.totalPriceAmd;
@@ -1494,7 +1495,7 @@ export default class BookingService {
       model: User,
       as: 'student' as const,
       required: true,
-      attributes: ['id', 'name', 'email', 'phone'],
+      attributes: ['id', 'name', 'email', 'phone', 'phone2'],
     };
   }
 
@@ -1677,6 +1678,7 @@ export default class BookingService {
       studentName: stu?.name?.trim() ?? '',
       studentEmail: stu?.email?.trim() ?? '',
       studentPhone: stu?.phone?.trim() ?? '',
+      studentPhone2: stu?.phone2?.trim() ?? '',
       manualFinanceTx: null,
       systemFinanceTx: null,
     };
@@ -3677,7 +3679,7 @@ export default class BookingService {
             email: stu.email ?? '',
             description: `${row.lessonType === 'theory' ? 'Group theory' : row.lessonType === 'theory_personal' ? '1:1 theory' : 'Practical lesson'} #${row.id} — vPOS`,
             branchId: row.branchId,
-            channel: 'pos',
+            channel: 'online',
             method: 'card',
             grossAmd: gross,
             feeAmd: 0,

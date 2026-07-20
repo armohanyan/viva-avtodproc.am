@@ -3,13 +3,14 @@ import { getApiErrorMessage } from "src/lib/api";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 
-export type AdminStudentMini = { id: string; name: string; email: string; phone: string };
+export type AdminStudentMini = { id: string; name: string; email: string; phone: string; phone2: string };
 
 type StudentRow = {
 	id: string;
 	name: string;
 	email: string;
 	phone?: string | null;
+	phone2?: string | null;
 	status?: string;
 };
 
@@ -43,7 +44,13 @@ export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) 
 			const rows = Array.isArray(data) ? data : [];
 			const mapped = rows
 				.filter((r) => enrollmentStatus === "all" || (r.status ?? "active") === "active")
-				.map((r) => ({ id: r.id, name: r.name, email: r.email, phone: (r.phone ?? "").trim() }));
+				.map((r) => ({
+					id: r.id,
+					name: r.name,
+					email: r.email,
+					phone: (r.phone ?? "").trim(),
+					phone2: (r.phone2 ?? "").trim(),
+				}));
 			setStudents(mapped);
 		} catch (e) {
 			setStudents([]);

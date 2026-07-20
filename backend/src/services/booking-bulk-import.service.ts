@@ -1,9 +1,15 @@
 import BookingService from './booking.service';
 import StudentAdminService from './student-admin.service';
 import FinanceService from './finance.service';
-import { User } from '../models';
+import { BookingSlot, User } from '../models';
 import { normalizeTimeHHMM } from '../utils/booking-slot.util';
 import type { AdminBookingPaymentStatus } from '../utils/booking-admin-payment.util';
+import {
+  parseStudentPhones,
+  phoneDigits,
+  studentIdentityKey,
+  studentPhonesOverlap,
+} from '../utils/student-phones.util';
 import ErrorsUtil from '../utils/errors.util';
 
 const { ConflictError, InputValidationError } = ErrorsUtil;
@@ -11,6 +17,7 @@ const { ConflictError, InputValidationError } = ErrorsUtil;
 export type BulkImportBookingInput = {
   studentName: string;
   studentPhone?: string;
+  studentPhone2?: string;
   instructorName: string;
   date: string;
   timeSlot: string;
@@ -40,30 +47,51 @@ export type BulkImportResult = {
 type StudentCacheEntry = {
   userId: number;
   phoneSet: boolean;
+  phone2Set: boolean;
 };
 
-async function findStudentByName(name: string): Promise<User | null> {
-  const trimmed = name.trim();
-  if (!trimmed) return null;
+function hasStoredPhone(user: { phone?: string | null; phone2?: string | null }): boolean {
+  return phoneDigits(user.phone).length >= 7 || phoneDigits(user.phone2).length >= 7;
+}
 
-  const exact = await User.findOne({
-    where: { accountType: 'student', name: trimmed },
-    attributes: ['id', 'name', 'phone'],
-  });
-  if (exact) return exact;
+/**
+ * Find student by name + phones (profile matching only — not booking duplicates).
+ * Booking duplicates use instructor + date + time slot.
+ */
+async function findStudentByNameAndPhones(
+  name: string,
+  phone: string | null,
+  phone2: string | null,
+): Promise<{ user: User | null; ambiguous: boolean }> {
+  const trimmed = name.trim();
+  if (!trimmed) return { user: null, ambiguous: false };
 
   const students = await User.findAll({
     where: { accountType: 'student' },
-    attributes: ['id', 'name', 'phone'],
+    attributes: ['id', 'name', 'phone', 'phone2'],
   });
   const needle = trimmed.toLowerCase();
-  const matches = students.filter((s) => s.name?.trim().toLowerCase() === needle);
-  return matches[0] ?? null;
-}
+  const byName = students.filter((s) => s.name?.trim().toLowerCase() === needle);
+  if (byName.length === 0) return { user: null, ambiguous: false };
 
-function normalizePhoneInput(raw: string | undefined): string | null {
-  const trimmed = String(raw ?? '').trim();
-  return trimmed.length > 0 ? trimmed : null;
+  const importHasPhone = phoneDigits(phone).length >= 7 || phoneDigits(phone2).length >= 7;
+
+  if (importHasPhone) {
+    const phoneMatches = byName.filter((s) =>
+      studentPhonesOverlap({ phone, phone2 }, { phone: s.phone, phone2: s.phone2 }),
+    );
+    if (phoneMatches.length === 1) return { user: phoneMatches[0]!, ambiguous: false };
+    if (phoneMatches.length > 1) return { user: null, ambiguous: true };
+
+    const emptyPhone = byName.filter((s) => !hasStoredPhone(s));
+    if (emptyPhone.length === 1) return { user: emptyPhone[0]!, ambiguous: false };
+    if (emptyPhone.length > 1) return { user: null, ambiguous: true };
+
+    return { user: null, ambiguous: false };
+  }
+
+  if (byName.length === 1) return { user: byName[0]!, ambiguous: false };
+  return { user: null, ambiguous: true };
 }
 
 function isDuplicateBookingError(e: unknown): boolean {
@@ -72,33 +100,91 @@ function isDuplicateBookingError(e: unknown): boolean {
   return /no longer available|already booked|duplicate/i.test(msg);
 }
 
+/** Duplicate key: instructor + date + slot (DB unique on booking_slots). */
+function instructorSlotKey(instructorUserId: number, dateIso: string, slotTime: string): string {
+  return `${instructorUserId}\t${dateIso}\t${slotTime}`;
+}
+
+async function resolveInstructorUserId(
+  instructorName: string,
+  cache: Map<string, number | null>,
+): Promise<number | null> {
+  const key = instructorName.trim();
+  if (cache.has(key)) return cache.get(key) ?? null;
+  const instructor = await User.findOne({
+    where: { accountType: 'instructor', name: key },
+    attributes: ['id'],
+  });
+  const id = instructor?.id ?? null;
+  cache.set(key, id);
+  return id;
+}
+
+async function instructorSlotTaken(
+  instructorUserId: number,
+  dateIso: string,
+  slotTime: string,
+): Promise<boolean> {
+  const existing = await BookingSlot.findOne({
+    where: { instructorUserId, dateIso, slotTime },
+    attributes: ['id'],
+  });
+  return existing != null;
+}
+
 async function resolveStudentUserId(input: {
   studentName: string;
   studentPhone?: string;
+  studentPhone2?: string;
   branchId: number;
   cache: Map<string, StudentCacheEntry>;
   onCreated: () => void;
-}): Promise<number | null> {
+}): Promise<{ userId: number | null; error?: string }> {
   const studentName = input.studentName.trim();
-  const phone = normalizePhoneInput(input.studentPhone);
-  const studentKey = studentName.toLowerCase();
+  const { phone, phone2 } = parseStudentPhones(input.studentPhone, input.studentPhone2);
+  const identityKey = studentIdentityKey(studentName, phone, phone2);
 
-  const cached = input.cache.get(studentKey);
+  const cached = input.cache.get(identityKey);
   if (cached) {
+    const patch: { phone?: string; phone2?: string } = {};
     if (phone && !cached.phoneSet) {
-      await StudentAdminService.update(cached.userId, { phone });
+      patch.phone = phone;
       cached.phoneSet = true;
     }
-    return cached.userId;
+    if (phone2 && !cached.phone2Set) {
+      patch.phone2 = phone2;
+      cached.phone2Set = true;
+    }
+    if (Object.keys(patch).length > 0) {
+      await StudentAdminService.update(cached.userId, patch);
+    }
+    return { userId: cached.userId };
   }
 
-  const existing = await findStudentByName(studentName);
+  const { user: existing, ambiguous } = await findStudentByNameAndPhones(studentName, phone, phone2);
+  if (ambiguous) {
+    return {
+      userId: null,
+      error:
+        'Ambiguous student: multiple profiles match this name' +
+        (phone || phone2 ? ' / phone' : '') +
+        '. Disambiguate with phone numbers.',
+    };
+  }
+
   if (existing) {
-    if (phone && !existing.phone?.trim()) {
-      await StudentAdminService.update(existing.id, { phone });
+    const patch: { phone?: string; phone2?: string } = {};
+    if (phone && !existing.phone?.trim()) patch.phone = phone;
+    if (phone2 && !existing.phone2?.trim()) patch.phone2 = phone2;
+    if (Object.keys(patch).length > 0) {
+      await StudentAdminService.update(existing.id, patch);
     }
-    input.cache.set(studentKey, { userId: existing.id, phoneSet: Boolean(phone || existing.phone?.trim()) });
-    return existing.id;
+    input.cache.set(identityKey, {
+      userId: existing.id,
+      phoneSet: Boolean(phone || existing.phone?.trim()),
+      phone2Set: Boolean(phone2 || existing.phone2?.trim()),
+    });
+    return { userId: existing.id };
   }
 
   const created = await StudentAdminService.create({
@@ -106,12 +192,17 @@ async function resolveStudentUserId(input: {
     branchId: input.branchId,
     inviteToSystem: false,
     ...(phone ? { phone } : {}),
+    ...(phone2 ? { phone2 } : {}),
   });
-  if (!created) return null;
+  if (!created) return { userId: null, error: 'Failed to create student profile' };
 
   input.onCreated();
-  input.cache.set(studentKey, { userId: created.id, phoneSet: Boolean(phone) });
-  return created.id;
+  input.cache.set(identityKey, {
+    userId: created.id,
+    phoneSet: Boolean(phone),
+    phone2Set: Boolean(phone2),
+  });
+  return { userId: created.id };
 }
 
 export default class BookingBulkImportService {
@@ -119,7 +210,10 @@ export default class BookingBulkImportService {
     branchId: number;
     bookings: BulkImportBookingInput[];
     createdByUserId?: number | null;
+    /** When true: count duplicates / validate only — no student or booking writes. */
+    dryRun?: boolean;
   }): Promise<BulkImportResult> {
+    const dryRun = Boolean(input.dryRun);
     const result: BulkImportResult = {
       imported: 0,
       skippedDuplicates: 0,
@@ -130,6 +224,9 @@ export default class BookingBulkImportService {
 
     const unmappableSet = new Set<string>();
     const studentCache = new Map<string, StudentCacheEntry>();
+    const instructorIdCache = new Map<string, number | null>();
+    /** Within-file + DB: instructorUserId|date|time */
+    const seenSlots = new Set<string>();
 
     for (const row of input.bookings) {
       const studentName = row.studentName?.trim();
@@ -161,25 +258,52 @@ export default class BookingBulkImportService {
         continue;
       }
 
-      const studentUserId = await resolveStudentUserId({
+      const instructorUserId = await resolveInstructorUserId(instructorName, instructorIdCache);
+      if (!instructorUserId) {
+        unmappableSet.add(instructorName);
+        result.errors.push({ ...rowRef, reason: `Instructor not found: ${instructorName}` });
+        continue;
+      }
+
+      const slotKey = instructorSlotKey(instructorUserId, dateIso, slotTime);
+      if (seenSlots.has(slotKey)) {
+        result.skippedDuplicates += 1;
+        continue;
+      }
+      seenSlots.add(slotKey);
+
+      if (await instructorSlotTaken(instructorUserId, dateIso, slotTime)) {
+        result.skippedDuplicates += 1;
+        continue;
+      }
+
+      if (dryRun) {
+        // Would import this row (slot free). Do not write.
+        result.imported += 1;
+        continue;
+      }
+
+      const resolved = await resolveStudentUserId({
         studentName,
         studentPhone: row.studentPhone,
+        studentPhone2: row.studentPhone2,
         branchId: input.branchId,
         cache: studentCache,
         onCreated: () => {
           result.newStudentsCreated += 1;
         },
       });
-      if (!studentUserId) {
-        result.errors.push({ ...rowRef, reason: 'Failed to create student profile' });
+      if (!resolved.userId) {
+        result.errors.push({ ...rowRef, reason: resolved.error ?? 'Failed to create student profile' });
         continue;
       }
+      const studentUserId = resolved.userId;
 
       try {
         const created = await BookingService.createAdmin({
           studentId: studentUserId,
           instructorName,
-          instructorUserId: undefined,
+          instructorUserId,
           dateIso,
           time: slotTime,
           type: 'practical',

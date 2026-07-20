@@ -17,6 +17,7 @@ type AuthMeUser = {
   name: string;
   accountType: string;
   phone: string | null;
+  phone2: string | null;
   hasPassword: boolean;
 };
 
@@ -31,7 +32,7 @@ export default function DashboardProfile() {
   const { t } = useLang();
   const { showToast } = useToast();
 
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", phone2: "" });
   const [pass, setPass] = useState({ current: "", next: "", confirm: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPass, setSavingPass] = useState(false);
@@ -51,6 +52,7 @@ export default function DashboardProfile() {
         lastName,
         email: me.email,
         phone: me.phone ?? "",
+        phone2: me.phone2 ?? "",
       });
       const prev = loadAccountSession();
       if (prev && String(me.id) === prev.id && prev.hasPassword !== me.hasPassword) {
@@ -84,6 +86,7 @@ export default function DashboardProfile() {
         body: {
           name: fullName,
           phone: form.phone.trim() === "" ? null : form.phone.trim(),
+          phone2: form.phone2.trim() === "" ? null : form.phone2.trim(),
         },
       });
       const prev = loadAccountSession();
@@ -170,9 +173,13 @@ export default function DashboardProfile() {
                     <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("emailAddress")}</label>
                     <Input type="email" value={form.email} readOnly disabled className="h-10 opacity-80" />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("phoneNumber")}</label>
                     <Input type="tel" value={form.phone} onChange={set("phone")} className="h-10" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("phoneNumber2")}</label>
+                    <Input type="tel" value={form.phone2} onChange={set("phone2")} className="h-10" />
                   </div>
                 </div>
                 <Button

@@ -56,6 +56,10 @@ const initiateSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+const syncSchema = z.object({
+  sessionId: z.coerce.number().int().positive(),
+});
+
 export default class PaymentController {
   static async config(req: Request, res: Response, next: NextFunction) {
     try {
@@ -96,6 +100,18 @@ export default class PaymentController {
       const orderNumber = typeof req.query.orderNumber === 'string' ? req.query.orderNumber : undefined;
       const redirectUrl = await VposPaymentService.handleFail(orderId, orderNumber);
       res.redirect(302, redirectUrl);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async sync(req: Request, res: Response, next: NextFunction) {
+    try {
+      const studentUserId = requireStudentUserId(req, next);
+      if (studentUserId === undefined) return;
+      const body = parseBody(syncSchema, req.body);
+      const data = await VposPaymentService.syncSessionForStudent(body.sessionId, studentUserId);
+      SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);
     }

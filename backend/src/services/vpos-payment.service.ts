@@ -1,9 +1,8 @@
-import { randomBytes } from 'crypto';
-import { Op, Transaction } from 'sequelize';
+import { Op, Transaction, type WhereOptions } from 'sequelize';
 import config from '../config';
 import { API_VERSION_PREFIX } from '../constants';
 import { sequelize } from '../database/sequelize';
-import { Booking, Package, PaymentSession, StudentProfile, User } from '../models';
+import { Booking, Package, PackageOrder, PaymentSession, StudentProfile, User } from '../models';
 import type { PaymentSessionKind } from '../models/payment-session.model';
 import BookingService, { normalizeBookingStatus } from './booking.service';
 import StudentEntitlementsService from './student-entitlements.service';
@@ -11,12 +10,16 @@ import { bookingTotalPriceAmd } from '../utils/booking-admin-payment.util';
 import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
-import { amdToMinorUnits, isVposConfigured, minorUnitsToAmd } from '../utils/vpos.util';
+import LoggerUtil from '../utils/logger.util';
+import { amdToMinorUnits, buildEpgOrderNumber, isVposConfigured, minorUnitsToAmd } from '../utils/vpos.util';
 
 const { InputValidationError } = ErrorsUtil;
 
 const PAYMENT_HOLD_MS = 10 * 60 * 1000;
+/** Wait before polling the bank for abandoned checkout tabs. */
+const RECONCILE_MIN_AGE_MS = 60 * 1000;
 const EPG_PAID_ORDER_STATUS = 2;
+const ACTIVE_PACKAGE_STATUSES = ['paid', 'active', 'confirmed'] as const;
 
 export type VposInitiateInput =
   | { kind: 'booking'; bookingId: number; language?: string }
@@ -51,17 +54,34 @@ type EpgStatusResponse = {
   orderNumber?: string;
 };
 
+type VposAppError = InstanceType<typeof InputValidationError> & { data?: unknown };
+
+function throwVposEpgError(
+  endpoint: string,
+  response: Pick<EpgRegisterResponse, 'errorCode' | 'errorMessage'>,
+  hint = '',
+): never {
+  const errorCode = String(response.errorCode ?? '');
+  const errorMessage = response.errorMessage?.trim() || 'Could not start payment with the bank.';
+  const err = new InputValidationError(
+    `[ACBA ${errorCode || '?'}] ${errorMessage}${hint}`,
+    HttpStatusCodesUtil.BAD_GATEWAY,
+  ) as VposAppError;
+  err.data = {
+    acba: {
+      endpoint,
+      errorCode,
+      errorMessage,
+    },
+  };
+  throw err;
+}
+
 function epgLanguage(lang?: string): string {
   const raw = (lang ?? 'en').toLowerCase();
   if (raw.startsWith('hy') || raw === 'am') return 'hy';
   if (raw.startsWith('ru')) return 'ru';
   return 'en';
-}
-
-function buildOrderNumber(kind: PaymentSessionKind, referenceId: number | null): string {
-  const ref = referenceId != null ? String(referenceId) : 'x';
-  const suffix = randomBytes(4).toString('hex');
-  return `viva-${kind}-${ref}-${Date.now()}-${suffix}`.slice(0, 36);
 }
 
 function apiPaymentsUrl(path: string): string {
@@ -71,6 +91,22 @@ function apiPaymentsUrl(path: string): string {
 function panelResultUrl(params: Record<string, string>): string {
   const q = new URLSearchParams(params);
   return `${config.PANEL_DEFAULT_ORIGIN}/dashboard/payments/result?${q.toString()}`;
+}
+
+function sessionResultParams(
+  session: PaymentSession,
+  status: 'success' | 'failed',
+  extra?: Record<string, string>,
+): Record<string, string> {
+  return {
+    status,
+    kind: session.kind,
+    referenceId: session.referenceId != null ? String(session.referenceId) : '',
+    sessionId: String(session.id),
+    orderNumber: session.orderNumber,
+    amountAmd: String(session.amountAmd),
+    ...extra,
+  };
 }
 
 async function epgPost<T extends Record<string, unknown>>(endpoint: string, params: Record<string, string>): Promise<T> {
@@ -97,6 +133,7 @@ export default class VposPaymentService {
   static getPublicConfig() {
     return {
       enabled: isVposConfigured(),
+      mode: config.VPOS.MODE,
       testMode: config.VPOS.TEST_MODE,
       simulated: !isVposConfigured(),
     };
@@ -110,7 +147,27 @@ export default class VposPaymentService {
     const language = epgLanguage(input.language);
     const prepared = await this.prepareInitiateContext(studentUserId, input);
 
-    const orderNumber = buildOrderNumber(prepared.kind, prepared.referenceId);
+    const reusable = await this.findReusablePendingSession(
+      studentUserId,
+      prepared.kind,
+      prepared.referenceId,
+      prepared.meta,
+    );
+    if (reusable) {
+      const formUrl = (reusable.rawRegisterResponse as EpgRegisterResponse | null)?.formUrl;
+      if (formUrl) {
+        return {
+          sessionId: reusable.id,
+          orderNumber: reusable.orderNumber,
+          redirectUrl: formUrl,
+        };
+      }
+    }
+
+    await this.expireStalePendingSessions(studentUserId, prepared.kind, prepared.referenceId, prepared.meta);
+    await this.expireDuplicatePendingSessions(studentUserId, prepared.kind, prepared.referenceId, prepared.meta);
+
+    const orderNumber = buildEpgOrderNumber();
     const returnUrl = apiPaymentsUrl('return');
     const failUrl = apiPaymentsUrl('fail');
 
@@ -143,12 +200,15 @@ export default class VposPaymentService {
     const errorCode = String(register.errorCode ?? '0');
     if (errorCode !== '0' || !register.formUrl || !register.orderId) {
       await session.update({ status: 'failed' });
-      const bankMsg = register.errorMessage?.trim() || 'Could not start payment with the bank.';
       const hint =
-        errorCode === '5'
-          ? ' ACBA rejected the merchant API login (error 5). Verify VPOS_USERNAME/VPOS_PASSWORD with the bank or reset the API password in the merchant portal.'
-          : '';
-      throw new InputValidationError(`${bankMsg}${hint}`, HttpStatusCodesUtil.BAD_GATEWAY);
+        errorCode === '1' && register.errorMessage?.toLowerCase().includes('order number')
+          ? ' ACBA orderNumber must be alphanumeric (no hyphens/underscores) and at most 32 characters.'
+          : errorCode === '5'
+            ? register.errorMessage?.toLowerCase().includes('password')
+              ? ` Log into the ACBA test merchant portal (https://testepg.arca.am/epg_gui/#login) as the API user and set a new password, then update VPOS_PASSWORD in backend/.env. (VPOS_MODE=${config.VPOS.MODE} — test EPG still requires test API credentials.)`
+              : ` VPOS_MODE=${config.VPOS.MODE} only switches the bank host (test vs live); with VPOS_ENABLED=1 you still need valid test credentials in VPOS_USERNAME/VPOS_PASSWORD. Reset the API user in the merchant portal or contact ACBA.`
+            : '';
+      throwVposEpgError('register.do', register, hint);
     }
 
     await session.update({
@@ -215,6 +275,7 @@ export default class VposPaymentService {
       if (!user || user.accountType !== 'student') {
         throw new InputValidationError('Student not found.', HttpStatusCodesUtil.NOT_FOUND);
       }
+      await this.assertPackagePurchaseAllowed(studentUserId);
       const pkg = await Package.findByPk(input.packageId);
       if (!pkg) {
         throw new InputValidationError('Package not found.', HttpStatusCodesUtil.NOT_FOUND);
@@ -264,45 +325,253 @@ export default class VposPaymentService {
       return panelResultUrl({ status: 'failed', reason: 'not_found' });
     }
     if (session.status === 'paid') {
-      return panelResultUrl({
-        status: 'success',
-        kind: session.kind,
-        referenceId: session.referenceId != null ? String(session.referenceId) : '',
-        sessionId: String(session.id),
-      });
+      return panelResultUrl(sessionResultParams(session, 'success'));
     }
 
     try {
       const result = await this.verifyAndFulfill(session);
-      return panelResultUrl({
-        status: result.status === 'paid' ? 'success' : 'failed',
-        kind: session.kind,
-        referenceId: session.referenceId != null ? String(session.referenceId) : '',
-        sessionId: String(session.id),
-      });
+      return panelResultUrl(
+        sessionResultParams(session, result.status === 'paid' ? 'success' : 'failed'),
+      );
     } catch {
       await session.update({ status: 'failed' });
-      return panelResultUrl({
-        status: 'failed',
-        kind: session.kind,
-        referenceId: session.referenceId != null ? String(session.referenceId) : '',
-        sessionId: String(session.id),
-      });
+      return panelResultUrl(sessionResultParams(session, 'failed'));
     }
   }
 
   static async handleFail(orderId: string | undefined, orderNumber: string | undefined): Promise<string> {
     const session = await this.findSession(orderId, orderNumber);
-    if (session && session.status === 'pending') {
-      await session.update({ status: 'failed' });
+    if (!session) {
+      return panelResultUrl({ status: 'failed', reason: 'not_found' });
     }
-    return panelResultUrl({
-      status: 'failed',
-      kind: session?.kind ?? '',
-      referenceId: session?.referenceId != null ? String(session.referenceId) : '',
-      sessionId: session ? String(session.id) : '',
-      reason: 'cancelled',
+    if (session.status === 'paid') {
+      return panelResultUrl(sessionResultParams(session, 'success'));
+    }
+
+    // Bank may redirect to failUrl even when payment succeeded — verify before marking failed.
+    try {
+      const result = await this.verifyAndFulfill(session);
+      if (result.status === 'paid') {
+        return panelResultUrl(sessionResultParams(session, 'success'));
+      }
+    } catch {
+      // Fall through to cancelled UX.
+    }
+
+    if (session.status === 'pending') {
+      await session.reload();
+      if (session.status === 'pending') {
+        await session.update({ status: 'failed' });
+      }
+    }
+    return panelResultUrl(sessionResultParams(session, 'failed', { reason: 'cancelled' }));
+  }
+
+  /** Student-initiated recovery when the bank redirect was missed or is still processing. */
+  static async syncSessionForStudent(
+    sessionId: number,
+    studentUserId: number,
+  ): Promise<VposFulfillmentResult & { orderNumber: string; amountAmd: number }> {
+    const session = await PaymentSession.findOne({ where: { id: sessionId, studentUserId } });
+    if (!session) {
+      throw new InputValidationError('Payment session not found.', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    if (session.status === 'expired') {
+      throw new InputValidationError(
+        'This payment session has expired. Start checkout again.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    if (session.status === 'paid') {
+      return {
+        sessionId: session.id,
+        kind: session.kind,
+        referenceId: session.referenceId,
+        status: 'paid',
+        orderNumber: session.orderNumber,
+        amountAmd: session.amountAmd,
+      };
+    }
+
+    const result = await this.verifyAndFulfill(session);
+    await session.reload();
+    return {
+      ...result,
+      orderNumber: session.orderNumber,
+      amountAmd: session.amountAmd,
+    };
+  }
+
+  /** Poll pending sessions with the bank — run from cron. */
+  static async reconcilePendingSessions(): Promise<{ checked: number; fulfilled: number; expired: number }> {
+    if (!isVposConfigured()) {
+      return { checked: 0, fulfilled: 0, expired: 0 };
+    }
+
+    const holdCutoff = new Date(Date.now() - PAYMENT_HOLD_MS);
+    const [expired] = await PaymentSession.update(
+      { status: 'expired' },
+      { where: { status: 'pending', createdAt: { [Op.lt]: holdCutoff } } },
+    );
+
+    const reconcileBefore = new Date(Date.now() - RECONCILE_MIN_AGE_MS);
+    const pending = await PaymentSession.findAll({
+      where: {
+        status: 'pending',
+        createdAt: { [Op.lt]: reconcileBefore },
+        epgOrderId: { [Op.ne]: null },
+      },
+      order: [['createdAt', 'ASC']],
+      limit: 40,
     });
+
+    let fulfilled = 0;
+    for (const session of pending) {
+      try {
+        const result = await this.verifyAndFulfill(session);
+        if (result.status === 'paid') fulfilled += 1;
+      } catch (err) {
+        LoggerUtil.warn(
+          `vPOS reconcile: session ${session.id} — ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    if (expired > 0 || fulfilled > 0) {
+      LoggerUtil.info(`vPOS reconcile: checked=${pending.length} fulfilled=${fulfilled} expired=${expired}`);
+    }
+
+    return { checked: pending.length, fulfilled, expired };
+  }
+
+  /** Booking IDs with an open bank checkout — do not delete holds while payment may be in flight. */
+  static async bookingIdsWithPendingPayment(): Promise<number[]> {
+    const rows = await PaymentSession.findAll({
+      where: {
+        kind: 'booking',
+        status: 'pending',
+        referenceId: { [Op.ne]: null },
+      },
+      attributes: ['referenceId'],
+    });
+    return rows
+      .map((r) => Number(r.referenceId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+  }
+
+  private static async assertPackagePurchaseAllowed(studentUserId: number): Promise<void> {
+    const existing = await PackageOrder.findOne({
+      where: {
+        studentUserId,
+        status: { [Op.in]: [...ACTIVE_PACKAGE_STATUSES] },
+      },
+    });
+    if (existing) {
+      throw new InputValidationError(
+        'You already have an active driving package. Contact the office if you need to change packages.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+  }
+
+  private static pendingSessionWhere(
+    studentUserId: number,
+    kind: PaymentSessionKind,
+    referenceId: number | null,
+  ): WhereOptions {
+    const holdCutoff = new Date(Date.now() - PAYMENT_HOLD_MS);
+    const where: WhereOptions = {
+      studentUserId,
+      kind,
+      status: 'pending',
+      createdAt: { [Op.gte]: holdCutoff },
+    };
+    if (referenceId != null) {
+      where.referenceId = referenceId;
+    } else if (kind === 'extra_practical') {
+      where.referenceId = { [Op.is]: null };
+    }
+    return where;
+  }
+
+  private static extraPracticalTotal(session: PaymentSession): number {
+    return Number((session.meta as { practicalTotal?: number } | null)?.practicalTotal ?? 3);
+  }
+
+  private static matchesExtraPracticalMeta(session: PaymentSession, meta?: Record<string, unknown>): boolean {
+    const want = Number(meta?.practicalTotal ?? 3);
+    return this.extraPracticalTotal(session) === want;
+  }
+
+  private static async findReusablePendingSession(
+    studentUserId: number,
+    kind: PaymentSessionKind,
+    referenceId: number | null,
+    meta?: Record<string, unknown>,
+  ): Promise<PaymentSession | null> {
+    const sessions = await PaymentSession.findAll({
+      where: this.pendingSessionWhere(studentUserId, kind, referenceId),
+      order: [['createdAt', 'DESC']],
+      limit: kind === 'extra_practical' ? 8 : 3,
+    });
+    for (const session of sessions) {
+      if (kind === 'extra_practical' && !this.matchesExtraPracticalMeta(session, meta)) continue;
+      const raw = session.rawRegisterResponse as EpgRegisterResponse | null;
+      if (session.epgOrderId?.trim() && raw?.formUrl?.trim()) {
+        return session;
+      }
+    }
+    return null;
+  }
+
+  private static async expireStalePendingSessions(
+    studentUserId: number,
+    kind: PaymentSessionKind,
+    referenceId: number | null,
+    meta?: Record<string, unknown>,
+  ): Promise<void> {
+    const holdCutoff = new Date(Date.now() - PAYMENT_HOLD_MS);
+    const where: WhereOptions = {
+      studentUserId,
+      kind,
+      status: 'pending',
+      createdAt: { [Op.lt]: holdCutoff },
+    };
+    if (referenceId != null) {
+      where.referenceId = referenceId;
+    } else if (kind === 'extra_practical') {
+      where.referenceId = { [Op.is]: null };
+    }
+
+    if (kind !== 'extra_practical') {
+      await PaymentSession.update({ status: 'expired' }, { where });
+      return;
+    }
+
+    const stale = await PaymentSession.findAll({ where, limit: 20 });
+    const ids = stale.filter((s) => this.matchesExtraPracticalMeta(s, meta)).map((s) => s.id);
+    if (ids.length > 0) {
+      await PaymentSession.update({ status: 'expired' }, { where: { id: { [Op.in]: ids } } });
+    }
+  }
+
+  /** Prevent parallel EPG orders for the same checkout target. */
+  private static async expireDuplicatePendingSessions(
+    studentUserId: number,
+    kind: PaymentSessionKind,
+    referenceId: number | null,
+    meta?: Record<string, unknown>,
+  ): Promise<void> {
+    const active = await PaymentSession.findAll({
+      where: this.pendingSessionWhere(studentUserId, kind, referenceId),
+      limit: 20,
+    });
+    const ids = active
+      .filter((s) => kind !== 'extra_practical' || this.matchesExtraPracticalMeta(s, meta))
+      .map((s) => s.id);
+    if (ids.length > 0) {
+      await PaymentSession.update({ status: 'expired' }, { where: { id: { [Op.in]: ids } } });
+    }
   }
 
   private static async findSession(orderId?: string, orderNumber?: string): Promise<PaymentSession | null> {
@@ -405,6 +674,24 @@ export default class VposPaymentService {
   ): Promise<void> {
     const studentUserId = session.studentUserId;
     if (session.kind === 'booking' && session.referenceId != null) {
+      const row = await Booking.findOne({
+        where: {
+          id: session.referenceId,
+          studentUserId,
+          lessonType: { [Op.in]: ['practical', 'theory', 'theory_personal'] },
+        },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new InputValidationError(
+          'Booking for this payment no longer exists. Contact support with your payment reference.',
+          HttpStatusCodesUtil.CONFLICT,
+        );
+      }
+      if (row.paidAt != null) {
+        return;
+      }
       await BookingService.completePracticalStudentPayment(session.referenceId, studentUserId, {
         providerRef,
         transaction,

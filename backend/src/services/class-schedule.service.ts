@@ -59,7 +59,7 @@ export type ClassScheduleItemDto = {
   date: string;
   startTime: string;
   endTime: string;
-  student: { id: number; name: string; phone: string | null };
+  student: { id: number; name: string; phone: string | null; phone2: string | null };
   instructor: { id: number | null; name: string };
   branch: { id: number; name: string; address: string };
   package: { id: number; name: string; isIncludedLesson: boolean } | null;
@@ -376,7 +376,7 @@ export default class ClassScheduleService {
         ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
       },
       include: [
-        { model: User, as: 'student', required: true, attributes: ['id', 'name', 'phone', 'email'] },
+        { model: User, as: 'student', required: true, attributes: ['id', 'name', 'phone', 'phone2', 'email'] },
         { model: User, as: 'instructor', required: false, attributes: ['id', 'name'] },
         { model: Branch, required: false, attributes: ['id', 'name', 'mapUrl', 'phone'] },
         {
@@ -462,7 +462,7 @@ export default class ClassScheduleService {
       const instructorName = instructor?.name?.trim() || '';
 
       if (searchQ) {
-        const hay = `${studentName} ${instructorName} ${student?.phone ?? ''} ${student?.email ?? ''}`.toLowerCase();
+        const hay = `${studentName} ${instructorName} ${student?.phone ?? ''} ${student?.phone2 ?? ''} ${student?.email ?? ''}`.toLowerCase();
         if (!hay.includes(searchQ)) continue;
       }
 
@@ -526,6 +526,7 @@ export default class ClassScheduleService {
             id: row.studentUserId,
             name: studentName,
             phone: student?.phone?.trim() || null,
+            phone2: student?.phone2?.trim() || null,
           },
           instructor: {
             id: row.instructorUserId ?? null,
@@ -729,6 +730,7 @@ export default class ClassScheduleService {
           id: opts.studentIdFilter > 0 ? opts.studentIdFilter : 0,
           name: studentLabel,
           phone: null,
+          phone2: null,
         },
         instructor: {
           id: s.instructorUserId ?? null,

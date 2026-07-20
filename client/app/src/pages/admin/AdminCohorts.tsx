@@ -53,6 +53,7 @@ type CohortStudentRow = {
   name: string;
   email: string;
   phone: string | null;
+  phone2: string | null;
   isActive: boolean;
 };
 
@@ -719,7 +720,9 @@ export default function AdminCohorts() {
                     <tr key={s.userId} className="hover:bg-muted/20">
                       <td className="px-3 py-2 font-medium text-foreground">{s.name}</td>
                       <td className="px-3 py-2 text-muted-foreground break-all">{s.email}</td>
-                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{s.phone ?? "—"}</td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                        {[s.phone, s.phone2].filter(Boolean).join(" / ") || "—"}
+                      </td>
                       <td className="px-3 py-2">
                         <Badge className={`text-xs ${s.isActive ? statusColor.active : "bg-slate-100 text-slate-500"}`}>
                           {s.isActive ? t("active") : t("inactive")}

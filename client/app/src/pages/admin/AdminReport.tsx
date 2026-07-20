@@ -79,6 +79,7 @@ type ReportPayload = {
 		id: number;
 		name: string;
 		phone: string;
+		phone2: string;
 		registrationDateIso: string;
 		branchName: string;
 		sourceLabel: string | null;

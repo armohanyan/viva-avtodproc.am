@@ -22,11 +22,13 @@ const registerSchema = z.object({
   password: z.string().min(8),
   name: z.string().min(1),
   phone: z.string().optional(),
+  phone2: z.string().optional(),
 });
 
 const patchMeSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.union([z.string(), z.literal(''), z.null()]).optional(),
+  phone2: z.union([z.string(), z.literal(''), z.null()]).optional(),
 });
 
 const changePasswordSchema = z.object({
@@ -289,9 +291,12 @@ export default class AuthController {
       }
       const phoneNorm =
         body.phone === undefined ? undefined : body.phone === '' || body.phone === null ? null : body.phone;
+      const phone2Norm =
+        body.phone2 === undefined ? undefined : body.phone2 === '' || body.phone2 === null ? null : body.phone2;
       const updated = await AuthService.updateMe(userId, {
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.phone !== undefined ? { phone: phoneNorm } : {}),
+        ...(body.phone2 !== undefined ? { phone2: phone2Norm } : {}),
       });
       if (!updated) {
         return next(new UnauthorizedError('Invalid or expired token', HttpStatusCodesUtil.UNAUTHORIZED));

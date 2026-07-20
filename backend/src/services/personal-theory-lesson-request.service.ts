@@ -23,6 +23,7 @@ export type PersonalTheoryLessonRequestDto = {
   studentUserId: number;
   studentName: string;
   studentPhone: string | null;
+  studentPhone2: string | null;
   studentEmail: string;
   instructorUserId: number;
   instructorName: string;
@@ -61,6 +62,7 @@ function toDto(
     studentUserId: row.studentUserId,
     studentName: student?.name?.trim() || '—',
     studentPhone: student?.phone?.trim() ? student.phone.trim() : null,
+    studentPhone2: student?.phone2?.trim() ? student.phone2.trim() : null,
     studentEmail: student?.email?.trim() || '—',
     instructorUserId: row.instructorUserId,
     instructorName: instructor?.name?.trim() || '—',
@@ -87,7 +89,7 @@ async function loadUsersForRows(rows: PersonalTheoryLessonRequest[]): Promise<Ma
   if (ids.size === 0) return new Map();
   const users = await User.findAll({
     where: { id: { [Op.in]: [...ids] } },
-    attributes: ['id', 'name', 'email', 'phone', 'accountType'],
+    attributes: ['id', 'name', 'email', 'phone', 'phone2', 'accountType'],
   });
   return new Map(users.map((u) => [u.id, u]));
 }
@@ -146,7 +148,7 @@ export default class PersonalTheoryLessonRequestService {
   }): Promise<PersonalTheoryLessonRequestDto> {
     const student = await User.findOne({
       where: { id: input.studentUserId, accountType: 'student' },
-      attributes: ['id', 'name', 'email', 'phone'],
+      attributes: ['id', 'name', 'email', 'phone', 'phone2'],
     });
     if (!student) {
       throw new InputValidationError('Student account required.', HttpStatusCodesUtil.FORBIDDEN);
