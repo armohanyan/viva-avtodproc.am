@@ -7,8 +7,16 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/thematic-questions/quiz/", "/exam-tests/quiz/", "/road-signs/quiz/"],
+      disallow: [
+        "/thematic-questions/quiz/",
+        "/exam-tests/quiz/",
+        "/road-signs/quiz/",
+        "/thematic-questions/question/",
+        "/exam-tests/question/",
+        "/road-signs/question/",
+      ],
     },
     sitemap: `${base}/sitemap.xml`,
+    host: siteUrl().host,
   };
 }

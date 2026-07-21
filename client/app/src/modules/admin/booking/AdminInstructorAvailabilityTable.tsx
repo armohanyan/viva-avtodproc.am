@@ -57,6 +57,8 @@ type Props = {
    * selection chip — used by view-only flows (e.g. the standalone driving overview page).
    */
   onCellClick?: AdminAvailabilityCellClick;
+  /** When set, the date column becomes clickable (e.g. open a full-day instructors × slots matrix). */
+  onDateClick?: (dateIso: string) => void;
   slotSource?: InstructorDaySlotSource;
   /** When this changes, busy-slot counts are reloaded (e.g. after a booking is deleted). */
   reloadKey?: number | string;
@@ -75,6 +77,7 @@ export default function AdminInstructorAvailabilityTable({
   maxSelectableSlots,
   maxSelectableSlotsErrorKey,
   onCellClick,
+  onDateClick,
   slotSource = "branch",
   reloadKey = 0,
   t,
@@ -256,9 +259,25 @@ export default function AdminInstructorAvailabilityTable({
             <tbody>
               {dates.map((dateIso) => (
                 <tr key={dateIso} className="hover:bg-primary/5">
-                  <td className="sticky left-0 z-20 bg-card px-3 py-2 border-r border-b border-primary/15 whitespace-nowrap shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
-                    <div className="text-primary font-medium tabular-nums">{formatGridDateLabel(dateIso)}</div>
-                    <div className="text-[11px] text-primary/70">{armenianWeekdayShort(dateIso)}</div>
+                  <td className="sticky left-0 z-20 bg-card px-0 py-0 border-r border-b border-primary/15 whitespace-nowrap shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
+                    {onDateClick ? (
+                      <button
+                        type="button"
+                        onClick={() => onDateClick(dateIso)}
+                        className="w-full px-3 py-2 text-left hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
+                        title={t("adminDrivingDayModalOpenHint")}
+                      >
+                        <div className="text-primary font-medium tabular-nums underline-offset-2 hover:underline">
+                          {formatGridDateLabel(dateIso)}
+                        </div>
+                        <div className="text-[11px] text-primary/70">{armenianWeekdayShort(dateIso)}</div>
+                      </button>
+                    ) : (
+                      <div className="px-3 py-2">
+                        <div className="text-primary font-medium tabular-nums">{formatGridDateLabel(dateIso)}</div>
+                        <div className="text-[11px] text-primary/70">{armenianWeekdayShort(dateIso)}</div>
+                      </div>
+                    )}
                   </td>
                   {branchGroups.flatMap((g) =>
                     g.instructors.map((ins) => {

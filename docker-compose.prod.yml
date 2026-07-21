@@ -93,7 +93,7 @@ services:
       dockerfile: Dockerfile.web
       args:
         # Provide your real domains in production to avoid localhost links in built assets.
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://viva-avtodproc.am}
         NEXT_PUBLIC_PANEL_URL: ${NEXT_PUBLIC_PANEL_URL:-}
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
     container_name: viva-web

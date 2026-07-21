@@ -8,8 +8,15 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { ResourceNotFoundError } = ErrorsUtil;
 
+/** ASCII-only public URL segment (Latin letters, digits, hyphens). */
+const blogSlugSchema = z
+  .string()
+  .min(1)
+  .max(120)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must use lowercase English letters, numbers, and hyphens only');
+
 const createSchema = z.object({
-  slug: z.string().min(1),
+  slug: blogSlugSchema,
   title: z.string().min(1),
   excerpt: z.string(),
   bodyHtml: z.string(),

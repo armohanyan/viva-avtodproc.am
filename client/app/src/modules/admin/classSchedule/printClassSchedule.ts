@@ -2,6 +2,8 @@ export type ClassSchedulePrintRow = {
 	timeLabel: string;
 	studentName: string;
 	notesLabel: string;
+	/** Lesson branch name; used when `showBranchColumn` is true. */
+	branchLabel?: string;
 };
 
 export type ClassSchedulePrintLabels = {
@@ -15,12 +17,19 @@ export type ClassSchedulePrintLabels = {
 	instructorValue: string;
 	colNo: string;
 	colTime: string;
+	/** Shown after time when `showBranchColumn` is true. */
+	colBranch?: string;
 	colStudent: string;
 	colSignature: string;
 	colNotes: string;
 	footerTotalHours: string;
 	footerDeparted: string;
 	footerInstructor: string;
+};
+
+export type ClassSchedulePrintOptions = {
+	/** Insert Մասնաճյուղ after Ժամ when lessons span multiple branches/instructors. */
+	showBranchColumn?: boolean;
 };
 
 function escapeHtml(s: string): string {
@@ -31,18 +40,28 @@ function escapeHtml(s: string): string {
 		.replace(/"/g, "&quot;");
 }
 
-function buildMainTableRows(rows: ClassSchedulePrintRow[]): string {
+/** Compact slot for narrow print columns: "08:00–09:00". */
+export function formatClassSchedulePrintTime(start: string, end: string): string {
+	const a = start.length >= 5 ? start.slice(0, 5) : start;
+	const b = end.length >= 5 ? end.slice(0, 5) : end;
+	return `${a}–${b}`;
+}
+
+function buildMainTableRows(rows: ClassSchedulePrintRow[], showBranchColumn: boolean): string {
 	return rows
-		.map(
-			(row, i) => `
+		.map((row, i) => {
+			const branchCell = showBranchColumn
+				? `\n      <td class="col-branch">${escapeHtml(row.branchLabel ?? "")}</td>`
+				: "";
+			return `
     <tr>
       <td class="col-num">${i + 1}</td>
-      <td class="col-time">${escapeHtml(row.timeLabel)}</td>
+      <td class="col-time">${escapeHtml(row.timeLabel)}</td>${branchCell}
       <td class="col-student">${escapeHtml(row.studentName)}</td>
       <td class="col-sign"></td>
       <td class="col-notes">${escapeHtml(row.notesLabel)}</td>
-    </tr>`,
-		)
+    </tr>`;
+		})
 		.join("");
 }
 
@@ -50,11 +69,90 @@ export function buildClassSchedulePrintHtml(
 	labels: ClassSchedulePrintLabels,
 	rows: ClassSchedulePrintRow[],
 	lang: string,
+	options?: ClassSchedulePrintOptions,
 ): string {
+	const showBranchColumn = Boolean(options?.showBranchColumn && labels.colBranch);
+	const colCount = showBranchColumn ? 6 : 5;
 	const tableBody =
 		rows.length > 0
-			? buildMainTableRows(rows)
-			: `<tr><td colspan="5" class="col-empty">&nbsp;</td></tr>`;
+			? buildMainTableRows(rows, showBranchColumn)
+			: `<tr><td colspan="${colCount}" class="col-empty">&nbsp;</td></tr>`;
+
+	const branchHeader = showBranchColumn
+		? `\n          <th class="col-branch">${escapeHtml(labels.colBranch!)}</th>`
+		: "";
+
+	const pageCss = showBranchColumn
+		? `@page { size: A4 landscape; margin: 10mm 8mm; }`
+		: `@page { size: A4 portrait; margin: 14mm 12mm; }`;
+
+	const scheduleLayoutCss = showBranchColumn
+		? `
+    body { font-size: 10pt; }
+    .doc-brand { margin: 0 0 14px; padding-bottom: 10px; }
+    .doc-brand h1 { font-size: 13pt; }
+    .section { margin-bottom: 14px; }
+    td, th { padding: 5px 4px; }
+    .schedule-table thead th {
+      font-size: 9pt;
+      padding: 6px 3px;
+      line-height: 1.2;
+    }
+    .schedule-table tbody td {
+      font-size: 9pt;
+      line-height: 1.25;
+      overflow: hidden;
+    }
+    .col-num { width: 4%; text-align: center; }
+    .col-time {
+      width: 12%;
+      text-align: center;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      font-size: 8.5pt;
+      letter-spacing: -0.01em;
+      padding-left: 2px;
+      padding-right: 2px;
+    }
+    .col-branch {
+      width: 18%;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-size: 8.5pt;
+      line-height: 1.2;
+    }
+    .col-student {
+      width: 26%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .col-sign { width: 20%; }
+    .col-notes {
+      width: 20%;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font-size: 8.5pt;
+    }`
+		: `
+    .schedule-table thead th {
+      text-align: center;
+      font-weight: 700;
+      font-size: 10.5pt;
+      padding: 8px 6px;
+    }
+    .schedule-table tbody td {
+      min-height: 28px;
+      font-size: 10.5pt;
+    }
+    .col-num { width: 7%; text-align: center; }
+    .col-time { width: 16%; text-align: center; white-space: nowrap; }
+    .col-student { width: 32%; }
+    .col-sign { width: 22%; }
+    .col-notes { width: 23%; }`;
 
 	return `<!DOCTYPE html>
 <html lang="${escapeHtml(lang)}">
@@ -62,7 +160,7 @@ export function buildClassSchedulePrintHtml(
   <meta charset="utf-8" />
   <title>${escapeHtml(labels.documentTitle)}</title>
   <style>
-    @page { size: A4 portrait; margin: 14mm 12mm; }
+    ${pageCss}
     * { box-sizing: border-box; }
     body {
       font-family: Arial, "Noto Sans Armenian", "Segoe UI", sans-serif;
@@ -105,7 +203,7 @@ export function buildClassSchedulePrintHtml(
       background: #fff;
     }
     .meta-block {
-      width: 54%;
+      width: ${showBranchColumn ? "42%" : "54%"};
     }
     .meta-block .meta-label {
       width: 38%;
@@ -118,21 +216,10 @@ export function buildClassSchedulePrintHtml(
     .schedule-table thead th {
       text-align: center;
       font-weight: 700;
-      font-size: 10.5pt;
-      padding: 8px 6px;
-    }
-    .schedule-table tbody td {
-      min-height: 28px;
-      font-size: 10.5pt;
-    }
-    .col-num { width: 7%; text-align: center; }
-    .col-time { width: 16%; text-align: center; white-space: nowrap; }
-    .col-student { width: 32%; }
-    .col-sign { width: 22%; }
-    .col-notes { width: 23%; }
+    }${scheduleLayoutCss}
     .col-empty { height: 28px; }
     .footer-block {
-      width: 54%;
+      width: ${showBranchColumn ? "42%" : "54%"};
     }
     .footer-block .footer-label {
       width: 38%;
@@ -177,7 +264,7 @@ export function buildClassSchedulePrintHtml(
       <thead>
         <tr>
           <th class="col-num">${escapeHtml(labels.colNo)}</th>
-          <th class="col-time">${escapeHtml(labels.colTime)}</th>
+          <th class="col-time">${escapeHtml(labels.colTime)}</th>${branchHeader}
           <th class="col-student">${escapeHtml(labels.colStudent)}</th>
           <th class="col-sign">${escapeHtml(labels.colSignature)}</th>
           <th class="col-notes">${escapeHtml(labels.colNotes)}</th>

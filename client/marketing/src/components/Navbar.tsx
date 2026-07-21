@@ -21,7 +21,7 @@ type AdminNavEntry =
 
 export default function Navbar() {
   const { t } = useLang();
-  const brandDisplayName = "ՎԻՎԱ Ավտոդպրոց";
+  const brandDisplayName = t("brandName");
   const { user } = useAccount();
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);

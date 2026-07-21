@@ -4,6 +4,8 @@ import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import AdminInstructorAvailabilityTable from "src/modules/admin/booking/AdminInstructorAvailabilityTable";
 import AdminInstructorDaySlotsModal from "src/modules/admin/booking/AdminInstructorDaySlotsModal";
+import AdminDrivingDayModal from "src/modules/admin/driving/AdminDrivingDayModal";
+import PracticalBookingDetailModal from "src/modules/admin/driving/PracticalBookingDetailModal";
 import QuickPracticalBookingModal from "src/modules/admin/driving/QuickPracticalBookingModal";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { useBranches } from "src/modules/branches";
@@ -30,13 +32,19 @@ export default function AdminDriving() {
   const { students, refresh: refreshStudents } = useAdminStudentsMini({ enrollmentStatus: "all" });
   const [slotModalTarget, setSlotModalTarget] = useState<CellTarget | null>(null);
   const [pendingSelection, setPendingSelection] = useState<SlotSelection | null>(null);
-  /** Bumped after a booking is created so the grid reloads busy counts. */
+  const [dayModalDateIso, setDayModalDateIso] = useState<string | null>(null);
+  const [detailBookingId, setDetailBookingId] = useState<number | null>(null);
+  /** Bumped after a booking is created/updated/deleted so grids reload. */
   const [refreshKey, setRefreshKey] = useState(0);
 
   const activePracticalInstructors = useMemo(
     () => instructors.filter((i) => i.status === "active" && i.teachesPractical),
     [instructors],
   );
+
+  const bumpRefresh = useCallback(() => {
+    setRefreshKey((n) => n + 1);
+  }, []);
 
   const handleStudentCreated = useCallback(
     (_: AdminStudentMini) => {
@@ -47,8 +55,17 @@ export default function AdminDriving() {
 
   const handleBookingCreated = useCallback(() => {
     setPendingSelection(null);
-    setRefreshKey((n) => n + 1);
-  }, []);
+    bumpRefresh();
+  }, [bumpRefresh]);
+
+  const handleBookingChanged = useCallback(() => {
+    bumpRefresh();
+  }, [bumpRefresh]);
+
+  const handleBookingDeleted = useCallback(() => {
+    setDetailBookingId(null);
+    bumpRefresh();
+  }, [bumpRefresh]);
 
   return (
     <AdminLayout>
@@ -76,10 +93,33 @@ export default function AdminDriving() {
             onCellClick={({ instructor, branchId, dateIso }) => {
               setSlotModalTarget({ instructor, branchId, dateIso });
             }}
+            onDateClick={(dateIso) => setDayModalDateIso(dateIso)}
             t={t}
           />
         )}
       </div>
+
+      {dayModalDateIso ? (
+        <AdminDrivingDayModal
+          open
+          onOpenChange={(open) => {
+            if (!open) setDayModalDateIso(null);
+          }}
+          dateIso={dayModalDateIso}
+          instructors={activePracticalInstructors}
+          reloadKey={refreshKey}
+          onEmptyCellClick={({ instructor, branchId, dateIso, time }) => {
+            setPendingSelection({
+              instructor,
+              branchId,
+              entries: [{ dateIso, time }],
+            });
+          }}
+          onBookingCellClick={(bookingId) => {
+            setDetailBookingId(bookingId);
+          }}
+        />
+      ) : null}
 
       {slotModalTarget ? (
         <AdminInstructorDaySlotsModal
@@ -138,6 +178,20 @@ export default function AdminDriving() {
             });
           }}
           onCreated={handleBookingCreated}
+        />
+      ) : null}
+
+      {detailBookingId != null ? (
+        <PracticalBookingDetailModal
+          open
+          onOpenChange={(open) => {
+            if (!open) setDetailBookingId(null);
+          }}
+          bookingId={detailBookingId}
+          instructors={activePracticalInstructors}
+          branches={branches}
+          onChanged={handleBookingChanged}
+          onDeleted={handleBookingDeleted}
         />
       ) : null}
     </AdminLayout>

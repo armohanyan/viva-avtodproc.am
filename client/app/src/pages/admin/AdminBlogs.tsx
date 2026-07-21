@@ -15,7 +15,13 @@ import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, ImageIcon, Newspaper } from "lucide-react";
-import { slugify, ensureUniqueSlug, type Blog } from "src/lib/blogs";
+import {
+  slugify,
+  ensureUniqueSlug,
+  normalizeBlogSlug,
+  isValidBlogSlug,
+  type Blog,
+} from "src/lib/blogs";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { isRichTextEmpty } from "src/lib/blogHtml";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
@@ -57,6 +63,9 @@ export default function AdminBlogs() {
   const [addFormKey, setAddFormKey] = useState(0);
   const [newBlog, setNewBlog] = useState({
     title: "",
+    slug: "",
+    /** When true, title changes no longer overwrite the slug field. */
+    slugManual: false,
     excerpt: "",
     bodyHtml: "<p></p>",
     coverImage: null as string | null,
@@ -107,11 +116,15 @@ export default function AdminBlogs() {
     });
   }, [blogs, search, statusFilter]);
 
-  const previewSlugNew = useMemo(() => slugify(newBlog.title.trim()) || "…", [newBlog.title]);
-  const previewSlugEdit = useMemo(
-    () => (editBlog ? slugify(editBlog.title.trim()) || "…" : ""),
-    [editBlog],
-  );
+  const openEditBlog = (b: Blog) => {
+    const slug = isValidBlogSlug(b.slug)
+      ? b.slug
+      : (() => {
+          const fromTitle = slugify(b.title.trim());
+          return fromTitle !== "post" ? fromTitle : "";
+        })();
+    setEditBlog({ ...b, slug });
+  };
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -132,12 +145,16 @@ export default function AdminBlogs() {
       showToast(t("fillRequired"), "error");
       return;
     }
+    const slug = normalizeBlogSlug(editBlog.slug);
+    if (!isValidBlogSlug(slug)) {
+      showToast(t("blogSlugInvalid"), "error");
+      return;
+    }
     try {
-      const slug = ensureUniqueSlug(slugify(editBlog.title.trim()), blogs, editBlog.id);
       await vivaApiJson(`/blogs/${encodeURIComponent(editBlog.id)}`, {
         method: "PATCH",
         body: {
-          slug,
+          slug: ensureUniqueSlug(slug, blogs, editBlog.id),
           title: editBlog.title.trim(),
           excerpt: editBlog.excerpt.trim(),
           bodyHtml: editBlog.bodyHtml,
@@ -160,12 +177,16 @@ export default function AdminBlogs() {
       showToast(t("fillRequired"), "error");
       return;
     }
+    const slug = normalizeBlogSlug(newBlog.slug);
+    if (!isValidBlogSlug(slug)) {
+      showToast(t("blogSlugInvalid"), "error");
+      return;
+    }
     try {
-      const slug = ensureUniqueSlug(slugify(newBlog.title.trim()), blogs);
       await vivaApiJson("/blogs", {
         method: "POST",
         body: {
-          slug,
+          slug: ensureUniqueSlug(slug, blogs),
           title: newBlog.title.trim(),
           excerpt: newBlog.excerpt.trim(),
           bodyHtml: newBlog.bodyHtml,
@@ -177,6 +198,8 @@ export default function AdminBlogs() {
       setAddOpen(false);
       setNewBlog({
         title: "",
+        slug: "",
+        slugManual: false,
         excerpt: "",
         bodyHtml: "<p></p>",
         coverImage: null,
@@ -221,6 +244,8 @@ export default function AdminBlogs() {
           onClick={() => {
             setNewBlog({
               title: "",
+              slug: "",
+              slugManual: false,
               excerpt: "",
               bodyHtml: "<p></p>",
               coverImage: null,
@@ -294,7 +319,7 @@ export default function AdminBlogs() {
                       id: "edit",
                       label: t("edit"),
                       icon: Edit2,
-                      onClick: () => setEditBlog({ ...b }),
+                      onClick: () => openEditBlog(b),
                     },
                     {
                       kind: "item",
@@ -344,7 +369,7 @@ export default function AdminBlogs() {
                             id: "edit",
                             label: t("edit"),
                             icon: Edit2,
-                            onClick: () => setEditBlog({ ...b }),
+                            onClick: () => openEditBlog(b),
                           },
                           {
                             kind: "item",
@@ -393,8 +418,25 @@ export default function AdminBlogs() {
                   onChange={(e) => setEditBlog({ ...editBlog, title: e.target.value })}
                   className="h-10 mt-1"
                 />
-                <p className="text-xs text-muted-foreground mt-1.5 font-mono">
-                  {t("blogSlugAuto")}: /blogs/{previewSlugEdit}
+              </div>
+
+              <div>
+                <Label className="text-muted-foreground">{t("blogFieldSlug")} *</Label>
+                <Input
+                  value={editBlog.slug}
+                  onChange={(e) =>
+                    setEditBlog({ ...editBlog, slug: normalizeBlogSlug(e.target.value) })
+                  }
+                  className="h-10 mt-1 font-mono text-sm"
+                  placeholder="driving-tips"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {t("blogSlugHint")}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 font-mono">
+                  {t("blogSlugAuto")}: /blogs/{editBlog.slug || "…"}
                 </p>
               </div>
 
@@ -492,11 +534,44 @@ export default function AdminBlogs() {
               <Label className="text-muted-foreground">{t("blogFieldTitle")} *</Label>
               <Input
                 value={newBlog.title}
-                onChange={(e) => setNewBlog({ ...newBlog, title: e.target.value })}
+                onChange={(e) => {
+                  const title = e.target.value;
+                  setNewBlog((b) => {
+                    if (b.slugManual) return { ...b, title };
+                    const auto = slugify(title);
+                    const hasLatin = /[a-z0-9]/i.test(title);
+                    return {
+                      ...b,
+                      title,
+                      slug: auto === "post" && !hasLatin ? "" : auto,
+                    };
+                  });
+                }}
                 className="h-10 mt-1"
               />
-              <p className="text-xs text-muted-foreground mt-1.5 font-mono">
-                {t("blogSlugAuto")}: /blogs/{previewSlugNew}
+            </div>
+
+            <div>
+              <Label className="text-muted-foreground">{t("blogFieldSlug")} *</Label>
+              <Input
+                value={newBlog.slug}
+                onChange={(e) =>
+                  setNewBlog({
+                    ...newBlog,
+                    slug: normalizeBlogSlug(e.target.value),
+                    slugManual: true,
+                  })
+                }
+                className="h-10 mt-1 font-mono text-sm"
+                placeholder="driving-tips"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                {t("blogSlugHint")}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1 font-mono">
+                {t("blogSlugAuto")}: /blogs/{newBlog.slug || "…"}
               </p>
             </div>
 

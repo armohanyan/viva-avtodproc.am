@@ -27,7 +27,7 @@ const en = {
   couldNotLoadData: "Could not load data from the server.",
 
   // Hero
-  heroTitle: "Driving Lessons & Theory at Viva Autoschool",
+  heroTitle: "Driving Lessons & Theory at Viva Autoschool Yerevan",
   heroSub: "Learn to drive step-by-step with certified instructors. Start your first lesson today.",
   getStarted: "Get Started",
   learnMore: "Learn More",
@@ -1537,7 +1537,7 @@ const ru: typeof en = {
   loading: "Загрузка…",
   couldNotLoadData: "Не удалось загрузить данные с сервера.",
 
-  heroTitle: "Уроки вождения и теория в автошколе Viva",
+  heroTitle: "Уроки вождения и теория в автошколе Viva (Ереван)",
   heroSub: "Учитесь вождению по шагам с сертифицированными инструкторами. Запишитесь на первое занятие сегодня.",
   getStarted: "Начать",
   learnMore: "Подробнее",
@@ -3034,7 +3034,7 @@ const am: typeof en = {
   loading: "Բեռնում…",
   couldNotLoadData: "Չհաջողվեց բեռնել տվյալները սերվերից։",
 
-  heroTitle: "Viva ավտոդպրոցում վարորդական դասեր և տեսություն",
+  heroTitle: "Վիվա Ավտոդպրոց Երևան — վարորդական դասեր և տեսություն",
   heroSub: "Սովորեք վարել քայլ առ քայլ՝ հավաստագրված ուսուցիչների հետ։ Ամրագրեք ձեր առաջին դասը այսօր։",
   getStarted: "Սկսել",
   learnMore: "Իմանալ ավելին",

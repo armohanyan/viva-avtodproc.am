@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { JsonLd } from "@/components/JsonLd";
 import { MarketingProviders } from "@/components/MarketingProviders";
 import { ScrollToTopOnRoute } from "@/components/ScrollToTopOnRoute";
-import { baseLayoutMetadata, getRequestSeoLang } from "@/lib/seo";
+import { buildSiteJsonLd } from "@/lib/jsonLd";
+import { baseLayoutMetadata, getRequestSeoLang, htmlLangFromSeoLang } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
   const lang = await getRequestSeoLang();
@@ -16,8 +18,9 @@ export default async function RootLayout({
 }>) {
   const lang = await getRequestSeoLang();
   return (
-    <html lang={lang} suppressHydrationWarning>
+    <html lang={htmlLangFromSeoLang(lang)} suppressHydrationWarning>
       <body className="antialiased min-h-screen bg-background text-foreground">
+        <JsonLd data={buildSiteJsonLd(lang)} />
         <MarketingProviders>
           <ScrollToTopOnRoute />
           {children}

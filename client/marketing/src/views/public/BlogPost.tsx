@@ -95,7 +95,7 @@ function BlogPostBody({ slug }: { slug: string }) {
 
           {cover ? (
             <div className="mb-10 rounded-2xl overflow-hidden border border-border bg-muted aspect-[21/9] max-h-[min(420px,50vh)]">
-              <img src={cover} alt="" className="w-full h-full object-cover" />
+              <img src={cover} alt={post.title} className="w-full h-full object-cover" />
             </div>
           ) : null}
 
