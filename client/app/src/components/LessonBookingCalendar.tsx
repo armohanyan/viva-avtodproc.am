@@ -3,12 +3,13 @@ import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import TableColumnFilter from "src/components/TableColumnFilter";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, Car, ChevronLeft, ChevronRight, Gauge, Star } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Reveal } from "src/lib/motion";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import type { Instructor } from "src/data/instructors";
+import { AppModal } from "src/components/AppModal";
 import InstructorCard from "src/components/InstructorCard";
 import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
 import {
@@ -248,6 +249,9 @@ export default function LessonBookingCalendar({
   const [posDialogOpen, setPosDialogOpen] = useState(false);
   const [slotSearch, setSlotSearch] = useState("");
   const [periodFilter, setPeriodFilter] = useState<"all" | "morning" | "afternoon">("all");
+  /** Student cards picker: slots live in a modal after choosing an instructor. */
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const cardsPickerModal = instructorPickerVariant === "cards" && showInstructorPicker;
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [busySlots, setBusySlots] = useState<InstructorBusySlot[]>([]);
   const [blocksLoading, setBlocksLoading] = useState(false);
@@ -1199,109 +1203,99 @@ export default function LessonBookingCalendar({
     </Card>
   );
 
-  return (
-    <TooltipProvider>
-    <>
-    <SimulatedAcbaPosDialog
-      open={posDialogOpen}
-      onOpenChange={setPosDialogOpen}
-      amountAmd={studentPaySession?.totalPriceAmd ?? null}
-      locale={locale}
-      busy={payBusy}
-      onApprove={onCompletePayment}
-      variant={vposConfig?.simulated === false ? "live" : "simulated"}
-    />
-    <div className="@container min-w-0">
-    {studentBookingPaused ? <StudentBookingPausedCallout className="mb-4" /> : null}
-    <div
-      className={
-        adminSuppressSummaryCard
-          ? "grid grid-cols-1 gap-6"
-          : "grid grid-cols-1 @min-[1000px]:grid-cols-4 gap-6 @min-[1000px]:items-stretch"
-      }
-    >
-      <div className={adminSuppressSummaryCard ? "space-y-6 min-w-0" : "@min-[1000px]:col-span-3 space-y-6 min-w-0"}>
-        {showInstructorPicker ? (
-          <Reveal delay={0.06}>
-            <Card
-              className={
-                instructorPickerVariant === "cards"
-                  ? "p-3 sm:p-4 border-border overflow-hidden"
-                  : "p-5 border-border"
-              }
-            >
-              <h3
-                className={
-                  instructorPickerVariant === "cards"
-                    ? "text-sm font-semibold text-foreground mb-2"
-                    : "font-semibold text-foreground mb-3"
-                }
-              >
-                {t("selectInstructor")}
-              </h3>
-              {instructorPickerVariant === "cards" ? (
-                <div className="flex items-stretch gap-3 overflow-x-auto overscroll-x-contain pb-1 pt-0.5 snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch]">
-                  {instructors.map((ins) => (
-                    <div
-                      key={ins.id}
-                      className="snap-start shrink-0 w-[min(17.5rem,calc(100vw-4rem))] sm:w-72 flex flex-col self-stretch min-h-0"
-                    >
-                      <InstructorCard
-                        instructor={ins}
-                        pickerMode
-                        compact
-                        isPicked={selectedInstructorId === ins.id}
-                        onPick={() => onInstructorChange(ins.id)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {instructors.map((ins) => (
-                    <button
-                      key={ins.id}
-                      type="button"
-                      onClick={() => onInstructorChange(ins.id)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        selectedInstructorId === ins.id
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-border text-muted-foreground hover:border-primary/30"
-                      }`}
-                    >
-                      {ins.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </Reveal>
-        ) : null}
+  useEffect(() => {
+    if (!selectedInstructorId && bookingModalOpen) {
+      setBookingModalOpen(false);
+    }
+  }, [selectedInstructorId, bookingModalOpen]);
 
-        {showPendingBookingCallout ? (
-          <Reveal delay={0.08}>
-            <div
-              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
-              role="status"
-            >
-              {t("bookingPendingBlocksNew")}
-            </div>
-          </Reveal>
-        ) : null}
+  const openInstructorBookingModal = (instructorUserId: string) => {
+    onInstructorChange(instructorUserId);
+    setBookingModalOpen(true);
+  };
 
-        {mode === "admin" ? slotCalendarCard : <Reveal delay={0.12}>{slotCalendarCard}</Reveal>}
-        {adminSuppressSummaryCard && mode === "admin" ? (
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" className="text-muted-foreground text-xs" onClick={resetBooking}>
-              {t("clearSelectionLabel")}
-            </Button>
-          </div>
-        ) : null}
+  const handleBookingModalOpenChange = (open: boolean) => {
+    if (!open && studentPaymentStepActive) return;
+    setBookingModalOpen(open);
+    if (!open) {
+      resetBooking();
+      onInstructorChange("");
+    }
+  };
+
+  const pendingBookingCallout = showPendingBookingCallout ? (
+    <Reveal delay={0.08}>
+      <div
+        className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100"
+        role="status"
+      >
+        {t("bookingPendingBlocksNew")}
       </div>
+    </Reveal>
+  ) : null;
 
-      {!adminSuppressSummaryCard ? (
-      <div className="min-h-0 min-w-0 @min-[1000px]:h-full @min-[1000px]:min-h-0 flex flex-col">
-        <Reveal delay={mode === "admin" ? 0 : 0.18} className="@min-[1000px]:h-full @min-[1000px]:min-h-0 flex flex-col min-w-0">
+  const instructorModalBrief = selectedInstructorRecord ? (
+    <div className="mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start">
+      <div className="h-28 w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:h-32 sm:w-36">
+        <img
+          src={selectedInstructorRecord.imageSrc}
+          alt={selectedInstructorRecord.name}
+          className="h-full w-full object-contain"
+          loading="lazy"
+        />
+      </div>
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h4 className="text-lg font-bold text-foreground">{selectedInstructorRecord.name}</h4>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {Array.from({ length: 5 }).map((_, j) => (
+              <Star
+                key={j}
+                className={`h-3.5 w-3.5 ${
+                  j < Math.floor(selectedInstructorRecord.rating)
+                    ? "fill-primary text-primary"
+                    : "fill-muted-foreground text-muted-foreground"
+                }`}
+              />
+            ))}
+            <span className="ml-1 text-xs text-muted-foreground">
+              {selectedInstructorRecord.rating.toFixed(1)}
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">
+              ֏
+            </span>
+            <span className="break-words">
+              {t("lessonPrice")}: {selectedInstructorRecord.hourlyPrice.toLocaleString("en-US")} ֏ / {t("perHour")}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+            <span>
+              {selectedInstructorRecord.years.toLocaleString("en-US")} {t("experience")}
+            </span>
+          </div>
+          {selectedInstructorRecord.car ? (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Car className="h-4 w-4 shrink-0 text-primary" />
+              <span className="break-words">{selectedInstructorRecord.car}</span>
+            </div>
+          ) : null}
+          {selectedInstructorRecord.transmission ? (
+            <div className="flex items-center gap-1.5">
+              <Gauge className="h-4 w-4 shrink-0 text-primary" />
+              <span>{selectedInstructorRecord.transmission}</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const bookingSummaryCard = (
           <Card className="p-5 border-border @min-[1000px]:sticky @min-[1000px]:top-4 @min-[1000px]:z-10 @min-[1000px]:self-start w-full min-w-0">
             <h3 className="font-semibold text-foreground mb-4">{t("bookingSummaryTitle")}</h3>
             {(mode === "admin" ? !adminHasSlotSelection : !selected) ? (
@@ -1531,17 +1525,120 @@ export default function LessonBookingCalendar({
               </div>
             )}
           </Card>
-        </Reveal>
-        {mode === "student" ? (
-          <Reveal delay={0.22} className="mt-4">
-            <BookingCancellationPolicyCallout bookingType={studentBookingType} />
-          </Reveal>
+  );
+
+  const bookingWorkspace = (
+    <div className="@container min-w-0">
+    <div
+      className={
+        adminSuppressSummaryCard
+          ? "grid grid-cols-1 gap-6"
+          : "grid grid-cols-1 @min-[1000px]:grid-cols-4 gap-6 @min-[1000px]:items-stretch"
+      }
+    >
+      <div className={adminSuppressSummaryCard ? "space-y-6 min-w-0" : "@min-[1000px]:col-span-3 space-y-6 min-w-0"}>
+        {!cardsPickerModal ? pendingBookingCallout : null}
+        {mode === "admin" ? slotCalendarCard : <Reveal delay={0.12}>{slotCalendarCard}</Reveal>}
+        {adminSuppressSummaryCard && mode === "admin" ? (
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" className="text-muted-foreground text-xs" onClick={resetBooking}>
+              {t("clearSelectionLabel")}
+            </Button>
+          </div>
         ) : null}
       </div>
+
+      {!adminSuppressSummaryCard ? (
+        <div className="min-h-0 min-w-0 @min-[1000px]:h-full @min-[1000px]:min-h-0 flex flex-col">
+          <Reveal delay={mode === "admin" ? 0 : 0.18} className="@min-[1000px]:h-full @min-[1000px]:min-h-0 flex flex-col min-w-0">
+            {bookingSummaryCard}
+          </Reveal>
+          {mode === "student" ? (
+            <Reveal delay={0.22} className="mt-4">
+              <BookingCancellationPolicyCallout bookingType={studentBookingType} />
+            </Reveal>
+          ) : null}
+        </div>
       ) : null}
     </div>
     </div>
-    </>
+  );
+
+  return (
+    <TooltipProvider>
+      <>
+        <SimulatedAcbaPosDialog
+          open={posDialogOpen}
+          onOpenChange={setPosDialogOpen}
+          amountAmd={studentPaySession?.totalPriceAmd ?? null}
+          locale={locale}
+          busy={payBusy}
+          onApprove={onCompletePayment}
+          variant={vposConfig?.simulated === false ? "live" : "simulated"}
+        />
+        <div className="@container min-w-0 space-y-6">
+          {studentBookingPaused ? <StudentBookingPausedCallout className="mb-4" /> : null}
+
+          {showInstructorPicker ? (
+            <Reveal delay={0.06}>
+              <Card className={cardsPickerModal ? "p-4 sm:p-5 border-border" : "p-5 border-border"}>
+                <h3 className={`font-semibold text-foreground ${cardsPickerModal ? "mb-4" : "mb-3"}`}>
+                  {t("selectInstructor")}
+                </h3>
+                {cardsPickerModal ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {instructors.map((ins) => (
+                      <InstructorCard
+                        key={ins.id}
+                        instructor={ins}
+                        pickerMode
+                        imageObjectFit="contain"
+                        onPick={() => openInstructorBookingModal(ins.id)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {instructors.map((ins) => (
+                      <button
+                        key={ins.id}
+                        type="button"
+                        onClick={() => onInstructorChange(ins.id)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                          selectedInstructorId === ins.id
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "border-border text-muted-foreground hover:border-primary/30"
+                        }`}
+                      >
+                        {ins.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </Reveal>
+          ) : null}
+
+          {cardsPickerModal ? (
+            <>
+              {pendingBookingCallout}
+              <AppModal
+                open={bookingModalOpen && Boolean(selectedInstructorId)}
+                onOpenChange={handleBookingModalOpenChange}
+                title={selectedInstructorName || t("selectInstructor")}
+                contentClassName="w-[min(98vw,1480px)] max-w-[min(98vw,1480px)] sm:max-w-[min(98vw,1480px)] max-h-[min(96vh,980px)]"
+                bodyClassName="px-4 py-4 sm:px-6"
+                showCloseButton={!studentPaymentStepActive}
+              >
+                {instructorModalBrief}
+                {bookingWorkspace}
+              </AppModal>
+            </>
+          ) : (
+            bookingWorkspace
+          )}
+        </div>
+      </>
     </TooltipProvider>
   );
 }

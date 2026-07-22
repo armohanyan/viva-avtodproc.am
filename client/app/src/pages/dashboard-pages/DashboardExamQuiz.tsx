@@ -477,8 +477,8 @@ function DashboardExamQuizView() {
                             className={`rounded-lg border px-3 py-2 text-xs ${
                               isSelectedOption
                                 ? ok
-                                  ? "border-emerald-600 text-foreground"
-                                  : "border-red-600 text-foreground"
+                                  ? "border-emerald-600 bg-emerald-600 text-white"
+                                  : "border-red-600 bg-red-600 text-white"
                                 : "border-border text-muted-foreground"
                             }`}
                           >
@@ -596,9 +596,9 @@ function DashboardExamQuizView() {
                                 ? "border-primary bg-primary/10 text-foreground"
                                 : "border-border hover:border-primary/40 text-foreground"
                               : i === q.correctIndex
-                                ? "border-emerald-600 text-foreground"
+                                ? "border-emerald-600 bg-emerald-600 text-white"
                                 : selected === i
-                                  ? "border-red-600 text-foreground"
+                                  ? "border-red-600 bg-red-600 text-white"
                                   : "border-border text-foreground"
                         }`}
                       >
@@ -683,9 +683,9 @@ function DashboardExamQuizView() {
                                       ? "border-primary bg-primary/10 text-foreground"
                                       : "border-border hover:border-primary/40 text-foreground"
                                     : optIdx === question.correctIndex
-                                      ? "border-emerald-600 text-foreground"
+                                      ? "border-emerald-600 bg-emerald-600 text-white"
                                       : sel === optIdx
-                                        ? "border-red-600 text-foreground"
+                                        ? "border-red-600 bg-red-600 text-white"
                                         : "border-border text-foreground"
                               }`}
                             >

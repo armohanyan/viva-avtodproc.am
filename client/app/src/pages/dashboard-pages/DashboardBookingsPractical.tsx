@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Card } from "src/components/ui/card";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
-import { branchOptionLabel, branchesInCity, useBranches } from "src/modules/branches";
-import { cityNameById, useCities } from "src/modules/cities";
+import { branchesMatchingCityName, useBranches } from "src/modules/branches";
+import { uniqueCitiesByName, useCities } from "src/modules/cities";
 import {
   PRACTICAL_LESSON_TYPES,
   getLessonTypeLabel,
@@ -28,7 +28,11 @@ export function DashboardBookingsPracticalTab() {
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([]);
   const [instructorId, setInstructorId] = useState("");
 
-  const branchesForCity = useMemo(() => (cityId ? branchesInCity(branches, cityId) : []), [branches, cityId]);
+  const cityOptions = useMemo(() => uniqueCitiesByName(cities), [cities]);
+  const branchesForCity = useMemo(
+    () => (cityId ? branchesMatchingCityName(branches, cities, cityId) : []),
+    [branches, cities, cityId],
+  );
   const branchIdsForCity = useMemo(() => branchesForCity.map((b) => b.id), [branchesForCity]);
 
   const validationErrors = validatePracticalBookingSelection({
@@ -66,8 +70,8 @@ export function DashboardBookingsPracticalTab() {
   }, [cityId, branchIdsForCity]);
 
   useEffect(() => {
-    if (!filteredInstructors.some((o) => o.id === instructorId)) {
-      setInstructorId(filteredInstructors[0]?.id ?? "");
+    if (instructorId && !filteredInstructors.some((o) => o.id === instructorId)) {
+      setInstructorId("");
     }
   }, [instructorId, filteredInstructors]);
 
@@ -99,7 +103,7 @@ export function DashboardBookingsPracticalTab() {
               className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
             >
               <option value="">{t("bookingSelectCityPlaceholder")}</option>
-              {cities.map((c) => (
+              {cityOptions.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -113,7 +117,7 @@ export function DashboardBookingsPracticalTab() {
               <MultiSelectDropdown
                 options={branchesForCity.map((b) => ({
                   value: b.id,
-                  label: branchOptionLabel(b, cityNameById(cities, b.cityId)),
+                  label: b.name,
                 }))}
                 value={selectedBranchIds}
                 onChange={(next) => setSelectedBranchIds(next as string[])}

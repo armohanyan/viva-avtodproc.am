@@ -7,6 +7,17 @@ export function cityNameById(cities: readonly City[], id: string): string {
 	return cities.find((c) => String(c.id) === want)?.name ?? id;
 }
 
+/** One option per city name (keeps the first id when duplicates exist). */
+export function uniqueCitiesByName(cities: readonly City[]): City[] {
+	const seen = new Set<string>();
+	return cities.filter((c) => {
+		const key = c.name.trim().toLowerCase();
+		if (!key || seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
 export function useCities() {
 	const [cities, setCities] = useState<City[]>([]);
 	const [loading, setLoading] = useState(true);

@@ -488,8 +488,8 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                                 className={`rounded-lg border px-3 py-2 text-xs ${
                                   isSelectedOption
                                     ? ok
-                                      ? "border-emerald-600 text-foreground"
-                                      : "border-red-600 text-foreground"
+                                      ? "border-emerald-600 bg-emerald-600 text-white"
+                                      : "border-red-600 bg-red-600 text-white"
                                     : "border-border text-muted-foreground"
                                 }`}
                               >
@@ -599,9 +599,9 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                                       ? "border-primary bg-primary/10 text-foreground"
                                       : "border-border hover:border-muted-foreground/30 text-foreground"
                                     : isCorrectOption
-                                      ? "border-emerald-600 text-foreground"
+                                      ? "border-emerald-600 bg-emerald-600 text-white"
                                       : isSelectedOption
-                                        ? "border-red-600 text-foreground"
+                                        ? "border-red-600 bg-red-600 text-white"
                                         : "border-border text-foreground"
                               }`}
                             >
@@ -691,9 +691,9 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                                               ? "border-primary bg-primary/10 text-foreground"
                                               : "border-border hover:border-muted-foreground/30 text-foreground"
                                             : isCorrectOption
-                                              ? "border-emerald-600 text-foreground"
+                                              ? "border-emerald-600 bg-emerald-600 text-white"
                                               : isSelectedOption
-                                                ? "border-red-600 text-foreground"
+                                                ? "border-red-600 bg-red-600 text-white"
                                                 : "border-border text-foreground"
                                       }`}
                                     >
