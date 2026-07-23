@@ -57,14 +57,15 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
       let u = loadAccountSession();
       if (!u || !u.accessToken) {
         const refreshOutcome = await tryRefreshAccessToken();
-        if (!cancelled && refreshOutcome === "ok") {
-          u = loadAccountSession();
-        } else if (
-          !cancelled &&
-          refreshOutcome === "failed" &&
-          u &&
-          !u.accessToken
-        ) {
+        if (cancelled) return;
+        // Re-read after await: login/MFA may have completed while refresh was in flight.
+        // Never overwrite a fresh accessToken with the pre-await snapshot (that logs the user out).
+        const latest = loadAccountSession();
+        if (latest?.accessToken) {
+          u = latest;
+        } else if (refreshOutcome === "ok") {
+          u = latest;
+        } else if (refreshOutcome === "failed" && u && !u.accessToken) {
           // Persisted profile but no refresh cookie / invalid session — avoid ghost "logged-in" UI + 401 revoke loop.
           clearAccountSession();
           u = null;

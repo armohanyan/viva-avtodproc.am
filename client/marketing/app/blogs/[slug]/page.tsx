@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import BlogPost from "src/views/public/BlogPost";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
-import { fetchBlogBySlugApi, fetchPublishedBlogSlugsApi } from "src/lib/blogsApi";
+import { fetchBlogBySlugApi } from "src/lib/blogsApi";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { JsonLd } from "@/components/JsonLd";
 import { buildBlogPostJsonLd } from "@/lib/jsonLd";
@@ -10,16 +10,13 @@ import { absoluteUrl } from "@/lib/site";
 
 type Props = { params: Promise<{ slug: string }> };
 
-export async function generateStaticParams(): Promise<{ slug: string }[]> {
-  const slugs = await fetchPublishedBlogSlugsApi();
-  return slugs.map((slug) => ({ slug }));
-}
+/** Force dynamic: root layout reads cookies/headers via getRequestSeoLang(); SSG + that combo throws DYNAMIC_SERVER_USAGE (500) in production. */
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const post = await fetchBlogBySlugApi(slug);
   if (!post) {
-    /** Avoid `cookies()` / `headers()` here: this route is SSG (`generateStaticParams`) and that triggers `DYNAMIC_SERVER_USAGE` in production. */
     return {
       title: { absolute: "Blog post | Վիվա Ավտոդպրոց" },
       robots: { index: false, follow: false },
