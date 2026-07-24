@@ -45,7 +45,7 @@ export function useAdminStudentsMini(options: UseAdminStudentsMiniOptions = {}) 
 			const mapped = rows
 				.filter((r) => enrollmentStatus === "all" || (r.status ?? "active") === "active")
 				.map((r) => ({
-					id: r.id,
+					id: String(r.id),
 					name: r.name,
 					email: r.email,
 					phone: (r.phone ?? "").trim(),

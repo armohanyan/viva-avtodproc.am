@@ -374,6 +374,20 @@ export default class BookingController {
             : Array.isArray(filterInstructorRaw) && typeof filterInstructorRaw[0] === 'string'
               ? Number(filterInstructorRaw[0])
               : undefined;
+        const pickIsoDate = (key: string): string | undefined => {
+          const raw = req.query[key];
+          const s =
+            typeof raw === 'string'
+              ? raw.trim().slice(0, 10)
+              : Array.isArray(raw) && typeof raw[0] === 'string'
+                ? raw[0].trim().slice(0, 10)
+                : '';
+          return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+        };
+        const createdFrom = pickIsoDate('createdFrom');
+        const createdTo = pickIsoDate('createdTo');
+        const slotStartDate = pickIsoDate('slotStartDate');
+        const slotEndDate = pickIsoDate('slotEndDate');
         const data = await BookingService.listAdminPaginated({
           page,
           pageSize,
@@ -390,6 +404,10 @@ export default class BookingController {
           ...(filterInstructorUserId != null && Number.isFinite(filterInstructorUserId) && filterInstructorUserId > 0
             ? { instructorUserId: filterInstructorUserId }
             : {}),
+          ...(createdFrom ? { createdFrom } : {}),
+          ...(createdTo ? { createdTo } : {}),
+          ...(slotStartDate ? { slotStartDate } : {}),
+          ...(slotEndDate ? { slotEndDate } : {}),
         });
         SuccessHandlerUtil.handleGet(res, next, data);
         return;

@@ -9,7 +9,11 @@ import { SuccessHandlerUtil } from '../utils';
 const { InputValidationError, UnauthorizedError, PermissionError } = ErrorsUtil;
 
 const financeTxBodySchema = z.object({
-  customer: z.string().min(1),
+  /**
+   * Required unless `bookingId` is set — FinanceService then fills from the booking student.
+   * Empty strings are allowed here so booking-linked admin payments do not fail client-side name lookup races.
+   */
+  customer: z.string().optional().default(''),
   email: z.string().optional(),
   /** Omitted for booking-linked manual payments: server fills from the booking. */
   description: z.string().optional(),
@@ -36,7 +40,21 @@ const financeTxBodySchema = z.object({
 });
 
 /** Description is optional; FinanceService fills from booking or a customer-based default. */
-const createSchema = financeTxBodySchema;
+const createSchema = financeTxBodySchema.superRefine((val, ctx) => {
+  const customer = (val.customer ?? '').trim();
+  const bookingId = val.bookingId == null ? null : Number(val.bookingId);
+  const hasBooking = bookingId != null && Number.isFinite(bookingId) && bookingId > 0;
+  if (!customer && !hasBooking) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.too_small,
+      minimum: 1,
+      type: 'string',
+      inclusive: true,
+      message: 'String must contain at least 1 character(s)',
+      path: ['customer'],
+    });
+  }
+});
 
 const approveRefundBodySchema = z.object({
   /** Positive AMD; defaults to full original payment when omitted. */

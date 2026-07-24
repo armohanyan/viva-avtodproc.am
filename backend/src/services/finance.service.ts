@@ -231,7 +231,7 @@ export default class FinanceService {
   }
 
   static async create(input: {
-    customer: string;
+    customer?: string;
     email?: string;
     description?: string;
     branchId: number;
@@ -269,13 +269,31 @@ export default class FinanceService {
       }
     }
 
+    let customer = (input.customer ?? '').trim();
+    let email = (input.email ?? '').trim();
+    if (linkedBooking && (!customer || !email)) {
+      const stu = await User.findByPk(linkedBooking.studentUserId, {
+        attributes: ['name', 'email'],
+        transaction: input.transaction,
+      });
+      if (stu) {
+        if (!customer) customer = stu.name.trim() || 'Student';
+        if (!email) email = (stu.email ?? '').trim();
+      }
+    }
+    if (!customer) {
+      throw new ErrorsUtil.InputValidationError(
+        'customer: String must contain at least 1 character(s)',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+
     let description = (input.description ?? '').trim();
     if (!description) {
       if (linkedBooking) {
         description = financeDescriptionForBooking(linkedBooking);
       } else {
-        const customerLabel = input.customer.trim() || 'Customer';
-        description = `Payment — ${customerLabel}`;
+        description = `Payment — ${customer}`;
       }
     }
 
@@ -316,8 +334,8 @@ export default class FinanceService {
     const createdAt = input.createdAt ? new Date(input.createdAt) : new Date();
     const row = await FinanceTransaction.create(
       {
-        customer: input.customer.trim(),
-        email: (input.email ?? '').trim(),
+        customer,
+        email,
         description,
         branchId: input.branchId,
         channel,
@@ -424,7 +442,16 @@ export default class FinanceService {
     }
 
     await row.update({
-      ...(input.customer !== undefined ? { customer: input.customer.trim() } : {}),
+      ...(input.customer !== undefined
+        ? {
+            customer: (() => {
+              const trimmed = input.customer.trim();
+              if (trimmed) return trimmed;
+              // Keep existing customer if an empty string was sent for a booking-linked row.
+              return row.customer;
+            })(),
+          }
+        : {}),
       ...(input.email !== undefined ? { email: input.email.trim() } : {}),
       ...(input.description !== undefined ? { description: input.description.trim() } : {}),
       ...(input.branchId !== undefined ? { branchId: input.branchId } : {}),

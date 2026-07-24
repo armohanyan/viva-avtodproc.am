@@ -35,7 +35,10 @@ export default function AdminStudentSearchSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const selected = useMemo(() => students.find((s) => s.id === value), [students, value]);
+  const selected = useMemo(
+    () => students.find((s) => String(s.id) === String(value)) ?? null,
+    [students, value],
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -127,18 +130,18 @@ export default function AdminStudentSearchSelect({
               <li className="px-2 py-2 text-sm text-muted-foreground">{students.length === 0 ? emptyListLabel : noResultsLabel}</li>
             ) : (
               filtered.map((s) => (
-                <li key={s.id} role="presentation">
+                <li key={String(s.id)} role="presentation">
                   <button
                     type="button"
                     role="option"
-                    aria-selected={s.id === value}
+                    aria-selected={String(s.id) === String(value)}
                     className={cn(
                       "w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors",
                       "hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
-                      s.id === value && "bg-muted/80",
+                      String(s.id) === String(value) && "bg-muted/80",
                     )}
                     onClick={() => {
-                      onChange(s.id);
+                      onChange(String(s.id));
                       setOpen(false);
                       setQuery("");
                     }}

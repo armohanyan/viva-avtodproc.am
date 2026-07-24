@@ -21,6 +21,10 @@ export type AdminBookingsListFilters = {
   studentUserId: string;
   instructorUserId: string;
   createdByType: BookingCreatedByFilter;
+  createdFrom?: string;
+  createdTo?: string;
+  slotStartDate?: string;
+  slotEndDate?: string;
 };
 
 type State = {
@@ -67,6 +71,10 @@ export function useAdminBookingsList(filters: AdminBookingsListFilters) {
     filters.studentUserId,
     filters.instructorUserId,
     filters.createdByType,
+    filters.createdFrom,
+    filters.createdTo,
+    filters.slotStartDate,
+    filters.slotEndDate,
     branchFilterRevision,
   ]);
 

@@ -33,8 +33,11 @@ export type AdminBookingListItem = {
   totalPriceAmd?: number | null;
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
+  paidAtIso?: string | null;
   paymentNotes?: string | null;
   paymentReminderDateIso?: string | null;
+  /** Booking creation time — used for payment datetime when no finance tx exists. */
+  createdAt?: string | null;
   type: "practical" | "theory" | "theory_personal";
   status: string;
   branchId: number;
@@ -57,6 +60,12 @@ export type AdminBookingListFilters = {
   studentUserId: string;
   instructorUserId: string;
   createdByType: BookingCreatedByFilter;
+  /** YYYY-MM-DD — filter by booking createdAt (inclusive). */
+  createdFrom?: string;
+  createdTo?: string;
+  /** YYYY-MM-DD — filter by lesson/slot date (inclusive). */
+  slotStartDate?: string;
+  slotEndDate?: string;
 };
 
 export const ADMIN_BOOKINGS_PAGE_SIZE = 25;
@@ -85,6 +94,14 @@ export function buildAdminBookingsQuery(
   if (filters.createdByType && filters.createdByType !== "all") {
     qs.set("createdByType", filters.createdByType);
   }
+  const createdFrom = filters.createdFrom?.trim().slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(createdFrom)) qs.set("createdFrom", createdFrom);
+  const createdTo = filters.createdTo?.trim().slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(createdTo)) qs.set("createdTo", createdTo);
+  const slotStartDate = filters.slotStartDate?.trim().slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(slotStartDate)) qs.set("slotStartDate", slotStartDate);
+  const slotEndDate = filters.slotEndDate?.trim().slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(slotEndDate)) qs.set("slotEndDate", slotEndDate);
   return qs.toString();
 }
 

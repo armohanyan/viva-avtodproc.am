@@ -136,7 +136,9 @@ export default function AdminFinanceIncome() {
     if (studentId && studentDirectoryLoading) return;
 
     prefillSearchRef.current = "";
-    const student = studentId ? studentDirectory.find((x) => x.id === studentId) : undefined;
+    const student = studentId
+      ? studentDirectory.find((x) => String(x.id) === String(studentId))
+      : undefined;
     const branchOk = branchParam && branches.some((b) => b.id === branchParam) ? branchParam : "";
     const branchId = branchOk || branches[0]?.id || "";
 
@@ -514,12 +516,12 @@ export default function AdminFinanceIncome() {
                     setManualForm((f) => ({ ...f, studentDirectoryId: "" }));
                     return;
                   }
-                  const s = studentDirectory.find((x) => x.id === id);
+                  const s = studentDirectory.find((x) => String(x.id) === String(id));
                   setManualForm((f) => ({
                     ...f,
-                    studentDirectoryId: id,
-                    customer: s?.name ?? "",
-                    email: s?.email ?? "",
+                    studentDirectoryId: String(id),
+                    customer: (s?.name ?? "").trim(),
+                    email: (s?.email ?? "").trim(),
                   }));
                 }}
                 allowClear

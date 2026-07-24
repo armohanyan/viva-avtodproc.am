@@ -324,6 +324,8 @@ export type BookingAdminDto = {
   type: 'practical' | 'theory' | 'theory_personal';
   status: string;
   branchId: number;
+  /** Booking row creation time (admin payment datetime fallback when no finance tx). */
+  createdAt: string;
   /** Set when the student requested cancellation (≥24h rule) and staff must act. */
   cancellationRequestedAt: string | null;
   /** `null` = not set; instructor or staff may update. */
@@ -370,6 +372,12 @@ export type AdminBookingListQuery = {
   studentUserId?: number;
   instructorUserId?: number;
   createdByType?: 'student' | 'admin';
+  /** YYYY-MM-DD — booking row createdAt (Yerevan calendar day bounds). */
+  createdFrom?: string;
+  createdTo?: string;
+  /** YYYY-MM-DD — lesson/slot calendar day (`bookings.date_iso` or `booking_slots.date_iso`). */
+  slotStartDate?: string;
+  slotEndDate?: string;
 };
 
 export type AdminBookingListResult = {
@@ -484,6 +492,24 @@ function dateIsoString(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   return String(v).slice(0, 10);
+}
+
+const YEREVAN_OFFSET = '+04:00';
+
+/** Accepts YYYY-MM-DD only; returns undefined when missing/invalid. */
+function parseOptionalIsoDateOnly(raw: string | undefined): string | undefined {
+  const s = String(raw ?? '').trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
+}
+
+function normalizeOptionalDateRange(
+  fromRaw: string | undefined,
+  toRaw: string | undefined,
+): { from?: string; to?: string } {
+  let from = parseOptionalIsoDateOnly(fromRaw);
+  let to = parseOptionalIsoDateOnly(toRaw);
+  if (from && to && to < from) to = from;
+  return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
 }
 
 function lessonPassedSuccessfullyFromRow(b: Booking): boolean | null {
@@ -1398,6 +1424,13 @@ export default class BookingService {
     const stu = row.student;
     const pay = resolveBookingPayment(b);
     const createdByType = (b.createdByType ?? 'unknown') as BookingCreatedByType;
+    const rowCreatedAt = (b as unknown as { createdAt?: Date | string }).createdAt;
+    const createdAt =
+      rowCreatedAt instanceof Date
+        ? rowCreatedAt.toISOString()
+        : typeof rowCreatedAt === 'string' && !Number.isNaN(new Date(rowCreatedAt).getTime())
+          ? new Date(rowCreatedAt).toISOString()
+          : new Date().toISOString();
     return {
       id: b.id,
       studentId: stu.id,
@@ -1411,6 +1444,7 @@ export default class BookingService {
       type: b.lessonType,
       status: normalizeBookingStatus(b.status),
       branchId: b.branchId,
+      createdAt,
       cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
       paymentStatus: pay.paymentStatus,
@@ -1608,6 +1642,45 @@ export default class BookingService {
       }
       andParts.push({ [Op.or]: orParts });
     }
+
+    const createdRange = normalizeOptionalDateRange(query.createdFrom, query.createdTo);
+    if (createdRange.from || createdRange.to) {
+      const createdAtWhere: Record<symbol | string, Date> = {};
+      if (createdRange.from) {
+        createdAtWhere[Op.gte] = new Date(`${createdRange.from}T00:00:00${YEREVAN_OFFSET}`);
+      }
+      if (createdRange.to) {
+        createdAtWhere[Op.lte] = new Date(`${createdRange.to}T23:59:59.999${YEREVAN_OFFSET}`);
+      }
+      andParts.push({ createdAt: createdAtWhere });
+    }
+
+    const slotRange = normalizeOptionalDateRange(query.slotStartDate, query.slotEndDate);
+    if (slotRange.from || slotRange.to) {
+      const bookingDateWhere: Record<symbol | string, string | string[]> = {};
+      const slotDateSqlParts: string[] = [];
+      if (slotRange.from && slotRange.to) {
+        bookingDateWhere[Op.between] = [slotRange.from, slotRange.to];
+        slotDateSqlParts.push(
+          `\`bs\`.\`date_iso\` BETWEEN ${sequelize.escape(slotRange.from)} AND ${sequelize.escape(slotRange.to)}`,
+        );
+      } else if (slotRange.from) {
+        bookingDateWhere[Op.gte] = slotRange.from;
+        slotDateSqlParts.push(`\`bs\`.\`date_iso\` >= ${sequelize.escape(slotRange.from)}`);
+      } else if (slotRange.to) {
+        bookingDateWhere[Op.lte] = slotRange.to;
+        slotDateSqlParts.push(`\`bs\`.\`date_iso\` <= ${sequelize.escape(slotRange.to)}`);
+      }
+      andParts.push({
+        [Op.or]: [
+          { dateIso: bookingDateWhere },
+          literal(
+            `EXISTS (SELECT 1 FROM \`booking_slots\` AS \`bs\` WHERE \`bs\`.\`booking_id\` = \`Booking\`.\`id\` AND ${slotDateSqlParts.join(' AND ')})`,
+          ),
+        ],
+      });
+    }
+
     if (andParts.length === 0) return {};
     if (andParts.length === 1) return andParts[0]!;
     return { [Op.and]: andParts };

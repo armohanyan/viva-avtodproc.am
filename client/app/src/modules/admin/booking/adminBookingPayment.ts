@@ -60,6 +60,15 @@ export function adminPaymentStateAfterPaidStrChange(
   };
 }
 
+function datetimeLocalFromIsoCandidates(...candidates: Array<string | null | undefined>): string {
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return toDatetimeLocalValue(d);
+  }
+  return toDatetimeLocalValue(new Date());
+}
+
 export function adminPaymentFromBooking(
   booking: {
     paymentStatus?: string | null;
@@ -67,6 +76,10 @@ export function adminPaymentFromBooking(
     totalPriceAmd?: number | null;
     paymentNotes?: string | null;
     paymentReminderDateIso?: string | null;
+    /** Preferred when no finance tx — when payment was captured. */
+    paidAtIso?: string | null;
+    /** Fallback — when the booking itself was created. */
+    createdAt?: string | null;
   },
   finance?: { method?: TxMethod; createdAt?: string } | null,
 ): AdminBookingPaymentState {
@@ -85,10 +98,11 @@ export function adminPaymentFromBooking(
     status = "partial";
     paidStr = String(paid);
   }
-  const datetimeLocal =
-    finance?.createdAt && !Number.isNaN(new Date(finance.createdAt).getTime())
-      ? toDatetimeLocalValue(new Date(finance.createdAt))
-      : toDatetimeLocalValue(new Date());
+  const datetimeLocal = datetimeLocalFromIsoCandidates(
+    finance?.createdAt,
+    booking.paidAtIso,
+    booking.createdAt,
+  );
   return {
     status,
     paidStr,

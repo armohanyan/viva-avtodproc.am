@@ -150,6 +150,9 @@ export default function QuickPracticalBookingModal({
 
   const [studentId, setStudentId] = useState("");
 
+  /** Kept in sync with the picker so finance customer does not depend on directory id type / refresh races. */
+  const [selectedStudent, setSelectedStudent] = useState<AdminStudentMini | null>(null);
+
   const [branchId, setBranchId] = useState(initialBranchId);
 
   const [lessonType, setLessonType] = useState<PracticalLessonType | "">("");
@@ -195,6 +198,8 @@ export default function QuickPracticalBookingModal({
     if (!open) return;
 
     setStudentId("");
+
+    setSelectedStudent(null);
 
     setBranchId(initialBranchId);
 
@@ -356,7 +361,13 @@ export default function QuickPracticalBookingModal({
 
         const createdAtIso = new Date(bookingPayment.datetimeLocal).toISOString();
 
-        const stu = students.find((s) => s.id === studentId);
+        const stu =
+          selectedStudent && String(selectedStudent.id) === String(studentId)
+            ? selectedStudent
+            : students.find((s) => String(s.id) === String(studentId));
+
+        const customer =
+          (stu?.name ?? "").trim() || `Student #${studentId}`;
 
         await vivaApiJson("/finance/transactions", {
 
@@ -366,9 +377,9 @@ export default function QuickPracticalBookingModal({
 
             createdAt: createdAtIso,
 
-            customer: stu?.name?.trim() ?? "",
+            customer,
 
-            email: stu?.email?.trim() ?? "",
+            email: (stu?.email ?? "").trim(),
 
             branchId: Number(branchId),
 
@@ -550,11 +561,18 @@ export default function QuickPracticalBookingModal({
 
             value={studentId}
 
-            onChange={(s) => setStudentId(s?.id ?? "")}
+            onChange={(s) => {
+              setSelectedStudent(s);
+              setStudentId(s ? String(s.id) : "");
+            }}
 
             branchIdForNewStudent={branchId}
 
-            onStudentCreated={onStudentCreated}
+            onStudentCreated={(s) => {
+              setSelectedStudent(s);
+              setStudentId(String(s.id));
+              onStudentCreated(s);
+            }}
 
           />
 

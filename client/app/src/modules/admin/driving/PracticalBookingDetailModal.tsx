@@ -226,8 +226,8 @@ export default function PracticalBookingDetailModal({
             method: "POST",
             body: {
               createdAt: new Date(bookingPayment.datetimeLocal).toISOString(),
-              customer: booking.studentName,
-              email: booking.studentEmail ?? "",
+              customer: (booking.studentName ?? "").trim() || `Student #${booking.studentId}`,
+              email: (booking.studentEmail ?? "").trim(),
               branchId: Number(booking.branchId),
               method: bookingPayment.method,
               grossAmd: paid,

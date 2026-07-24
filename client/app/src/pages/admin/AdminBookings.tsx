@@ -201,7 +201,11 @@ function packagePaymentDescriptionLine(pkgName: string, studentId: string, stude
 
 function studentContact(students: StudentRow[], studentId: string): { name: string; email: string } {
   const s = students.find((x) => studentIdMatches(x.id, studentId));
-  return { name: s?.name ?? "", email: (s?.email ?? "").trim() };
+  const name = (s?.name ?? "").trim();
+  return {
+    name: name || `Student #${studentId}`,
+    email: (s?.email ?? "").trim(),
+  };
 }
 
 /** Hour starts from first `time` up to exclusive `endTime` (same as API multi-slot bookings). */
@@ -282,6 +286,10 @@ export default function AdminBookings() {
   const [studentFilter, setStudentFilter] = useState("");
   const [instructorFilter, setInstructorFilter] = useState("");
   const [createdByFilter, setCreatedByFilter] = useState<"all" | "student" | "admin">("all");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
+  const [slotStartDate, setSlotStartDate] = useState("");
+  const [slotEndDate, setSlotEndDate] = useState("");
   const [editBooking, setEditBooking] = useState<Booking | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -302,8 +310,25 @@ export default function AdminBookings() {
       studentUserId: studentFilter,
       instructorUserId: instructorFilter,
       createdByType: createdByFilter,
+      createdFrom,
+      createdTo,
+      slotStartDate,
+      slotEndDate,
     }),
-    [activeBookingsTab, search, statusFilter, lessonTypeFilter, paymentFilter, studentFilter, instructorFilter, createdByFilter],
+    [
+      activeBookingsTab,
+      search,
+      statusFilter,
+      lessonTypeFilter,
+      paymentFilter,
+      studentFilter,
+      instructorFilter,
+      createdByFilter,
+      createdFrom,
+      createdTo,
+      slotStartDate,
+      slotEndDate,
+    ],
   );
 
   const {
@@ -326,17 +351,38 @@ export default function AdminBookings() {
     enrollmentStatus: "all",
     enabled: needsStudentsMini,
   });
-  const studentsMini = useMemo<StudentRow[]>(
-    () =>
-      studentsMiniRaw.map((s) => ({
-        id: s.id,
+  /** Newly created students (picker) until directory refresh includes them. */
+  const [extraStudentsMini, setExtraStudentsMini] = useState<StudentRow[]>([]);
+  const studentsMini = useMemo<StudentRow[]>(() => {
+    const mapped = studentsMiniRaw.map((s) => ({
+      id: String(s.id),
+      name: s.name,
+      email: s.email,
+      phone: s.phone,
+      phone2: s.phone2,
+    }));
+    const byId = new Map(mapped.map((s) => [s.id, s]));
+    for (const extra of extraStudentsMini) {
+      const id = String(extra.id);
+      if (!byId.has(id)) byId.set(id, { ...extra, id });
+    }
+    return [...byId.values()];
+  }, [studentsMiniRaw, extraStudentsMini]);
+
+  const rememberCreatedStudent = useCallback((s: AdminStudentMini) => {
+    setExtraStudentsMini((prev) => {
+      const id = String(s.id);
+      const next: StudentRow = {
+        id,
         name: s.name,
         email: s.email,
         phone: s.phone,
         phone2: s.phone2,
-      })),
-    [studentsMiniRaw],
-  );
+      };
+      return [...prev.filter((x) => !studentIdMatches(x.id, id)), next];
+    });
+    void refreshStudentsMini();
+  }, [refreshStudentsMini]);
 
   /** Bumped whenever bookings change so instructor busy grids reload. */
   const [busyGridReloadKey, setBusyGridReloadKey] = useState(0);
@@ -1320,7 +1366,12 @@ export default function AdminBookings() {
     } else if (system) {
       setEditManualTxId(null);
       setEditSystemPayment(system);
-      setEditBookingPayment(adminPaymentFromBooking(editBooking));
+      setEditBookingPayment(
+        adminPaymentFromBooking(editBooking, {
+          method: system.method as TxMethod,
+          createdAt: system.createdAt,
+        }),
+      );
     } else {
       setEditManualTxId(null);
       setEditSystemPayment(null);
@@ -1995,6 +2046,65 @@ export default function AdminBookings() {
               </select>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block" htmlFor="bookings-created-from">
+                {t("adminBookingsFilterCreatedFrom")}
+              </label>
+              <Input
+                id="bookings-created-from"
+                type="date"
+                value={createdFrom}
+                max={createdTo || undefined}
+                onChange={(e) => setCreatedFrom(e.target.value)}
+                className="h-9"
+                aria-label={t("adminBookingsFilterCreatedFrom")}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block" htmlFor="bookings-created-to">
+                {t("adminBookingsFilterCreatedTo")}
+              </label>
+              <Input
+                id="bookings-created-to"
+                type="date"
+                value={createdTo}
+                min={createdFrom || undefined}
+                onChange={(e) => setCreatedTo(e.target.value)}
+                className="h-9"
+                aria-label={t("adminBookingsFilterCreatedTo")}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block" htmlFor="bookings-slot-from">
+                {t("adminBookingsFilterSlotFrom")}
+              </label>
+              <Input
+                id="bookings-slot-from"
+                type="date"
+                value={slotStartDate}
+                max={slotEndDate || undefined}
+                onChange={(e) => setSlotStartDate(e.target.value)}
+                className="h-9"
+                aria-label={t("adminBookingsFilterSlotFrom")}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block" htmlFor="bookings-slot-to">
+                {t("adminBookingsFilterSlotTo")}
+              </label>
+              <Input
+                id="bookings-slot-to"
+                type="date"
+                value={slotEndDate}
+                min={slotStartDate || undefined}
+                onChange={(e) => setSlotEndDate(e.target.value)}
+                className="h-9"
+                aria-label={t("adminBookingsFilterSlotTo")}
+              />
+            </div>
+          </div>
         </div>
 
         <AdminTableScroll>
@@ -2316,13 +2426,10 @@ export default function AdminBookings() {
                     value={editBooking.studentId}
                     onChange={(s) => {
                       if (!s) return;
-                      setEditBooking({ ...editBooking, studentId: s.id });
+                      setEditBooking({ ...editBooking, studentId: String(s.id) });
                     }}
                     branchIdForNewStudent={editBooking.branchId}
-                    onStudentCreated={(s) => {
-                      void refreshStudentsMini();
-                      setStudentNames((prev) => ({ ...prev, [s.id]: s.name }));
-                    }}
+                    onStudentCreated={rememberCreatedStudent}
                   />
                 </div>
                 <div>
@@ -2624,14 +2731,11 @@ export default function AdminBookings() {
                         value={draft.studentId}
                         onChange={(s) => {
                           if (!s) return;
-                          setDraft({ ...draft, studentId: s.id });
+                          setDraft({ ...draft, studentId: String(s.id) });
                         }}
                         branchIdForNewStudent={draft.branchId}
                         invalid={addFieldInvalid.student}
-                        onStudentCreated={(s) => {
-                          void refreshStudentsMini();
-                          setStudentNames((prev) => ({ ...prev, [s.id]: s.name }));
-                        }}
+                        onStudentCreated={rememberCreatedStudent}
                       />
                       {addFieldInvalid.student ? (
                         <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectStudent")}</p>
