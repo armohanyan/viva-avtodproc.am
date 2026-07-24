@@ -58,6 +58,8 @@ export default class BookingSlotValidationService {
     lessonType?: 'practical' | 'theory' | 'theory_personal';
     /** Bulk import of legacy bookings: skip past/schedule checks; still block duplicate slots. */
     allowHistoricalSlots?: boolean;
+    /** Admin create: allow booking slots whose start is already in the past (keeps schedule checks). */
+    allowPastSlots?: boolean;
   }): Promise<void> {
     const dateIso = input.dateIso.slice(0, 10);
     if (!Number.isFinite(input.branchId) || input.branchId <= 0) {
@@ -77,12 +79,13 @@ export default class BookingSlotValidationService {
         : null;
 
     const allowHistorical = input.allowHistoricalSlots === true;
+    const allowPast = allowHistorical || input.allowPastSlots === true;
 
     for (const slot of input.slots) {
       const editingExistingBooking =
         input.excludeBookingId != null && Number.isFinite(input.excludeBookingId) && input.excludeBookingId > 0;
       if (
-        !allowHistorical &&
+        !allowPast &&
         !editingExistingBooking &&
         (isSlotDateBeforeToday(dateIso) || isSlotStartInPast(dateIso, slot))
       ) {
@@ -158,6 +161,7 @@ export default class BookingSlotValidationService {
     excludeBookingId?: number;
     lessonType?: 'practical' | 'theory' | 'theory_personal';
     allowHistoricalSlots?: boolean;
+    allowPastSlots?: boolean;
   }): Promise<void> {
     for (const e of input.entries) {
       await this.assertSlotsBookable({
@@ -168,6 +172,7 @@ export default class BookingSlotValidationService {
         excludeBookingId: input.excludeBookingId,
         lessonType: input.lessonType,
         allowHistoricalSlots: input.allowHistoricalSlots,
+        allowPastSlots: input.allowPastSlots,
       });
     }
   }

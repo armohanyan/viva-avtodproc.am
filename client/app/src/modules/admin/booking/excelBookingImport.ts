@@ -237,7 +237,7 @@ function parseSheetRows(
           timeSlot,
           sheetName,
           totalPriceStr: "",
-          paidStr: "",
+          paidStr: "0",
           paymentStatus: "unpaid",
         });
       });
@@ -361,7 +361,7 @@ function parseBookingExportSheet(sheet: XLSX.WorkSheet): ParsedExcelBooking[] {
     const lessonType = parseExportLessonType(get(row, "lessonType"));
     if (lessonType !== "practical") continue;
 
-    let paidStr = paidAmd > 0 ? String(paidAmd) : "";
+    let paidStr = paidAmd > 0 ? String(paidAmd) : "0";
     if (totalAmd > 0 && paidAmd >= totalAmd) {
       paymentStatus = "paid";
       paidStr = String(totalAmd);
@@ -494,7 +494,7 @@ export function withImportPaymentDefaults(
   return {
     ...booking,
     totalPriceStr,
-    paidStr: "",
+    paidStr: "0",
     paymentStatus: "unpaid",
   };
 }

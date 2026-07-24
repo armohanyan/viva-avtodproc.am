@@ -86,13 +86,14 @@ function mergeOrphanTimes(
   const known = new Set(
     planRows.map((r) => (r.time ? padSlotTime(r.time) : "")).filter(Boolean),
   );
-  const extras = orphanTimes
-    .map(padSlotTime)
-    .filter((t) => t && !known.has(t))
-    .sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+  // Deduplicate: many bookings can share one off-plan time (e.g. 14:00 in the lunch gap).
+  const extras = [
+    ...new Set(orphanTimes.map(padSlotTime).filter((t) => t && !known.has(t))),
+  ].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
   if (extras.length === 0) return [...planRows];
 
   const timed: { time: string; mins: number }[] = [];
+  const seenTimed = new Set<string>();
   const breaks: PracticalSlotPlanRow[] = [];
   for (const r of planRows) {
     if (r.time == null || r.time === "") {
@@ -100,9 +101,13 @@ function mergeOrphanTimes(
       continue;
     }
     const t = padSlotTime(r.time);
+    if (seenTimed.has(t)) continue;
+    seenTimed.add(t);
     timed.push({ time: t, mins: parseTimeToMinutes(t) });
   }
   for (const t of extras) {
+    if (seenTimed.has(t)) continue;
+    seenTimed.add(t);
     timed.push({ time: t, mins: parseTimeToMinutes(t) });
   }
   timed.sort((a, b) => a.mins - b.mins);

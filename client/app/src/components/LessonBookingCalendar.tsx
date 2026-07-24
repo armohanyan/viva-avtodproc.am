@@ -670,7 +670,10 @@ export default function LessonBookingCalendar({
       if (blocksLoading || branchScheduleLoading || practicalPlanLoading || instructorPlanLoading) {
         return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: false };
       }
-      if (isSlotDateBeforeToday(dateIso, yerevanToday) || isSlotStartInPast(dateIso, slot)) {
+      if (
+        mode !== "admin" &&
+        (isSlotDateBeforeToday(dateIso, yerevanToday) || isSlotStartInPast(dateIso, slot))
+      ) {
         return { status: "unavailable", reason: "past", outsideBranchDayHours: false };
       }
 
@@ -1067,8 +1070,10 @@ export default function LessonBookingCalendar({
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
-            onClick={() => setWeekOffset((w) => Math.max(0, w - 1))}
-            disabled={weekOffset === 0}
+            onClick={() =>
+              setWeekOffset((w) => (mode === "admin" ? w - 1 : Math.max(0, w - 1)))
+            }
+            disabled={mode !== "admin" && weekOffset === 0}
             className="w-8 h-8 rounded-lg border border-border/60 flex items-center justify-center text-muted-foreground hover:bg-accent disabled:opacity-30"
           >
             <ChevronLeft className="w-4 h-4" />

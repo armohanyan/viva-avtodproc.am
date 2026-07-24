@@ -87,6 +87,14 @@ function isSingleBookingResourcePath(path: string): boolean {
 	return /^\/bookings\/\d+(?:\/|$)/.test(path);
 }
 
+/**
+ * Instructor busy-slots must stay instructor-wide so calendars/slot pickers disable times
+ * already booked under any branch (matrix cells filter by branchId on the client).
+ */
+function isInstructorBusySlotsPath(path: string): boolean {
+	return /^\/instructors\/\d+\/busy-slots$/.test(path);
+}
+
 function queryHasScopedUserId(suffix: string): boolean {
 	const q = suffix.indexOf("?");
 	if (q < 0) return false;
@@ -100,6 +108,7 @@ export function shouldAppendAdminBranchFilter(suffix: string): boolean {
 	const path = pathWithoutQuery(suffix);
 	if (path.includes("branchId=")) return false;
 	if (isSingleBookingResourcePath(path)) return false;
+	if (isInstructorBusySlotsPath(path)) return false;
 	return BRANCH_FILTER_PATH_PREFIXES.some(
 		(prefix) => path === prefix || path.startsWith(`${prefix}/`),
 	);

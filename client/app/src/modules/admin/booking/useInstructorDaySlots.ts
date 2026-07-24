@@ -7,14 +7,11 @@ import {
   defaultBranchScheduleRules,
   hourlySlotStartsForBranchDate,
   isSlotBlockedByBranchScheduleRules,
-  isSlotDateBeforeToday,
-  isSlotStartInPast,
   normalizeBranchScheduleFromApi,
   type SlotUnavailabilityReason,
 } from "src/modules/booking/booking-slot.util";
 import { practicalSlotRangeMinutesFromBookable } from "src/modules/booking/practical-slot-plan";
 import { useEffectivePracticalSlots } from "src/modules/booking/useEffectivePracticalSlots";
-import { yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { padSlotTime, type InstructorBusySlotRow } from "./adminAvailabilityGrid";
 
@@ -123,8 +120,6 @@ export function useInstructorDaySlots({
     };
   }, [open, branchId, usePracticalPlan]);
 
-  const yerevanToday = useMemo(() => yerevanTodayIso(), [dateIso, open]);
-
   const busyKeys = useMemo(() => {
     const s = new Set<string>();
     for (const b of busySlots) {
@@ -152,9 +147,7 @@ export function useInstructorDaySlots({
       if (combinedLoading) {
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };
       }
-      if (isSlotDateBeforeToday(dateIso, yerevanToday) || isSlotStartInPast(dateIso, slot)) {
-        return { time: slot, status: "unavailable" as const, reason: "past" as const };
-      }
+      // Admin may book past slots (e.g. today's morning later in the day).
 
       if (!usePracticalPlan) {
         const branchReason = branchScheduleBlockReason(dateIso, slot, branchScheduleRules);
@@ -188,7 +181,6 @@ export function useInstructorDaySlots({
     branchScheduleRules,
     loading,
     planLoading,
-    yerevanToday,
     busyKeys,
     availabilityBlocks,
     effectiveTimes,

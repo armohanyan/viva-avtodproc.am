@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import type { TranslationKey } from "src/lib/i18n";
-import { yerevanAddCalendarDays, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
+import { yerevanAddCalendarDays } from "src/lib/yerevanLessonCalendar";
 import { cn } from "src/lib/utils";
 import {
   armenianWeekdayShort,
@@ -49,7 +49,6 @@ export default function AdminInstructorDaySlotsModal({
   const [capError, setCapError] = useState(false);
 
   const viewDay = viewDateIso.slice(0, 10);
-  const todayIso = useMemo(() => yerevanTodayIso(), [open]);
 
   const { slots, loading } = useInstructorDaySlots({
     instructorId,
@@ -75,8 +74,6 @@ export default function AdminInstructorDaySlotsModal({
     () => sessionEntries.filter((e) => e.dateIso.slice(0, 10) !== viewDay),
     [sessionEntries, viewDay],
   );
-
-  const canGoPrevDay = viewDay > todayIso;
 
   const toggleSlot = (time: string) => {
     const key = slotEntryKey(viewDay, time);
@@ -127,7 +124,7 @@ export default function AdminInstructorDaySlotsModal({
           variant="outline"
           size="icon"
           className="h-8 w-8 shrink-0"
-          disabled={!canGoPrevDay}
+          disabled={false}
           onClick={() => setViewDateIso((d) => yerevanAddCalendarDays(d, -1))}
           aria-label={t("adminBookingSlotsModalPrevDay")}
         >

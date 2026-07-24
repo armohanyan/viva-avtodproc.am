@@ -1800,7 +1800,7 @@ export default class BookingService {
     toIso: string,
     excludeBookingId?: number,
     branchId?: number,
-  ): Promise<{ dateIso: string; time: string; studentUserId: number }[]> {
+  ): Promise<{ dateIso: string; time: string; studentUserId: number; branchId: number }[]> {
     const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
     if (!exists) return [];
 
@@ -1822,7 +1822,7 @@ export default class BookingService {
         {
           model: Booking,
           as: 'booking',
-          attributes: ['studentUserId'],
+          attributes: ['studentUserId', 'branchId'],
           required: true,
           where: bookingWhere,
         },
@@ -1830,11 +1830,12 @@ export default class BookingService {
     });
 
     const fromSlots = slotRows.map((r) => {
-      const bk = (r as unknown as { booking: { studentUserId: number } }).booking;
+      const bk = (r as unknown as { booking: { studentUserId: number; branchId: number } }).booking;
       return {
         dateIso: dateIsoString(r.dateIso),
         time: r.slotTime,
         studentUserId: bk.studentUserId,
+        branchId: bk.branchId,
       };
     });
 
@@ -1857,7 +1858,9 @@ export default class BookingService {
       where: legacyWhere,
     });
 
-    const fromLegacy = legacyBookings.flatMap((b) => expandLegacyBookingHours(b));
+    const fromLegacy = legacyBookings.flatMap((b) =>
+      expandLegacyBookingHours(b).map((slot) => ({ ...slot, branchId: b.branchId })),
+    );
 
     const merged = [...fromSlots, ...fromLegacy];
     merged.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time));
@@ -2341,6 +2344,7 @@ export default class BookingService {
       entries,
       lessonType: input.lessonType,
       allowHistoricalSlots: input.allowHistoricalSlots,
+      allowPastSlots: true,
     });
 
     const first = entries[0];
@@ -2520,6 +2524,7 @@ export default class BookingService {
         paymentReminderDate: input.paymentReminderDate,
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
+        allowHistoricalSlots: input.allowHistoricalSlots,
       });
     }
 
@@ -2549,6 +2554,7 @@ export default class BookingService {
       slots: sorted,
       lessonType: input.type,
       allowHistoricalSlots: input.allowHistoricalSlots,
+      allowPastSlots: true,
     });
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
@@ -2730,6 +2736,7 @@ export default class BookingService {
             instructorUserId,
             entries: opts.entries,
             lessonType: opts.lessonType,
+            allowPastSlots: true,
           });
           const prepaidMeta = await consumePackageLessonCreditsInTx({
             studentUserId: input.studentId,
@@ -2816,6 +2823,7 @@ export default class BookingService {
     paymentReminderDate?: string | null;
     totalPriceAmd?: number;
     createdByUserId?: number | null;
+    allowHistoricalSlots?: boolean;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
 
@@ -2905,6 +2913,8 @@ export default class BookingService {
       dateIso,
       slots: sorted,
       lessonType: input.lessonType,
+      allowHistoricalSlots: input.allowHistoricalSlots,
+      allowPastSlots: true,
     });
 
     let newId = 0;

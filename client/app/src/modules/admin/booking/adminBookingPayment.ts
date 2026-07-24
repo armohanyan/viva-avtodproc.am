@@ -16,7 +16,7 @@ export type AdminBookingPaymentState = {
 export function defaultAdminBookingPayment(status: AdminBookingPaymentStatus = "unpaid"): AdminBookingPaymentState {
   return {
     status,
-    paidStr: "",
+    paidStr: "0",
     method: "cash",
     datetimeLocal: toDatetimeLocalValue(new Date()),
     paymentNotes: "",
@@ -74,13 +74,13 @@ export function adminPaymentFromBooking(
   const total = booking.totalPriceAmd ?? 0;
   const paid = booking.paidAmountAmd ?? 0;
   let status: AdminBookingPaymentStatus = "unpaid";
-  let paidStr = "";
+  let paidStr = "0";
   if (ps === "paid" || (total > 0 && paid >= total)) {
     status = "paid";
-    paidStr = paid > 0 ? String(paid) : total > 0 ? String(total) : "";
+    paidStr = paid > 0 ? String(paid) : total > 0 ? String(total) : "0";
   } else if (ps === "partial" || (paid > 0 && paid < total)) {
     status = "partial";
-    paidStr = paid > 0 ? String(paid) : "";
+    paidStr = paid > 0 ? String(paid) : "0";
   } else if (paid > 0) {
     status = "partial";
     paidStr = String(paid);
@@ -111,11 +111,13 @@ export function validateAdminBookingPayment(
   const total = Math.max(0, Math.round(totalAmd));
   if (total <= 0) return null;
   if (state.status === "paid") return null;
-  const paid = parseAmdInput(state.paidStr);
+  const raw = parseAmdInput(state.paidStr);
+  // Empty paid field means 0 (unpaid); reject only non-numeric garbage.
+  const paid = Number.isFinite(raw) ? raw : state.paidStr.trim() === "" ? 0 : NaN;
   if (!Number.isFinite(paid)) return "adminBookingPaymentPartialRequired";
   if (paid < 0) return "adminBookingPaymentPartialPositive";
   if (paid > total) return "adminBookingPaymentPartialLessThanTotal";
-  const status = inferAdminPaymentStatusFromAmounts(total, Number.isFinite(paid) ? Math.round(paid) : 0);
+  const status = inferAdminPaymentStatusFromAmounts(total, Math.round(paid));
   if (status === "partial") {
     if (paid <= 0) return "adminBookingPaymentPartialPositive";
     if (paid >= total) return "adminBookingPaymentPartialLessThanTotal";
@@ -278,6 +280,6 @@ export function paidStrForStatusChange(
 ): string {
   const total = Math.max(0, Math.round(totalAmd));
   if (status === "paid") return total > 0 ? String(total) : currentPaidStr;
-  if (status === "unpaid") return "";
+  if (status === "unpaid") return "0";
   return currentPaidStr;
 }

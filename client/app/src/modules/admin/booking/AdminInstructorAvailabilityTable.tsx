@@ -94,6 +94,7 @@ export default function AdminInstructorAvailabilityTable({
   /** Updated synchronously on confirm so the grid reflects picks before parent state settles. */
   const [pendingSelection, setPendingSelection] = useState<{
     instructorId: string;
+    branchId: string;
     entries: readonly { dateIso: string; time: string }[];
   } | null>(null);
 
@@ -152,8 +153,12 @@ export default function AdminInstructorAvailabilityTable({
     if (selectedEntries.length === 0) return;
     const ownerId = activeInstructorId || selectionInstructorId;
     if (!ownerId) return;
-    setPendingSelection({ instructorId: ownerId, entries: selectedEntries });
-  }, [selectedEntries, activeInstructorId, selectionInstructorId]);
+    setPendingSelection((prev) => ({
+      instructorId: ownerId,
+      branchId: prev?.instructorId === ownerId ? prev.branchId : bookingBranchId,
+      entries: selectedEntries,
+    }));
+  }, [selectedEntries, activeInstructorId, selectionInstructorId, bookingBranchId]);
 
   const pendingSource =
     pendingSelection && pendingSelection.entries.length > 0
@@ -161,13 +166,18 @@ export default function AdminInstructorAvailabilityTable({
       : selectedEntries.length > 0
         ? {
             instructorId: activeInstructorId || selectionInstructorId,
+            branchId: bookingBranchId,
             entries: selectedEntries,
           }
         : null;
 
   const pendingLessonCounts = useMemo(() => {
     if (!pendingSource?.entries.length || !pendingSource.instructorId) return new Map<string, number>();
-    return aggregatePendingCountsByInstructorDay(pendingSource.instructorId, pendingSource.entries);
+    return aggregatePendingCountsByInstructorDay(
+      pendingSource.instructorId,
+      pendingSource.entries,
+      pendingSource.branchId,
+    );
   }, [pendingSource]);
 
   const selectionOwnerId = pendingSource?.instructorId || activeInstructorId || selectionInstructorId;
@@ -175,8 +185,10 @@ export default function AdminInstructorAvailabilityTable({
   const selectedByInstructorDay = useMemo(() => {
     const m = new Set<string>();
     if (!selectionOwnerId || !pendingSource?.entries.length) return m;
+    const bid = pendingSource.branchId?.trim() || "";
     for (const e of pendingSource.entries) {
-      m.add(`${selectionOwnerId}|${e.dateIso.slice(0, 10)}`);
+      const d = e.dateIso.slice(0, 10);
+      m.add(bid ? `${selectionOwnerId}|${bid}|${d}` : `${selectionOwnerId}|${d}`);
     }
     return m;
   }, [pendingSource, selectionOwnerId]);
@@ -186,8 +198,6 @@ export default function AdminInstructorAvailabilityTable({
     return `${formatGridDateLabel(dates[0])} – ${formatGridDateLabel(dates[dates.length - 1])}`;
   }, [dates]);
 
-  const canGoPrev = rangeStartIso > defaultGridRangeStart();
-
   return (
     <div className="space-y-3 min-w-0">
       <div className="flex items-center justify-end gap-2">
@@ -196,7 +206,6 @@ export default function AdminInstructorAvailabilityTable({
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            disabled={!canGoPrev}
             onClick={() => setRangeStartIso((s) => yerevanAddCalendarMonths(s, -ADMIN_AVAILABILITY_GRID_MONTHS))}
             aria-label={t("adminBookingAvailabilityGridPrev")}
           >
@@ -281,13 +290,21 @@ export default function AdminInstructorAvailabilityTable({
                   </td>
                   {branchGroups.flatMap((g) =>
                     g.instructors.map((ins) => {
-                      const busyCount = lessonCountForCell(lessonCounts, ins.id, dateIso);
-                      const pendingCount = lessonCountForCell(pendingLessonCounts, ins.id, dateIso);
+                      const busyCount = lessonCountForCell(lessonCounts, ins.id, dateIso, g.branchId);
+                      const pendingCount = lessonCountForCell(
+                        pendingLessonCounts,
+                        ins.id,
+                        dateIso,
+                        g.branchId,
+                      );
                       const cellLabel =
                         pendingCount > 0 ? `${busyCount} + ${pendingCount}` : String(busyCount);
                       const hasPick =
                         selectionOwnerId === ins.id &&
-                        selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`);
+                        (selectedByInstructorDay.has(
+                          `${ins.id}|${g.branchId}|${dateIso.slice(0, 10)}`,
+                        ) ||
+                          selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`));
                       const disabled = !cellClickMode && !studentName.trim();
                       return (
                         <td key={`${dateIso}-${g.branchId}-${ins.id}`} className="p-0 border-r border-b border-border/30 last:border-r-0">
@@ -386,7 +403,7 @@ export default function AdminInstructorAvailabilityTable({
             const instructorId = slotModal.instructor.id;
             const pickedBranchId = slotModal.branchId;
             const normalized = sortSlotEntriesChrono(entries);
-            setPendingSelection({ instructorId, entries: normalized });
+            setPendingSelection({ instructorId, branchId: pickedBranchId, entries: normalized });
             setActiveInstructorId(instructorId);
             onEntriesChange(normalized, instructorId);
             setSlotModal(null);

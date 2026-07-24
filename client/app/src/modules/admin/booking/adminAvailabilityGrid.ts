@@ -7,7 +7,13 @@ export const ADMIN_AVAILABILITY_GRID_MONTHS = 1;
 
 const ARMENIAN_WEEKDAY_SHORT = ["Կիր", "Երկ", "Երք", "Չրք", "Հնգ", "Ուրբ", "Շբթ"] as const;
 
-export type InstructorBusySlotRow = { dateIso: string; time: string; studentUserId: number };
+export type InstructorBusySlotRow = {
+  dateIso: string;
+  time: string;
+  studentUserId: number;
+  /** Booking branch — used so matrix cells count lessons per instructor × branch. */
+  branchId?: number | string;
+};
 
 export type GridInstructorColumn = {
   instructor: Instructor;
@@ -104,6 +110,11 @@ export function buildBranchInstructorGroups(
   return groups;
 }
 
+/** Count key: `instructorId|branchId|dateIso` (branch-scoped matrix cells). */
+export function busyCountCellKey(instructorId: string, branchId: string, dateIso: string): string {
+  return `${instructorId}|${String(branchId).trim()}|${dateIso.slice(0, 10)}`;
+}
+
 export function aggregateBusyCountsByInstructorDay(
   instructorIds: readonly string[],
   busyByInstructor: ReadonlyMap<string, InstructorBusySlotRow[]>,
@@ -111,13 +122,11 @@ export function aggregateBusyCountsByInstructorDay(
   const counts = new Map<string, number>();
   for (const instructorId of instructorIds) {
     const rows = busyByInstructor.get(instructorId) ?? [];
-    const byDate = new Map<string, number>();
     for (const row of rows) {
-      const d = row.dateIso.slice(0, 10);
-      byDate.set(d, (byDate.get(d) ?? 0) + 1);
-    }
-    for (const [dateIso, n] of byDate) {
-      counts.set(`${instructorId}|${dateIso}`, n);
+      const branchId = row.branchId != null ? String(row.branchId).trim() : "";
+      if (!branchId) continue;
+      const key = busyCountCellKey(instructorId, branchId, row.dateIso);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
   return counts;
@@ -138,7 +147,13 @@ export function lessonCountForCell(
   counts: ReadonlyMap<string, number>,
   instructorId: string,
   dateIso: string,
+  branchId?: string,
 ): number {
+  const bid = branchId?.trim();
+  if (bid) {
+    return counts.get(busyCountCellKey(instructorId, bid, dateIso)) ?? 0;
+  }
+  // Legacy / pending keys without branch: instructorId|dateIso
   return counts.get(`${instructorId}|${dateIso.slice(0, 10)}`) ?? 0;
 }
 
@@ -146,12 +161,14 @@ export function lessonCountForCell(
 export function aggregatePendingCountsByInstructorDay(
   instructorId: string,
   entries: readonly { dateIso: string; time: string }[],
+  branchId?: string,
 ): Map<string, number> {
   const counts = new Map<string, number>();
   if (!instructorId) return counts;
+  const bid = branchId?.trim() || "";
   for (const e of entries) {
     const d = e.dateIso.slice(0, 10);
-    const key = `${instructorId}|${d}`;
+    const key = bid ? busyCountCellKey(instructorId, bid, d) : `${instructorId}|${d}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
