@@ -2,6 +2,7 @@ import DashboardLayout from "src/components/DashboardLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { useLang } from "src/lib/i18n";
 import { Card } from "src/components/ui/card";
+import { Skeleton } from "src/components/ui/skeleton";
 import { Link } from "wouter";
 import { Calendar, CheckCircle2, ArrowRight, LayoutDashboard } from "lucide-react";
 import { CountUpText } from "src/lib/motion";
@@ -15,8 +16,9 @@ import StudentRateInstructorsPanel from "src/components/dashboard/StudentRateIns
 export default function Dashboard() {
   const { t } = useLang();
   const { user } = useAccount();
-  const { bookings } = useStudentBookings(user?.accountType === "student" ? user.id : undefined);
-  const { upcomingBookingsCount, completedPracticalLessons } = useStudentEntitlements();
+  const { bookings, loading: bookingsLoading } = useStudentBookings(user?.accountType === "student" ? user.id : undefined);
+  const { upcomingBookingsCount, completedPracticalLessons, entitlementsLoading } = useStudentEntitlements();
+  const statsLoading = bookingsLoading || entitlementsLoading;
 
   const { upcoming: upcomingBookings } = partitionStudentBookings(bookings);
   const upcomingPreview = upcomingBookings.slice(0, 3);
@@ -45,11 +47,15 @@ export default function Dashboard() {
         {stats.map((s, i) => (
           <Card key={i} className="p-6 border-border">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-muted-foreground mb-1">{s.label}</p>
-                <p className="text-3xl font-bold text-foreground">
-                  <CountUpText value={s.value} />
-                </p>
+                {statsLoading ? (
+                  <Skeleton className="h-9 w-16" />
+                ) : (
+                  <p className="text-3xl font-bold text-foreground">
+                    <CountUpText value={s.value} />
+                  </p>
+                )}
               </div>
               <div className={`w-12 h-12 ${s.bg} rounded-xl flex items-center justify-center`}>
                 <s.icon className={`w-6 h-6 ${s.color}`} />
@@ -68,7 +74,19 @@ export default function Dashboard() {
         </Link>
       </div>
       <div className="space-y-3">
-        {upcomingPreview.length === 0 ? (
+        {bookingsLoading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-4 border-border">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+                <Skeleton className="h-8 w-20" />
+              </div>
+            </Card>
+          ))
+        ) : upcomingPreview.length === 0 ? (
           <Card className="p-4 border-border text-sm text-muted-foreground">{t("noUpcoming")}</Card>
         ) : (
           upcomingPreview.map((b) => <StudentDemoBookingRow key={b.id} booking={b} variant="dashboard" />)

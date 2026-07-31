@@ -22,6 +22,7 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
+import { Skeleton } from "src/components/ui/skeleton";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { absWouterHref } from "src/lib/wouterFullPath";
@@ -260,7 +261,19 @@ export default function AdminStudentDetails() {
   if (student === undefined) {
     return (
       <AdminLayout>
-        <div className="p-6 text-sm text-muted-foreground">{t("loading")}</div>
+        <div className="space-y-6">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-lg" />
+            ))}
+          </div>
+          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
       </AdminLayout>
     );
   }

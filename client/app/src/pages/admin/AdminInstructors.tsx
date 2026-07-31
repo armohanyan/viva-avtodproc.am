@@ -11,6 +11,7 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
 import { Plus, Edit2, Trash2, Calendar, School, ChevronLeft, ChevronRight, Mail } from "lucide-react";
@@ -170,6 +171,7 @@ export default function AdminInstructors() {
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [listLoading, setListLoading] = useState(true);
   const [fleetCars, setFleetCars] = useState<FleetCarRow[]>([]);
   const [invitingId, setInvitingId] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -236,6 +238,8 @@ export default function AdminInstructors() {
       );
     } catch {
       setInstructors([]);
+    } finally {
+      setListLoading(false);
     }
   }, []);
 
@@ -663,7 +667,10 @@ export default function AdminInstructors() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredInstructors.map((ins) => {
+              {listLoading ? (
+                <TableSkeletonRows cols={9} />
+              ) : (
+              filteredInstructors.map((ins) => {
                 const branchesLabel = formatInstructorBranches(ins, branches, cities);
                 return (
                 <AdminTableRowContextMenu
@@ -793,7 +800,8 @@ export default function AdminInstructors() {
                   </tr>
                 </AdminTableRowContextMenu>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </AdminTableScroll>

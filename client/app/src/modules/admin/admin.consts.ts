@@ -51,6 +51,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
       { href: "/admin/finance/petrol", translationKey: "adminPetrolNav" },
     ],
   },
+  { href: "/admin/salary", translationKey: "adminSalaryNav", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/cars", translationKey: "adminSidebarCars", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/branches", translationKey: "adminSidebarBranches" },

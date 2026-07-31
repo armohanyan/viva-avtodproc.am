@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { Card } from "src/components/ui/card";
 import {
   Select,
@@ -42,6 +43,7 @@ export function ContactRequestsPanel({ onCountsChange }: Props) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [rows, setRows] = useState<ContactRequestRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<ContactRequestsFilter>("all");
 
@@ -51,6 +53,8 @@ export function ContactRequestsPanel({ onCountsChange }: Props) {
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setLoading(false);
     }
   }, [showToast]);
 
@@ -99,7 +103,7 @@ export function ContactRequestsPanel({ onCountsChange }: Props) {
         </Select>
       </div>
       <Card className="overflow-hidden p-0">
-        {sortedRows.length === 0 ? (
+        {!loading && sortedRows.length === 0 ? (
           <p className="text-muted-foreground p-6 text-sm">{t("adminContactRequestsEmpty")}</p>
         ) : (
           <AdminTableScroll>
@@ -116,7 +120,10 @@ export function ContactRequestsPanel({ onCountsChange }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((r) => (
+                {loading ? (
+                  <TableSkeletonRows cols={7} cellClassName="px-3 py-2" />
+                ) : (
+                sortedRows.map((r) => (
                   <tr key={r.id} className="border-b last:border-0">
                     <td className="text-muted-foreground px-3 py-2 whitespace-nowrap">
                       {formatDateTime(r.createdAt, lang)}
@@ -142,7 +149,8 @@ export function ContactRequestsPanel({ onCountsChange }: Props) {
                       </Select>
                     </td>
                   </tr>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </AdminTableScroll>

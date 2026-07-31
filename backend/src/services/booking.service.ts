@@ -138,6 +138,24 @@ function meetLinkOrNull(v: unknown): string | null {
   return s.length > 0 ? s.slice(0, 512) : null;
 }
 
+/**
+ * Bulk practical gift: within a single booking, every 11th practical lesson is free
+ * (book 10 paid → +1 gift, book 20 paid → +2). Billable = count − floor(count / 11),
+ * so an 11-slot booking is charged as 10 × hourly rate.
+ */
+function billablePracticalSlotCount(slotCount: number): number {
+  if (!Number.isFinite(slotCount) || slotCount <= 0) return 0;
+  return slotCount - Math.floor(slotCount / 11);
+}
+
+/** Billable slot count for pricing; the gift rule applies to practical lessons only. */
+function billableSlotCountForLesson(
+  lessonType: 'practical' | 'theory' | 'theory_personal',
+  slotCount: number,
+): number {
+  return lessonType === 'practical' ? billablePracticalSlotCount(slotCount) : slotCount;
+}
+
 /** Admin may override auto-calculated lesson total (e.g. discount or custom rate). */
 function resolveAdminTotalPriceAmd(override: number | undefined, computed: number): number {
   if (override != null && Number.isFinite(override)) {
@@ -311,6 +329,30 @@ function adminCreatedByPatch(userId?: number | null): {
   return { createdByType: 'admin', createdByUserId: userId ?? null };
 }
 
+export type GiftBookingStatus = 'pending' | 'approved' | 'rejected';
+
+type GiftCreateInput = { isGift?: boolean; giftNote?: string | null };
+
+/** Resolved gift status for DTOs (legacy gift rows without a status default to `pending`). */
+function giftStatusFromRow(row: Pick<Booking, 'isGift' | 'giftStatus'>): GiftBookingStatus | null {
+  if (!row.isGift) return null;
+  const s = String(row.giftStatus ?? '').trim().toLowerCase();
+  return s === 'approved' || s === 'rejected' ? s : 'pending';
+}
+
+/** Row fields for a new admin booking marked as a gift (free lesson pending super admin approval). */
+function giftCreateFields(input: GiftCreateInput): {
+  isGift: boolean;
+  giftNote: string | null;
+  giftStatus: GiftBookingStatus | null;
+} {
+  if (input.isGift !== true) {
+    return { isGift: false, giftNote: null, giftStatus: null };
+  }
+  const note = typeof input.giftNote === 'string' && input.giftNote.trim().length > 0 ? input.giftNote.trim() : null;
+  return { isGift: true, giftNote: note, giftStatus: 'pending' };
+}
+
 export type BookingAdminDto = {
   id: number;
   studentId: number;
@@ -328,6 +370,12 @@ export type BookingAdminDto = {
   createdAt: string;
   /** Set when the student requested cancellation (≥24h rule) and staff must act. */
   cancellationRequestedAt: string | null;
+  /** Free gift lesson (no payment); requires super admin approval. */
+  isGift: boolean;
+  /** Gift approval lifecycle (`pending` / `approved` / `rejected`); null on non-gift rows. */
+  giftStatus: GiftBookingStatus | null;
+  /** Staff-only note explaining the gift. */
+  giftNote: string | null;
   /** `null` = not set; instructor or staff may update. */
   lessonPassedSuccessfully: boolean | null;
   /** From `booking_slots` when loaded (admin calendar / multi-day edits). */
@@ -390,6 +438,24 @@ export type AdminBookingListResult = {
 
 /** Canonical booking row statuses (DB + API). */
 export type BookingStatus = 'confirmed' | 'pending' | 'pending_payment' | 'cancelled' | 'refunded';
+
+/** Gift booking request row for the admin inbox (super admin approves/rejects). */
+export type GiftBookingRequestDto = {
+  id: number;
+  studentId: number;
+  studentName: string;
+  studentPhone: string;
+  instructorName: string;
+  branchId: number;
+  dateIso: string;
+  time: string;
+  endTime: string | null;
+  type: 'practical' | 'theory' | 'theory_personal';
+  status: string;
+  giftNote: string | null;
+  giftStatus: GiftBookingStatus;
+  createdAt: string;
+};
 
 /** Response for POST /bookings/:id/approve-student-cancellation (staff). */
 export type StaffApproveStudentCancellationResponse = {
@@ -1446,6 +1512,9 @@ export default class BookingService {
       branchId: b.branchId,
       createdAt,
       cancellationRequestedAt: b.cancellationRequestedAt ? new Date(b.cancellationRequestedAt).toISOString() : null,
+      isGift: Boolean(b.isGift),
+      giftStatus: giftStatusFromRow(b),
+      giftNote: b.isGift && b.giftNote?.trim() ? b.giftNote.trim() : null,
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
       paymentStatus: pay.paymentStatus,
       paidAmountAmd: pay.paidAmountAmd,
@@ -2092,7 +2161,7 @@ export default class BookingService {
     if (!Number.isFinite(hourly) || hourly < 0) {
       throw new InputValidationError('Instructor hourly rate is not configured.', HttpStatusCodesUtil.BAD_REQUEST);
     }
-    const totalPriceAmd = hourly * sorted.length;
+    const totalPriceAmd = hourly * billablePracticalSlotCount(sorted.length);
 
     await BookingSlotValidationService.assertSlotsBookable({
       branchId: input.branchId,
@@ -2389,6 +2458,8 @@ export default class BookingService {
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
+    isGift?: boolean;
+    giftNote?: string | null;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -2408,8 +2479,11 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, input.lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const computedTotal = Number.isFinite(hourly) ? hourly * entries.length : 0;
-    const totalPriceAmd = resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
+    const computedTotal = Number.isFinite(hourly)
+      ? hourly * billableSlotCountForLesson(input.lessonType, entries.length)
+      : 0;
+    const gift = giftCreateFields(input);
+    const totalPriceAmd = gift.isGift ? 0 : resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
 
     await BookingSlotValidationService.assertSlotEntriesBookable({
       branchId: input.branchId,
@@ -2479,6 +2553,9 @@ export default class BookingService {
             paidAt: payPatch.paidAt,
             paymentNotes: paymentExtras.paymentNotes,
             paymentReminderAt: paymentExtras.paymentReminderAt,
+            isGift: gift.isGift,
+            giftNote: gift.giftNote,
+            giftStatus: gift.giftStatus,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
             ...adminCreatedByPatch(input.createdByUserId),
           },
@@ -2496,6 +2573,9 @@ export default class BookingService {
 
     if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
+    }
+    if (gift.isGift) {
+      void BookingNotificationService.notifySuperAdminGiftBookingRequest(newId).catch(() => {});
     }
 
     const rows = await this.listAdmin();
@@ -2524,6 +2604,8 @@ export default class BookingService {
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
+    isGift?: boolean;
+    giftNote?: string | null;
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
     if (input.type === 'practical' && input.allowHistoricalSlots !== true) {
@@ -2566,6 +2648,8 @@ export default class BookingService {
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
         allowHistoricalSlots: input.allowHistoricalSlots,
+        isGift: input.isGift,
+        giftNote: input.giftNote,
       });
     }
 
@@ -2598,6 +2682,8 @@ export default class BookingService {
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
         allowHistoricalSlots: input.allowHistoricalSlots,
+        isGift: input.isGift,
+        giftNote: input.giftNote,
       });
     }
 
@@ -2633,8 +2719,11 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructor.id } });
     assertInstructorTeachesLessonType(profile, input.type);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const computedTotal = Number.isFinite(hourly) ? hourly * sorted.length : 0;
-    const totalPriceAmd = resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
+    const computedTotal = Number.isFinite(hourly)
+      ? hourly * billableSlotCountForLesson(input.type, sorted.length)
+      : 0;
+    const gift = giftCreateFields(input);
+    const totalPriceAmd = gift.isGift ? 0 : resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
 
     const payPatch = adminPaymentDbPatch(totalPriceAmd, {
       adminPaymentStatus: input.adminPaymentStatus,
@@ -2668,6 +2757,9 @@ export default class BookingService {
             paidAt: payPatch.paidAt,
             paymentNotes: paymentExtrasSingle.paymentNotes,
             paymentReminderAt: paymentExtrasSingle.paymentReminderAt,
+            isGift: gift.isGift,
+            giftNote: gift.giftNote,
+            giftStatus: gift.giftStatus,
             ...meetLinkPatchForLessonType(input.type, input.meetLink),
             ...adminCreatedByPatch(input.createdByUserId),
           },
@@ -2693,6 +2785,9 @@ export default class BookingService {
 
     if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
+    }
+    if (gift.isGift) {
+      void BookingNotificationService.notifySuperAdminGiftBookingRequest(newId).catch(() => {});
     }
 
     const rows = await this.listAdmin();
@@ -2897,6 +2992,8 @@ export default class BookingService {
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
+    isGift?: boolean;
+    giftNote?: string | null;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
 
@@ -2970,9 +3067,10 @@ export default class BookingService {
       input.lessonType === 'theory' && theoryCohort
         ? totalPriceAmdForTheoryCohortBooking(theoryCohort, hourly, sorted.length)
         : Number.isFinite(hourly)
-          ? hourly * sorted.length
+          ? hourly * billableSlotCountForLesson(input.lessonType, sorted.length)
           : 0;
-    const totalPriceAmd = resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
+    const gift = giftCreateFields(input);
+    const totalPriceAmd = gift.isGift ? 0 : resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
     const exclusiveEnd = await exclusiveEndForLesson(
       input.lessonType,
       sorted,
@@ -3038,6 +3136,9 @@ export default class BookingService {
             paidAt: payPatch.paidAt,
             paymentNotes: paymentExtrasMulti.paymentNotes,
             paymentReminderAt: paymentExtrasMulti.paymentReminderAt,
+            isGift: gift.isGift,
+            giftNote: gift.giftNote,
+            giftStatus: gift.giftStatus,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
             ...adminCreatedByPatch(input.createdByUserId),
           },
@@ -3063,6 +3164,9 @@ export default class BookingService {
 
     if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
+    }
+    if (gift.isGift) {
+      void BookingNotificationService.notifySuperAdminGiftBookingRequest(newId).catch(() => {});
     }
 
     const rows = await this.listAdmin();
@@ -3176,7 +3280,7 @@ export default class BookingService {
       lessonType === 'theory' && theoryCohortForPrice
         ? totalPriceAmdForTheoryCohortBooking(theoryCohortForPrice, hourly, sorted.length)
         : Number.isFinite(hourly)
-          ? hourly * sorted.length
+          ? hourly * billableSlotCountForLesson(lessonType, sorted.length)
           : row.totalPriceAmd ?? null;
 
     await BookingSlotValidationService.assertSlotsBookable({
@@ -3280,7 +3384,9 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly) ? hourly * entries.length : row.totalPriceAmd ?? null;
+    const totalPriceAmd = Number.isFinite(hourly)
+      ? hourly * billableSlotCountForLesson(lessonType, entries.length)
+      : row.totalPriceAmd ?? null;
 
     await BookingSlotValidationService.assertSlotEntriesBookable({
       branchId,
@@ -3971,6 +4077,107 @@ export default class BookingService {
       await row.update({ cancellationRequestedAt: null }, { transaction });
     });
     return { ok: true as const };
+  }
+
+  /** Gift booking requests for the admin inbox, newest first. */
+  static async listGiftBookings(branchId?: number): Promise<GiftBookingRequestDto[]> {
+    const rows = await Booking.findAll({
+      where: { isGift: true, ...(branchId !== undefined ? { branchId } : {}) },
+      include: [
+        { model: User, as: 'student', required: true, attributes: ['id', 'name', 'phone'] },
+        { model: User, as: 'instructor', required: false, attributes: ['name'] },
+      ],
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+    });
+    return rows.map((b) => {
+      const row = b as BookingWithUsers;
+      const created = (b as unknown as { createdAt?: Date | string }).createdAt;
+      return {
+        id: b.id,
+        studentId: row.student.id,
+        studentName: row.student.name?.trim() ?? '',
+        studentPhone: row.student.phone?.trim() ?? '',
+        instructorName: row.instructor?.name ?? '',
+        branchId: b.branchId,
+        dateIso: dateIsoString(b.dateIso),
+        time: b.time,
+        endTime: b.endTime ?? null,
+        type: b.lessonType,
+        status: normalizeBookingStatus(b.status),
+        giftNote: b.giftNote?.trim() ? b.giftNote.trim() : null,
+        giftStatus: giftStatusFromRow(b) ?? 'pending',
+        createdAt:
+          created instanceof Date
+            ? created.toISOString()
+            : typeof created === 'string'
+              ? created
+              : new Date().toISOString(),
+      };
+    });
+  }
+
+  /** Super admin: approve a gift booking request; the booking stays active and free of charge. */
+  static async superAdminApproveGiftBooking(bookingId: number): Promise<{ ok: true; giftStatus: 'approved' }> {
+    await sequelize.transaction(async (transaction) => {
+      const row = await Booking.findByPk(bookingId, { transaction, lock: Transaction.LOCK.UPDATE });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      if (!row.isGift) {
+        throw new InputValidationError('This booking is not a gift booking.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (giftStatusFromRow(row) !== 'pending') {
+        throw new InputValidationError('This gift booking has already been resolved.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      await row.update({ giftStatus: 'approved', giftDecidedAt: new Date() }, { transaction });
+    });
+    void BookingNotificationService.onGiftBookingDecision(bookingId, 'approved').catch(() => {});
+    return { ok: true, giftStatus: 'approved' };
+  }
+
+  /** Super admin: reject a gift booking request; the booking is cancelled and slots are freed. */
+  static async superAdminRejectGiftBooking(
+    bookingId: number,
+  ): Promise<{ ok: true; giftStatus: 'rejected'; status: BookingStatus }> {
+    let finalStatus: BookingStatus = 'cancelled';
+    let wasOpen = false;
+    await sequelize.transaction(async (transaction) => {
+      const row = await Booking.findByPk(bookingId, { transaction, lock: Transaction.LOCK.UPDATE });
+      if (!row) {
+        throw new InputValidationError('Booking not found.', HttpStatusCodesUtil.NOT_FOUND);
+      }
+      if (!row.isGift) {
+        throw new InputValidationError('This booking is not a gift booking.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      if (giftStatusFromRow(row) !== 'pending') {
+        throw new InputValidationError('This gift booking has already been resolved.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      await row.update({ giftStatus: 'rejected', giftDecidedAt: new Date() }, { transaction });
+      const st = normalizeBookingStatus(row.status);
+      if (st !== 'cancelled' && st !== 'refunded') {
+        wasOpen = true;
+        const fin = await finalizePracticalCancellationInTx({
+          row,
+          studentUserId: row.studentUserId,
+          transaction,
+          refundIfPaid: false,
+          cancellationReason: BOOKING_CANCELLATION_REASON.GIFT_REJECTED,
+        });
+        finalStatus = fin.status;
+      } else {
+        finalStatus = st;
+      }
+    });
+    setImmediate(() => {
+      void BookingNotificationService.onGiftBookingDecision(bookingId, 'rejected').catch(() => {});
+      if (wasOpen) {
+        void BookingNotificationService.onBookingClosed(bookingId, 'cancelled').catch(() => {});
+      }
+    });
+    return { ok: true, giftStatus: 'rejected', status: finalStatus };
   }
 
   /**

@@ -4,6 +4,7 @@ import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
+import { Skeleton } from "src/components/ui/skeleton";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -34,8 +35,10 @@ export default function AdminLearnHub() {
   const canManageGroups = user?.accountType === "super_admin";
   const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const [stats, setStats] = useState<LearnHubStats>(initialStats);
+  const [loading, setLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
+    setLoading(true);
     try {
       const [cohorts, packages, questions] = await Promise.all([
         canManageGroups ? vivaApiJson<Array<{ status?: string }>>("/theory-cohorts") : Promise.resolve([]),
@@ -54,6 +57,8 @@ export default function AdminLearnHub() {
       });
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setLoading(false);
     }
   }, [canManageGroups, showToast]);
 
@@ -111,10 +116,19 @@ export default function AdminLearnHub() {
         {cards.map((card) => (
           <Card key={card.key} className="p-5 border-border">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-muted-foreground">{card.title}</p>
-                <p className="mt-1 text-3xl font-bold text-foreground">{card.value}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{card.note}</p>
+                {loading ? (
+                  <>
+                    <Skeleton className="mt-1 h-9 w-16" />
+                    <Skeleton className="mt-2 h-3 w-24" />
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-3xl font-bold text-foreground">{card.value}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">{card.note}</p>
+                  </>
+                )}
               </div>
               <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                 <card.icon className="h-5 w-5 text-primary" />

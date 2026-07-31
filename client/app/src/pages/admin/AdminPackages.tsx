@@ -11,6 +11,7 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Edit2, Trash2, Package } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -49,6 +50,7 @@ export default function AdminPackages() {
   const { t } = useLang();
   const { showToast } = useToast();
   const [packages, setPackages] = useState<Pkg[]>([]);
+  const [listLoading, setListLoading] = useState(true);
 
   const applyUploadedPackageImage = useCallback(
     async (file: File | undefined, onUrl: (url: string) => void) => {
@@ -85,6 +87,8 @@ export default function AdminPackages() {
       );
     } catch (e) {
       showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
+    } finally {
+      setListLoading(false);
     }
   }, [showToast, t]);
 
@@ -271,7 +275,10 @@ export default function AdminPackages() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredPackages.map((pkg) => (
+              {listLoading ? (
+                <TableSkeletonRows cols={10} cellClassName="px-4 py-3.5" />
+              ) : (
+              filteredPackages.map((pkg) => (
                 <AdminTableRowContextMenu
                   key={pkg.id}
                   actions={[
@@ -342,7 +349,8 @@ export default function AdminPackages() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>

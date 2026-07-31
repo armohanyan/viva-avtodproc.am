@@ -6,12 +6,14 @@ export type InboxUnreadCounts = {
   theoryPersonal: number;
   bookedCalls: number;
   contactRequests: number;
+  giftBookings: number;
 };
 
 const EMPTY: InboxUnreadCounts = {
   theoryPersonal: 0,
   bookedCalls: 0,
   contactRequests: 0,
+  giftBookings: 0,
 };
 
 export function useInboxUnreadCounts() {
@@ -20,19 +22,25 @@ export function useInboxUnreadCounts() {
 
   const refresh = useCallback(async () => {
     try {
-      const [theory, calls, contact] = await Promise.all([
+      const [theory, calls, contact, gifts] = await Promise.all([
         vivaApiJson<{ status: string; branchId?: number }[]>("/personal-theory-lesson-requests"),
         vivaApiJson<{ status: string }[]>("/booked-calls"),
         vivaApiJson<{ status: string }[]>("/contact-requests"),
+        vivaApiJson<{ giftStatus: string; branchId?: number }[]>("/bookings/gift-requests"),
       ]);
       const theoryRows = Array.isArray(theory) ? theory : [];
       const theoryForBranch = filterBranchId
         ? theoryRows.filter((r) => String(r.branchId) === filterBranchId)
         : theoryRows;
+      const giftRows = Array.isArray(gifts) ? gifts : [];
+      const giftsForBranch = filterBranchId
+        ? giftRows.filter((r) => String(r.branchId) === filterBranchId)
+        : giftRows;
       setCounts({
         theoryPersonal: theoryForBranch.filter((r) => r.status === "pending").length,
         bookedCalls: Array.isArray(calls) ? calls.filter((r) => r.status === "pending").length : 0,
         contactRequests: Array.isArray(contact) ? contact.filter((r) => r.status === "active").length : 0,
+        giftBookings: giftsForBranch.filter((r) => r.giftStatus === "pending").length,
       });
     } catch {
       setCounts(EMPTY);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { Card } from "src/components/ui/card";
 import {
   Select,
@@ -40,6 +41,7 @@ export function BookedCallsPanel({ onCountsChange }: Props) {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [rows, setRows] = useState<BookedCallRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -48,6 +50,8 @@ export function BookedCallsPanel({ onCountsChange }: Props) {
       setRows(Array.isArray(data) ? data : []);
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setLoading(false);
     }
   }, [showToast]);
 
@@ -76,7 +80,7 @@ export function BookedCallsPanel({ onCountsChange }: Props) {
 
   return (
     <Card className="overflow-hidden p-0">
-      {rows.length === 0 ? (
+      {!loading && rows.length === 0 ? (
         <p className="text-muted-foreground p-6 text-sm">{t("adminBookedCallsEmpty")}</p>
       ) : (
         <AdminTableScroll>
@@ -92,7 +96,10 @@ export function BookedCallsPanel({ onCountsChange }: Props) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {loading ? (
+                <TableSkeletonRows cols={6} cellClassName="px-3 py-2" />
+              ) : (
+              rows.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
                   <td className="text-muted-foreground px-3 py-2 whitespace-nowrap">
                     {formatDateTime(r.createdAt, lang)}
@@ -120,7 +127,8 @@ export function BookedCallsPanel({ onCountsChange }: Props) {
                     </Select>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>

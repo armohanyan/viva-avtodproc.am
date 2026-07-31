@@ -38,6 +38,7 @@ import {
   type PracticalSlotPlanRow,
 } from "src/modules/booking/practical-slot-plan";
 import { isLessonOnOrBeforePayHorizon, todayIsoUtc } from "src/lib/booking-pay-horizon";
+import { billablePracticalLessonCount } from "src/utils/booking.utils";
 import { TooltipProvider } from "src/components/ui/tooltip";
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
@@ -773,8 +774,12 @@ export default function LessonBookingCalendar({
       return Math.round(rate * n);
     }
     if (!selected?.times.length) return null;
-    return Math.round(rate * selected.times.length);
-  }, [mode, adminSlotPick, selected, selectedInstructorRecord]);
+    const billable =
+      studentBookingType === "practical"
+        ? billablePracticalLessonCount(selected.times.length)
+        : selected.times.length;
+    return Math.round(rate * billable);
+  }, [mode, adminSlotPick, selected, selectedInstructorRecord, studentBookingType]);
 
   const toggleSlotSelection = (dateStr: string, time: string, meta: SlotCellMeta) => {
     if (!canClick(meta)) return;

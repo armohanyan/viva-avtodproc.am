@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { Instructor } from "src/data/instructors";
 import type { LessonBookingPayload } from "src/components/LessonBookingCalendar";
 import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import { billablePracticalLessonCount } from "src/utils/booking.utils";
 import type { AdminBookingFlowKind, AdminPackageOption, TheoryCohortOption } from "./types";
 import { theoryGroupSlotPlanFromCohort } from "./theoryGroupSlotPlan";
 
@@ -17,9 +18,11 @@ export type BookingPriceInput = {
   packageTheorySlots: LessonBookingPayload | null;
 };
 
+export { billablePracticalLessonCount };
+
 /**
- * Client-side total aligned with server rules: hourly × slot count for lesson types;
- * package uses catalog price.
+ * Client-side total aligned with server rules: hourly × slot count for lesson types
+ * (practical applies the every-11th-lesson-free gift); package uses catalog price.
  */
 export function computeBookingTotalAmd(input: BookingPriceInput): number {
   const { flowKind } = input;
@@ -39,7 +42,7 @@ export function computeBookingTotalAmd(input: BookingPriceInput): number {
   if (flowKind === "practical") {
     const ins = input.instructors.find((i) => i.name === input.instructorName);
     const hourly = ins && Number.isFinite(ins.hourlyPrice) ? ins.hourlyPrice : 0;
-    return hourly * slotCount(input.slotPick);
+    return hourly * billablePracticalLessonCount(slotCount(input.slotPick));
   }
 
   if (flowKind === "theory_group") {

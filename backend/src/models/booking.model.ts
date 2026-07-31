@@ -68,6 +68,14 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare createdByType: CreationOptional<'student' | 'admin' | 'unknown'>;
   /** User id of the creator (student or staff admin) when known. */
   declare createdByUserId: CreationOptional<number | null>;
+  /** Admin marked this booking as a free gift lesson (no payment; super admin must approve). */
+  declare isGift: CreationOptional<boolean>;
+  /** Optional admin note explaining the gift (visible to staff only). */
+  declare giftNote: CreationOptional<string | null>;
+  /** Gift approval lifecycle: `pending` until a super admin approves or rejects. Null on non-gift rows. */
+  declare giftStatus: CreationOptional<'pending' | 'approved' | 'rejected' | null>;
+  /** When a super admin approved or rejected the gift request. */
+  declare giftDecidedAt: CreationOptional<Date | null>;
 }
 
 Booking.init(
@@ -106,6 +114,10 @@ Booking.init(
       defaultValue: 'unknown',
     },
     createdByUserId: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
+    isGift: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    giftNote: { type: DataTypes.TEXT, allowNull: true },
+    giftStatus: { type: DataTypes.STRING(16), allowNull: true },
+    giftDecidedAt: { type: DataTypes.DATE, allowNull: true },
   },
   { sequelize, tableName: 'bookings', modelName: 'Booking' },
 );

@@ -20,6 +20,8 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 
 import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 
+import { billablePracticalLessonCount } from "src/utils/booking.utils";
+
 import {
 
   PRACTICAL_LESSON_TYPES,
@@ -177,7 +179,11 @@ export default function QuickPracticalBookingModal({
 
   const suggestedTotalAmd = useMemo(
 
-    () => Math.max(0, Math.round(Number(instructor.hourlyPrice) || 0) * sortedEntries.length),
+    () =>
+      Math.max(
+        0,
+        Math.round(Number(instructor.hourlyPrice) || 0) * billablePracticalLessonCount(sortedEntries.length),
+      ),
 
     [instructor.hourlyPrice, sortedEntries.length],
 

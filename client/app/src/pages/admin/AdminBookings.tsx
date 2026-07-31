@@ -107,6 +107,22 @@ function studentIdMatches(a: string | number, b: string | number): boolean {
   return String(a) === String(b);
 }
 
+function giftBadgeLabelKey(giftStatus: string | null | undefined): TranslationKey {
+  if (giftStatus === "approved") return "adminBookingGiftBadgeApproved";
+  if (giftStatus === "rejected") return "adminBookingGiftBadgeRejected";
+  return "adminBookingGiftBadgePending";
+}
+
+const GIFT_BADGE_CLASS: Record<string, string> = {
+  pending: "bg-fuchsia-100 text-fuchsia-800 dark:bg-fuchsia-950/50 dark:text-fuchsia-100",
+  approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-100",
+  rejected: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-100",
+};
+
+function giftBadgeClass(giftStatus: string | null | undefined): string {
+  return GIFT_BADGE_CLASS[giftStatus === "approved" || giftStatus === "rejected" ? giftStatus : "pending"]!;
+}
+
 type OpenAddOptions = {
   studentId?: string;
   branchId?: string;
@@ -486,6 +502,9 @@ export default function AdminBookings() {
     defaultAdminBookingPayment(),
   );
   const [addPaymentErrorKey, setAddPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
+  /** Gift lesson (free, super admin must approve). Offered in the add flow for practical lessons. */
+  const [addIsGift, setAddIsGift] = useState(false);
+  const [addGiftNote, setAddGiftNote] = useState("");
   const [editPaymentErrorKey, setEditPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
   /** Manual finance row id when editing a booking that already has a manual payment. */
   const [editManualTxId, setEditManualTxId] = useState<number | null>(null);
@@ -1001,6 +1020,8 @@ export default function AdminBookings() {
       setDraft(newDraft);
       setAddBookingPayment(defaultAdminBookingPayment());
       setAddPaymentErrorKey(null);
+      setAddIsGift(false);
+      setAddGiftNote("");
       setBookingModalTab("booking");
       setAddSlotSessionId((n) => n + 1);
       setAddOpen(true);
@@ -1652,7 +1673,8 @@ export default function AdminBookings() {
       showToast(t(v.messageKeys[0]), "error");
       return;
     }
-    const payErr = validateAdminBookingPayment(addBookingPayment, addEffectiveTotalAmd);
+    const addGiftActive = addIsGift && addFlowKind === "practical";
+    const payErr = addGiftActive ? null : validateAdminBookingPayment(addBookingPayment, addEffectiveTotalAmd);
     if (payErr) {
       setBookingModalTab("payment");
       setAddPaymentErrorKey(payErr);
@@ -1660,12 +1682,14 @@ export default function AdminBookings() {
       return;
     }
     setAddPaymentErrorKey(null);
-    const addPaid = paidAmountFromState(addBookingPayment);
+    const addPaid = addGiftActive ? 0 : paidAmountFromState(addBookingPayment);
     if (addPaid > 0) {
       const ok = validatePaymentForSubmit(addBookingPayment, draft.studentId, true);
       if (!ok) return;
     }
-    const paymentBody = adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd);
+    const paymentBody = addGiftActive
+      ? { isGift: true, ...(addGiftNote.trim() ? { giftNote: addGiftNote.trim() } : {}) }
+      : adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd);
     try {
       setAddInlineErrors({
         general: null,
@@ -2212,6 +2236,11 @@ export default function AdminBookings() {
                         {b.cancellationRequestedAt ? (
                           <Badge className="text-xs bg-amber-100 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100">
                             {t("adminBookingCancellationBadge")}
+                          </Badge>
+                        ) : null}
+                        {b.isGift ? (
+                          <Badge className={`text-xs ${giftBadgeClass(b.giftStatus)}`} title={b.giftNote ?? undefined}>
+                            {t(giftBadgeLabelKey(b.giftStatus))}
                           </Badge>
                         ) : null}
                       </div>
@@ -3136,6 +3165,11 @@ export default function AdminBookings() {
                   value={addBookingPayment}
                   onChange={setAddBookingPayment}
                   errorKey={addPaymentErrorKey}
+                  giftEnabled={addFlowKind === "practical"}
+                  isGift={addIsGift}
+                  onIsGiftChange={setAddIsGift}
+                  giftNote={addGiftNote}
+                  onGiftNoteChange={setAddGiftNote}
                 />
               </TabsContent>
             </Tabs>

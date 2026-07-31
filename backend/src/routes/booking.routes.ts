@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { BookingController } from '../controllers';
-import { requireStaff } from '../middleware/staff-auth.middleware';
+import { requireStaff, requireSuperAdmin } from '../middleware/staff-auth.middleware';
 import { practicalXlsxUploadSingle } from '../middleware/practical-xlsx-upload.middleware';
 
 const router = Router();
 
 router.get('/', BookingController.list);
+router.get('/gift-requests', requireStaff, BookingController.listGiftRequests);
 router.get('/:id', requireStaff, BookingController.getByIdForAdmin);
 router.post('/bulk-import', requireStaff, BookingController.bulkImport);
 router.post(
@@ -22,6 +23,8 @@ router.post('/:id/start-payment-window', BookingController.startPaymentWindow);
 router.post('/:id/complete-payment', BookingController.completeStudentPayment);
 router.post('/:id/approve-student-cancellation', requireStaff, BookingController.approveStudentCancellation);
 router.post('/:id/reject-student-cancellation', requireStaff, BookingController.rejectStudentCancellation);
+router.post('/:id/approve-gift', requireSuperAdmin, BookingController.approveGift);
+router.post('/:id/reject-gift', requireSuperAdmin, BookingController.rejectGift);
 router.post('/:id/cancel-student', BookingController.cancelStudentBooking);
 router.patch('/:id/lesson-passed', BookingController.patchLessonPassed);
 router.patch('/:id', BookingController.update);

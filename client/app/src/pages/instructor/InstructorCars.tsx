@@ -4,6 +4,7 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import PanelPageHeader from "src/components/PanelPageHeader";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { CarFront } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useFleetCars } from "src/modules/cars";
@@ -12,7 +13,7 @@ import { useAccount } from "src/modules/accounts";
 export default function InstructorCars() {
   const { t } = useLang();
   const { user } = useAccount();
-  const { cars } = useFleetCars();
+  const { cars, loading } = useFleetCars();
   const [search, setSearch] = useState("");
 
   const myCars = useMemo(() => {
@@ -61,7 +62,10 @@ export default function InstructorCars() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((c) => (
+              {loading ? (
+                <TableSkeletonRows cols={4} cellClassName="px-4 py-3" />
+              ) : (
+              filtered.map((c) => (
                 <tr key={c.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3 font-medium text-foreground">{displayModel(c)}</td>
                   <td className="px-4 py-3 font-mono text-xs">{c.plate}</td>
@@ -70,11 +74,12 @@ export default function InstructorCars() {
                     <Badge variant="secondary">{transLabel(c.transmission)}</Badge>
                   </td>
                 </tr>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </div>
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <p className="p-6 text-sm text-muted-foreground text-center">{t("instructorCarsEmpty")}</p>
         )}
       </Card>

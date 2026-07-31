@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } f
 import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import AdminTableRowActions, { AdminTableRowContextMenu } from "src/components/AdminTableRowActions";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { useLang, type Lang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { Button } from "src/components/ui/button";
@@ -118,6 +119,7 @@ export default function AdminExamQuestions() {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
+  const [listLoading, setListLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -129,6 +131,8 @@ export default function AdminExamQuestions() {
       }
     } catch {
       setQuestions(loadExamQuestions());
+    } finally {
+      setListLoading(false);
     }
   }, []);
 
@@ -438,7 +442,10 @@ export default function AdminExamQuestions() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((q) => (
+            {listLoading ? (
+              <TableSkeletonRows cols={6} cellClassName="px-4 py-3" />
+            ) : (
+            filtered.map((q) => (
               <AdminTableRowContextMenu
                 key={q.id}
                 actions={[
@@ -514,10 +521,11 @@ export default function AdminExamQuestions() {
                   </td>
                 </tr>
               </AdminTableRowContextMenu>
-            ))}
+            ))
+            )}
           </tbody>
         </table>
-        {filtered.length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">{t("adminExamQuestionsEmpty")}</p> : null}
+        {!listLoading && filtered.length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">{t("adminExamQuestionsEmpty")}</p> : null}
       </AdminTableScroll>
 
       <AppModal

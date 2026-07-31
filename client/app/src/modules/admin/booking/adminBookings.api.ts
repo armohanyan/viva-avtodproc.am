@@ -42,6 +42,9 @@ export type AdminBookingListItem = {
   status: string;
   branchId: number;
   cancellationRequestedAt?: string | null;
+  isGift?: boolean;
+  giftStatus?: "pending" | "approved" | "rejected" | null;
+  giftNote?: string | null;
   meetLink?: string | null;
   manualFinanceTx: AdminBookingFinanceLink | null;
   systemFinanceTx: AdminBookingFinanceLink | null;

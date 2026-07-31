@@ -22,6 +22,7 @@ import { useId, useMemo, useState } from "react";
 import type { CarExpense, FleetCar } from "src/modules/cars";
 import { useFleetCars } from "src/modules/cars";
 import { useInstructors } from "src/modules/instructors/useInstructors";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { cn } from "src/lib/utils";
 
 function formatMoney(n: number) {
@@ -52,6 +53,7 @@ export default function AdminCars() {
   );
   const {
     cars,
+    loading: carsLoading,
     addCar,
     updateCar,
     removeCar,
@@ -299,7 +301,10 @@ export default function AdminCars() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((c) => (
+              {carsLoading ? (
+                <TableSkeletonRows cols={8} cellClassName="px-4 py-3" />
+              ) : (
+              filtered.map((c) => (
                 <AdminTableRowContextMenu
                   key={c.id}
                   actions={[
@@ -375,7 +380,8 @@ export default function AdminCars() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>

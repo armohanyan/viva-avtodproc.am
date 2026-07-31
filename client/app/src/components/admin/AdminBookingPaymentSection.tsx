@@ -22,6 +22,12 @@ type Props = {
   totalPriceEditable?: boolean;
   totalPriceStr?: string;
   onTotalPriceStrChange?: (value: string) => void;
+  /** Show the "gift lesson" checkbox (admin add flow). When checked, payment fields are replaced by a gift note. */
+  giftEnabled?: boolean;
+  isGift?: boolean;
+  onIsGiftChange?: (value: boolean) => void;
+  giftNote?: string;
+  onGiftNoteChange?: (value: string) => void;
 };
 
 export default function AdminBookingPaymentSection({
@@ -33,6 +39,11 @@ export default function AdminBookingPaymentSection({
   totalPriceEditable,
   totalPriceStr = "",
   onTotalPriceStrChange,
+  giftEnabled,
+  isGift,
+  onIsGiftChange,
+  giftNote = "",
+  onGiftNoteChange,
 }: Props) {
   const { t } = useLang();
   const total = Math.max(0, Math.round(totalPriceAmd));
@@ -61,8 +72,47 @@ export default function AdminBookingPaymentSection({
     onChange(synced);
   }, [total, value, onChange]);
 
+  const giftActive = Boolean(giftEnabled && isGift);
+
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4">
+      {giftEnabled ? (
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={Boolean(isGift)}
+              disabled={disabled}
+              onChange={(e) => onIsGiftChange?.(e.target.checked)}
+              className="h-4 w-4 rounded border-input accent-primary"
+            />
+            {t("adminBookingGiftCheckbox")}
+          </label>
+          {giftActive ? (
+            <>
+              <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-foreground">
+                {t("adminBookingGiftNoPaymentHint")}
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  {t("adminBookingGiftNoteLabel")}
+                </label>
+                <textarea
+                  disabled={disabled}
+                  value={giftNote}
+                  onChange={(e) => onGiftNoteChange?.(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60 resize-y min-h-[4.5rem]"
+                  placeholder={t("adminBookingGiftNotePlaceholder")}
+                />
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {giftActive ? null : (
+        <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-muted-foreground mb-1">{t("financeColMethod")}</label>
@@ -185,6 +235,8 @@ export default function AdminBookingPaymentSection({
       ) : null}
 
       {errorKey ? <p className="text-xs text-red-600">{t(errorKey)}</p> : null}
+        </>
+      )}
     </div>
   );
 }

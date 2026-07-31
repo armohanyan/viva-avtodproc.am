@@ -10,6 +10,7 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import PanelPageHeader from "src/components/PanelPageHeader";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { Plus, Edit2, Trash2, MapPin, Building2 } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { Branch } from "src/modules/branches";
@@ -26,8 +27,8 @@ export default function AdminBranches() {
   const cityQuickAddFormId = useId();
   const { t } = useLang();
   const { showToast } = useToast();
-  const { branches, addBranch, updateBranch, removeBranch } = useBranches();
-  const { cities, addCity, updateCity, removeCity } = useCities();
+  const { branches, loading: branchesLoading, addBranch, updateBranch, removeBranch } = useBranches();
+  const { cities, loading: citiesLoading, addCity, updateCity, removeCity } = useCities();
 
   const [branchSearch, setBranchSearch] = useState("");
   const [deleteBranchId, setDeleteBranchId] = useState<string | null>(null);
@@ -290,7 +291,10 @@ export default function AdminBranches() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredCities.map((c) => (
+              {citiesLoading ? (
+                <TableSkeletonRows cols={3} cellClassName="px-4 py-3" />
+              ) : (
+              filteredCities.map((c) => (
                 <AdminTableRowContextMenu
                   key={c.id}
                   actions={[
@@ -343,7 +347,8 @@ export default function AdminBranches() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>
@@ -414,7 +419,10 @@ export default function AdminBranches() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredBranches.map((b) => (
+              {branchesLoading ? (
+                <TableSkeletonRows cols={7} cellClassName="px-4 py-3" />
+              ) : (
+              filteredBranches.map((b) => (
                 <AdminTableRowContextMenu
                   key={b.id}
                   actions={[
@@ -475,7 +483,8 @@ export default function AdminBranches() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>

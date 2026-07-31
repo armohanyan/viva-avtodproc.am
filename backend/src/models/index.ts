@@ -37,6 +37,7 @@ import { PackageLessonBalance } from './package-lesson-balance.model';
 import { PackageOrder } from './package-order.model';
 import { PetrolConsumption } from './petrol-consumption.model';
 import { PetrolExpense } from './petrol-expense.model';
+import { SalaryPayment } from './salary-payment.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
@@ -153,6 +154,19 @@ User.hasMany(InstructorKmLog, {
 });
 InstructorKmLog.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
+User.hasMany(SalaryPayment, {
+  foreignKey: 'employeeUserId',
+  sourceKey: 'id',
+  as: 'salaryPaymentsAsEmployee',
+});
+SalaryPayment.belongsTo(User, { foreignKey: 'employeeUserId', targetKey: 'id', as: 'employee' });
+User.hasMany(SalaryPayment, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'salaryPaymentsCreated',
+});
+SalaryPayment.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
 User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -238,6 +252,7 @@ export {
   PackageOrder,
   PetrolConsumption,
   PetrolExpense,
+  SalaryPayment,
   AdminMfaChallenge,
   OAuthAccount,
   Package,
@@ -790,6 +805,43 @@ async function ensureInstructorKmLogsTable(): Promise<void> {
       CONSTRAINT \`instructor_km_logs_instructor_fk\` FOREIGN KEY (\`instructor_user_id\`) REFERENCES \`users\` (\`id\`)
         ON UPDATE CASCADE ON DELETE RESTRICT,
       CONSTRAINT \`instructor_km_logs_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureSalaryPaymentsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_payments'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table salary_payments …');
+  await sequelize.query(`
+    CREATE TABLE \`salary_payments\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`title\` VARCHAR(255) NOT NULL,
+      \`kind\` ENUM('instructor','theory_teacher','other') NOT NULL,
+      \`employee_user_id\` INT UNSIGNED NULL,
+      \`employee_name\` VARCHAR(255) NOT NULL,
+      \`period_start_iso\` DATE NOT NULL,
+      \`period_end_iso\` DATE NOT NULL,
+      \`lessons_count\` INT UNSIGNED NULL,
+      \`rate_per_lesson_amd\` INT UNSIGNED NULL,
+      \`total_amd\` INT UNSIGNED NOT NULL,
+      \`notes\` TEXT NULL,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`salary_payments_period_idx\` (\`period_start_iso\`, \`period_end_iso\`),
+      KEY \`salary_payments_employee_kind_idx\` (\`employee_user_id\`, \`kind\`),
+      CONSTRAINT \`salary_payments_employee_fk\` FOREIGN KEY (\`employee_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+      CONSTRAINT \`salary_payments_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
         ON UPDATE CASCADE ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
@@ -1474,6 +1526,40 @@ async function ensureBookingsCreatedByColumns(): Promise<void> {
         OR \`hold_extension_count\` > 0
       )
   `);
+}
+
+/** Gift lesson bookings: free of charge, pending super admin approval. */
+async function ensureBookingsGiftColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'bookings'
+       AND COLUMN_NAME IN ('is_gift', 'gift_note', 'gift_status', 'gift_decided_at')`,
+    { type: QueryTypes.SELECT },
+  );
+  const have = new Set(colRows.map((c) => c.COLUMN_NAME));
+  if (!have.has('is_gift')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `is_gift` TINYINT(1) NOT NULL DEFAULT 0');
+  }
+  if (!have.has('gift_note')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `gift_note` TEXT NULL');
+  }
+  if (!have.has('gift_status')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `gift_status` VARCHAR(16) NULL');
+  }
+  if (!have.has('gift_decided_at')) {
+    await sequelize.query('ALTER TABLE `bookings` ADD COLUMN `gift_decided_at` DATETIME NULL');
+  }
 }
 
 /** Indexes for admin bookings list filters and pagination. */
@@ -2309,6 +2395,7 @@ export async function syncModels(): Promise<void> {
   await ensurePetrolConsumptionsTable();
   await ensurePetrolConsumptionsPetrolAmountNullable();
   await ensureInstructorKmLogsTable();
+  await ensureSalaryPaymentsTable();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
   await ensureBookingsPaymentNotesAndReminderAtColumns();
@@ -2326,6 +2413,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsPrepaidMetaColumn();
   await ensureBookingsMeetLinkColumn();
   await ensureBookingsCreatedByColumns();
+  await ensureBookingsGiftColumns();
   await ensureBookingsAdminListIndexes();
   await ensureNotificationsTable();
   await ensureNotificationsTypeEnumValues();

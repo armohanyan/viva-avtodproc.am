@@ -7,6 +7,8 @@ import { Badge } from "src/components/ui/badge";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
+import { Skeleton } from "src/components/ui/skeleton";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Users, Calendar, TrendingUp, LayoutDashboard, Edit2, Trash2, Undo2 } from "lucide-react";
 import type { FinanceTx } from "src/pages/admin/finance/adminFinanceShared";
@@ -108,8 +110,10 @@ export default function AdminDashboard() {
   const [rawStudents, setRawStudents] = useState<StudentMini[]>([]);
   const [rawBookings, setRawBookings] = useState<BookingAdminRow[]>([]);
   const [rawTxs, setRawTxs] = useState<FinanceTx[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const loadDashboard = useCallback(async () => {
+    setLoading(true);
     try {
       const [students, bookings, txs, bookedCalls, contactRequests] = await Promise.all([
         vivaApiJson<StudentMini[]>("/students"),
@@ -151,6 +155,8 @@ export default function AdminDashboard() {
       );
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setLoading(false);
     }
   }, [lang, showToast, branchFilterRevision]);
 
@@ -322,11 +328,15 @@ export default function AdminDashboard() {
         {stats.map((s, i) => (
           <Card key={i} className="p-5 border-border">
             <div className="flex items-start justify-between">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {s.value}
-                </p>
+                {loading ? (
+                  <Skeleton className="h-8 w-24" />
+                ) : (
+                  <p className="text-2xl font-bold text-foreground">
+                    {s.value}
+                  </p>
+                )}
               </div>
               <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center shrink-0`}>
                 <s.icon className={`w-5 h-5 ${s.color}`} />
@@ -343,7 +353,19 @@ export default function AdminDashboard() {
             <a href="/admin/booked-calls" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
           </div>
           <div className="p-5">
-            {pagedBookedCalls.length === 0 ? (
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-2/5" />
+                      <Skeleton className="h-3 w-1/4" />
+                    </div>
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : pagedBookedCalls.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("adminBookedCallsEmpty")}</p>
             ) : (
               <div className="space-y-3">
@@ -395,7 +417,19 @@ export default function AdminDashboard() {
             <a href="/admin/contact-requests" className="text-sm text-primary hover:underline shrink-0">{t("viewAll")}</a>
           </div>
           <div className="p-5">
-            {pagedContactRequests.length === 0 ? (
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-2/5" />
+                      <Skeleton className="h-3 w-1/4" />
+                    </div>
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : pagedContactRequests.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("adminContactRequestsEmpty")}</p>
             ) : (
               <div className="space-y-3">
@@ -502,7 +536,10 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filteredRecentBookings.map((b, i) => (
+                {loading ? (
+                  <TableSkeletonRows cols={7} />
+                ) : (
+                filteredRecentBookings.map((b, i) => (
                   <AdminTableRowContextMenu
                     key={i}
                     actions={[
@@ -564,7 +601,8 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   </AdminTableRowContextMenu>
-                ))}
+                ))
+                )}
               </tbody>
             </table>
           </AdminTableScroll>

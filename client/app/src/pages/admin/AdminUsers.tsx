@@ -13,6 +13,7 @@ import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Trash2, GraduationCap, CalendarPlus, Mail, BarChart3, Eye } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
@@ -87,6 +88,7 @@ export default function AdminUsers() {
   const { instructors } = useInstructors();
   const instructorOptions = useMemo(() => allInstructorNames(instructors), [instructors]);
   const [users, setUsers] = useState<User[]>([]);
+  const [listLoading, setListLoading] = useState(true);
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const inviteStudent = useCallback(
@@ -130,6 +132,8 @@ export default function AdminUsers() {
       );
     } catch (e) {
       showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
+    } finally {
+      setListLoading(false);
     }
   }, [showToast, t]);
 
@@ -335,7 +339,10 @@ export default function AdminUsers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((u, i) => (
+              {listLoading ? (
+                <TableSkeletonRows cols={12} />
+              ) : (
+              filtered.map((u, i) => (
                 <AdminTableRowContextMenu
                   key={i}
                   actions={[
@@ -455,7 +462,8 @@ export default function AdminUsers() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>

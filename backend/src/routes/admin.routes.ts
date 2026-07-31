@@ -10,6 +10,7 @@ import adminInstructorKmLogRoutes from './admin-instructor-km-log.routes';
 import adminPetrolConsumptionRoutes from './admin-petrol-consumption.routes';
 import adminPetrolExpenseRoutes from './admin-petrol-expense.routes';
 import adminPetrolFuelKmAnalyticsRoutes from './admin-petrol-fuel-km-analytics.routes';
+import adminSalaryRoutes from './admin-salary.routes';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.use('/petrol-expenses', adminPetrolExpenseRoutes);
 router.use('/petrol-consumptions', adminPetrolConsumptionRoutes);
 router.use('/instructor-km-logs', adminInstructorKmLogRoutes);
 router.use('/petrol-fuel-km', adminPetrolFuelKmAnalyticsRoutes);
+router.use('/salary', adminSalaryRoutes);
 
 router.post('/invite-student', requireStaff, AdminInviteController.inviteStudent);
 router.post('/invite-instructor', requireStaff, AdminInviteController.inviteInstructor);

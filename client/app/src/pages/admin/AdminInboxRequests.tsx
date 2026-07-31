@@ -7,11 +7,12 @@ import { useLang, type TranslationKey } from "src/lib/i18n";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { BookedCallsPanel } from "./inbox/BookedCallsPanel";
 import { ContactRequestsPanel } from "./inbox/ContactRequestsPanel";
+import { GiftBookingsPanel } from "./inbox/GiftBookingsPanel";
 import { TheoryPersonalRequestsPanel } from "./inbox/TheoryPersonalRequestsPanel";
 import { TabCountBadge } from "./inbox/TabCountBadge";
 import { inboxPathForTab, inboxTabFromPath, type AdminInboxTab } from "./inbox/inboxTabs";
 import { useInboxUnreadCounts } from "./inbox/useInboxUnreadCounts";
-import { GraduationCap, Mail, PhoneCall, type LucideIcon } from "lucide-react";
+import { Gift, GraduationCap, Mail, PhoneCall, type LucideIcon } from "lucide-react";
 
 export default function AdminInboxRequests(): JSX.Element {
   return (
@@ -53,6 +54,13 @@ function AdminInboxRequestsContent(): JSX.Element {
         subtitleKey: "adminInboxContactRequestsPageSubtitle",
       };
     }
+    if (activeTab === "gift-bookings") {
+      return {
+        icon: Gift,
+        titleKey: "adminGiftBookings",
+        subtitleKey: "adminInboxGiftBookingsPageSubtitle",
+      };
+    }
     return {
       icon: GraduationCap,
       titleKey: "adminTheoryPersonalRequests",
@@ -82,6 +90,10 @@ function AdminInboxRequestsContent(): JSX.Element {
             {t("adminContactRequests")}
             <TabCountBadge count={counts.contactRequests} />
           </TabsTrigger>
+          <TabsTrigger value="gift-bookings" className="px-3">
+            {t("adminGiftBookings")}
+            <TabCountBadge count={counts.giftBookings} />
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="theory-personal" className="mt-0">
@@ -92,6 +104,9 @@ function AdminInboxRequestsContent(): JSX.Element {
         </TabsContent>
         <TabsContent value="contact-requests" className="mt-0">
           <ContactRequestsPanel onCountsChange={refresh} />
+        </TabsContent>
+        <TabsContent value="gift-bookings" className="mt-0">
+          <GiftBookingsPanel onCountsChange={refresh} />
         </TabsContent>
       </Tabs>
     </>

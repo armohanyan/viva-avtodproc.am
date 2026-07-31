@@ -168,6 +168,52 @@ export default class BookingNotificationService {
     });
   }
 
+  /** Super admin in-app: an admin created a gift booking that needs approval. */
+  static async notifySuperAdminGiftBookingRequest(bookingId: number): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [{ model: User, as: 'student', attributes: ['id', 'name'] }],
+    });
+    if (!row || !row.isGift) return;
+    const student = (row as unknown as { student?: User }).student;
+    const dateLine = `${dateIsoString(row.dateIso)} ${row.time}`.trim();
+    const note = row.giftNote?.trim();
+
+    await NotificationService.createForRoles(['super_admin'], {
+      type: Bnt.BOOKING_GIFT_REQUEST_CREATED,
+      title: 'Gift booking needs approval',
+      message:
+        `A gift ${bookingLessonTypeLabel(row.lessonType).toLowerCase()} was booked for ${student?.name ?? 'a student'}.` +
+        `${dateLine ? ` ${dateLine}` : ''} · #${row.id}` +
+        `${note ? ` · ${note}` : ''}`,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-gift-request:${row.id}`,
+      metadata: note ? { giftNote: note } : null,
+    });
+  }
+
+  /** Staff in-app: a super admin approved or rejected a gift booking. */
+  static async onGiftBookingDecision(bookingId: number, decision: 'approved' | 'rejected'): Promise<void> {
+    const row = await Booking.findByPk(bookingId, {
+      include: [{ model: User, as: 'student', attributes: ['id', 'name'] }],
+    });
+    if (!row) return;
+    const student = (row as unknown as { student?: User }).student;
+    const dateLine = `${dateIsoString(row.dateIso)} ${row.time}`.trim();
+
+    await NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: decision === 'approved' ? Bnt.BOOKING_GIFT_APPROVED : Bnt.BOOKING_GIFT_REJECTED,
+      title: decision === 'approved' ? 'Gift booking approved' : 'Gift booking rejected',
+      message:
+        decision === 'approved'
+          ? `The gift booking for ${student?.name ?? 'a student'} was approved.${dateLine ? ` ${dateLine}` : ''} · #${row.id}`
+          : `The gift booking for ${student?.name ?? 'a student'} was rejected and cancelled.${dateLine ? ` ${dateLine}` : ''} · #${row.id}`,
+      entityType: 'booking',
+      entityId: String(row.id),
+      dedupeKey: `booking-gift-${decision}:${row.id}`,
+    });
+  }
+
   /** Admin in-app: student submitted cancellation in the refund window (staff action required). */
   static async notifyAdminStudentCancellationRefundRequest(bookingId: number): Promise<void> {
     await NotificationService.createForRoles(['admin', 'super_admin'], {

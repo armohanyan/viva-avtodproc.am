@@ -12,6 +12,7 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
+import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { Plus, Edit2, Users } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { AccountType } from "src/modules/accounts";
@@ -193,9 +194,6 @@ export default function AdminAccounts() {
       />
 
       <Card className="border-border overflow-hidden min-w-0">
-        {listLoading ? (
-          <p className="p-6 text-sm text-muted-foreground text-center">{t("redirecting")}</p>
-        ) : null}
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
             filename="admin-accounts.csv"
@@ -235,7 +233,10 @@ export default function AdminAccounts() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((a) => (
+              {listLoading ? (
+                <TableSkeletonRows cols={8} />
+              ) : (
+              filtered.map((a) => (
                 <AdminTableRowContextMenu
                   key={a.id}
                   actions={[
@@ -276,11 +277,12 @@ export default function AdminAccounts() {
                     </td>
                   </tr>
                 </AdminTableRowContextMenu>
-              ))}
+              ))
+              )}
             </tbody>
           </table>
         </AdminTableScroll>
-        {filtered.length === 0 && <p className="p-6 text-sm text-muted-foreground text-center">{t("tableNoMatches")}</p>}
+        {!listLoading && filtered.length === 0 && <p className="p-6 text-sm text-muted-foreground text-center">{t("tableNoMatches")}</p>}
       </Card>
 
       <AppModal

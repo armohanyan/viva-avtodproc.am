@@ -45,6 +45,8 @@ const createBodySchema = z.object({
     .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(''), z.null()])
     .optional(),
   totalPriceAmd: z.coerce.number().int().nonnegative().optional(),
+  isGift: z.boolean().optional(),
+  giftNote: z.string().max(2000).optional().nullable(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -466,6 +468,8 @@ export default class BookingController {
             paymentReminderDate: body.paymentReminderDate,
             totalPriceAmd: body.totalPriceAmd,
             createdByUserId: readStaffUserIdFromToken(req),
+            isGift: body.isGift,
+            giftNote: body.giftNote,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -531,6 +535,8 @@ export default class BookingController {
         paymentReminderDate: body.paymentReminderDate,
         totalPriceAmd: body.totalPriceAmd,
         createdByUserId: readStaffUserIdFromToken(req),
+        isGift: body.isGift,
+        giftNote: body.giftNote,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -693,6 +699,39 @@ export default class BookingController {
       const id = parseBookingRouteId(req, next);
       if (id === undefined) return;
       const data = await BookingService.staffRejectPracticalCancellation(id);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** Staff: gift booking requests for the inbox (super admin decides). */
+  static async listGiftRequests(req: Request, res: Response, next: NextFunction) {
+    try {
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await BookingService.listGiftBookings(branchId);
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async approveGift(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.superAdminApproveGiftBooking(id);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async rejectGift(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const data = await BookingService.superAdminRejectGiftBooking(id);
       SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);

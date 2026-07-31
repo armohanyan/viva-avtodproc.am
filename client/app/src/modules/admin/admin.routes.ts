@@ -24,6 +24,7 @@ import {
   AdminFinanceOutcomesPage,
   AdminFinanceTransactionsPage,
   AdminPetrolPage,
+  AdminSalaryPage,
   AdminProfilePage,
   AdminNotificationsPage,
   AdminLearnHubPage,
@@ -66,6 +67,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/inbox/theory-personal", component: AdminInboxRequestsPage, allowedAccountTypes: STAFF },
   { path: "/admin/inbox/booked-calls", component: AdminInboxRequestsPage, allowedAccountTypes: STAFF },
   { path: "/admin/inbox/contact-requests", component: AdminInboxRequestsPage, allowedAccountTypes: STAFF },
+  { path: "/admin/inbox/gift-bookings", component: AdminInboxRequestsPage, allowedAccountTypes: STAFF },
   { path: "/admin/inbox", component: AdminInboxRequestsPage, allowedAccountTypes: STAFF },
   { path: "/admin/contact-requests", component: AdminRedirectContactRequestsToInbox, allowedAccountTypes: STAFF },
   { path: "/admin/booked-calls", component: AdminRedirectBookedCallsToInbox, allowedAccountTypes: STAFF },
@@ -83,6 +85,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/finance/petrol", component: AdminPetrolPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/finance/transactions", component: AdminFinanceTransactionsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/finance", component: AdminFinanceOverviewPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/salary", component: AdminSalaryPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/accounts", component: AdminAccountsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/profile", component: AdminProfilePage, allowedAccountTypes: STAFF },
 ];

@@ -10,6 +10,7 @@ function newId(prefix: string) {
 export function useFleetCars() {
 	const [cars, setCars] = useState<FleetCar[]>([]);
 	const [expenses, setExpenses] = useState<CarExpense[]>([]);
+	const [loading, setLoading] = useState(true);
 
 	const refresh = useCallback(async () => {
 		try {
@@ -22,6 +23,8 @@ export function useFleetCars() {
 		} catch {
 			setCars([]);
 			setExpenses([]);
+		} finally {
+			setLoading(false);
 		}
 	}, []);
 
@@ -132,6 +135,7 @@ export function useFleetCars() {
 	return {
 		cars,
 		expenses,
+		loading,
 		addCar,
 		updateCar,
 		removeCar,

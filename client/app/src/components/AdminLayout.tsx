@@ -25,6 +25,7 @@ import {
 	PhoneCall,
   Mail,
   Bell,
+  Wallet,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import {
@@ -76,6 +77,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/instructors": Car,
 		"/admin/students": GraduationCap,
 		"/admin/finance": Landmark,
+		"/admin/salary": Wallet,
 		"/admin/blogs": Newspaper,
 		"/admin/accounts": UserCog,
 		"/admin/marketing-content": Sparkles,
