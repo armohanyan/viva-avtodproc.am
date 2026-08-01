@@ -331,7 +331,12 @@ function adminCreatedByPatch(userId?: number | null): {
 
 export type GiftBookingStatus = 'pending' | 'approved' | 'rejected';
 
-type GiftCreateInput = { isGift?: boolean; giftNote?: string | null };
+type GiftCreateInput = {
+  isGift?: boolean;
+  giftNote?: string | null;
+  /** Gifts created by a super admin are approved immediately (no request needed). */
+  createdByAccountType?: 'admin' | 'super_admin' | null;
+};
 
 /** Resolved gift status for DTOs (legacy gift rows without a status default to `pending`). */
 function giftStatusFromRow(row: Pick<Booking, 'isGift' | 'giftStatus'>): GiftBookingStatus | null {
@@ -340,17 +345,24 @@ function giftStatusFromRow(row: Pick<Booking, 'isGift' | 'giftStatus'>): GiftBoo
   return s === 'approved' || s === 'rejected' ? s : 'pending';
 }
 
-/** Row fields for a new admin booking marked as a gift (free lesson pending super admin approval). */
+/**
+ * Row fields for a new admin booking marked as a gift (free lesson).
+ * Created by a regular admin → `pending` (super admin must approve); by a super admin → `approved` immediately.
+ */
 function giftCreateFields(input: GiftCreateInput): {
   isGift: boolean;
   giftNote: string | null;
   giftStatus: GiftBookingStatus | null;
+  giftDecidedAt: Date | null;
 } {
   if (input.isGift !== true) {
-    return { isGift: false, giftNote: null, giftStatus: null };
+    return { isGift: false, giftNote: null, giftStatus: null, giftDecidedAt: null };
   }
   const note = typeof input.giftNote === 'string' && input.giftNote.trim().length > 0 ? input.giftNote.trim() : null;
-  return { isGift: true, giftNote: note, giftStatus: 'pending' };
+  if (input.createdByAccountType === 'super_admin') {
+    return { isGift: true, giftNote: note, giftStatus: 'approved', giftDecidedAt: new Date() };
+  }
+  return { isGift: true, giftNote: note, giftStatus: 'pending', giftDecidedAt: null };
 }
 
 export type BookingAdminDto = {
@@ -2460,6 +2472,7 @@ export default class BookingService {
     allowHistoricalSlots?: boolean;
     isGift?: boolean;
     giftNote?: string | null;
+    createdByAccountType?: 'admin' | 'super_admin' | null;
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -2556,6 +2569,7 @@ export default class BookingService {
             isGift: gift.isGift,
             giftNote: gift.giftNote,
             giftStatus: gift.giftStatus,
+            giftDecidedAt: gift.giftDecidedAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
             ...adminCreatedByPatch(input.createdByUserId),
           },
@@ -2574,7 +2588,7 @@ export default class BookingService {
     if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
-    if (gift.isGift) {
+    if (gift.isGift && gift.giftStatus === 'pending') {
       void BookingNotificationService.notifySuperAdminGiftBookingRequest(newId).catch(() => {});
     }
 
@@ -2606,6 +2620,7 @@ export default class BookingService {
     allowHistoricalSlots?: boolean;
     isGift?: boolean;
     giftNote?: string | null;
+    createdByAccountType?: 'admin' | 'super_admin' | null;
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
     if (input.type === 'practical' && input.allowHistoricalSlots !== true) {
@@ -2650,6 +2665,7 @@ export default class BookingService {
         allowHistoricalSlots: input.allowHistoricalSlots,
         isGift: input.isGift,
         giftNote: input.giftNote,
+        createdByAccountType: input.createdByAccountType,
       });
     }
 
@@ -2684,6 +2700,7 @@ export default class BookingService {
         allowHistoricalSlots: input.allowHistoricalSlots,
         isGift: input.isGift,
         giftNote: input.giftNote,
+        createdByAccountType: input.createdByAccountType,
       });
     }
 
@@ -2760,6 +2777,7 @@ export default class BookingService {
             isGift: gift.isGift,
             giftNote: gift.giftNote,
             giftStatus: gift.giftStatus,
+            giftDecidedAt: gift.giftDecidedAt,
             ...meetLinkPatchForLessonType(input.type, input.meetLink),
             ...adminCreatedByPatch(input.createdByUserId),
           },
@@ -2786,7 +2804,7 @@ export default class BookingService {
     if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
-    if (gift.isGift) {
+    if (gift.isGift && gift.giftStatus === 'pending') {
       void BookingNotificationService.notifySuperAdminGiftBookingRequest(newId).catch(() => {});
     }
 
@@ -2994,6 +3012,7 @@ export default class BookingService {
     allowHistoricalSlots?: boolean;
     isGift?: boolean;
     giftNote?: string | null;
+    createdByAccountType?: 'admin' | 'super_admin' | null;
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
 
@@ -3139,6 +3158,7 @@ export default class BookingService {
             isGift: gift.isGift,
             giftNote: gift.giftNote,
             giftStatus: gift.giftStatus,
+            giftDecidedAt: gift.giftDecidedAt,
             ...meetLinkPatchForLessonType(input.lessonType, input.meetLink),
             ...adminCreatedByPatch(input.createdByUserId),
           },
@@ -3165,7 +3185,7 @@ export default class BookingService {
     if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
-    if (gift.isGift) {
+    if (gift.isGift && gift.giftStatus === 'pending') {
       void BookingNotificationService.notifySuperAdminGiftBookingRequest(newId).catch(() => {});
     }
 

@@ -4,3 +4,5 @@ export { default as InstructorCarsPage } from "./InstructorCars";
 export { default as InstructorProfilePage } from "./InstructorProfile";
 export { default as InstructorNotificationsPage } from "./InstructorNotifications";
 export { default as InstructorClassSchedulePage } from "./InstructorClassSchedule";
+export { default as InstructorReportsPage } from "./InstructorReports";
+export { default as InstructorFuelExpensesPage } from "./InstructorFuelExpenses";

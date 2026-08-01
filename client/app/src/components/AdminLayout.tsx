@@ -268,6 +268,7 @@ export default function AdminLayout({ children }: Props) {
 		if (location === "/admin/finance/income") return t("adminFinanceIncomeTitle");
 		if (location === "/admin/finance/outcomes") return t("adminFinanceOutcomesTitle");
 		if (location === "/admin/finance/transactions") return t("adminFinanceTransactionsTitle");
+		if (location === "/admin/finance/petrol-requests") return t("adminPetrolRequestsTitle");
 		if (location === "/admin/finance") return t("adminFinanceOverviewTitle");
 		if (location.startsWith("/admin/bookings")) return t("bookings");
 		return adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard");

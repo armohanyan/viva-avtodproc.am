@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import type { LessonCompletionStatus } from '../constants/lesson-completion';
-import { Booking, SalaryPayment, TheoryCohortSession, User } from '../models';
+import { Booking, SalaryPayment, TheoryCohort, TheoryCohortSession, User } from '../models';
 import type { SalaryPaymentKind } from '../models/salary-payment.model';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import { bookingEndUtcMs, lessonEndUtcMs, lessonInstantUtcMs } from '../utils/lesson-datetime.util';
@@ -58,6 +58,26 @@ export type SalaryPaymentDto = {
   notes: string | null;
   createdAtIso: string;
   createdByName: string | null;
+};
+
+export type SalaryLessonRowDto = {
+  id: number;
+  dateIso: string;
+  startTime: string;
+  endTime: string | null;
+  /** Payable lesson units this row contributes (hours for practical, 1 for theory sessions). */
+  units: number;
+  /** Student name for practical lessons; theory group name for sessions. */
+  label: string;
+};
+
+export type SalaryLessonsDto = {
+  kind: SalaryEmployeeKind;
+  employeeUserId: number;
+  startDate: string;
+  endDate: string;
+  totalUnits: number;
+  items: SalaryLessonRowDto[];
 };
 
 export type CreateCalculatedSalaryInput = {
@@ -207,7 +227,94 @@ async function overlappingPayments(
   return map;
 }
 
+async function practicalLessonRows(
+  employeeUserId: number,
+  start: string,
+  end: string,
+): Promise<SalaryLessonRowDto[]> {
+  const rows = await Booking.findAll({
+    where: {
+      lessonType: 'practical',
+      dateIso: { [Op.between]: [start, end] },
+      instructorUserId: employeeUserId,
+    },
+    include: [{ model: User, as: 'student', required: false, attributes: ['id', 'name'] }],
+    order: [
+      ['dateIso', 'ASC'],
+      ['time', 'ASC'],
+    ],
+  });
+  const items: SalaryLessonRowDto[] = [];
+  for (const row of rows) {
+    if (!bookingCountsForSalary(row)) continue;
+    const student = row.get('student') as User | null | undefined;
+    items.push({
+      id: row.id,
+      dateIso: String(row.dateIso).slice(0, 10),
+      startTime: String(row.time),
+      endTime: row.endTime ?? null,
+      units: bookingLessonUnits(row),
+      label: student?.name?.trim() || `Student #${row.studentUserId}`,
+    });
+  }
+  return items;
+}
+
+async function theoryLessonRows(
+  employeeUserId: number,
+  start: string,
+  end: string,
+): Promise<SalaryLessonRowDto[]> {
+  const now = new Date();
+  const sessions = await TheoryCohortSession.findAll({
+    where: {
+      dateIso: { [Op.between]: [start, end] },
+      instructorUserId: employeeUserId,
+    },
+    include: [{ model: TheoryCohort, as: 'cohort', required: false, attributes: ['id', 'name'] }],
+    order: [
+      ['dateIso', 'ASC'],
+      ['startTime', 'ASC'],
+    ],
+  });
+  const items: SalaryLessonRowDto[] = [];
+  for (const session of sessions) {
+    if (!sessionCountsForSalary(session, now)) continue;
+    const cohort = session.get('cohort') as TheoryCohort | null | undefined;
+    items.push({
+      id: session.id,
+      dateIso: String(session.dateIso).slice(0, 10),
+      startTime: String(session.startTime),
+      endTime: String(session.endTime),
+      units: 1,
+      label: cohort?.name?.trim() || `Group #${session.cohortId}`,
+    });
+  }
+  return items;
+}
+
 export default class AdminSalaryService {
+  static async lessons(
+    kind: SalaryEmployeeKind,
+    employeeUserId: number,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<SalaryLessonsDto> {
+    const { start, end } = parseDateRange(startDate, endDate);
+    const items =
+      kind === 'instructor'
+        ? await practicalLessonRows(employeeUserId, start, end)
+        : await theoryLessonRows(employeeUserId, start, end);
+    return {
+      kind,
+      employeeUserId,
+      startDate: start,
+      endDate: end,
+      totalUnits: items.reduce((s, r) => s + r.units, 0),
+      items,
+    };
+  }
+
   static async report(startDate?: string, endDate?: string): Promise<SalaryReportDto> {
     const { start, end } = parseDateRange(startDate, endDate);
 

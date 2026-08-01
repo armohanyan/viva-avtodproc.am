@@ -28,6 +28,8 @@ type Props = {
   onIsGiftChange?: (value: boolean) => void;
   giftNote?: string;
   onGiftNoteChange?: (value: string) => void;
+  /** Current user is a super admin: their gifts are confirmed automatically (no approval request). */
+  giftAutoApproved?: boolean;
 };
 
 export default function AdminBookingPaymentSection({
@@ -44,6 +46,7 @@ export default function AdminBookingPaymentSection({
   onIsGiftChange,
   giftNote = "",
   onGiftNoteChange,
+  giftAutoApproved,
 }: Props) {
   const { t } = useLang();
   const total = Math.max(0, Math.round(totalPriceAmd));
@@ -91,7 +94,7 @@ export default function AdminBookingPaymentSection({
           {giftActive ? (
             <>
               <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-foreground">
-                {t("adminBookingGiftNoPaymentHint")}
+                {t(giftAutoApproved ? "adminBookingGiftAutoApprovedHint" : "adminBookingGiftNoPaymentHint")}
               </p>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">

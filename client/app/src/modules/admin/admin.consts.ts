@@ -49,6 +49,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
       { href: "/admin/finance/income", translationKey: "adminFinanceIncomeNav" },
       { href: "/admin/finance/outcomes", translationKey: "adminFinanceOutcomesNav" },
       { href: "/admin/finance/petrol", translationKey: "adminPetrolNav" },
+      { href: "/admin/finance/petrol-requests", translationKey: "adminPetrolRequestsNav" },
     ],
   },
   { href: "/admin/salary", translationKey: "adminSalaryNav", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },

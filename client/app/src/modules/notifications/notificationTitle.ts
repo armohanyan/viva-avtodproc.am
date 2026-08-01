@@ -17,6 +17,9 @@ const TITLE_KEY: Record<NotificationType, TranslationKey> = {
   [NOTIFICATION_TYPE.CONTACT_REQUEST_CREATED]: "notifTitleContactRequestCreated",
   [NOTIFICATION_TYPE.CALL_REQUEST_CREATED]: "notifTitleCallRequestCreated",
   [NOTIFICATION_TYPE.PAYMENT_RECEIVED]: "notifTitlePaymentReceived",
+  [NOTIFICATION_TYPE.PETROL_EXPENSE_REQUEST_CREATED]: "notifTitlePetrolRequestCreated",
+  [NOTIFICATION_TYPE.PETROL_EXPENSE_REQUEST_APPROVED]: "notifTitlePetrolRequestApproved",
+  [NOTIFICATION_TYPE.PETROL_EXPENSE_REQUEST_REJECTED]: "notifTitlePetrolRequestRejected",
   [NOTIFICATION_TYPE.SYSTEM_ALERT]: "notifTitleSystemAlert",
 };
 

@@ -14,6 +14,8 @@ import { cn } from "src/lib/utils";
 
 import { useLang } from "src/lib/i18n";
 
+import { useAccount } from "src/modules/accounts";
+
 import { useToast } from "src/lib/toast";
 
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -150,6 +152,10 @@ export default function QuickPracticalBookingModal({
 
   const { showToast } = useToast();
 
+  const { user: accountUser } = useAccount();
+
+  const isSuperAdminUser = accountUser?.accountType === "super_admin";
+
   const [studentId, setStudentId] = useState("");
 
   /** Kept in sync with the picker so finance customer does not depend on directory id type / refresh races. */
@@ -170,6 +176,11 @@ export default function QuickPracticalBookingModal({
   );
 
   const [paymentErrorKey, setPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
+
+  /** Gift lesson (free, super admin must approve). */
+  const [isGift, setIsGift] = useState(false);
+
+  const [giftNote, setGiftNote] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -218,6 +229,10 @@ export default function QuickPracticalBookingModal({
     setBookingPayment(defaultAdminBookingPayment());
 
     setPaymentErrorKey(null);
+
+    setIsGift(false);
+
+    setGiftNote("");
 
   }, [open, initialBranchId]);
 
@@ -291,7 +306,7 @@ export default function QuickPracticalBookingModal({
 
     }
 
-    const payErr = validateAdminBookingPayment(bookingPayment, totalPriceAmd);
+    const payErr = isGift ? null : validateAdminBookingPayment(bookingPayment, totalPriceAmd);
 
     if (payErr) {
 
@@ -307,15 +322,21 @@ export default function QuickPracticalBookingModal({
 
 
 
-    const paymentBody = adminPaymentApiPayload(bookingPayment, totalPriceAmd);
+    const paymentBody = isGift
 
-    const paid =
+      ? { isGift: true, ...(giftNote.trim() ? { giftNote: giftNote.trim() } : {}) }
 
-      paymentBody.adminPaymentStatus === "paid"
+      : adminPaymentApiPayload(bookingPayment, totalPriceAmd);
+
+    const paid = isGift
+
+      ? 0
+
+      : "adminPaymentStatus" in paymentBody && paymentBody.adminPaymentStatus === "paid"
 
         ? totalPriceAmd
 
-        : paymentBody.paidAmountAmd ?? paidAmountFromState(bookingPayment);
+        : ("paidAmountAmd" in paymentBody ? paymentBody.paidAmountAmd : undefined) ?? paidAmountFromState(bookingPayment);
 
 
 
@@ -705,6 +726,18 @@ export default function QuickPracticalBookingModal({
           onChange={setBookingPayment}
 
           errorKey={paymentErrorKey}
+
+          giftEnabled
+
+          giftAutoApproved={isSuperAdminUser}
+
+          isGift={isGift}
+
+          onIsGiftChange={setIsGift}
+
+          giftNote={giftNote}
+
+          onGiftNoteChange={setGiftNote}
 
         />
 

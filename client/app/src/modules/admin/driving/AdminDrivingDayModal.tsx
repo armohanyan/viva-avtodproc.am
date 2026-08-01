@@ -17,9 +17,16 @@ import { useBranches } from "src/modules/branches";
 import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
+  bookableTimesFromPlan,
+  practicalSlotRangeMinutesFromBookable,
   type PracticalSlotPlanRow,
 } from "src/modules/booking/practical-slot-plan";
 import { parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
+import {
+  isSlotBlockedByAvailabilityRules,
+  normalizeAvailabilityBlocksFromApi,
+  type AvailabilityBlock,
+} from "src/modules/instructors/instructorAvailability";
 
 export type DrivingDayCellBooking = {
   bookingId: number;
@@ -165,6 +172,43 @@ export default function AdminDrivingDayModal({
   const [items, setItems] = useState<ClassScheduleItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocksByInstructor, setBlocksByInstructor] = useState<Map<string, AvailabilityBlock[]>>(
+    () => new Map(),
+  );
+
+  const gridInstructorIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const g of branchGroups) {
+      for (const ins of g.instructors) ids.add(String(ins.id));
+    }
+    return [...ids];
+  }, [branchGroups]);
+
+  useEffect(() => {
+    if (!open || gridInstructorIds.length === 0) {
+      setBlocksByInstructor(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const pairs = await Promise.all(
+        gridInstructorIds.map(async (id) => {
+          try {
+            const raw = await vivaApiJson<unknown>(
+              `/instructors/${encodeURIComponent(id)}/availability-blocks`,
+            );
+            return [id, normalizeAvailabilityBlocksFromApi(raw)] as const;
+          } catch {
+            return [id, [] as AvailabilityBlock[]] as const;
+          }
+        }),
+      );
+      if (!cancelled) setBlocksByInstructor(new Map(pairs));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, gridInstructorIds]);
 
   const load = useCallback(async () => {
     if (!day) return;
@@ -228,6 +272,21 @@ export default function AdminDrivingDayModal({
     const orphanTimes = [...bookingByInstructorTime.values()].map((b) => b.time);
     return mergeOrphanTimes(base, orphanTimes);
   }, [planRows, bookingByInstructorTime]);
+
+  const bookableTimes = useMemo(() => bookableTimesFromPlan(displayRows), [displayRows]);
+
+  /** True when admin schedule rules (day off, busy hours, …) block this instructor's slot. */
+  const isInstructorSlotBlocked = useCallback(
+    (instructorId: string, time: string): boolean => {
+      const blocks = blocksByInstructor.get(String(instructorId));
+      if (!blocks || blocks.length === 0) return false;
+      const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
+      return isSlotBlockedByAvailabilityRules(day, time, blocks, slotRange, {
+        forPracticalPlan: true,
+      });
+    },
+    [blocksByInstructor, bookableTimes, day],
+  );
 
   const title = `${formatGridDateLabel(day)} · ${armenianWeekdayShort(day)}`;
   const busy = loading || planLoading;
@@ -347,6 +406,7 @@ export default function AdminDrivingDayModal({
                     {branchGroups.flatMap((g) =>
                       g.instructors.map((ins) => {
                         const booking = resolveCellBooking(ins, g.branchId, time);
+                        const blocked = !booking && isInstructorSlotBlocked(ins.id, time);
                         return (
                           <td
                             key={`${time}-${g.branchId}-${ins.id}`}
@@ -371,6 +431,16 @@ export default function AdminDrivingDayModal({
                                   </span>
                                 ) : null}
                               </button>
+                            ) : blocked ? (
+                              <div
+                                className="w-full min-h-14 flex items-center justify-center bg-muted/70 cursor-not-allowed select-none"
+                                title={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
+                                aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
+                              >
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                                  {t("bookingSlotUnavailable")}
+                                </span>
+                              </div>
                             ) : (
                               <button
                                 type="button"

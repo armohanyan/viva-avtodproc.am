@@ -7,6 +7,8 @@ import {
   InstructorProfilePage,
   InstructorNotificationsPage,
   InstructorClassSchedulePage,
+  InstructorReportsPage,
+  InstructorFuelExpensesPage,
 } from "src/pages/instructor";
 
 const INSTRUCTOR: readonly AccountType[] = ["instructor"];
@@ -16,6 +18,8 @@ export const instructorRoutes: readonly AppRoute[] = [
   { path: "/instructor/students", component: InstructorStudentsPage, allowedAccountTypes: INSTRUCTOR },
   { path: "/instructor/class-schedule", component: InstructorClassSchedulePage, allowedAccountTypes: INSTRUCTOR },
   { path: "/instructor/cars", component: InstructorCarsPage, allowedAccountTypes: INSTRUCTOR },
+  { path: "/instructor/reports", component: InstructorReportsPage, allowedAccountTypes: INSTRUCTOR },
+  { path: "/instructor/fuel-expenses", component: InstructorFuelExpensesPage, allowedAccountTypes: INSTRUCTOR },
   { path: "/instructor/profile", component: InstructorProfilePage, allowedAccountTypes: INSTRUCTOR },
   { path: "/instructor/notifications", component: InstructorNotificationsPage, allowedAccountTypes: INSTRUCTOR },
 ];

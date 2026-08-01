@@ -27,7 +27,9 @@ import { cityNameById, useCities } from "src/modules/cities";
 import { useAccount } from "src/modules/accounts";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
 import type { ScheduleRuleKind } from "src/modules/instructors/instructorAvailability";
-import InstructorPracticalSlotsSection from "src/modules/instructors/InstructorPracticalSlotsSection";
+import InstructorPracticalSlotsSection, {
+  type InstructorPracticalSlotsSaveHandle,
+} from "src/modules/instructors/InstructorPracticalSlotsSection";
 
 type InstructorForm = Pick<
   Instructor,
@@ -164,6 +166,7 @@ export default function AdminInstructors() {
   const addInstructorFormId = useId();
   const editInstructorAvatarFileRef = useRef<HTMLInputElement | null>(null);
   const addInstructorAvatarFileRef = useRef<HTMLInputElement | null>(null);
+  const editPracticalSlotsSaveRef = useRef<InstructorPracticalSlotsSaveHandle | null>(null);
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const { user } = useAccount();
@@ -530,6 +533,11 @@ export default function AdminInstructors() {
     if (error) {
       showToast(error, "error");
       return;
+    }
+
+    if (editIns.teachesPractical) {
+      const slotsSaved = (await editPracticalSlotsSaveRef.current?.save()) ?? true;
+      if (!slotsSaved) return;
     }
 
     try {
@@ -946,7 +954,7 @@ export default function AdminInstructors() {
                 </div>
               </div>
               {editIns.teachesPractical ? (
-                <InstructorPracticalSlotsSection instructorId={editIns.id} />
+                <InstructorPracticalSlotsSection instructorId={editIns.id} saveRef={editPracticalSlotsSaveRef} />
               ) : null}
               {branches.length > 0 && (
                 <div>

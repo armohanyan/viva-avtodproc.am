@@ -186,6 +186,18 @@ function readStaffUserIdFromToken(req: Request): number | null {
   }
 }
 
+/** Staff account type of the caller (gifts by super admins are auto-approved). */
+function readStaffAccountTypeFromToken(req: Request): 'admin' | 'super_admin' | null {
+  const token = readBearerToken(req);
+  if (!token) return null;
+  try {
+    const payload = verifyAccessToken(token);
+    return payload.accountType === 'admin' || payload.accountType === 'super_admin' ? payload.accountType : null;
+  } catch {
+    return null;
+  }
+}
+
 function requireStudentUserId(req: Request, next: NextFunction): number | undefined {
   const token = readBearerToken(req);
   if (!token) {
@@ -470,6 +482,7 @@ export default class BookingController {
             createdByUserId: readStaffUserIdFromToken(req),
             isGift: body.isGift,
             giftNote: body.giftNote,
+            createdByAccountType: readStaffAccountTypeFromToken(req),
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -537,6 +550,7 @@ export default class BookingController {
         createdByUserId: readStaffUserIdFromToken(req),
         isGift: body.isGift,
         giftNote: body.giftNote,
+        createdByAccountType: readStaffAccountTypeFromToken(req),
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

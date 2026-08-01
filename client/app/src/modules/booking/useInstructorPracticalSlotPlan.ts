@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { vivaApiJson } from "src/lib/vivaApi";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
@@ -12,6 +12,9 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
   const [rows, setRows] = useState<PracticalSlotPlanRow[]>(() =>
     DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })),
   );
+  const [savedJson, setSavedJson] = useState<string>(() =>
+    JSON.stringify(DEFAULT_PRACTICAL_SLOT_PLAN),
+  );
   const [customized, setCustomized] = useState(false);
   const [loading, setLoading] = useState(enabled && Boolean(instructorId.trim()));
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +22,9 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
   const refresh = useCallback(async () => {
     const iid = instructorId.trim();
     if (!iid) {
-      setRows(DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })));
+      const defaults = DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r }));
+      setRows(defaults);
+      setSavedJson(JSON.stringify(defaults));
       setCustomized(false);
       setLoading(false);
       return;
@@ -30,16 +35,23 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
       const data = await vivaApiJson<PlanResponse>(
         `/instructors/${encodeURIComponent(iid)}/practical-slot-plan`,
       );
-      setRows(normalizePracticalSlotPlan(data?.rows));
+      const next = normalizePracticalSlotPlan(data?.rows);
+      setRows(next);
+      setSavedJson(JSON.stringify(next));
       setCustomized(Boolean(data?.customized));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load instructor slot plan");
-      setRows(DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })));
+      const defaults = DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r }));
+      setRows(defaults);
+      setSavedJson(JSON.stringify(defaults));
       setCustomized(false);
     } finally {
       setLoading(false);
     }
   }, [instructorId]);
+
+  /** True when local rows differ from the last server state (unsaved edits). */
+  const dirty = useMemo(() => JSON.stringify(rows) !== savedJson, [rows, savedJson]);
 
   useEffect(() => {
     if (!enabled) {
@@ -49,5 +61,5 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
     void refresh();
   }, [enabled, refresh]);
 
-  return { rows, customized, loading, error, refresh, setRows, setCustomized };
+  return { rows, customized, dirty, loading, error, refresh, setRows, setCustomized };
 }

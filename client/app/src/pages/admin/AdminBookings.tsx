@@ -71,6 +71,7 @@ import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBra
 import { getAdminBranchFilterId } from "src/modules/admin/adminBranchFilter";
 import { formatBookingSlotRangeLabel } from "src/data/studentDemoBookings";
 import { branchNameById, useBranches } from "src/modules/branches";
+import { useAccount } from "src/modules/accounts";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
@@ -292,6 +293,8 @@ export default function AdminBookings() {
   const hookBookingSearch = (useSearch() ?? "").replace(/^\?/, "");
   const { t, lang } = useLang();
   const { showToast } = useToast();
+  const { user: accountUser } = useAccount();
+  const isSuperAdminUser = accountUser?.accountType === "super_admin";
   const { branches } = useBranches();
   const { instructors } = useInstructors();
   const instructorNames = useMemo(() => allInstructorNames(instructors), [instructors]);
@@ -3166,6 +3169,7 @@ export default function AdminBookings() {
                   onChange={setAddBookingPayment}
                   errorKey={addPaymentErrorKey}
                   giftEnabled={addFlowKind === "practical"}
+                  giftAutoApproved={isSuperAdminUser}
                   isGift={addIsGift}
                   onIsGiftChange={setAddIsGift}
                   giftNote={addGiftNote}

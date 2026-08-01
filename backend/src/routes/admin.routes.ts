@@ -8,6 +8,7 @@ import { requireStaff } from '../middleware/staff-auth.middleware';
 import adminFinanceRoutes from './admin-finance.routes';
 import adminInstructorKmLogRoutes from './admin-instructor-km-log.routes';
 import adminPetrolConsumptionRoutes from './admin-petrol-consumption.routes';
+import adminPetrolExpenseRequestRoutes from './admin-petrol-expense-request.routes';
 import adminPetrolExpenseRoutes from './admin-petrol-expense.routes';
 import adminPetrolFuelKmAnalyticsRoutes from './admin-petrol-fuel-km-analytics.routes';
 import adminSalaryRoutes from './admin-salary.routes';
@@ -16,6 +17,7 @@ const router = Router();
 
 router.use('/finance', adminFinanceRoutes);
 router.use('/petrol-expenses', adminPetrolExpenseRoutes);
+router.use('/petrol-expense-requests', adminPetrolExpenseRequestRoutes);
 router.use('/petrol-consumptions', adminPetrolConsumptionRoutes);
 router.use('/instructor-km-logs', adminInstructorKmLogRoutes);
 router.use('/petrol-fuel-km', adminPetrolFuelKmAnalyticsRoutes);

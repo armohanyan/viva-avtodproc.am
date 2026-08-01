@@ -1,6 +1,7 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import type { PetrolPaymentType } from '../constants/petrol-payment-type';
 import type { PetrolType } from '../constants/petrol-type';
+import { PETROL_TYPES } from '../constants/petrol-type';
 import { sequelize } from '../database/sequelize';
 import { autoIncrementPk, fkUnsignedInt, fkUnsignedIntNullable } from './auto-id';
 
@@ -27,7 +28,7 @@ PetrolExpense.init(
     instructorUserId: fkUnsignedInt(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
     petrolType: {
-      type: DataTypes.ENUM('benzin', 'lpg'),
+      type: DataTypes.ENUM(...PETROL_TYPES),
       allowNull: false,
       defaultValue: 'benzin',
     },

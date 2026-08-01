@@ -94,6 +94,24 @@ const kindLabelKey: Record<SalaryPaymentKind, TranslationKey> = {
   other: "adminSalaryKindOther",
 };
 
+type SalaryLessonRow = {
+  id: number;
+  dateIso: string;
+  startTime: string;
+  endTime: string | null;
+  units: number;
+  label: string;
+};
+
+type SalaryLessons = {
+  kind: SalaryEmployeeKind;
+  employeeUserId: number;
+  startDate: string;
+  endDate: string;
+  totalUnits: number;
+  items: SalaryLessonRow[];
+};
+
 type OtherFormState = {
   title: string;
   employeeName: string;
@@ -126,6 +144,10 @@ export default function AdminSalary() {
   const [otherForm, setOtherForm] = useState<OtherFormState | null>(null);
 
   const [deleteRow, setDeleteRow] = useState<SalaryPayment | null>(null);
+
+  const [lessonsRow, setLessonsRow] = useState<SalaryReportRow | null>(null);
+  const [lessons, setLessons] = useState<SalaryLessons | null>(null);
+  const [lessonsLoading, setLessonsLoading] = useState(false);
 
   const loadReport = useCallback(async () => {
     setReportLoading(true);
@@ -182,6 +204,27 @@ export default function AdminSalary() {
         .includes(q),
     );
   }, [payments, historySearch, t]);
+
+  const openLessonsModal = async (row: SalaryReportRow) => {
+    setLessonsRow(row);
+    setLessons(null);
+    setLessonsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        kind: row.kind,
+        employeeUserId: String(row.employeeUserId),
+        startDate: period.start,
+        endDate: period.end,
+      });
+      const data = await vivaApiJson<SalaryLessons>(`/admin/salary/lessons?${params.toString()}`);
+      setLessons(data);
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+      setLessonsRow(null);
+    } finally {
+      setLessonsLoading(false);
+    }
+  };
 
   const openPayModal = (row: SalaryReportRow) => {
     setPayRow(row);
@@ -374,7 +417,16 @@ export default function AdminSalary() {
                   <tr key={`${row.kind}:${row.employeeUserId}`} className="hover:bg-muted/30">
                     <td className="px-4 py-3 font-medium">{row.employeeName}</td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t(kindLabelKey[row.kind])}</td>
-                    <td className="px-4 py-3 tabular-nums">{row.lessonsCount}</td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => void openLessonsModal(row)}
+                        className="tabular-nums font-medium text-primary underline underline-offset-2 hover:text-primary/80 cursor-pointer"
+                        title={t("adminSalaryLessonsModalTitle")}
+                      >
+                        {row.lessonsCount}
+                      </button>
+                    </td>
                     <td className="px-4 py-3 tabular-nums whitespace-nowrap">{formatAmd(row.ratePerLessonAmd)}</td>
                     <td className="px-4 py-3 font-medium tabular-nums whitespace-nowrap">{formatAmd(row.totalAmd)}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
@@ -470,6 +522,73 @@ export default function AdminSalary() {
           {t("panelShowingLabel")} {filteredHistory.length} / {payments.length}
         </div>
       </Card>
+
+      <AppModal
+        open={!!lessonsRow}
+        onOpenChange={(o) => {
+          if (!o) {
+            setLessonsRow(null);
+            setLessons(null);
+          }
+        }}
+        title={lessonsRow ? `${t("adminSalaryLessonsModalTitle")} — ${lessonsRow.employeeName}` : t("adminSalaryLessonsModalTitle")}
+        description={`${period.start} — ${period.end}`}
+        contentClassName="max-w-2xl"
+      >
+        {lessonsLoading ? (
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-border">
+                <TableSkeletonRows rows={5} cols={4} />
+              </tbody>
+            </table>
+          </div>
+        ) : lessons ? (
+          <div className="space-y-3">
+            <div className="max-h-[24rem] overflow-y-auto rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("adminSalaryColCreatedAt")}</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("adminSalaryColTime")}</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+                      {lessonsRow?.kind === "instructor" ? t("adminSalaryColStudent") : t("adminSalaryColGroup")}
+                    </th>
+                    <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">{t("adminSalaryColLessons")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {lessons.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        {t("adminSalaryNoRows")}
+                      </td>
+                    </tr>
+                  ) : (
+                    lessons.items.map((row) => (
+                      <tr key={row.id} className="hover:bg-muted/30">
+                        <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">{row.dateIso}</td>
+                        <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted-foreground">
+                          {row.startTime}
+                          {row.endTime ? ` — ${row.endTime}` : ""}
+                        </td>
+                        <td className="px-4 py-2.5">{row.label}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{row.units}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-between text-sm font-medium px-1">
+              <span className="text-muted-foreground">{t("adminSalaryColTotal")}</span>
+              <span className="tabular-nums">
+                {lessons.totalUnits} {t("adminSalaryColLessons").toLowerCase()}
+              </span>
+            </div>
+          </div>
+        ) : null}
+      </AppModal>
 
       <AppModal
         open={!!payRow}

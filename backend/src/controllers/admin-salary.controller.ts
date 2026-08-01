@@ -1,6 +1,6 @@
 import type { NextFunction, Response } from 'express';
 import { z } from 'zod';
-import { parseBody } from '../helpers';
+import { parseBody, parseQuery } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import AdminSalaryService from '../services/admin-salary.service';
 import { SuccessHandlerUtil } from '../utils';
@@ -33,7 +33,29 @@ function staffUserId(req: StaffRequest): number | undefined {
   return Number.isFinite(id) && id! > 0 ? id : undefined;
 }
 
+const lessonsQuerySchema = z.object({
+  kind: z.enum(['instructor', 'theory_teacher']),
+  employeeUserId: z.coerce.number().int().positive(),
+  startDate: dateField.optional(),
+  endDate: dateField.optional(),
+});
+
 export default class AdminSalaryController {
+  static async lessons(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const query = parseQuery(lessonsQuerySchema, req.query);
+      const data = await AdminSalaryService.lessons(
+        query.kind,
+        query.employeeUserId,
+        query.startDate,
+        query.endDate,
+      );
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async report(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const startDate = typeof req.query.startDate === 'string' ? req.query.startDate : undefined;

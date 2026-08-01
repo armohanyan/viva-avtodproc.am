@@ -1,5 +1,6 @@
 import { QueryTypes } from 'sequelize';
 import config from '../config';
+import { PETROL_TYPES } from '../constants/petrol-type';
 import { sequelize } from '../database/sequelize';
 import { Blog } from './blog.model';
 import { BookedCall } from './booked-call.model';
@@ -37,6 +38,7 @@ import { PackageLessonBalance } from './package-lesson-balance.model';
 import { PackageOrder } from './package-order.model';
 import { PetrolConsumption } from './petrol-consumption.model';
 import { PetrolExpense } from './petrol-expense.model';
+import { PetrolExpenseRequest } from './petrol-expense-request.model';
 import { SalaryPayment } from './salary-payment.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
@@ -125,6 +127,13 @@ User.hasMany(PetrolExpense, { foreignKey: 'instructorUserId', sourceKey: 'id', a
 PetrolExpense.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
 User.hasMany(PetrolExpense, { foreignKey: 'createdByUserId', sourceKey: 'id', as: 'petrolExpensesCreated' });
 PetrolExpense.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
+FleetCar.hasMany(PetrolExpenseRequest, { foreignKey: 'carId', sourceKey: 'id' });
+PetrolExpenseRequest.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
+User.hasMany(PetrolExpenseRequest, { foreignKey: 'instructorUserId', sourceKey: 'id', as: 'petrolExpenseRequests' });
+PetrolExpenseRequest.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+PetrolExpenseRequest.belongsTo(User, { foreignKey: 'decidedByUserId', targetKey: 'id', as: 'decidedBy' });
+PetrolExpenseRequest.belongsTo(PetrolExpense, { foreignKey: 'petrolExpenseId', targetKey: 'id', as: 'petrolExpense' });
 
 FleetCar.hasMany(PetrolConsumption, { foreignKey: 'carId', sourceKey: 'id' });
 PetrolConsumption.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -252,6 +261,7 @@ export {
   PackageOrder,
   PetrolConsumption,
   PetrolExpense,
+  PetrolExpenseRequest,
   SalaryPayment,
   AdminMfaChallenge,
   OAuthAccount,
@@ -703,7 +713,7 @@ async function ensurePetrolExpensesTable(): Promise<void> {
       \`car_id\` INT UNSIGNED NOT NULL,
       \`instructor_user_id\` INT UNSIGNED NOT NULL,
       \`date\` DATE NOT NULL,
-      \`petrol_type\` ENUM('benzin','lpg') NOT NULL DEFAULT 'benzin',
+      \`petrol_type\` ENUM('benzin','lpg','gas') NOT NULL DEFAULT 'benzin',
       \`petrol_count\` DECIMAL(10,2) NULL,
       \`price\` INT UNSIGNED NOT NULL,
       \`description\` TEXT NULL,
@@ -777,6 +787,68 @@ async function ensurePetrolExpensesPaymentType(): Promise<void> {
   await sequelize.query(`
     ALTER TABLE \`petrol_expenses\`
       ADD COLUMN \`payment_type\` ENUM('card','cash','pos') NOT NULL DEFAULT 'cash' AFTER \`petrol_count\`
+  `);
+}
+
+/** Extend `petrol_expenses.petrol_type` ENUM when new values are added to {@link PETROL_TYPES}. */
+async function ensurePetrolExpensesTypeEnumValues(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const col = await sequelize.query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses' AND COLUMN_NAME = 'petrol_type'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (col.length === 0) return;
+  const columnType = col[0]!.COLUMN_TYPE;
+  const missingType = PETROL_TYPES.some((v) => !columnType.includes(`'${v}'`));
+  if (!missingType) return;
+  const literals = PETROL_TYPES.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ');
+  await sequelize.query(
+    `ALTER TABLE \`petrol_expenses\` MODIFY COLUMN \`petrol_type\` ENUM(${literals}) NOT NULL DEFAULT 'benzin'`,
+  );
+}
+
+async function ensurePetrolExpenseRequestsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expense_requests'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table petrol_expense_requests …');
+  const petrolTypeLiterals = PETROL_TYPES.map((v) => `'${v}'`).join(',');
+  await sequelize.query(`
+    CREATE TABLE \`petrol_expense_requests\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`car_id\` INT UNSIGNED NOT NULL,
+      \`date\` DATE NOT NULL,
+      \`time\` VARCHAR(5) NULL,
+      \`petrol_type\` ENUM(${petrolTypeLiterals}) NOT NULL DEFAULT 'benzin',
+      \`price\` INT UNSIGNED NOT NULL,
+      \`photo_url\` VARCHAR(500) NOT NULL,
+      \`description\` TEXT NULL,
+      \`status\` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+      \`decision_note\` TEXT NULL,
+      \`decided_by_user_id\` INT UNSIGNED NULL,
+      \`decided_at\` DATETIME NULL,
+      \`petrol_expense_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`petrol_expense_requests_status_idx\` (\`status\`, \`created_at\`),
+      KEY \`petrol_expense_requests_instructor_idx\` (\`instructor_user_id\`, \`created_at\`),
+      CONSTRAINT \`petrol_expense_requests_instructor_fk\` FOREIGN KEY (\`instructor_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`petrol_expense_requests_car_fk\` FOREIGN KEY (\`car_id\`) REFERENCES \`fleet_cars\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`petrol_expense_requests_decided_by_fk\` FOREIGN KEY (\`decided_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+      CONSTRAINT \`petrol_expense_requests_expense_fk\` FOREIGN KEY (\`petrol_expense_id\`) REFERENCES \`petrol_expenses\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 }
 
@@ -2392,6 +2464,8 @@ export async function syncModels(): Promise<void> {
   await ensurePetrolExpensesTable();
   await ensurePetrolExpensesTypeAndNullableCount();
   await ensurePetrolExpensesPaymentType();
+  await ensurePetrolExpensesTypeEnumValues();
+  await ensurePetrolExpenseRequestsTable();
   await ensurePetrolConsumptionsTable();
   await ensurePetrolConsumptionsPetrolAmountNullable();
   await ensureInstructorKmLogsTable();

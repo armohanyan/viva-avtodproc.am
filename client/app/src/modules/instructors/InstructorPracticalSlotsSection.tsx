@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useImperativeHandle, useState, type Ref } from "react";
 import { Button } from "src/components/ui/button";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
@@ -8,26 +8,33 @@ import type { PracticalSlotPlanRow } from "src/modules/booking/practical-slot-pl
 import { normalizeTimeHHMM } from "src/modules/booking/booking-slot.util";
 import { useInstructorPracticalSlotPlan } from "src/modules/booking/useInstructorPracticalSlotPlan";
 
-type Props = {
-  instructorId: string;
+export type InstructorPracticalSlotsSaveHandle = {
+  /** Persists unsaved slot edits (no-op when nothing changed). Returns false when the save failed. */
+  save: () => Promise<boolean>;
 };
 
-export default function InstructorPracticalSlotsSection({ instructorId }: Props) {
+type Props = {
+  instructorId: string;
+  /** Lets a parent form (e.g. the instructor edit modal) save pending slot edits on its own submit. */
+  saveRef?: Ref<InstructorPracticalSlotsSaveHandle>;
+};
+
+export default function InstructorPracticalSlotsSection({ instructorId, saveRef }: Props) {
   const { t } = useLang();
   const { showToast } = useToast();
-  const { rows, loading, refresh, setRows, setCustomized } = useInstructorPracticalSlotPlan(
+  const { rows, dirty, loading, refresh, setRows, setCustomized } = useInstructorPracticalSlotPlan(
     instructorId,
     Boolean(instructorId.trim()),
   );
   const [saving, setSaving] = useState(false);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (): Promise<boolean> => {
     const iid = instructorId.trim();
-    if (!iid) return;
+    if (!iid) return false;
     const invalid = rows.filter((r) => r.time && !normalizeTimeHHMM(r.time));
     if (invalid.length > 0) {
       showToast(t("adminSettingsSlotTimeInvalid"), "error");
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -41,12 +48,22 @@ export default function InstructorPracticalSlotsSection({ instructorId }: Props)
       setCustomized(true);
       showToast(t("instructorPracticalSlotsSaved"), "success");
       await refresh();
+      return true;
     } catch (err) {
       showToast(getApiErrorMessage(err), "error");
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [instructorId, rows, refresh, showToast, t]);
+  }, [instructorId, rows, refresh, setCustomized, showToast, t]);
+
+  useImperativeHandle(
+    saveRef,
+    () => ({
+      save: async () => (dirty ? handleSave() : true),
+    }),
+    [dirty, handleSave],
+  );
 
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">

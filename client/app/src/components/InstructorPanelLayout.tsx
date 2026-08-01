@@ -11,6 +11,8 @@ import {
 	LogOut,
 	Settings,
 	CalendarDays,
+	BarChart3,
+	Fuel,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { INSTRUCTOR_NAV_LINKS } from "src/modules/instructor/instructor.consts";
@@ -43,6 +45,8 @@ export default function InstructorPanelLayout({ children }: Props) {
 		"/instructor/class-schedule": CalendarDays,
 		"/instructor/students": GraduationCap,
 		"/instructor/cars": Car,
+		"/instructor/reports": BarChart3,
+		"/instructor/fuel-expenses": Fuel,
 		"/instructor/profile": User,
 	} as const;
 
