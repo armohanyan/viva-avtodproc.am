@@ -18,6 +18,7 @@ import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
   bookableTimesFromPlan,
+  normalizePracticalSlotPlan,
   practicalSlotRangeMinutesFromBookable,
   type PracticalSlotPlanRow,
 } from "src/modules/booking/practical-slot-plan";
@@ -175,6 +176,10 @@ export default function AdminDrivingDayModal({
   const [blocksByInstructor, setBlocksByInstructor] = useState<Map<string, AvailabilityBlock[]>>(
     () => new Map(),
   );
+  /** Working-slot times per instructor; only instructors with a customized plan are present. */
+  const [planTimesByInstructor, setPlanTimesByInstructor] = useState<Map<string, Set<string>>>(
+    () => new Map(),
+  );
 
   const gridInstructorIds = useMemo(() => {
     const ids = new Set<string>();
@@ -204,6 +209,36 @@ export default function AdminDrivingDayModal({
         }),
       );
       if (!cancelled) setBlocksByInstructor(new Map(pairs));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, gridInstructorIds]);
+
+  useEffect(() => {
+    if (!open || gridInstructorIds.length === 0) {
+      setPlanTimesByInstructor(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const pairs = await Promise.all(
+        gridInstructorIds.map(async (id) => {
+          try {
+            const data = await vivaApiJson<{ rows?: unknown; customized?: boolean }>(
+              `/instructors/${encodeURIComponent(id)}/practical-slot-plan`,
+            );
+            if (!data?.customized) return null;
+            const times = bookableTimesFromPlan(normalizePracticalSlotPlan(data.rows));
+            return [id, new Set(times.map(padSlotTime))] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setPlanTimesByInstructor(new Map(pairs.filter((p): p is NonNullable<typeof p> => p != null)));
+      }
     })();
     return () => {
       cancelled = true;
@@ -286,6 +321,16 @@ export default function AdminDrivingDayModal({
       });
     },
     [blocksByInstructor, bookableTimes, day],
+  );
+
+  /** True when the instructor saved custom working slots and this time is not one of them. */
+  const isOutsideInstructorWorkingSlots = useCallback(
+    (instructorId: string, time: string): boolean => {
+      const times = planTimesByInstructor.get(String(instructorId));
+      if (!times) return false;
+      return !times.has(padSlotTime(time));
+    },
+    [planTimesByInstructor],
   );
 
   const title = `${formatGridDateLabel(day)} · ${armenianWeekdayShort(day)}`;
@@ -406,7 +451,10 @@ export default function AdminDrivingDayModal({
                     {branchGroups.flatMap((g) =>
                       g.instructors.map((ins) => {
                         const booking = resolveCellBooking(ins, g.branchId, time);
-                        const blocked = !booking && isInstructorSlotBlocked(ins.id, time);
+                        const blocked =
+                          !booking &&
+                          (isInstructorSlotBlocked(ins.id, time) ||
+                            isOutsideInstructorWorkingSlots(ins.id, time));
                         return (
                           <td
                             key={`${time}-${g.branchId}-${ins.id}`}
