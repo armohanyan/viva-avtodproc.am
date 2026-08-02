@@ -51,9 +51,20 @@ export function parseExcelDateCell(value: unknown): string | null {
 }
 
 export function parseOptionalNumber(value: unknown): number | null {
-  const text = normalizeCellText(value).replace(/\s/g, "").replace(",", ".");
+  const text = normalizeCellText(value).replace(/\s/g, "").replace(/\u00a0/g, "");
   if (!text) return null;
-  const n = Number.parseFloat(text);
+
+  const lastComma = text.lastIndexOf(",");
+  const lastDot = text.lastIndexOf(".");
+  let normalized = text;
+  if (lastComma >= 0 && lastDot >= 0) {
+    normalized =
+      lastComma > lastDot ? text.replace(/\./g, "").replace(",", ".") : text.replace(/,/g, "");
+  } else if (lastComma >= 0) {
+    normalized = text.replace(",", ".");
+  }
+
+  const n = Number.parseFloat(normalized);
   return Number.isFinite(n) ? n : null;
 }
 

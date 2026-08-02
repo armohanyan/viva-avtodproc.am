@@ -1,6 +1,6 @@
 import { Op } from 'sequelize';
 import type { PetrolPaymentType } from '../constants/petrol-payment-type';
-import { petrolPaymentTypeLabelAm } from '../constants/petrol-payment-type';
+import { normalizePetrolPaymentType, petrolPaymentTypeLabelAm } from '../constants/petrol-payment-type';
 import type { PetrolType } from '../constants/petrol-type';
 import { petrolTypeLabelAm } from '../constants/petrol-type';
 import {
@@ -18,7 +18,7 @@ const { InputValidationError, ResourceNotFoundError } = ErrorsUtil;
 
 export type PetrolExpenseDto = {
   id: number;
-  carId: number;
+  carId: number | null;
   carLabel: string;
   instructorUserId: number;
   instructorName: string;
@@ -55,7 +55,7 @@ export type PetrolListResult = {
 };
 
 export type PetrolExpenseInput = {
-  carId: number;
+  carId: number | null;
   instructorUserId: number;
   date: string;
   petrolType: PetrolType;
@@ -83,9 +83,13 @@ function toNullableNumber(value: unknown): number | null {
   if (value == null) return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    const trimmed = value.trim();
+    const trimmed = value.trim().replace(/\s/g, '').replace(/\u00a0/g, '');
     if (!trimmed) return null;
-    const n = Number.parseFloat(trimmed);
+    const normalized =
+      trimmed.includes(',') && !trimmed.includes('.')
+        ? trimmed.replace(',', '.')
+        : trimmed.replace(/,/g, '');
+    const n = Number.parseFloat(normalized);
     return Number.isFinite(n) ? n : null;
   }
   return null;
@@ -99,16 +103,16 @@ function carLabel(car: FleetCar): string {
 
 function rowToDto(
   row: PetrolExpense,
-  car: FleetCar,
+  car: FleetCar | null | undefined,
   instructor: User,
   createdBy?: User,
 ): PetrolExpenseDto {
   const petrolType = row.petrolType as PetrolType;
-  const paymentType = (row.paymentType ?? 'cash') as PetrolPaymentType;
+  const paymentType = normalizePetrolPaymentType(row.paymentType);
   return {
     id: row.id,
-    carId: row.carId,
-    carLabel: carLabel(car),
+    carId: row.carId ?? null,
+    carLabel: car ? carLabel(car) : '—',
     instructorUserId: row.instructorUserId,
     instructorName: instructor.name,
     date: typeof row.date === 'string' ? row.date : String(row.date).slice(0, 10),
@@ -227,14 +231,14 @@ export default class AdminPetrolExpenseService {
         ['id', 'DESC'],
       ],
       include: [
-        { model: FleetCar, required: true },
+        { model: FleetCar, required: false },
         { model: User, as: 'instructor', required: true, attributes: ['id', 'name'] },
         { model: User, as: 'createdBy', required: false, attributes: ['id', 'name'] },
       ],
     });
 
     const items = rows.map((row) => {
-      const car = row.get('FleetCar') as FleetCar;
+      const car = row.get('FleetCar') as FleetCar | undefined;
       const instructor = row.get('instructor') as User;
       const createdBy = row.get('createdBy') as User | undefined;
       return rowToDto(row, car, instructor, createdBy);
@@ -245,7 +249,9 @@ export default class AdminPetrolExpenseService {
   }
 
   static async create(input: PetrolExpenseInput, createdByUserId?: number): Promise<PetrolExpenseDto> {
-    await assertCarExists(input.carId);
+    if (input.carId != null) {
+      await assertCarExists(input.carId);
+    }
     await assertPracticalInstructor(input.instructorUserId);
 
     const row = await PetrolExpense.create({
@@ -274,7 +280,9 @@ export default class AdminPetrolExpenseService {
     }
 
     if (patch.carId !== undefined) {
-      await assertCarExists(patch.carId);
+      if (patch.carId != null) {
+        await assertCarExists(patch.carId);
+      }
       row.carId = patch.carId;
     }
     if (patch.instructorUserId !== undefined) {
@@ -306,13 +314,13 @@ export default class AdminPetrolExpenseService {
   private static async getDtoById(id: number): Promise<PetrolExpenseDto | null> {
     const row = await PetrolExpense.findByPk(id, {
       include: [
-        { model: FleetCar, required: true },
+        { model: FleetCar, required: false },
         { model: User, as: 'instructor', required: true, attributes: ['id', 'name'] },
         { model: User, as: 'createdBy', required: false, attributes: ['id', 'name'] },
       ],
     });
     if (!row) return null;
-    const car = row.get('FleetCar') as FleetCar;
+    const car = row.get('FleetCar') as FleetCar | undefined;
     const instructor = row.get('instructor') as User;
     const createdBy = row.get('createdBy') as User | undefined;
     return rowToDto(row, car, instructor, createdBy);

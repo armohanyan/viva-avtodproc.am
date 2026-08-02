@@ -49,7 +49,13 @@ function toNumber(value: unknown): number {
   if (value == null) return 0;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    const n = Number.parseFloat(value.trim());
+    const trimmed = value.trim().replace(/\s/g, '').replace(/\u00a0/g, '');
+    if (!trimmed) return 0;
+    const normalized =
+      trimmed.includes(',') && !trimmed.includes('.')
+        ? trimmed.replace(',', '.')
+        : trimmed.replace(/,/g, '');
+    const n = Number.parseFloat(normalized);
     return Number.isFinite(n) ? n : 0;
   }
   return 0;

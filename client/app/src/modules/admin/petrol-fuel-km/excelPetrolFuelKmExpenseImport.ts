@@ -110,9 +110,8 @@ function parsePetrolType(raw: string): PetrolTypeValue | null {
 function parsePaymentType(raw: string): PetrolPaymentTypeValue | null {
   const text = raw.trim().toLowerCase();
   if (!text) return PETROL_PAYMENT_CASH;
-  if (text === "card" || text.includes("քարտ")) return "card";
+  if (text === "card" || text.includes("քարտ") || text === "pos") return "card";
   if (text === "cash" || text.includes("կանխիկ")) return "cash";
-  if (text === "pos") return "pos";
   return null;
 }
 
@@ -181,7 +180,7 @@ export function downloadFuelKmExpenseTemplate(
       LPG_LABEL,
       "35",
       "12000",
-      "POS",
+      PAYMENT_LABELS[0],
       `${TEMPLATE_EXAMPLE_MARKER} — ${LPG_LABEL}`,
     ],
   ]);
@@ -204,7 +203,7 @@ export function exportFuelKmExpenseRows(rows: readonly PetrolExpenseRow[]): void
     [...FUEL_KM_EXPENSE_HEADERS],
     ...rows.map((row) => [
       row.date.slice(0, 10),
-      row.carLabel.split(" · ")[0] ?? row.carLabel,
+      row.carId != null ? row.carLabel.split(" · ")[0] ?? row.carLabel : "",
       row.instructorName,
       row.petrolTypeLabel,
       row.petrolCount ?? "",
@@ -238,7 +237,6 @@ function parseExpenseRow(
 
   const errors: string[] = [];
   if (!dateIso) errors.push("Invalid date");
-  if (!carPlate) errors.push("Car plate is required");
   if (!instructorName) errors.push("Instructor is required");
   if (!petrolType) errors.push("Invalid fuel type");
   if (petrolCount == null || petrolCount <= 0) errors.push("Liters is required");
@@ -324,7 +322,7 @@ export async function parseFuelKmExpenseWorkbook(
 }
 
 export function toFuelKmExpenseBulkPayload(row: ParsedFuelKmExpenseRow): PetrolExpenseBody | null {
-  if (row.isExample || !row.valid || row.carId == null || row.instructorUserId == null) return null;
+  if (row.isExample || !row.valid || row.instructorUserId == null) return null;
   return {
     carId: row.carId,
     instructorUserId: row.instructorUserId,

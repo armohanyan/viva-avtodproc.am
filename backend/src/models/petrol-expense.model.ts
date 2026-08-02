@@ -1,5 +1,6 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import type { PetrolPaymentType } from '../constants/petrol-payment-type';
+import { PETROL_PAYMENT_TYPES } from '../constants/petrol-payment-type';
 import type { PetrolType } from '../constants/petrol-type';
 import { PETROL_TYPES } from '../constants/petrol-type';
 import { sequelize } from '../database/sequelize';
@@ -10,7 +11,7 @@ export class PetrolExpense extends Model<
   InferCreationAttributes<PetrolExpense>
 > {
   declare id: CreationOptional<number>;
-  declare carId: number;
+  declare carId: CreationOptional<number | null>;
   declare instructorUserId: number;
   declare date: string;
   declare petrolType: PetrolType;
@@ -24,7 +25,7 @@ export class PetrolExpense extends Model<
 PetrolExpense.init(
   {
     id: autoIncrementPk(),
-    carId: fkUnsignedInt(),
+    carId: fkUnsignedIntNullable(),
     instructorUserId: fkUnsignedInt(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
     petrolType: {
@@ -34,7 +35,7 @@ PetrolExpense.init(
     },
     petrolCount: { type: DataTypes.DECIMAL(10, 2), allowNull: true, defaultValue: null },
     paymentType: {
-      type: DataTypes.ENUM('card', 'cash', 'pos'),
+      type: DataTypes.ENUM(...PETROL_PAYMENT_TYPES),
       allowNull: false,
       defaultValue: 'cash',
     },

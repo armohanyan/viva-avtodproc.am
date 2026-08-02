@@ -17,12 +17,12 @@ import {
 import { useFleetCars } from "src/modules/cars";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import {
-  PETROL_PAYMENT_CASH,
+  PETROL_PAYMENT_CARD,
   PETROL_PAYMENT_OPTIONS,
   type PetrolPaymentTypeValue,
 } from "src/pages/admin/petrolPaymentType";
 import {
-  PETROL_TYPE_BENZIN,
+  PETROL_TYPE_LPG,
   PETROL_TYPE_OPTIONS,
   type PetrolTypeValue,
 } from "src/pages/admin/petrolTypeAm";
@@ -45,28 +45,54 @@ type FuelFormState = {
 const selectClass =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+/** Accepts both `23.8` and `23,8` (and mixed thousand/decimal separators). */
+function parseDecimalInput(raw: string): number {
+  const text = String(raw).trim().replace(/\s/g, "").replace(/\u00a0/g, "");
+  if (!text) return NaN;
+
+  const lastComma = text.lastIndexOf(",");
+  const lastDot = text.lastIndexOf(".");
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      return Number.parseFloat(text.replace(/\./g, "").replace(",", "."));
+    }
+    return Number.parseFloat(text.replace(/,/g, ""));
+  }
+  if (lastComma >= 0) {
+    return Number.parseFloat(text.replace(",", "."));
+  }
+  return Number.parseFloat(text);
+}
+
+function formatPetrolCount(n: number | string | null | undefined): string {
+  if (n == null || n === "") return "—";
+  const num = typeof n === "number" ? n : parseDecimalInput(String(n));
+  if (!Number.isFinite(num)) return "—";
+  return num.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+}
+
 function emptyForm(dateIso: string): FuelFormState {
   return {
     date: dateIso,
     instructorUserId: "",
     carId: "",
-    petrolType: PETROL_TYPE_BENZIN,
+    petrolType: PETROL_TYPE_LPG,
     petrolCount: "",
     price: "",
-    paymentType: PETROL_PAYMENT_CASH,
+    paymentType: PETROL_PAYMENT_CARD,
   };
 }
 
 function buildBody(form: FuelFormState): PetrolExpenseBody | null {
-  const carId = Number.parseInt(form.carId, 10);
+  const carRaw = form.carId.trim();
+  const carId = carRaw === "" ? null : Number.parseInt(carRaw, 10);
   const instructorUserId = Number.parseInt(form.instructorUserId, 10);
   const date = form.date.slice(0, 10);
-  const petrolCount = Number.parseFloat(form.petrolCount.replace(",", "."));
-  const price = Number.parseFloat(form.price.replace(/[\s,]/g, ""));
+  const petrolCount = parseDecimalInput(form.petrolCount);
+  const price = parseDecimalInput(form.price);
 
   if (
-    !Number.isFinite(carId) ||
-    carId <= 0 ||
+    (carId != null && (!Number.isFinite(carId) || carId <= 0)) ||
     !Number.isFinite(instructorUserId) ||
     instructorUserId <= 0 ||
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
@@ -154,7 +180,7 @@ export default function AdminPetrolFuelKmExpenseSubTab() {
     setSaving(true);
     try {
       await vivaApiJson("/admin/petrol-expenses", { method: "POST", body });
-      setForm(emptyForm(todayIso));
+      setForm(emptyForm(form.date.slice(0, 10) || todayIso));
       showToast(t("adminPetrolFuelKmFuelSavedToast"), "success");
       await load();
     } catch (e) {
@@ -400,7 +426,7 @@ export default function AdminPetrolFuelKmExpenseSubTab() {
                       <td className="px-3 py-2">{row.instructorName}</td>
                       <td className="px-3 py-2">{row.carLabel}</td>
                       <td className="px-3 py-2">{row.petrolTypeLabel}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{row.petrolCount ?? "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{formatPetrolCount(row.petrolCount)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatAmd(row.price)}</td>
                       <td className="px-3 py-2">{row.paymentTypeLabel ?? "—"}</td>
                       <td className="px-3 py-2">

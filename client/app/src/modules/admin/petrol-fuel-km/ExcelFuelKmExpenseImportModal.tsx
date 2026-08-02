@@ -276,7 +276,14 @@ export default function ExcelFuelKmExpenseImportModal({
                         <td className="px-3 py-2">{row.carPlate || "—"}</td>
                         <td className="px-3 py-2">{row.instructorName || "—"}</td>
                         <td className="px-3 py-2">{row.petrolTypeLabel}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{row.petrolCount || "—"}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {row.petrolCount
+                            ? row.petrolCount.toLocaleString("en-US", {
+                                maximumFractionDigits: 2,
+                                minimumFractionDigits: 0,
+                              })
+                            : "—"}
+                        </td>
                         <td className="px-3 py-2 text-right tabular-nums">{row.price || "—"}</td>
                         <td className="px-3 py-2">{row.paymentTypeLabel}</td>
                         <td className="px-3 py-2 text-xs">

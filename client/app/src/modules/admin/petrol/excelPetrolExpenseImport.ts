@@ -191,7 +191,6 @@ function parseExpenseRow(
 
   const errors: string[] = [];
   if (!dateIso) errors.push("Invalid date");
-  if (!carPlate) errors.push("Car plate is required");
   if (!instructorName) errors.push("Instructor is required");
   if (!petrolType) errors.push("Invalid fuel type");
   if (price == null) errors.push("Invalid price");
@@ -272,7 +271,7 @@ export async function parsePetrolExpenseWorkbook(
 }
 
 export function toPetrolExpenseBulkPayload(row: ParsedPetrolExpenseRow): PetrolExpenseBody | null {
-  if (row.isExample || !row.valid || row.carId == null || row.instructorUserId == null) return null;
+  if (row.isExample || !row.valid || row.instructorUserId == null) return null;
   return {
     carId: row.carId,
     instructorUserId: row.instructorUserId,

@@ -3,7 +3,7 @@ import type { PetrolTypeValue } from "src/pages/admin/petrolTypeAm";
 
 export type PetrolExpenseRow = {
   id: number;
-  carId: number;
+  carId: number | null;
   carLabel: string;
   instructorUserId: number;
   instructorName: string;
@@ -40,7 +40,7 @@ export type PetrolExpenseListResponse = {
 };
 
 export type PetrolExpenseBody = {
-  carId: number;
+  carId?: number | null;
   instructorUserId: number;
   date: string;
   petrolType: PetrolTypeValue;

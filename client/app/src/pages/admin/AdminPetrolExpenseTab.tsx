@@ -75,7 +75,7 @@ function emptyForm(dateIso: string): PetrolFormState {
 
 function formFromRow(row: PetrolExpenseRow): PetrolFormState {
   return {
-    carId: String(row.carId),
+    carId: row.carId != null ? String(row.carId) : "",
     instructorUserId: String(row.instructorUserId),
     date: row.date.slice(0, 10),
     petrolType: row.petrolType,

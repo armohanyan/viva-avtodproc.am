@@ -710,7 +710,7 @@ async function ensurePetrolExpensesTable(): Promise<void> {
   await sequelize.query(`
     CREATE TABLE \`petrol_expenses\` (
       \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-      \`car_id\` INT UNSIGNED NOT NULL,
+      \`car_id\` INT UNSIGNED NULL,
       \`instructor_user_id\` INT UNSIGNED NOT NULL,
       \`date\` DATE NOT NULL,
       \`petrol_type\` ENUM('benzin','lpg','gas') NOT NULL DEFAULT 'benzin',
@@ -786,7 +786,31 @@ async function ensurePetrolExpensesPaymentType(): Promise<void> {
 
   await sequelize.query(`
     ALTER TABLE \`petrol_expenses\`
-      ADD COLUMN \`payment_type\` ENUM('card','cash','pos') NOT NULL DEFAULT 'cash' AFTER \`petrol_count\`
+      ADD COLUMN \`payment_type\` ENUM('card','cash') NOT NULL DEFAULT 'cash' AFTER \`petrol_count\`
+  `);
+}
+
+/** Migrate legacy \`pos\` payment type to \`card\` and shrink the ENUM. */
+async function ensurePetrolExpensesDropPosPaymentType(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const cols = await sequelize.query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'
+       AND COLUMN_NAME = 'payment_type'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length === 0) return;
+  const columnType = cols[0]!.COLUMN_TYPE;
+  if (!columnType.includes("'pos'")) return;
+
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Mapping petrol_expenses.payment_type pos → card …');
+  await sequelize.query(`
+    UPDATE \`petrol_expenses\` SET \`payment_type\` = 'card' WHERE \`payment_type\` = 'pos'
+  `);
+  await sequelize.query(`
+    ALTER TABLE \`petrol_expenses\`
+      MODIFY COLUMN \`payment_type\` ENUM('card','cash') NOT NULL DEFAULT 'cash'
   `);
 }
 
@@ -806,6 +830,25 @@ async function ensurePetrolExpensesTypeEnumValues(): Promise<void> {
   await sequelize.query(
     `ALTER TABLE \`petrol_expenses\` MODIFY COLUMN \`petrol_type\` ENUM(${literals}) NOT NULL DEFAULT 'benzin'`,
   );
+}
+
+async function ensurePetrolExpensesNullableCarId(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const cols = await sequelize.query<{ COLUMN_NAME: string; IS_NULLABLE: string }>(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_expenses'
+       AND COLUMN_NAME = 'car_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length === 0) return;
+  if (cols[0]!.IS_NULLABLE === 'YES') return;
+
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Making petrol_expenses.car_id nullable …');
+  await sequelize.query(`
+    ALTER TABLE \`petrol_expenses\`
+      MODIFY COLUMN \`car_id\` INT UNSIGNED NULL
+  `);
 }
 
 async function ensurePetrolExpenseRequestsTable(): Promise<void> {
@@ -2499,7 +2542,9 @@ export async function syncModels(): Promise<void> {
   await ensurePetrolExpensesTable();
   await ensurePetrolExpensesTypeAndNullableCount();
   await ensurePetrolExpensesPaymentType();
+  await ensurePetrolExpensesDropPosPaymentType();
   await ensurePetrolExpensesTypeEnumValues();
+  await ensurePetrolExpensesNullableCarId();
   await ensurePetrolExpenseRequestsTable();
   await ensurePetrolConsumptionsTable();
   await ensurePetrolConsumptionsPetrolAmountNullable();

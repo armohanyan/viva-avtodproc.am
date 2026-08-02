@@ -10,19 +10,44 @@ import { SuccessHandlerUtil } from '../utils';
 
 const dateField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-const petrolCountField = z.preprocess((val) => {
+function normalizeDecimalInput(val: unknown): unknown {
+  if (val === '' || val === null || val === undefined) return null;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') {
+    const text = val.trim().replace(/\s/g, '').replace(/\u00a0/g, '');
+    if (!text) return null;
+    const lastComma = text.lastIndexOf(',');
+    const lastDot = text.lastIndexOf('.');
+    if (lastComma >= 0 && lastDot >= 0) {
+      if (lastComma > lastDot) {
+        return text.replace(/\./g, '').replace(',', '.');
+      }
+      return text.replace(/,/g, '');
+    }
+    if (lastComma >= 0) return text.replace(',', '.');
+    return text;
+  }
+  return val;
+}
+
+const petrolCountField = z.preprocess(normalizeDecimalInput, z.coerce.number().positive().nullable());
+
+const optionalCarIdField = z.preprocess((val) => {
   if (val === '' || val === null || val === undefined) return null;
   return val;
-}, z.coerce.number().positive().nullable());
+}, z.coerce.number().int().positive().nullable());
 
 const createSchema = z.object({
-  carId: z.coerce.number().int().positive(),
+  carId: optionalCarIdField.optional(),
   instructorUserId: z.coerce.number().int().positive(),
   date: dateField,
   petrolType: z.enum(PETROL_TYPES),
   petrolCount: petrolCountField.optional(),
-  paymentType: z.enum(PETROL_PAYMENT_TYPES).optional(),
-  price: z.coerce.number().min(0),
+  paymentType: z.preprocess((val) => {
+    if (val === 'pos' || val === 'POS') return 'card';
+    return val;
+  }, z.enum(PETROL_PAYMENT_TYPES).optional()),
+  price: z.preprocess(normalizeDecimalInput, z.coerce.number().min(0)),
   description: z.string().max(4000).nullish(),
 });
 
@@ -55,7 +80,7 @@ export default class AdminPetrolExpenseController {
       const createdByUserId = Number.isFinite(staffId) && staffId! > 0 ? staffId : undefined;
       const row = await AdminPetrolExpenseService.create(
         {
-          carId: body.carId,
+          carId: body.carId ?? null,
           instructorUserId: body.instructorUserId,
           date: body.date,
           petrolType: body.petrolType,
@@ -106,7 +131,7 @@ export default class AdminPetrolExpenseController {
       const staffId = req.staff?.sub != null ? Number(req.staff.sub) : undefined;
       const createdByUserId = Number.isFinite(staffId) && staffId! > 0 ? staffId : undefined;
       const records = body.records.map((row) => ({
-        carId: row.carId,
+        carId: row.carId ?? null,
         instructorUserId: row.instructorUserId,
         date: row.date,
         petrolType: row.petrolType,
