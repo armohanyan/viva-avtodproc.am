@@ -34,8 +34,9 @@ const petrolCountField = z.preprocess(normalizeDecimalInput, z.coerce.number().p
 
 const optionalCarIdField = z.preprocess((val) => {
   if (val === '' || val === null || val === undefined) return null;
-  return val;
-}, z.coerce.number().int().positive().nullable());
+  const n = typeof val === 'number' ? val : Number(val);
+  return Number.isFinite(n) ? n : val;
+}, z.union([z.null(), z.number().int().positive()]));
 
 const createSchema = z.object({
   carId: optionalCarIdField.optional(),

@@ -7,6 +7,7 @@ import {
   petrolToLiters,
   petrolVolumeUnitLabelAm,
 } from '../constants/petrol-consumption-units';
+import { MISSING_INSTRUCTOR_LABEL } from '../constants/petrol-missing-instructor';
 import {
   FleetCar,
   InstructorBranch,
@@ -22,9 +23,9 @@ const { InputValidationError, ResourceNotFoundError } = ErrorsUtil;
 
 export type PetrolConsumptionDto = {
   id: number;
-  carId: number;
+  carId: number | null;
   carLabel: string;
-  instructorUserId: number;
+  instructorUserId: number | null;
   instructorName: string;
   date: string;
   distanceValue: number;
@@ -41,7 +42,7 @@ export type PetrolConsumptionDto = {
 };
 
 export type PetrolConsumptionInstructorAnalyticsDto = {
-  instructorId: number;
+  instructorId: number | null;
   instructorName: string;
   totalDistanceKm: number;
   totalPetrolLiters: number;
@@ -49,7 +50,7 @@ export type PetrolConsumptionInstructorAnalyticsDto = {
 };
 
 export type PetrolConsumptionCarAnalyticsDto = {
-  carId: number;
+  carId: number | null;
   carLabel: string;
   totalDistanceKm: number;
   totalPetrolLiters: number;
@@ -69,8 +70,8 @@ export type PetrolConsumptionListResult = {
 };
 
 export type PetrolConsumptionInput = {
-  carId: number;
-  instructorUserId: number;
+  carId: number | null;
+  instructorUserId: number | null;
   date: string;
   distanceValue: number;
   distanceUnit: DistanceUnit;
@@ -117,18 +118,18 @@ function carLabel(car: FleetCar): string {
 
 function rowToDto(
   row: PetrolConsumption,
-  car: FleetCar,
-  instructor: User,
+  car: FleetCar | null | undefined,
+  instructor: User | null | undefined,
   createdBy?: User,
 ): PetrolConsumptionDto {
   const distanceUnit = row.distanceUnit as DistanceUnit;
   const petrolUnit = row.petrolUnit as PetrolVolumeUnit;
   return {
     id: row.id,
-    carId: row.carId,
-    carLabel: carLabel(car),
-    instructorUserId: row.instructorUserId,
-    instructorName: instructor.name,
+    carId: row.carId ?? null,
+    carLabel: car ? carLabel(car) : '—',
+    instructorUserId: row.instructorUserId ?? null,
+    instructorName: instructor?.name?.trim() || MISSING_INSTRUCTOR_LABEL,
     date: typeof row.date === 'string' ? row.date : String(row.date).slice(0, 10),
     distanceValue: round2(toNumber(row.distanceValue) ?? 0),
     distanceUnit,
@@ -174,13 +175,29 @@ async function assertCarExists(carId: number): Promise<FleetCar> {
   return car;
 }
 
+async function resolveOptionalCarId(carId: number | null | undefined): Promise<number | null> {
+  if (carId == null || !Number.isFinite(carId) || carId <= 0) return null;
+  await assertCarExists(carId);
+  return carId;
+}
+
+async function resolveOptionalInstructorUserId(
+  instructorUserId: number | null | undefined,
+): Promise<number | null> {
+  if (instructorUserId == null || !Number.isFinite(instructorUserId) || instructorUserId <= 0) {
+    return null;
+  }
+  await assertPracticalInstructor(instructorUserId);
+  return instructorUserId;
+}
+
 function buildAnalytics(rows: PetrolConsumptionDto[]): {
   summary: PetrolConsumptionListResult['summary'];
   byInstructor: PetrolConsumptionInstructorAnalyticsDto[];
   byCar: PetrolConsumptionCarAnalyticsDto[];
 } {
-  const byInstructorId = new Map<number, PetrolConsumptionInstructorAnalyticsDto>();
-  const byCarId = new Map<number, PetrolConsumptionCarAnalyticsDto>();
+  const byInstructorId = new Map<string, PetrolConsumptionInstructorAnalyticsDto>();
+  const byCarId = new Map<string, PetrolConsumptionCarAnalyticsDto>();
   let totalDistanceKm = 0;
   let totalPetrolLiters = 0;
 
@@ -194,7 +211,8 @@ function buildAnalytics(rows: PetrolConsumptionDto[]): {
       totalPetrolLiters += petrolL;
     }
 
-    const insPrev = byInstructorId.get(row.instructorUserId) ?? {
+    const insKey = row.instructorUserId != null ? String(row.instructorUserId) : 'null';
+    const insPrev = byInstructorId.get(insKey) ?? {
       instructorId: row.instructorUserId,
       instructorName: row.instructorName,
       totalDistanceKm: 0,
@@ -206,9 +224,10 @@ function buildAnalytics(rows: PetrolConsumptionDto[]): {
       insPrev.totalPetrolLiters += petrolL;
     }
     insPrev.recordsCount += 1;
-    byInstructorId.set(row.instructorUserId, insPrev);
+    byInstructorId.set(insKey, insPrev);
 
-    const carPrev = byCarId.get(row.carId) ?? {
+    const carKey = row.carId != null ? String(row.carId) : 'null';
+    const carPrev = byCarId.get(carKey) ?? {
       carId: row.carId,
       carLabel: row.carLabel,
       totalDistanceKm: 0,
@@ -220,7 +239,7 @@ function buildAnalytics(rows: PetrolConsumptionDto[]): {
       carPrev.totalPetrolLiters += petrolL;
     }
     carPrev.recordsCount += 1;
-    byCarId.set(row.carId, carPrev);
+    byCarId.set(carKey, carPrev);
   }
 
   const byInstructor = [...byInstructorId.values()]
@@ -293,15 +312,15 @@ export default class AdminPetrolConsumptionService {
         ['id', 'DESC'],
       ],
       include: [
-        { model: FleetCar, required: true },
-        { model: User, as: 'instructor', required: true, attributes: ['id', 'name'] },
+        { model: FleetCar, required: false },
+        { model: User, as: 'instructor', required: false, attributes: ['id', 'name'] },
         { model: User, as: 'createdBy', required: false, attributes: ['id', 'name'] },
       ],
     });
 
     const items = rows.map((row) => {
-      const car = row.get('FleetCar') as FleetCar;
-      const instructor = row.get('instructor') as User;
+      const car = row.get('FleetCar') as FleetCar | null | undefined;
+      const instructor = row.get('instructor') as User | null | undefined;
       const createdBy = row.get('createdBy') as User | undefined;
       return rowToDto(row, car, instructor, createdBy);
     });
@@ -314,12 +333,12 @@ export default class AdminPetrolConsumptionService {
     input: PetrolConsumptionInput,
     createdByUserId?: number,
   ): Promise<PetrolConsumptionDto> {
-    await assertCarExists(input.carId);
-    await assertPracticalInstructor(input.instructorUserId);
+    const carId = await resolveOptionalCarId(input.carId);
+    const instructorUserId = await resolveOptionalInstructorUserId(input.instructorUserId);
 
     const row = await PetrolConsumption.create({
-      carId: input.carId,
-      instructorUserId: input.instructorUserId,
+      carId,
+      instructorUserId,
       date: input.date,
       distanceValue: round2(input.distanceValue),
       distanceUnit: input.distanceUnit,
@@ -343,12 +362,10 @@ export default class AdminPetrolConsumptionService {
     }
 
     if (patch.carId !== undefined) {
-      await assertCarExists(patch.carId);
-      row.carId = patch.carId;
+      row.carId = await resolveOptionalCarId(patch.carId);
     }
     if (patch.instructorUserId !== undefined) {
-      await assertPracticalInstructor(patch.instructorUserId);
-      row.instructorUserId = patch.instructorUserId;
+      row.instructorUserId = await resolveOptionalInstructorUserId(patch.instructorUserId);
     }
     if (patch.date !== undefined) row.date = patch.date;
     if (patch.distanceValue !== undefined) row.distanceValue = round2(patch.distanceValue);
@@ -377,14 +394,14 @@ export default class AdminPetrolConsumptionService {
   private static async getDtoById(id: number): Promise<PetrolConsumptionDto | null> {
     const row = await PetrolConsumption.findByPk(id, {
       include: [
-        { model: FleetCar, required: true },
-        { model: User, as: 'instructor', required: true, attributes: ['id', 'name'] },
+        { model: FleetCar, required: false },
+        { model: User, as: 'instructor', required: false, attributes: ['id', 'name'] },
         { model: User, as: 'createdBy', required: false, attributes: ['id', 'name'] },
       ],
     });
     if (!row) return null;
-    const car = row.get('FleetCar') as FleetCar;
-    const instructor = row.get('instructor') as User;
+    const car = row.get('FleetCar') as FleetCar | null | undefined;
+    const instructor = row.get('instructor') as User | null | undefined;
     const createdBy = row.get('createdBy') as User | undefined;
     return rowToDto(row, car, instructor, createdBy);
   }

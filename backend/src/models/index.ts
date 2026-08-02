@@ -2,6 +2,7 @@ import { QueryTypes } from 'sequelize';
 import config from '../config';
 import { PETROL_TYPES } from '../constants/petrol-type';
 import { sequelize } from '../database/sequelize';
+import { ensureUnspecifiedFleetCar } from '../services/unspecified-fleet-car.service';
 import { Blog } from './blog.model';
 import { BookedCall } from './booked-call.model';
 import { Booking } from './booking.model';
@@ -975,8 +976,8 @@ async function ensurePetrolConsumptionsTable(): Promise<void> {
   await sequelize.query(`
     CREATE TABLE \`petrol_consumptions\` (
       \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-      \`car_id\` INT UNSIGNED NOT NULL,
-      \`instructor_user_id\` INT UNSIGNED NOT NULL,
+      \`car_id\` INT UNSIGNED NULL,
+      \`instructor_user_id\` INT UNSIGNED NULL,
       \`date\` DATE NOT NULL,
       \`distance_value\` DECIMAL(10,2) NOT NULL,
       \`distance_unit\` ENUM('km','mile') NOT NULL DEFAULT 'km',
@@ -1021,6 +1022,43 @@ async function ensurePetrolConsumptionsPetrolAmountNullable(): Promise<void> {
     ALTER TABLE \`petrol_consumptions\`
       MODIFY COLUMN \`petrol_amount\` DECIMAL(10,2) NULL
   `);
+}
+
+async function ensurePetrolConsumptionsNullableCarAndInstructor(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_consumptions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) return;
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string; IS_NULLABLE: string }>(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'petrol_consumptions'
+       AND COLUMN_NAME IN ('car_id', 'instructor_user_id')`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length === 0) return;
+
+  const carCol = cols.find((c) => c.COLUMN_NAME === 'car_id');
+  const instructorCol = cols.find((c) => c.COLUMN_NAME === 'instructor_user_id');
+  if (carCol?.IS_NULLABLE === 'YES' && instructorCol?.IS_NULLABLE === 'YES') return;
+
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Making petrol_consumptions.car_id / instructor_user_id nullable …');
+  if (carCol && carCol.IS_NULLABLE !== 'YES') {
+    await sequelize.query(`
+      ALTER TABLE \`petrol_consumptions\`
+        MODIFY COLUMN \`car_id\` INT UNSIGNED NULL
+    `);
+  }
+  if (instructorCol && instructorCol.IS_NULLABLE !== 'YES') {
+    await sequelize.query(`
+      ALTER TABLE \`petrol_consumptions\`
+        MODIFY COLUMN \`instructor_user_id\` INT UNSIGNED NULL
+    `);
+  }
 }
 
 async function ensureFinanceExpensesTable(): Promise<void> {
@@ -2545,9 +2583,11 @@ export async function syncModels(): Promise<void> {
   await ensurePetrolExpensesDropPosPaymentType();
   await ensurePetrolExpensesTypeEnumValues();
   await ensurePetrolExpensesNullableCarId();
+  await ensureUnspecifiedFleetCar();
   await ensurePetrolExpenseRequestsTable();
   await ensurePetrolConsumptionsTable();
   await ensurePetrolConsumptionsPetrolAmountNullable();
+  await ensurePetrolConsumptionsNullableCarAndInstructor();
   await ensureInstructorKmLogsTable();
   await ensureSalaryPaymentsTable();
   await ensureBookingsPaymentColumns();

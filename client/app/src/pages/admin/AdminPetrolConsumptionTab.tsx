@@ -79,8 +79,8 @@ function emptyForm(dateIso: string): ConsumptionFormState {
 
 function formFromRow(row: PetrolConsumptionRow): ConsumptionFormState {
   return {
-    carId: String(row.carId),
-    instructorUserId: String(row.instructorUserId),
+    carId: row.carId != null ? String(row.carId) : "",
+    instructorUserId: row.instructorUserId != null ? String(row.instructorUserId) : "",
     date: row.date.slice(0, 10),
     distanceValue: String(row.distanceValue),
     distanceUnit: row.distanceUnit,
@@ -91,8 +91,10 @@ function formFromRow(row: PetrolConsumptionRow): ConsumptionFormState {
 }
 
 function buildBody(form: ConsumptionFormState): PetrolConsumptionBody | null {
-  const carId = Number.parseInt(form.carId, 10);
-  const instructorUserId = Number.parseInt(form.instructorUserId, 10);
+  const carRaw = form.carId.trim();
+  const instructorRaw = form.instructorUserId.trim();
+  const carId = carRaw === "" ? null : Number.parseInt(carRaw, 10);
+  const instructorUserId = instructorRaw === "" ? null : Number.parseInt(instructorRaw, 10);
   const date = form.date.slice(0, 10);
   const distanceValue = Number.parseFloat(form.distanceValue.replace(",", "."));
   const petrolRaw = form.petrolAmount.trim();
@@ -101,10 +103,8 @@ function buildBody(form: ConsumptionFormState): PetrolConsumptionBody | null {
   const description = form.description.trim() || null;
 
   if (
-    !Number.isFinite(carId) ||
-    carId <= 0 ||
-    !Number.isFinite(instructorUserId) ||
-    instructorUserId <= 0 ||
+    (carId != null && (!Number.isFinite(carId) || carId <= 0)) ||
+    (instructorUserId != null && (!Number.isFinite(instructorUserId) || instructorUserId <= 0)) ||
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
     !Number.isFinite(distanceValue) ||
     distanceValue <= 0 ||

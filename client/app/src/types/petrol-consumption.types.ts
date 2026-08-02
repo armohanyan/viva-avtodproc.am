@@ -2,9 +2,9 @@ import type { DistanceUnit, PetrolVolumeUnit } from "src/constants/petrol-consum
 
 export type PetrolConsumptionRow = {
   id: number;
-  carId: number;
+  carId: number | null;
   carLabel: string;
-  instructorUserId: number;
+  instructorUserId: number | null;
   instructorName: string;
   date: string;
   distanceValue: number;
@@ -21,7 +21,7 @@ export type PetrolConsumptionRow = {
 };
 
 export type PetrolConsumptionInstructorAnalytics = {
-  instructorId: number;
+  instructorId: number | null;
   instructorName: string;
   totalDistanceKm: number;
   totalPetrolLiters: number;
@@ -29,7 +29,7 @@ export type PetrolConsumptionInstructorAnalytics = {
 };
 
 export type PetrolConsumptionCarAnalytics = {
-  carId: number;
+  carId: number | null;
   carLabel: string;
   totalDistanceKm: number;
   totalPetrolLiters: number;
@@ -49,8 +49,8 @@ export type PetrolConsumptionListResponse = {
 };
 
 export type PetrolConsumptionBody = {
-  carId: number;
-  instructorUserId: number;
+  carId: number | null;
+  instructorUserId: number | null;
   date: string;
   distanceValue: number;
   distanceUnit: DistanceUnit;

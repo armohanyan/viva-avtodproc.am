@@ -11,14 +11,16 @@ import {
 import type { FleetCar } from "src/modules/cars";
 import type { PetrolConsumptionBody, PetrolConsumptionRow } from "src/types/petrol-consumption.types";
 import {
+  isMissingInstructorLabel,
+  MISSING_INSTRUCTOR_LABEL,
+} from "src/constants/petrol-missing-instructor";
+import {
   applyInstructorNameValidation,
   buildInstructorLookup,
   findDataSheet,
   buildReferenceSheet,
   carPlateLabel,
   downloadWorkbook,
-  findSheetByNames,
-  instructorMatchError,
   isRowEmpty,
   isTemplateExampleRow,
   normalizeCellText,
@@ -165,7 +167,7 @@ function parseConsumptionRow(
   instructorLookup: InstructorLookup,
 ): ParsedPetrolConsumptionRow {
   const dateIso = parseExcelDateCell(row[0]) ?? "";
-  const instructorName = normalizePersonName(normalizeCellText(row[1]));
+  const instructorRaw = normalizePersonName(normalizeCellText(row[1]));
   const carPlate = normalizeCellText(row[2]);
   const distanceValue = parsePositiveNumber(row[3]);
   const distanceUnit = parseDistanceUnit(normalizeCellText(row[4])) ?? DEFAULT_DISTANCE_UNIT;
@@ -177,8 +179,6 @@ function parseConsumptionRow(
 
   const errors: string[] = [];
   if (!dateIso) errors.push("Invalid date");
-  if (!instructorName) errors.push("Instructor is required");
-  if (!carPlate) errors.push("Car plate is required");
   if (distanceValue == null) errors.push("Invalid distance");
   if (normalizeCellText(row[4]) && parseDistanceUnit(normalizeCellText(row[4])) == null) {
     errors.push("Invalid distance unit");
@@ -187,12 +187,20 @@ function parseConsumptionRow(
     errors.push("Invalid fuel unit");
   }
 
+  // Vehicle is optional: unknown / empty plate → carId null (still importable).
   const carId = carPlate ? resolveCarId(cars, carPlate) : null;
-  const instructorMatch = instructorName ? resolveInstructorMatch(instructorLookup, instructorName) : null;
-  if (carPlate && carId == null) errors.push(`Vehicle not found: ${carPlate}`);
-  if (instructorName && instructorMatch == null) {
-    errors.push(instructorMatchError(instructorName, instructorLookup));
-  }
+
+  // Instructor is optional: empty or «հրահանգիչ բացակա» → null user id.
+  const missingInstructor = isMissingInstructorLabel(instructorRaw);
+  const instructorMatch =
+    !missingInstructor && instructorRaw
+      ? resolveInstructorMatch(instructorLookup, instructorRaw)
+      : null;
+  const instructorName = missingInstructor
+    ? MISSING_INSTRUCTOR_LABEL
+    : (instructorMatch?.registeredName ?? instructorRaw);
+  // Unmatched names still import with null user id; keep the typed name for display in Excel preview.
+  const instructorUserId = instructorMatch?.userId ?? null;
 
   return {
     id: `consumption-${rowNumber}`,
@@ -200,14 +208,14 @@ function parseConsumptionRow(
     date: dateIso,
     dateIso,
     carPlate,
-    instructorName: instructorMatch?.registeredName ?? instructorName,
+    instructorName,
     distanceValue: distanceValue ?? 0,
     distanceUnit,
     petrolAmount,
     petrolUnit,
     description,
     carId,
-    instructorUserId: instructorMatch?.userId ?? null,
+    instructorUserId,
     valid: errors.length === 0,
     isExample,
     errors,
@@ -261,7 +269,22 @@ export async function parsePetrolConsumptionWorkbook(
 }
 
 export function toPetrolConsumptionBulkPayload(row: ParsedPetrolConsumptionRow): PetrolConsumptionBody | null {
-  if (row.isExample || !row.valid || row.carId == null || row.instructorUserId == null) return null;
+  if (row.isExample || !row.valid) return null;
+
+  // Keep unmatched plate / instructor text visible after import when FKs are null.
+  const noteParts: string[] = [];
+  if (row.carPlate && row.carId == null) {
+    noteParts.push(`պետանշան՝ ${row.carPlate}`);
+  }
+  if (
+    row.instructorUserId == null &&
+    row.instructorName &&
+    !isMissingInstructorLabel(row.instructorName)
+  ) {
+    noteParts.push(`հրահանգիչ՝ ${row.instructorName}`);
+  }
+  if (row.description) noteParts.push(row.description);
+
   return {
     carId: row.carId,
     instructorUserId: row.instructorUserId,
@@ -270,6 +293,6 @@ export function toPetrolConsumptionBulkPayload(row: ParsedPetrolConsumptionRow):
     distanceUnit: row.distanceUnit,
     petrolAmount: row.petrolAmount,
     petrolUnit: row.petrolUnit,
-    description: row.description || null,
+    description: noteParts.length > 0 ? noteParts.join(" · ") : null,
   };
 }

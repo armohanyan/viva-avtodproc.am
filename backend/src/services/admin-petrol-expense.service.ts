@@ -10,6 +10,7 @@ import {
   PetrolExpense,
   User,
 } from '../models';
+import { ensureUnspecifiedFleetCar } from './unspecified-fleet-car.service';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -158,6 +159,15 @@ async function assertCarExists(carId: number): Promise<FleetCar> {
   return car;
 }
 
+async function resolvePetrolExpenseCarId(carId: number | null | undefined): Promise<number> {
+  if (carId != null && Number.isFinite(carId) && carId > 0) {
+    await assertCarExists(carId);
+    return carId;
+  }
+  const placeholder = await ensureUnspecifiedFleetCar();
+  return placeholder.id;
+}
+
 function buildAnalytics(rows: PetrolExpenseDto[]): {
   summary: PetrolListResult['summary'];
   byInstructor: PetrolInstructorAnalyticsDto[];
@@ -249,13 +259,11 @@ export default class AdminPetrolExpenseService {
   }
 
   static async create(input: PetrolExpenseInput, createdByUserId?: number): Promise<PetrolExpenseDto> {
-    if (input.carId != null) {
-      await assertCarExists(input.carId);
-    }
+    const carId = await resolvePetrolExpenseCarId(input.carId);
     await assertPracticalInstructor(input.instructorUserId);
 
     const row = await PetrolExpense.create({
-      carId: input.carId,
+      carId,
       instructorUserId: input.instructorUserId,
       date: input.date,
       petrolType: input.petrolType,
@@ -280,10 +288,7 @@ export default class AdminPetrolExpenseService {
     }
 
     if (patch.carId !== undefined) {
-      if (patch.carId != null) {
-        await assertCarExists(patch.carId);
-      }
-      row.carId = patch.carId;
+      row.carId = await resolvePetrolExpenseCarId(patch.carId);
     }
     if (patch.instructorUserId !== undefined) {
       await assertPracticalInstructor(patch.instructorUserId);

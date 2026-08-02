@@ -243,9 +243,12 @@ function parseExpenseRow(
   if (price == null) errors.push("Invalid price");
   if (!paymentType) errors.push("Invalid payment type");
 
-  const carId = carPlate ? resolveCarId(cars, carPlate) : null;
   const instructorMatch = instructorName ? resolveInstructorMatch(instructorLookup, instructorName) : null;
+  let carId = carPlate ? resolveCarId(cars, carPlate) : null;
   if (carPlate && carId == null) errors.push(`Vehicle not found: ${carPlate}`);
+  if (!carPlate) {
+    carId = resolveCarId(cars, "00 XX 000");
+  }
   if (instructorName && instructorMatch == null) {
     errors.push(instructorMatchError(instructorName, instructorLookup));
   }
@@ -258,7 +261,7 @@ function parseExpenseRow(
     rowNumber,
     date: dateIso,
     dateIso,
-    carPlate,
+    carPlate: carPlate || (carId != null ? "00 XX 000" : ""),
     instructorName: instructorMatch?.registeredName ?? instructorName,
     petrolType: resolvedType,
     petrolTypeLabel: petrolTypeLabel(resolvedType),

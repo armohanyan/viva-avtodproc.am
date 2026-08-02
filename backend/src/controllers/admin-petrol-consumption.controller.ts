@@ -16,9 +16,15 @@ const petrolAmountField = z.preprocess((val) => {
   return val;
 }, z.coerce.number().positive().nullable());
 
+const optionalPositiveIdField = z.preprocess((val) => {
+  if (val === '' || val === null || val === undefined) return null;
+  const n = typeof val === 'number' ? val : Number(val);
+  return Number.isFinite(n) ? n : val;
+}, z.union([z.null(), z.number().int().positive()]));
+
 const createSchema = z.object({
-  carId: z.coerce.number().int().positive(),
-  instructorUserId: z.coerce.number().int().positive(),
+  carId: optionalPositiveIdField.optional(),
+  instructorUserId: optionalPositiveIdField.optional(),
   date: dateField,
   distanceValue: positiveNumber,
   distanceUnit: z.enum(DISTANCE_UNITS),
@@ -70,8 +76,8 @@ export default class AdminPetrolConsumptionController {
       const createdByUserId = Number.isFinite(staffId) && staffId! > 0 ? staffId : undefined;
       const row = await AdminPetrolConsumptionService.create(
         {
-          carId: body.carId,
-          instructorUserId: body.instructorUserId,
+          carId: body.carId ?? null,
+          instructorUserId: body.instructorUserId ?? null,
           date: body.date,
           distanceValue: body.distanceValue,
           distanceUnit: body.distanceUnit,
@@ -121,8 +127,8 @@ export default class AdminPetrolConsumptionController {
       const staffId = req.staff?.sub != null ? Number(req.staff.sub) : undefined;
       const createdByUserId = Number.isFinite(staffId) && staffId! > 0 ? staffId : undefined;
       const records = body.records.map((row) => ({
-        carId: row.carId,
-        instructorUserId: row.instructorUserId,
+        carId: row.carId ?? null,
+        instructorUserId: row.instructorUserId ?? null,
         date: row.date,
         distanceValue: row.distanceValue,
         distanceUnit: row.distanceUnit,

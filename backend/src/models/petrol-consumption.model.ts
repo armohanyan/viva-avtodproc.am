@@ -1,15 +1,15 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import type { DistanceUnit, PetrolVolumeUnit } from '../constants/petrol-consumption-units';
 import { sequelize } from '../database/sequelize';
-import { autoIncrementPk, fkUnsignedInt, fkUnsignedIntNullable } from './auto-id';
+import { autoIncrementPk, fkUnsignedIntNullable } from './auto-id';
 
 export class PetrolConsumption extends Model<
   InferAttributes<PetrolConsumption>,
   InferCreationAttributes<PetrolConsumption>
 > {
   declare id: CreationOptional<number>;
-  declare carId: number;
-  declare instructorUserId: number;
+  declare carId: CreationOptional<number | null>;
+  declare instructorUserId: CreationOptional<number | null>;
   declare date: string;
   declare distanceValue: number;
   declare distanceUnit: DistanceUnit;
@@ -22,8 +22,8 @@ export class PetrolConsumption extends Model<
 PetrolConsumption.init(
   {
     id: autoIncrementPk(),
-    carId: fkUnsignedInt(),
-    instructorUserId: fkUnsignedInt(),
+    carId: fkUnsignedIntNullable(),
+    instructorUserId: fkUnsignedIntNullable(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
     distanceValue: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     distanceUnit: {
