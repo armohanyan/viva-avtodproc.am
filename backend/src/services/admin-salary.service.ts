@@ -1,6 +1,13 @@
 import { Op } from 'sequelize';
 import type { LessonCompletionStatus } from '../constants/lesson-completion';
-import { Booking, SalaryPayment, TheoryCohort, TheoryCohortSession, User } from '../models';
+import {
+  Booking,
+  InstructorProfile,
+  SalaryPayment,
+  TheoryCohort,
+  TheoryCohortSession,
+  User,
+} from '../models';
 import type { SalaryPaymentKind } from '../models/salary-payment.model';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import { bookingEndUtcMs, lessonEndUtcMs, lessonInstantUtcMs } from '../utils/lesson-datetime.util';
@@ -10,12 +17,42 @@ import { normalizeBookingStatus } from './booking.service';
 
 const { InputValidationError, ResourceNotFoundError } = ErrorsUtil;
 
-/** AMD paid to a practical instructor per lesson (1 lesson = 1 hour slot). */
+/** Default AMD paid to a practical instructor per lesson (1 lesson = 1 hour slot). */
 export const INSTRUCTOR_LESSON_RATE_AMD = 1500;
-/** AMD paid to a theory teacher per group-theory session. */
+/** Default AMD paid to a theory teacher per group-theory session. */
 export const THEORY_TEACHER_LESSON_RATE_AMD = 3000;
 
 export type SalaryEmployeeKind = 'instructor' | 'theory_teacher';
+
+async function salaryRatesByInstructorIds(
+  userIds: number[],
+): Promise<Map<number, { practical: number; theory: number }>> {
+  const map = new Map<number, { practical: number; theory: number }>();
+  if (userIds.length === 0) return map;
+  const profiles = await InstructorProfile.findAll({
+    where: { userId: { [Op.in]: userIds } },
+    attributes: ['userId', 'practicalSalaryPerLessonAmd', 'theorySalaryPerLessonAmd'],
+  });
+  for (const p of profiles) {
+    map.set(p.userId, {
+      practical: p.practicalSalaryPerLessonAmd ?? INSTRUCTOR_LESSON_RATE_AMD,
+      theory: p.theorySalaryPerLessonAmd ?? THEORY_TEACHER_LESSON_RATE_AMD,
+    });
+  }
+  return map;
+}
+
+function rateForKind(
+  rates: Map<number, { practical: number; theory: number }>,
+  employeeUserId: number,
+  kind: SalaryEmployeeKind,
+): number {
+  const row = rates.get(employeeUserId);
+  if (kind === 'instructor') {
+    return row?.practical ?? INSTRUCTOR_LESSON_RATE_AMD;
+  }
+  return row?.theory ?? THEORY_TEACHER_LESSON_RATE_AMD;
+}
 
 export type SalaryReportRowDto = {
   kind: SalaryEmployeeKind;
@@ -325,20 +362,19 @@ export default class AdminSalaryService {
     ]);
 
     const userIds = [...new Set([...practicalCounts.keys(), ...theoryCounts.keys()])];
-    const users =
+    const [users, salaryRates] = await Promise.all([
       userIds.length > 0
-        ? await User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ['id', 'name'] })
-        : [];
+        ? User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ['id', 'name'] })
+        : Promise.resolve([] as User[]),
+      salaryRatesByInstructorIds(userIds),
+    ]);
     const nameById = new Map(users.map((u) => [u.id, u.name?.trim() || `Instructor #${u.id}`]));
 
     const rows: SalaryReportRowDto[] = [];
-    const pushRows = (
-      kind: SalaryEmployeeKind,
-      counts: Map<number, number>,
-      rate: number,
-    ): void => {
+    const pushRows = (kind: SalaryEmployeeKind, counts: Map<number, number>): void => {
       for (const [employeeUserId, lessonsCount] of counts) {
         if (lessonsCount <= 0) continue;
+        const rate = rateForKind(salaryRates, employeeUserId, kind);
         const paidRow = paidByKey.get(`${kind}:${employeeUserId}`) ?? null;
         rows.push({
           kind,
@@ -364,8 +400,8 @@ export default class AdminSalaryService {
       }
     };
 
-    pushRows('instructor', practicalCounts, INSTRUCTOR_LESSON_RATE_AMD);
-    pushRows('theory_teacher', theoryCounts, THEORY_TEACHER_LESSON_RATE_AMD);
+    pushRows('instructor', practicalCounts);
+    pushRows('theory_teacher', theoryCounts);
 
     rows.sort(
       (a, b) =>
@@ -442,8 +478,8 @@ export default class AdminSalaryService {
       );
     }
 
-    const rate =
-      input.kind === 'instructor' ? INSTRUCTOR_LESSON_RATE_AMD : THEORY_TEACHER_LESSON_RATE_AMD;
+    const salaryRates = await salaryRatesByInstructorIds([input.employeeUserId]);
+    const rate = rateForKind(salaryRates, input.employeeUserId, input.kind);
 
     const row = await SalaryPayment.create({
       title: input.title.trim(),

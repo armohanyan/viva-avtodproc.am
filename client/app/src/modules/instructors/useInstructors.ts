@@ -20,6 +20,14 @@ export function useInstructors() {
 							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.svg",
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
 							fleetCarIds: Array.isArray(ins.fleetCarIds) ? ins.fleetCarIds : [],
+							practicalSalaryPerLessonAmd:
+								typeof ins.practicalSalaryPerLessonAmd === "number"
+									? ins.practicalSalaryPerLessonAmd
+									: 1500,
+							theorySalaryPerLessonAmd:
+								typeof ins.theorySalaryPerLessonAmd === "number"
+									? ins.theorySalaryPerLessonAmd
+									: 3000,
 							...(typeof ins.inviteEligible === "boolean" ? { inviteEligible: ins.inviteEligible } : {}),
 						}))
 					: [],

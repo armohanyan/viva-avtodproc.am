@@ -31,6 +31,10 @@ export type InstructorDto = {
   /** Number of student reviews; when positive, `rating` is their average; otherwise public rating is fixed at 5. */
   studentRatingCount: number;
   hourlyPrice: number;
+  /** AMD paid to this instructor per practical lesson hour (salary, not student price). */
+  practicalSalaryPerLessonAmd: number;
+  /** AMD paid to this instructor per group-theory session (salary, not student price). */
+  theorySalaryPerLessonAmd: number;
   status: 'active' | 'inactive';
   /** From `fleet_car_instructors` + `fleet_cars` (not stored on profile). */
   car: string;
@@ -71,6 +75,8 @@ function toDto(
     rating: clampRating(effectiveRating),
     studentRatingCount,
     hourlyPrice: profile.hourlyPrice,
+    practicalSalaryPerLessonAmd: profile.practicalSalaryPerLessonAmd,
+    theorySalaryPerLessonAmd: profile.theorySalaryPerLessonAmd,
     status: profile.status,
     car: derived.car,
     transmission: derived.transmission,
@@ -156,9 +162,18 @@ export default class InstructorService {
   static async create(
     input: Omit<
       InstructorDto,
-      'id' | 'studentRatingCount' | 'rating' | 'fleetCarIds' | 'car' | 'transmission'
+      | 'id'
+      | 'studentRatingCount'
+      | 'rating'
+      | 'fleetCarIds'
+      | 'car'
+      | 'transmission'
+      | 'practicalSalaryPerLessonAmd'
+      | 'theorySalaryPerLessonAmd'
     > & {
       fleetCarIds?: number[];
+      practicalSalaryPerLessonAmd?: number;
+      theorySalaryPerLessonAmd?: number;
     },
   ): Promise<InstructorDto> {
     const emailNorm = input.email.trim().toLowerCase();
@@ -187,6 +202,8 @@ export default class InstructorService {
       years: input.years,
       rating: seedRating,
       hourlyPrice: input.hourlyPrice,
+      practicalSalaryPerLessonAmd: input.practicalSalaryPerLessonAmd ?? 1500,
+      theorySalaryPerLessonAmd: input.theorySalaryPerLessonAmd ?? 3000,
       imageSrc: input.imageSrc,
       teachesPractical: input.teachesPractical,
       teachesTheory: input.teachesTheory,
@@ -237,6 +254,12 @@ export default class InstructorService {
     await profile.update({
       ...(patch.years !== undefined ? { years: patch.years } : {}),
       ...(patch.hourlyPrice !== undefined ? { hourlyPrice: patch.hourlyPrice } : {}),
+      ...(patch.practicalSalaryPerLessonAmd !== undefined
+        ? { practicalSalaryPerLessonAmd: patch.practicalSalaryPerLessonAmd }
+        : {}),
+      ...(patch.theorySalaryPerLessonAmd !== undefined
+        ? { theorySalaryPerLessonAmd: patch.theorySalaryPerLessonAmd }
+        : {}),
       ...(patch.imageSrc !== undefined ? { imageSrc: patch.imageSrc } : {}),
       ...(patch.teachesPractical !== undefined ? { teachesPractical: patch.teachesPractical } : {}),
       ...(patch.teachesTheory !== undefined ? { teachesTheory: patch.teachesTheory } : {}),

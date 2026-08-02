@@ -19,6 +19,8 @@ const createSchema = z.object({
   phone: z.string(),
   years: z.number().int().nonnegative(),
   hourlyPrice: z.number().int().nonnegative(),
+  practicalSalaryPerLessonAmd: z.number().int().nonnegative().optional(),
+  theorySalaryPerLessonAmd: z.number().int().nonnegative().optional(),
   status: z.enum(['active', 'inactive']),
   imageSrc: z.string(),
   availableBranchIds: z.array(z.coerce.number().int().positive()),

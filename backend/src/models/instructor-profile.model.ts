@@ -11,6 +11,10 @@ export class InstructorProfile extends Model<
   declare years: number;
   declare rating: number;
   declare hourlyPrice: number;
+  /** AMD paid to this instructor per practical lesson hour. */
+  declare practicalSalaryPerLessonAmd: number;
+  /** AMD paid to this instructor per group-theory session. */
+  declare theorySalaryPerLessonAmd: number;
   declare imageSrc: string;
   declare teachesPractical: boolean;
   declare teachesTheory: boolean;
@@ -23,6 +27,16 @@ InstructorProfile.init(
     years: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     rating: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 5 },
     hourlyPrice: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
+    practicalSalaryPerLessonAmd: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 1500,
+    },
+    theorySalaryPerLessonAmd: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: false,
+      defaultValue: 3000,
+    },
     imageSrc: { type: DataTypes.STRING(512), allowNull: false },
     teachesPractical: { type: DataTypes.BOOLEAN, allowNull: false },
     teachesTheory: { type: DataTypes.BOOLEAN, allowNull: false },

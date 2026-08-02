@@ -42,6 +42,8 @@ type InstructorForm = Pick<
   | "status"
   | "availableBranchIds"
   | "hourlyPrice"
+  | "practicalSalaryPerLessonAmd"
+  | "theorySalaryPerLessonAmd"
   | "imageSrc"
   | "fleetCarIds"
 >;
@@ -60,6 +62,8 @@ const createNewInstructorDraft = (): InstructorForm => ({
   status: "active",
   availableBranchIds: [],
   hourlyPrice: 7000,
+  practicalSalaryPerLessonAmd: 1500,
+  theorySalaryPerLessonAmd: 3000,
   imageSrc: "/logo.svg",
   fleetCarIds: [],
 });
@@ -547,6 +551,8 @@ export default function AdminInstructors() {
         phone: editIns.phone,
         years: editIns.years,
         hourlyPrice: editIns.hourlyPrice,
+        practicalSalaryPerLessonAmd: editIns.practicalSalaryPerLessonAmd,
+        theorySalaryPerLessonAmd: editIns.theorySalaryPerLessonAmd,
         status: editIns.status,
         imageSrc: editIns.imageSrc,
         teachesPractical: editIns.teachesPractical,
@@ -953,6 +959,56 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
+              {editIns.teachesPractical || editIns.teachesTheory ? (
+                <div
+                  className={
+                    editIns.teachesPractical && editIns.teachesTheory
+                      ? "grid grid-cols-2 gap-3"
+                      : undefined
+                  }
+                >
+                  {editIns.teachesPractical ? (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">
+                        {editIns.teachesTheory
+                          ? t("salaryPerPracticalLessonLabel")
+                          : t("salaryPerLessonLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editIns.practicalSalaryPerLessonAmd}
+                        onChange={(e) =>
+                          updateEdit(editIns.id, {
+                            practicalSalaryPerLessonAmd: +e.target.value || 0,
+                          })
+                        }
+                        className="h-10"
+                      />
+                    </div>
+                  ) : null}
+                  {editIns.teachesTheory ? (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">
+                        {editIns.teachesPractical
+                          ? t("salaryPerTheoryLessonLabel")
+                          : t("salaryPerLessonLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={editIns.theorySalaryPerLessonAmd}
+                        onChange={(e) =>
+                          updateEdit(editIns.id, {
+                            theorySalaryPerLessonAmd: +e.target.value || 0,
+                          })
+                        }
+                        className="h-10"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {editIns.teachesPractical ? (
                 <InstructorPracticalSlotsSection instructorId={editIns.id} saveRef={editPracticalSlotsSaveRef} />
               ) : null}
@@ -1139,6 +1195,58 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
+              {newIns.teachesPractical || newIns.teachesTheory ? (
+                <div
+                  className={
+                    newIns.teachesPractical && newIns.teachesTheory
+                      ? "grid grid-cols-2 gap-3"
+                      : undefined
+                  }
+                >
+                  {newIns.teachesPractical ? (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">
+                        {newIns.teachesTheory
+                          ? t("salaryPerPracticalLessonLabel")
+                          : t("salaryPerLessonLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={newIns.practicalSalaryPerLessonAmd}
+                        onChange={(e) =>
+                          setNewIns({
+                            ...newIns,
+                            practicalSalaryPerLessonAmd: +e.target.value || 0,
+                          })
+                        }
+                        className="h-10"
+                      />
+                    </div>
+                  ) : null}
+                  {newIns.teachesTheory ? (
+                    <div>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">
+                        {newIns.teachesPractical
+                          ? t("salaryPerTheoryLessonLabel")
+                          : t("salaryPerLessonLabel")}
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={newIns.theorySalaryPerLessonAmd}
+                        onChange={(e) =>
+                          setNewIns({
+                            ...newIns,
+                            theorySalaryPerLessonAmd: +e.target.value || 0,
+                          })
+                        }
+                        className="h-10"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {branches.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>

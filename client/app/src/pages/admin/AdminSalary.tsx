@@ -372,7 +372,9 @@ export default function AdminSalary() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground mt-3">
-          {t("adminSalaryKindInstructor")} — {formatAmd(report?.instructorRateAmd ?? 1500)} · {t("adminSalaryKindTheoryTeacher")} — {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}
+          {t("adminSalaryDefaultRatesHint")}: {t("adminSalaryKindInstructor")} —{" "}
+          {formatAmd(report?.instructorRateAmd ?? 1500)} · {t("adminSalaryKindTheoryTeacher")} —{" "}
+          {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}
         </p>
       </Card>
 

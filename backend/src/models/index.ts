@@ -2106,6 +2106,40 @@ async function ensureInstructorProfilesDropScheduleColumn(): Promise<void> {
   await sequelize.query('ALTER TABLE `instructor_profiles` DROP COLUMN `schedule`');
 }
 
+/** Adds per-lesson instructor salary rates when the table predates the fields. */
+async function ensureInstructorProfilesSalaryPerLessonColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_profiles'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const addIfMissing = async (columnName: string, ddl: string) => {
+    const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'instructor_profiles' AND COLUMN_NAME = ?`,
+      { replacements: [columnName], type: QueryTypes.SELECT },
+    );
+    if (colRows.length > 0) {
+      return;
+    }
+    await sequelize.query(ddl);
+  };
+  await addIfMissing(
+    'practical_salary_per_lesson_amd',
+    'ALTER TABLE `instructor_profiles` ADD COLUMN `practical_salary_per_lesson_amd` INT UNSIGNED NOT NULL DEFAULT 1500 AFTER `hourly_price`',
+  );
+  await addIfMissing(
+    'theory_salary_per_lesson_amd',
+    'ALTER TABLE `instructor_profiles` ADD COLUMN `theory_salary_per_lesson_amd` INT UNSIGNED NOT NULL DEFAULT 3000 AFTER `practical_salary_per_lesson_amd`',
+  );
+}
+
 /** Derived display fields removed — location comes from branches/cities; car/transmission from fleet links. */
 async function ensureInstructorProfilesDropRedundantDisplayColumns(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -2441,6 +2475,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsInstructorUserIdOnDeleteSetNull();
   await ensureBookingSlotsInstructorUserIdNullable();
   await ensureInstructorProfilesDropScheduleColumn();
+  await ensureInstructorProfilesSalaryPerLessonColumns();
   await ensureInstructorProfilesDropRedundantDisplayColumns();
   await ensureTheoryCohortsDropScheduleColumn();
   await ensureTheoryCohortSessionTimeColumns();

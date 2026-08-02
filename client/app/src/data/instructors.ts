@@ -6,6 +6,10 @@ export type Instructor = {
   years: number;
   rating: number;
   hourlyPrice: number;
+  /** AMD paid to instructor per practical lesson hour (salary). */
+  practicalSalaryPerLessonAmd: number;
+  /** AMD paid to instructor per group-theory session (salary). */
+  theorySalaryPerLessonAmd: number;
   status: "active" | "inactive";
   car: string;
   transmission: string;
@@ -33,6 +37,8 @@ export const instructors: Instructor[] = [
     years: 12,
     rating: 4.9,
     hourlyPrice: 7000,
+    practicalSalaryPerLessonAmd: 1500,
+    theorySalaryPerLessonAmd: 3000,
     status: "active",
     car: "Toyota Corolla",
     transmission: "Manual",
@@ -49,6 +55,8 @@ export const instructors: Instructor[] = [
     years: 8,
     rating: 4.8,
     hourlyPrice: 6500,
+    practicalSalaryPerLessonAmd: 1500,
+    theorySalaryPerLessonAmd: 3000,
     status: "active",
     car: "Kia Rio",
     transmission: "Automatic",
@@ -65,6 +73,8 @@ export const instructors: Instructor[] = [
     years: 15,
     rating: 5.0,
     hourlyPrice: 8000,
+    practicalSalaryPerLessonAmd: 1500,
+    theorySalaryPerLessonAmd: 3000,
     status: "active",
     car: "Kia Cerato",
     transmission: "Automatic",
@@ -81,6 +91,8 @@ export const instructors: Instructor[] = [
     years: 6,
     rating: 4.7,
     hourlyPrice: 6000,
+    practicalSalaryPerLessonAmd: 1500,
+    theorySalaryPerLessonAmd: 3000,
     status: "active",
     car: "Nissan Versa",
     transmission: "Automatic",
@@ -97,6 +109,8 @@ export const instructors: Instructor[] = [
     years: 10,
     rating: 4.9,
     hourlyPrice: 7200,
+    practicalSalaryPerLessonAmd: 1500,
+    theorySalaryPerLessonAmd: 3000,
     status: "inactive",
     car: "Hyundai Elantra",
     transmission: "Manual",

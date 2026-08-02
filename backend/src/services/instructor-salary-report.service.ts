@@ -1,3 +1,4 @@
+import { InstructorProfile } from '../models';
 import AdminSalaryService, {
   INSTRUCTOR_LESSON_RATE_AMD,
   THEORY_TEACHER_LESSON_RATE_AMD,
@@ -26,21 +27,29 @@ export default class InstructorSalaryReportService {
     startDate?: string,
     endDate?: string,
   ): Promise<InstructorSalaryReportDto> {
-    const [practical, theory] = await Promise.all([
+    const [practical, theory, profile] = await Promise.all([
       AdminSalaryService.lessons('instructor', employeeUserId, startDate, endDate),
       AdminSalaryService.lessons('theory_teacher', employeeUserId, startDate, endDate),
+      InstructorProfile.findOne({
+        where: { userId: employeeUserId },
+        attributes: ['practicalSalaryPerLessonAmd', 'theorySalaryPerLessonAmd'],
+      }),
     ]);
+
+    const practicalRate =
+      profile?.practicalSalaryPerLessonAmd ?? INSTRUCTOR_LESSON_RATE_AMD;
+    const theoryRate = profile?.theorySalaryPerLessonAmd ?? THEORY_TEACHER_LESSON_RATE_AMD;
 
     const practicalSection: InstructorSalaryReportSectionDto = {
       lessonsCount: practical.totalUnits,
-      ratePerLessonAmd: INSTRUCTOR_LESSON_RATE_AMD,
-      totalAmd: practical.totalUnits * INSTRUCTOR_LESSON_RATE_AMD,
+      ratePerLessonAmd: practicalRate,
+      totalAmd: practical.totalUnits * practicalRate,
       items: practical.items,
     };
     const theorySection: InstructorSalaryReportSectionDto = {
       lessonsCount: theory.totalUnits,
-      ratePerLessonAmd: THEORY_TEACHER_LESSON_RATE_AMD,
-      totalAmd: theory.totalUnits * THEORY_TEACHER_LESSON_RATE_AMD,
+      ratePerLessonAmd: theoryRate,
+      totalAmd: theory.totalUnits * theoryRate,
       items: theory.items,
     };
 
