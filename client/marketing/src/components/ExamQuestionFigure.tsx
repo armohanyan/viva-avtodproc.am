@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -30,13 +28,13 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mb-5 w-full rounded-xl border border-border bg-muted/30 p-3 flex justify-center cursor-zoom-in transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mb-5 w-full flex justify-center cursor-zoom-in transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
         aria-label={t("examQuizOpenImagePreview")}
       >
         <img
           src={url}
           alt={alt}
-          className="max-h-64 sm:max-h-80 max-w-full w-auto object-contain rounded-md pointer-events-none"
+          className="max-h-64 sm:max-h-80 max-w-full w-auto object-contain pointer-events-none"
           loading="lazy"
           decoding="async"
         />

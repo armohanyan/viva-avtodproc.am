@@ -25,6 +25,9 @@ import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 import ExamQuizToolbar from "src/components/exam/ExamQuizToolbar";
 import ExamQuizQuestionCommentButton from "src/components/exam/ExamQuizQuestionCommentButton";
+import ExamQuestionNumberNav, {
+  buildQuestionNavStatuses,
+} from "src/components/exam/ExamQuestionNumberNav";
 import {
   usePanelFocusMode,
   usePanelFocusModeCleanupOnUnmount,
@@ -528,8 +531,41 @@ function DashboardExamQuizView() {
 
   const current = getQuestionInLang(q, lang);
 
+  const displayAnswers = questions.map((_, i) => {
+    if (layoutMode === "step" && i === index && selected !== null) return selected;
+    return answers[i] ?? null;
+  });
+  const navStatuses = buildQuestionNavStatuses(
+    displayAnswers,
+    questions.map((question) => question.correctIndex),
+    { hideCorrectness: timedExam },
+  );
+
+  const goToQuestion = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= questions.length) return;
+    if (layoutMode === "step" && selected !== null) {
+      setAnswers((prev) => {
+        const next = [...prev];
+        while (next.length < questions.length) next.push(null);
+        next[index] = selected;
+        return next;
+      });
+    }
+    setIndex(nextIndex);
+    if (layoutMode === "scroll") {
+      const target = questions[nextIndex];
+      if (!target) return;
+      requestAnimationFrame(() => {
+        document.getElementById(`quiz-q-${target.id}`)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    }
+  };
+
   return (
-      <div className={cn("mx-auto w-full", focusMode ? "max-w-4xl" : "max-w-2xl")}>
+      <div className={cn("mx-auto w-full", focusMode ? "max-w-5xl" : "max-w-3xl")}>
         <ExamQuizToolbar
           progress={
             layoutMode === "step" ? (
@@ -567,6 +603,19 @@ function DashboardExamQuizView() {
           layoutMode={layoutMode}
           onLayoutModeChange={setLayoutModeAndSyncIndex}
         />
+        <div
+          className={cn(
+            layoutMode === "scroll" ? "flex flex-col" : "lg:flex lg:items-start lg:gap-4",
+          )}
+        >
+          <ExamQuestionNumberNav
+            total={questions.length}
+            currentIndex={Math.min(index, questions.length - 1)}
+            statuses={navStatuses}
+            onSelect={goToQuestion}
+            pinned={layoutMode === "scroll"}
+          />
+          <div className="min-w-0 flex-1">
         {layoutMode === "step" ? (
           <Reveal delay={0.06}>
             <Card className="p-8 border-border">
@@ -652,7 +701,13 @@ function DashboardExamQuizView() {
                 const hideImmediateFeedback = timedExam;
                 return (
                   <Reveal key={question.id} delay={Math.min(qIdx, 10) * 0.03}>
-                    <Card className="p-6 sm:p-8 border-border">
+                    <Card
+                      id={`quiz-q-${question.id}`}
+                      className={cn(
+                        "scroll-mt-24 p-6 sm:p-8 border-border",
+                        qIdx === index && "ring-2 ring-primary/30",
+                      )}
+                    >
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <p className="text-xs font-medium text-muted-foreground">
                           {t("examQuizQuestion")} {qIdx + 1} {t("examQuizOf")} {questions.length}
@@ -672,7 +727,10 @@ function DashboardExamQuizView() {
                           <div key={optIdx} className="rounded-xl border border-transparent">
                             <button
                               type="button"
-                              onClick={() => setAnswerAt(qIdx, optIdx)}
+                              onClick={() => {
+                                setAnswerAt(qIdx, optIdx);
+                                setIndex(qIdx);
+                              }}
                               className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
                                 hideImmediateFeedback
                                   ? sel === optIdx
@@ -734,6 +792,8 @@ function DashboardExamQuizView() {
             </div>
           </>
         )}
+          </div>
+        </div>
       </div>
   );
 }
