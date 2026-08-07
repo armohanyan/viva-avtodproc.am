@@ -16,6 +16,7 @@ import {
 	useInstructorPanelStudents,
 	type InstructorPanelStudent,
 } from "src/modules/instructor/useInstructorPanelData";
+import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
 import { getApiErrorMessage } from "src/lib/api";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
@@ -117,6 +118,7 @@ export default function InstructorStudents() {
 
 	return (
 		<InstructorPanelLayout>
+			<InstructorScopeGuard require="practical">
 			<PanelPageHeader icon={Users} title={t("instructorMyStudents")} subtitle={t("instructorStudentsPageSubtitle")} />
 
 			{error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
@@ -236,6 +238,7 @@ export default function InstructorStudents() {
 					</table>
 				</div>
 			</Card>
+			</InstructorScopeGuard>
 		</InstructorPanelLayout>
 	);
 }

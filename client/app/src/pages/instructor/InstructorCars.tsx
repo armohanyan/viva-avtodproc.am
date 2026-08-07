@@ -9,6 +9,7 @@ import { CarFront } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useFleetCars } from "src/modules/cars";
 import { useAccount } from "src/modules/accounts";
+import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
 
 export default function InstructorCars() {
   const { t } = useLang();
@@ -43,46 +44,48 @@ export default function InstructorCars() {
 
   return (
     <InstructorPanelLayout>
-      <PanelPageHeader icon={CarFront} title={t("instructorCarsTitle")} subtitle={t("instructorCarsSubtitle")} />
+      <InstructorScopeGuard require="practical">
+        <PanelPageHeader icon={CarFront} title={t("instructorCarsTitle")} subtitle={t("instructorCarsSubtitle")} />
 
-      <Card className="border-border overflow-hidden">
-        <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40">
-              <tr>
-                {[t("carColModel"), t("carColPlate"), t("fleetFieldVin"), t("carColTransmission")].map((h, i) => (
-                  <th
-                    key={i}
-                    className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {loading ? (
-                <TableSkeletonRows cols={4} cellClassName="px-4 py-3" />
-              ) : (
-              filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium text-foreground">{displayModel(c)}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{c.plate}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.vin ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant="secondary">{transLabel(c.transmission)}</Badge>
-                  </td>
+        <Card className="border-border overflow-hidden">
+          <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40">
+                <tr>
+                  {[t("carColModel"), t("carColPlate"), t("fleetFieldVin"), t("carColTransmission")].map((h, i) => (
+                    <th
+                      key={i}
+                      className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {!loading && filtered.length === 0 && (
-          <p className="p-6 text-sm text-muted-foreground text-center">{t("instructorCarsEmpty")}</p>
-        )}
-      </Card>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {loading ? (
+                  <TableSkeletonRows cols={4} cellClassName="px-4 py-3" />
+                ) : (
+                  filtered.map((c) => (
+                    <tr key={c.id} className="hover:bg-muted/30">
+                      <td className="px-4 py-3 font-medium text-foreground">{displayModel(c)}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{c.plate}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.vin ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="secondary">{transLabel(c.transmission)}</Badge>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {!loading && filtered.length === 0 && (
+            <p className="p-6 text-sm text-muted-foreground text-center">{t("instructorCarsEmpty")}</p>
+          )}
+        </Card>
+      </InstructorScopeGuard>
     </InstructorPanelLayout>
   );
 }

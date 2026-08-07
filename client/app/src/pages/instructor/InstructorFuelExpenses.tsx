@@ -16,6 +16,7 @@ import { formatAmd, parseAmdInput } from "src/utils/currency.utils";
 import { PETROL_TYPE_OPTIONS, type PetrolTypeValue } from "src/pages/admin/petrolTypeAm";
 import { Fuel, ImageIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
 
 type FuelExpenseRequest = {
   id: number;
@@ -178,6 +179,7 @@ export default function InstructorFuelExpenses() {
 
   return (
     <InstructorPanelLayout>
+      <InstructorScopeGuard require="practical">
       <PanelPageHeader
         icon={Fuel}
         title={t("instructorFuelTitle")}
@@ -422,6 +424,7 @@ export default function InstructorFuelExpenses() {
           <img src={sameOriginStaffUploadUrl(viewPhoto) ?? viewPhoto} alt="" className="w-full rounded-lg object-contain" />
         ) : null}
       </AppModal>
+      </InstructorScopeGuard>
     </InstructorPanelLayout>
   );
 }

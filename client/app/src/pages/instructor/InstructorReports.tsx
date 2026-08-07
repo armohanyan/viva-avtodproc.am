@@ -12,6 +12,7 @@ import { halfMonthPeriod, previousHalfMonthPeriod } from "src/utils/halfMonthPer
 import { BarChart3 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { TranslationKey } from "src/lib/i18n";
+import { useInstructorTeachingScope } from "src/modules/instructor/useInstructorTeachingScope";
 
 type SalaryLessonRow = {
   id: number;
@@ -94,6 +95,7 @@ function LessonsTable({
 export default function InstructorReports() {
   const { t } = useLang();
   const { showToast } = useToast();
+  const { teachesPractical, teachesTheory } = useInstructorTeachingScope();
 
   const [period, setPeriod] = useState(() => halfMonthPeriod(new Date()));
   const [report, setReport] = useState<InstructorSalaryReport | null>(null);
@@ -122,7 +124,9 @@ export default function InstructorReports() {
     { id: "current", label: t("adminSalaryCurrentPeriod"), range: halfMonthPeriod(new Date()) },
   ];
 
-  const showTheory = !loading && (report?.theory.lessonsCount ?? 0) > 0;
+  const showPractical = teachesPractical;
+  const showTheory = teachesTheory;
+  const kpiCols = showPractical && showTheory ? "sm:grid-cols-3" : "sm:grid-cols-2";
 
   return (
     <InstructorPanelLayout>
@@ -167,23 +171,27 @@ export default function InstructorReports() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Card className="p-5 border-border">
-          <p className="text-xs text-muted-foreground mb-1">{t("instructorReportsPracticalTitle")}</p>
-          <p className="text-lg font-bold tabular-nums">{loading ? "…" : report?.practical.lessonsCount ?? 0}</p>
-          <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-            {formatAmd(report?.practical.ratePerLessonAmd ?? 1500)} × {report?.practical.lessonsCount ?? 0} ={" "}
-            {formatAmd(report?.practical.totalAmd ?? 0)}
-          </p>
-        </Card>
-        <Card className="p-5 border-border">
-          <p className="text-xs text-muted-foreground mb-1">{t("instructorReportsTheoryTitle")}</p>
-          <p className="text-lg font-bold tabular-nums">{loading ? "…" : report?.theory.lessonsCount ?? 0}</p>
-          <p className="text-xs text-muted-foreground mt-1 tabular-nums">
-            {formatAmd(report?.theory.ratePerLessonAmd ?? 3000)} × {report?.theory.lessonsCount ?? 0} ={" "}
-            {formatAmd(report?.theory.totalAmd ?? 0)}
-          </p>
-        </Card>
+      <div className={`grid grid-cols-1 ${kpiCols} gap-4 mb-6`}>
+        {showPractical ? (
+          <Card className="p-5 border-border">
+            <p className="text-xs text-muted-foreground mb-1">{t("instructorReportsPracticalTitle")}</p>
+            <p className="text-lg font-bold tabular-nums">{loading ? "…" : report?.practical.lessonsCount ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+              {formatAmd(report?.practical.ratePerLessonAmd ?? 1500)} × {report?.practical.lessonsCount ?? 0} ={" "}
+              {formatAmd(report?.practical.totalAmd ?? 0)}
+            </p>
+          </Card>
+        ) : null}
+        {showTheory ? (
+          <Card className="p-5 border-border">
+            <p className="text-xs text-muted-foreground mb-1">{t("instructorReportsTheoryTitle")}</p>
+            <p className="text-lg font-bold tabular-nums">{loading ? "…" : report?.theory.lessonsCount ?? 0}</p>
+            <p className="text-xs text-muted-foreground mt-1 tabular-nums">
+              {formatAmd(report?.theory.ratePerLessonAmd ?? 3000)} × {report?.theory.lessonsCount ?? 0} ={" "}
+              {formatAmd(report?.theory.totalAmd ?? 0)}
+            </p>
+          </Card>
+        ) : null}
         <Card className="p-5 border-border">
           <p className="text-xs text-muted-foreground mb-1">{t("instructorReportsTotalLabel")}</p>
           <p className="text-lg font-bold tabular-nums">{loading ? "…" : formatAmd(report?.totalAmd ?? 0)}</p>
@@ -193,12 +201,14 @@ export default function InstructorReports() {
         </Card>
       </div>
 
-      <Card className="border-border overflow-hidden min-w-0 mb-6">
-        <div className="p-5 border-b border-border">
-          <h3 className="font-semibold text-foreground">{t("instructorReportsPracticalTitle")}</h3>
-        </div>
-        <LessonsTable section={report?.practical ?? null} labelHeaderKey="adminSalaryColStudent" loading={loading} />
-      </Card>
+      {showPractical ? (
+        <Card className="border-border overflow-hidden min-w-0 mb-6">
+          <div className="p-5 border-b border-border">
+            <h3 className="font-semibold text-foreground">{t("instructorReportsPracticalTitle")}</h3>
+          </div>
+          <LessonsTable section={report?.practical ?? null} labelHeaderKey="adminSalaryColStudent" loading={loading} />
+        </Card>
+      ) : null}
 
       {showTheory ? (
         <Card className="border-border overflow-hidden min-w-0">

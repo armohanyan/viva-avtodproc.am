@@ -6,3 +6,6 @@ export { default as InstructorNotificationsPage } from "./InstructorNotification
 export { default as InstructorClassSchedulePage } from "./InstructorClassSchedule";
 export { default as InstructorReportsPage } from "./InstructorReports";
 export { default as InstructorFuelExpensesPage } from "./InstructorFuelExpenses";
+export { default as InstructorQuestionsPage } from "./InstructorQuestions";
+export { default as InstructorQuestionsCategoryPage } from "./InstructorQuestionsCategory";
+export { default as InstructorQuestionPresentPage } from "./InstructorQuestionPresent";

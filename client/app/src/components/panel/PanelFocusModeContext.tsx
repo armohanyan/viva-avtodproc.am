@@ -18,8 +18,8 @@ export type PanelFocusModeContextValue = {
 
 const PanelFocusModeContext = createContext<PanelFocusModeContextValue | null>(null);
 
-function isStudentQuizPath(location: string): boolean {
-	return /\/quiz\/[^/?#]+/.test(location);
+function isFocusablePanelPath(location: string): boolean {
+	return /\/quiz\/[^/?#]+/.test(location) || /\/instructor\/questions\/(?:thematic|signs)\/[^/]+\/present/.test(location);
 }
 
 export function PanelFocusModeProvider({ children }: { children: ReactNode }) {
@@ -34,7 +34,7 @@ export function PanelFocusModeProvider({ children }: { children: ReactNode }) {
 	const toggle = useCallback(() => setActive((v) => !v), []);
 
 	useEffect(() => {
-		if (!isStudentQuizPath(location)) {
+		if (!isFocusablePanelPath(location)) {
 			setActive(false);
 		}
 	}, [location]);

@@ -24,6 +24,7 @@ import {
 import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, RefreshCw, Video } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useInstructorTeachingScope } from "src/modules/instructor/useInstructorTeachingScope";
 
 type ScheduleView = "today" | "week" | "month" | "custom";
 
@@ -123,6 +124,7 @@ export default function InstructorClassSchedule() {
 	const { t, lang } = useLang();
 	const { branches } = useBranches();
 	const { cities } = useCities();
+	const { teachesPractical, teachesTheory } = useInstructorTeachingScope();
 
 	const [view, setView] = useState<ScheduleView>("today");
 	const [customStart, setCustomStart] = useState(yerevanTodayIso());
@@ -140,6 +142,11 @@ export default function InstructorClassSchedule() {
 	const [detail, setDetail] = useState<ClassScheduleItem | null>(null);
 
 	const locale = localeForLang(lang);
+
+	useEffect(() => {
+		if (lessonType === "practical" && !teachesPractical) setLessonType("all");
+		if ((lessonType === "theory" || lessonType === "theory_personal") && !teachesTheory) setLessonType("all");
+	}, [teachesPractical, teachesTheory, lessonType]);
 
 	const queryString = useMemo(() => {
 		const p = new URLSearchParams();
@@ -302,8 +309,8 @@ export default function InstructorClassSchedule() {
 								className="w-full h-9 rounded-lg border border-input bg-background px-2 text-sm"
 							>
 								<option value="all">{t("adminBookingsFilterAllTypes")}</option>
-								<option value="practical">{t("lessonTypePractical")}</option>
-								<option value="theory">{t("lessonTypeTheory")}</option>
+								{teachesPractical ? <option value="practical">{t("lessonTypePractical")}</option> : null}
+								{teachesTheory ? <option value="theory">{t("lessonTypeTheory")}</option> : null}
 							</select>
 						</div>
 						<div>
