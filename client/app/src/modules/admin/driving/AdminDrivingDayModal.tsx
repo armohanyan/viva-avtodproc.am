@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "src/components/ui/tooltip";
 import type { Instructor } from "src/data/instructors";
 import { useLang } from "src/lib/i18n";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -33,6 +39,7 @@ export type DrivingDayCellBooking = {
   bookingId: number;
   studentName: string;
   studentPhone: string | null;
+  paymentNotes: string | null;
   paymentStatus: "paid" | "free" | "pending" | "not_required";
   instructorId: number | null;
   instructorName: string;
@@ -48,6 +55,7 @@ type ClassScheduleItem = {
   instructor: { id: number | null; name: string };
   branch: { id: number; name: string };
   payment: { status: "paid" | "free" | "pending" | "not_required" };
+  paymentNotes?: string | null;
 };
 
 type ClassScheduleResponse = {
@@ -66,6 +74,12 @@ type Props = {
     branchId: string;
     dateIso: string;
     time: string;
+  }) => void;
+  /** Admin custom slot (e.g. during lunch) — opens booking with free-form time. */
+  onAddCustomSlotClick: (target: {
+    instructor: Instructor;
+    branchId: string;
+    dateIso: string;
   }) => void;
   onBookingCellClick: (bookingId: number) => void;
 };
@@ -150,6 +164,7 @@ export default function AdminDrivingDayModal({
   instructors,
   reloadKey = 0,
   onEmptyCellClick,
+  onAddCustomSlotClick,
   onBookingCellClick,
 }: Props) {
   const { t } = useLang();
@@ -213,7 +228,7 @@ export default function AdminDrivingDayModal({
     return () => {
       cancelled = true;
     };
-  }, [open, gridInstructorIds]);
+  }, [open, gridInstructorIds, reloadKey]);
 
   useEffect(() => {
     if (!open || gridInstructorIds.length === 0) {
@@ -283,6 +298,7 @@ export default function AdminDrivingDayModal({
         bookingId: item.bookingId,
         studentName: item.student.name,
         studentPhone: item.student.phone || item.student.phone2,
+        paymentNotes: item.paymentNotes?.trim() ? item.paymentNotes.trim() : null,
         paymentStatus: item.payment.status,
         instructorId: item.instructor.id,
         instructorName: item.instructor.name,
@@ -388,135 +404,181 @@ export default function AdminDrivingDayModal({
       ) : branchGroups.length === 0 ? (
         <p className="py-8 text-sm text-muted-foreground">{t("adminDrivingEmptyInstructors")}</p>
       ) : (
-        <div className="relative min-h-0 flex-1 rounded-lg border border-primary/30 max-h-[min(82vh,980px)] overflow-auto overscroll-contain">
-          {busy ? (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40 pointer-events-none">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            </div>
-          ) : null}
-          <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
-            <thead>
-              <tr>
-                <th
-                  rowSpan={2}
-                  className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[4.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]"
-                >
-                  {t("adminDrivingDayModalTimeCol")}
-                </th>
-                {branchGroups.map((g) => (
+        <TooltipProvider delayDuration={200}>
+          <div className="relative min-h-0 flex-1 rounded-lg border border-primary/30 max-h-[min(82vh,980px)] overflow-auto overscroll-contain">
+            {busy ? (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40 pointer-events-none">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : null}
+            <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
+              <thead>
+                <tr>
                   <th
-                    key={g.branchId}
-                    colSpan={g.instructors.length}
-                    className="sticky top-0 z-30 bg-card text-center text-primary font-semibold px-2 py-2 border-r border-b border-primary/15 last:border-r-0 shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                    rowSpan={2}
+                    className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[4.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]"
                   >
-                    {g.branchName}
+                    {t("adminDrivingDayModalTimeCol")}
                   </th>
-                ))}
-              </tr>
-              <tr>
-                {branchGroups.flatMap((g) =>
-                  g.instructors.map((ins) => (
+                  {branchGroups.map((g) => (
                     <th
-                      key={`${g.branchId}-${ins.id}`}
-                      className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[7rem] max-w-[10rem] truncate shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
-                      title={ins.name}
+                      key={g.branchId}
+                      colSpan={g.instructors.length}
+                      className="sticky top-0 z-30 bg-card text-center text-primary font-semibold px-2 py-2 border-r border-b border-primary/15 last:border-r-0 shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                     >
-                      {ins.name.split(" ")[0]}
+                      {g.branchName}
                     </th>
-                  )),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {displayRows.map((row, rowIdx) => {
-                if (row.time == null || row.time === "") {
-                  return (
-                    <tr key={`break-${rowIdx}`}>
-                      <td
-                        colSpan={1 + branchGroups.reduce((n, g) => n + g.instructors.length, 0)}
-                        className="sticky left-0 z-10 bg-muted/60 px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-b border-border/40"
+                  ))}
+                </tr>
+                <tr>
+                  {branchGroups.flatMap((g) =>
+                    g.instructors.map((ins) => (
+                      <th
+                        key={`${g.branchId}-${ins.id}`}
+                        className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[7rem] max-w-[10rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                       >
-                        {t("adminDrivingDayModalBreak")}
-                      </td>
-                    </tr>
-                  );
-                }
-
-                const time = padSlotTime(row.time);
-                return (
-                  <tr key={time} className="hover:bg-primary/5">
-                    <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-primary font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
-                      {time}
-                    </td>
-                    {branchGroups.flatMap((g) =>
-                      g.instructors.map((ins) => {
-                        const booking = resolveCellBooking(ins, g.branchId, time);
-                        const blocked =
-                          !booking &&
-                          (isInstructorSlotBlocked(ins.id, time) ||
-                            isOutsideInstructorWorkingSlots(ins.id, time));
-                        return (
-                          <td
-                            key={`${time}-${g.branchId}-${ins.id}`}
-                            className="p-0 border-r border-b border-border/30 last:border-r-0"
-                          >
-                            {booking ? (
-                              <button
-                                type="button"
-                                onClick={() => onBookingCellClick(booking.bookingId)}
-                                className={cn(
-                                  "w-full min-h-14 px-1.5 py-1.5 flex flex-col items-center justify-center gap-0.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
-                                  paymentCellClass(booking.paymentStatus),
-                                )}
-                                title={`${booking.studentName}${booking.studentPhone ? ` · ${booking.studentPhone}` : ""}`}
-                              >
-                                <span className="text-xs sm:text-[13px] leading-snug font-semibold line-clamp-2">
-                                  {booking.studentName}
-                                </span>
-                                {booking.studentPhone ? (
-                                  <span className="text-[11px] sm:text-xs leading-snug opacity-95 tabular-nums truncate max-w-full">
-                                    {booking.studentPhone}
-                                  </span>
-                                ) : null}
-                              </button>
-                            ) : blocked ? (
-                              <div
-                                className="w-full min-h-14 flex items-center justify-center bg-muted/70 cursor-not-allowed select-none"
-                                title={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
-                                aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
-                              >
-                                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                                  {t("bookingSlotUnavailable")}
-                                </span>
-                              </div>
-                            ) : (
+                        <div className="group/ins flex items-center justify-center gap-0.5 min-w-0">
+                          <span className="truncate" title={ins.name}>
+                            {ins.name.split(" ")[0]}
+                          </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
                               <button
                                 type="button"
                                 onClick={() =>
-                                  onEmptyCellClick({
+                                  onAddCustomSlotClick({
                                     instructor: ins,
                                     branchId: g.branchId,
                                     dateIso: day,
-                                    time,
                                   })
                                 }
-                                className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
-                                title={`${ins.name} · ${time}`}
-                                aria-label={`${ins.name} · ${time}`}
+                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-primary/50 opacity-70 hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                                aria-label={t("adminDrivingDayModalAddCustomSlot")}
                               >
-                                +
+                                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
                               </button>
-                            )}
-                          </td>
-                        );
-                      }),
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[14rem] text-center">
+                              {t("adminDrivingDayModalAddCustomSlot")}
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </th>
+                    )),
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map((row, rowIdx) => {
+                  if (row.time == null || row.time === "") {
+                    return (
+                      <tr key={`break-${rowIdx}`}>
+                        <td
+                          colSpan={1 + branchGroups.reduce((n, g) => n + g.instructors.length, 0)}
+                          className="sticky left-0 z-10 bg-muted/60 px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-b border-border/40"
+                        >
+                          {t("adminDrivingDayModalBreak")}
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const time = padSlotTime(row.time);
+                  return (
+                    <tr key={time} className="hover:bg-primary/5">
+                      <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-primary font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
+                        {time}
+                      </td>
+                      {branchGroups.flatMap((g) =>
+                        g.instructors.map((ins) => {
+                          const booking = resolveCellBooking(ins, g.branchId, time);
+                          const blocked =
+                            !booking &&
+                            (isInstructorSlotBlocked(ins.id, time) ||
+                              isOutsideInstructorWorkingSlots(ins.id, time));
+                          return (
+                            <td
+                              key={`${time}-${g.branchId}-${ins.id}`}
+                              className="p-0 border-r border-b border-border/30 last:border-r-0"
+                            >
+                              {booking ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => onBookingCellClick(booking.bookingId)}
+                                      className={cn(
+                                        "w-full min-h-14 px-1.5 py-1.5 flex flex-col items-center justify-center gap-0.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
+                                        paymentCellClass(booking.paymentStatus),
+                                      )}
+                                    >
+                                      <span className="text-xs sm:text-[13px] leading-snug font-semibold line-clamp-2">
+                                        {booking.studentName}
+                                      </span>
+                                      {booking.studentPhone ? (
+                                        <span className="text-[11px] sm:text-xs leading-snug opacity-95 tabular-nums truncate max-w-full">
+                                          {booking.studentPhone}
+                                        </span>
+                                      ) : null}
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="top"
+                                    className="max-w-[min(18rem,90vw)] space-y-1 text-left whitespace-normal"
+                                  >
+                                    <p className="font-medium">{booking.studentName}</p>
+                                    {booking.studentPhone ? (
+                                      <p className="opacity-90 tabular-nums">{booking.studentPhone}</p>
+                                    ) : null}
+                                    {booking.paymentNotes ? (
+                                      <p className="border-t border-background/25 pt-1 whitespace-pre-wrap break-words">
+                                        <span className="font-medium opacity-90">
+                                          {t("adminBookingPaymentNotes")}:{" "}
+                                        </span>
+                                        {booking.paymentNotes}
+                                      </p>
+                                    ) : null}
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : blocked ? (
+                                <div
+                                  className="w-full min-h-14 flex items-center justify-center bg-muted/70 cursor-not-allowed select-none"
+                                  title={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
+                                  aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
+                                >
+                                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                                    {t("bookingSlotUnavailable")}
+                                  </span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onEmptyCellClick({
+                                      instructor: ins,
+                                      branchId: g.branchId,
+                                      dateIso: day,
+                                      time,
+                                    })
+                                  }
+                                  className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
+                                  title={`${ins.name} · ${time}`}
+                                  aria-label={`${ins.name} · ${time}`}
+                                >
+                                  +
+                                </button>
+                              )}
+                            </td>
+                          );
+                        }),
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </TooltipProvider>
       )}
     </AppModal>
   );

@@ -72,7 +72,7 @@ function blockRangeMinutes(timeStart: string, timeEnd: string): { start: number;
   return { start: parseTimeToMinutes(timeStart), end: parseTimeToMinutes(timeEnd) };
 }
 
-function rangesOverlapHalfOpen(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
+export function rangesOverlapHalfOpen(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end && a.end > b.start;
 }
 
@@ -144,7 +144,7 @@ export function branchScheduleBlockReason(
   return inside ? null : "outside_hours";
 }
 
-function minutesToHHMM(total: number): string {
+export function minutesToHHMM(total: number): string {
   const h = Math.floor(total / 60);
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;

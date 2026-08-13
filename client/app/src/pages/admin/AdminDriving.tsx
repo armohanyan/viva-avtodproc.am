@@ -23,6 +23,8 @@ type SlotSelection = {
   instructor: Instructor;
   branchId: string;
   entries: { dateIso: string; time: string }[];
+  /** Admin custom off-plan time (e.g. lunch hour); skips fixed schedule membership. */
+  customSlot?: boolean;
 };
 
 export default function AdminDriving() {
@@ -115,6 +117,14 @@ export default function AdminDriving() {
               entries: [{ dateIso, time }],
             });
           }}
+          onAddCustomSlotClick={({ instructor, branchId, dateIso }) => {
+            setPendingSelection({
+              instructor,
+              branchId,
+              entries: [{ dateIso, time: "14:00" }],
+              customSlot: true,
+            });
+          }}
           onBookingCellClick={(bookingId) => {
             setDetailBookingId(bookingId);
           }}
@@ -165,7 +175,9 @@ export default function AdminDriving() {
           slotEntries={pendingSelection.entries}
           students={students}
           onStudentCreated={handleStudentCreated}
+          customSlot={pendingSelection.customSlot === true}
           onChangeSlots={() => {
+            if (pendingSelection.customSlot) return;
             const first = pendingSelection.entries[0];
             if (!first) {
               setPendingSelection(null);

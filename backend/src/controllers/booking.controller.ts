@@ -47,6 +47,10 @@ const createBodySchema = z.object({
   totalPriceAmd: z.coerce.number().int().nonnegative().optional(),
   isGift: z.boolean().optional(),
   giftNote: z.string().max(2000).optional().nullable(),
+  /** Admin-only: book a practical time outside the fixed slot plan (e.g. lunch hour). Still checks day-off / busy. */
+  allowCustomPracticalTime: z.boolean().optional(),
+  /** Exclusive end HH:MM for allowCustomPracticalTime bookings. */
+  customSlotEndTime: z.string().min(4).optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -483,6 +487,8 @@ export default class BookingController {
             isGift: body.isGift,
             giftNote: body.giftNote,
             createdByAccountType: readStaffAccountTypeFromToken(req),
+            allowCustomPracticalTime: body.allowCustomPracticalTime,
+            customSlotEndTime: body.customSlotEndTime,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -551,6 +557,8 @@ export default class BookingController {
         isGift: body.isGift,
         giftNote: body.giftNote,
         createdByAccountType: readStaffAccountTypeFromToken(req),
+        allowCustomPracticalTime: body.allowCustomPracticalTime,
+        customSlotEndTime: body.customSlotEndTime,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

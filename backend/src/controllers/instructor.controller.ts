@@ -236,6 +236,19 @@ export default class InstructorController {
 
       const body = parseBody(availabilityCreateSchema, req.body);
       try {
+        if (body.ruleKind === 'date_busy' && body.dateIso && body.timeStart && body.timeEnd) {
+          const BookingSlotValidationService = (
+            await import('../services/booking-slot-validation.service')
+          ).default;
+          await BookingSlotValidationService.assertInstructorRangeFree({
+            instructorUserId,
+            dateIso: body.dateIso,
+            rangeStart: body.timeStart,
+            rangeEndExclusive: body.timeEnd,
+            busyMessage:
+              'Instructor already has a booking in this rest-time window. Choose a free time range.',
+          });
+        }
         const row = await InstructorAvailabilityService.create({
           ...body,
           instructorUserId,
@@ -247,6 +260,9 @@ export default class InstructorController {
 
         SuccessHandlerUtil.handleAdd(res, next, row);
       } catch (err) {
+        if (err instanceof InputValidationError) {
+          return next(err);
+        }
         if (err instanceof Error) {
           return next(new InputValidationError(err.message, HttpStatusCodesUtil.BAD_REQUEST));
         }

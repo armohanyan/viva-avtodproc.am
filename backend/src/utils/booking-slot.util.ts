@@ -95,7 +95,11 @@ function blockRangeMinutes(timeStart: string, timeEnd: string): { start: number;
   return { start: parseTimeToMinutes(timeStart), end: parseTimeToMinutes(timeEnd) };
 }
 
-function rangesOverlapHalfOpen(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
+/** Half-open ranges [start, end) in minutes from midnight. */
+export function rangesOverlapHalfOpen(
+  a: { start: number; end: number },
+  b: { start: number; end: number },
+): boolean {
   return a.start < b.end && a.end > b.start;
 }
 

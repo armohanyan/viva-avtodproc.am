@@ -65,6 +65,8 @@ export type ClassScheduleItemDto = {
   package: { id: number; name: string; isIncludedLesson: boolean } | null;
   payment: { status: ClassSchedulePaymentStatus };
   notes: string;
+  /** Admin payment notes (cash, promise to pay, etc.) — staff-facing only. */
+  paymentNotes: string | null;
   cancellationRequestedAt: string | null;
   lessonPassedSuccessfully: boolean | null;
   totalPriceAmd: number | null;
@@ -87,7 +89,7 @@ export type ClassScheduleResponse = {
 
 export type ClassScheduleInstructorItemDto = Omit<
   ClassScheduleItemDto,
-  'instructor' | 'totalPriceAmd'
+  'instructor' | 'totalPriceAmd' | 'paymentNotes'
 >;
 
 export type ClassScheduleInstructorResponse = {
@@ -95,7 +97,10 @@ export type ClassScheduleInstructorResponse = {
   meta: ClassScheduleResponse['meta'];
 };
 
-export type StudentClassScheduleItemDto = Omit<ClassScheduleItemDto, 'student' | 'theoryCohort'> & {
+export type StudentClassScheduleItemDto = Omit<
+  ClassScheduleItemDto,
+  'student' | 'theoryCohort' | 'paymentNotes'
+> & {
   car: { label: string; transmission: string } | null;
   theoryCohort: { id: number; name: string; lessonIndex: number; totalLessons: number } | null;
   cancelRefundEligible: boolean;
@@ -481,6 +486,7 @@ export default class ClassScheduleService {
 
       const payment = { status: resolvePaymentStatus(row) };
       const notes = buildNotes(row);
+      const paymentNotes = row.paymentNotes?.trim() ? row.paymentNotes.trim() : null;
       const cancellationRequestedAt = row.cancellationRequestedAt
         ? new Date(row.cancellationRequestedAt).toISOString()
         : null;
@@ -540,6 +546,7 @@ export default class ClassScheduleService {
           package: packageBlock,
           payment,
           notes,
+          paymentNotes,
           cancellationRequestedAt,
           lessonPassedSuccessfully,
           totalPriceAmd: row.totalPriceAmd ?? null,
@@ -744,6 +751,7 @@ export default class ClassScheduleService {
         package: null,
         payment: { status: 'not_required' },
         notes: '',
+        paymentNotes: null,
         cancellationRequestedAt: null,
         lessonPassedSuccessfully: status === 'completed' ? true : null,
         totalPriceAmd: null,
@@ -774,7 +782,9 @@ export default class ClassScheduleService {
     };
     const { items, meta } = await this.listForAdmin(scoped);
     return {
-      items: items.map(({ instructor: _instructor, totalPriceAmd: _price, ...rest }) => rest),
+      items: items.map(
+        ({ instructor: _instructor, totalPriceAmd: _price, paymentNotes: _paymentNotes, ...rest }) => rest,
+      ),
       meta,
     };
   }
@@ -901,7 +911,7 @@ export default class ClassScheduleService {
         (st === 'pending' || st === 'pending_payment') &&
         isImmediatePaymentRequired(item.date, today);
 
-      const { student: _student, ...rest } = item;
+      const { student: _student, paymentNotes: _paymentNotes, ...rest } = item;
       return {
         ...rest,
         car,

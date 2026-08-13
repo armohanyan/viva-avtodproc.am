@@ -890,15 +890,19 @@ type AdminSlotEntry = { dateIso: string; time: string };
 function normalizeAdminSlotEntries(
   raw: readonly { dateIso: string; time: string }[],
   allowedPracticalTimes?: readonly string[],
+  options?: { allowAnyValidTime?: boolean },
 ): AdminSlotEntry[] {
   const allowedPractical = allowedPracticalTimes?.length ? new Set(allowedPracticalTimes) : null;
+  const allowAny = options?.allowAnyValidTime === true;
   const seen = new Set<string>();
   const out: AdminSlotEntry[] = [];
   for (const r of raw) {
     const d = dateIsoString(r.dateIso);
     const t = normalizeTimeHHMM(String(r.time ?? '').trim());
     if (!t || !TIME_RE.test(t)) continue;
-    if (allowedPractical) {
+    if (allowAny) {
+      /* accept any valid HH:MM (admin custom / off-plan slot) */
+    } else if (allowedPractical) {
       if (!allowedPractical.has(t)) continue;
     } else if (parseTimeToMinutes(t) % 60 !== 0) {
       continue;
@@ -2470,6 +2474,8 @@ export default class BookingService {
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
+    allowCustomPracticalTime?: boolean;
+    customSlotEndTime?: string;
     isGift?: boolean;
     giftNote?: string | null;
     createdByAccountType?: 'admin' | 'super_admin' | null;
@@ -2505,21 +2511,29 @@ export default class BookingService {
       lessonType: input.lessonType,
       allowHistoricalSlots: input.allowHistoricalSlots,
       allowPastSlots: true,
+      allowCustomPracticalTime: input.allowCustomPracticalTime,
+      customSlotEndTime: input.customSlotEndTime,
     });
 
     const first = entries[0];
+    const customEndNorm =
+      input.allowCustomPracticalTime === true && input.customSlotEndTime
+        ? normalizeTimeHHMM(String(input.customSlotEndTime).trim())
+        : null;
     const endTime =
-      input.lessonType === 'practical'
-        ? input.allowHistoricalSlots
-          ? endTimeExclusiveForPracticalSlotEntries(
-              entries,
-              await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
-            ) ?? endTimeExclusiveForSlotEntries(entries)
-          : endTimeExclusiveForPracticalSlotEntries(
-              entries,
-              await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
-            )
-        : endTimeExclusiveForSlotEntries(entries);
+      customEndNorm && entries.length === 1
+        ? customEndNorm
+        : input.lessonType === 'practical'
+          ? input.allowHistoricalSlots || input.allowCustomPracticalTime
+            ? endTimeExclusiveForPracticalSlotEntries(
+                entries,
+                await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
+              ) ?? endTimeExclusiveForSlotEntries(entries)
+            : endTimeExclusiveForPracticalSlotEntries(
+                entries,
+                await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId),
+              )
+          : endTimeExclusiveForSlotEntries(entries);
 
     let newId = 0;
     try {
@@ -2618,12 +2632,16 @@ export default class BookingService {
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
+    allowCustomPracticalTime?: boolean;
+    customSlotEndTime?: string;
     isGift?: boolean;
     giftNote?: string | null;
     createdByAccountType?: 'admin' | 'super_admin' | null;
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
-    if (input.type === 'practical' && input.allowHistoricalSlots !== true) {
+    const allowCustomPractical =
+      input.type === 'practical' && input.allowCustomPracticalTime === true;
+    if (input.type === 'practical' && input.allowHistoricalSlots !== true && !allowCustomPractical) {
       let instructorUserId = input.instructorUserId;
       if (!Number.isFinite(instructorUserId)) {
         const inst = await User.findOne({
@@ -2637,7 +2655,9 @@ export default class BookingService {
           ? await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId!)
           : bookableTimesFromPlan(await PracticalSlotPlanService.getPlan(input.branchId));
     }
-    const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? [], allowedPracticalTimes);
+    const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? [], allowedPracticalTimes, {
+      allowAnyValidTime: allowCustomPractical,
+    });
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
       if (entriesNorm.length > MAX_ADMIN_SLOT_ENTRIES) {
         throw new InputValidationError(
@@ -2663,6 +2683,8 @@ export default class BookingService {
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
         allowHistoricalSlots: input.allowHistoricalSlots,
+        allowCustomPracticalTime: allowCustomPractical,
+        customSlotEndTime: input.customSlotEndTime,
         isGift: input.isGift,
         giftNote: input.giftNote,
         createdByAccountType: input.createdByAccountType,
