@@ -15,7 +15,11 @@ import {
   rangesOverlapHalfOpen,
 } from '../utils/booking-slot.util';
 import PracticalSlotPlanService from './practical-slot-plan.service';
-import { practicalSlotRangeMinutesFromBookable } from '../utils/practical-slot-plan.util';
+import {
+  bookableTimesFromPlan,
+  DEFAULT_PRACTICAL_SLOT_PLAN,
+  practicalSlotRangeMinutesFromBookable,
+} from '../utils/practical-slot-plan.util';
 
 const { InputValidationError } = ErrorsUtil;
 
@@ -50,33 +54,67 @@ function messageForReason(reason: SlotValidationFailureReason): string {
   }
 }
 
-function resolveOccupiedRangeMinutes(
+function mergedBookableTimes(planTimes: readonly string[], slotTimes: readonly string[]): string[] {
+  const set = new Set(planTimes);
+  for (const t of slotTimes) {
+    const n = normalizeTimeHHMM(t);
+    if (n) set.add(n);
+  }
+  return [...set].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+}
+
+/**
+ * Occupied windows for one booking on `dateIso`.
+ * Each claimed start is its own lesson range. Non-adjacent same-day slots (e.g. 12:10 and 16:10
+ * on a multi-day booking with null `endTime`) must not be merged into one span that blocks 13:20/15:00.
+ */
+export function occupiedRangesMinutes(
   bookingTime: string,
   bookingEndTime: string | null | undefined,
   bookingDateIso: string,
   dateIso: string,
   slotTimesOnDate: readonly string[],
-): { start: number; end: number } | null {
+  bookableSorted: readonly string[] = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN),
+): { start: number; end: number }[] {
   const starts = slotTimesOnDate
     .map((t) => parseTimeToMinutes(normalizeTimeHHMM(t) ?? t))
     .filter((m) => Number.isFinite(m))
     .sort((a, b) => a - b);
+  const bookable = mergedBookableTimes(bookableSorted, slotTimesOnDate);
+
   if (starts.length === 0) {
     const start = parseTimeToMinutes(normalizeTimeHHMM(bookingTime) ?? bookingTime);
-    if (!Number.isFinite(start)) return null;
-    const endRaw = bookingEndTime ? parseTimeToMinutes(normalizeTimeHHMM(bookingEndTime) ?? bookingEndTime) : start + 60;
-    return { start, end: Number.isFinite(endRaw) && endRaw > start ? endRaw : start + 60 };
-  }
-  const start = starts[0]!;
-  const sameDayEnd =
-    bookingDateIso.slice(0, 10) === dateIso.slice(0, 10) && bookingEndTime
+    if (!Number.isFinite(start)) return [];
+    const endRaw = bookingEndTime
       ? parseTimeToMinutes(normalizeTimeHHMM(bookingEndTime) ?? bookingEndTime)
-      : NaN;
-  if (Number.isFinite(sameDayEnd) && sameDayEnd > start) {
-    return { start, end: sameDayEnd };
+      : start + 60;
+    return [{ start, end: Number.isFinite(endRaw) && endRaw > start ? endRaw : start + 60 }];
   }
-  const lastStart = starts[starts.length - 1]!;
-  return { start, end: lastStart + 60 };
+
+  if (starts.length === 1) {
+    const start = starts[0]!;
+    const planRange = practicalSlotRangeMinutesFromBookable(minutesToHHMM(start), bookable);
+    const sameDayEnd =
+      bookingDateIso.slice(0, 10) === dateIso.slice(0, 10) && bookingEndTime
+        ? parseTimeToMinutes(normalizeTimeHHMM(bookingEndTime) ?? bookingEndTime)
+        : NaN;
+    if (Number.isFinite(sameDayEnd) && sameDayEnd > start) {
+      const startOnPlan = bookableSorted.some((t) => parseTimeToMinutes(t) === start);
+      const skipsUnclaimedPlanSlot =
+        startOnPlan &&
+        bookableSorted.some((t) => {
+          const m = parseTimeToMinutes(t);
+          return m > start && m < sameDayEnd;
+        });
+      if (skipsUnclaimedPlanSlot) {
+        return [planRange];
+      }
+      return [{ start, end: sameDayEnd }];
+    }
+    return [planRange];
+  }
+
+  return starts.map((start) => practicalSlotRangeMinutesFromBookable(minutesToHHMM(start), bookable));
 }
 
 export default class BookingSlotValidationService {
@@ -144,14 +182,14 @@ export default class BookingSlotValidationService {
     }
 
     for (const occ of byBooking.values()) {
-      const occupied = resolveOccupiedRangeMinutes(
+      const occupiedRanges = occupiedRangesMinutes(
         occ.time,
         occ.endTime,
         occ.dateIso,
         dateIso,
         occ.slotTimes,
       );
-      if (occupied && rangesOverlapHalfOpen(proposed, occupied)) return true;
+      if (occupiedRanges.some((occupied) => rangesOverlapHalfOpen(proposed, occupied))) return true;
     }
 
     // Legacy bookings without booking_slots rows.
@@ -169,14 +207,14 @@ export default class BookingSlotValidationService {
       attributes: ['id', 'dateIso', 'time', 'endTime'],
     });
     for (const b of legacy) {
-      const occupied = resolveOccupiedRangeMinutes(
+      const occupiedRanges = occupiedRangesMinutes(
         b.time,
         b.endTime,
         dateIsoStringSafe(b.dateIso),
         dateIso,
         [],
       );
-      if (occupied && rangesOverlapHalfOpen(proposed, occupied)) return true;
+      if (occupiedRanges.some((occupied) => rangesOverlapHalfOpen(proposed, occupied))) return true;
     }
 
     return false;
@@ -375,6 +413,9 @@ export default class BookingSlotValidationService {
   }
 }
 
-function dateIsoStringSafe(v: string): string {
-  return String(v ?? '').slice(0, 10);
+function dateIsoStringSafe(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v.slice(0, 10);
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  return String(v).slice(0, 10);
 }

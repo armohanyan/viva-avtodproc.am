@@ -10,6 +10,8 @@ import {
   hoursUntilLessonStart,
   isRefundWindowForCancellation,
 } from '../services/booking.service';
+import { occupiedRangesMinutes } from '../services/booking-slot-validation.service';
+import { rangesOverlapHalfOpen } from '../utils/booking-slot.util';
 
 const far = hoursUntilLessonStart('2099-06-15', '10:00');
 assert.ok(far > 24 * 365, 'far-future lesson should be many hours away');
@@ -39,6 +41,37 @@ for (const v of Object.values(BookingNotificationPersistedType)) {
     `booking notification type ${v} must exist on Notification model`,
   );
 }
+
+/** 18.08 multi-day booking with 12:10 + 16:10 must not swallow 13:20 / 15:00. */
+const gapDayRanges = occupiedRangesMinutes(
+  '17:20',
+  null,
+  '2026-08-16',
+  '2026-08-18',
+  ['12:10', '16:10'],
+);
+const slot1320 = { start: 13 * 60 + 20, end: 15 * 60 };
+const slot1500 = { start: 15 * 60, end: 16 * 60 + 10 };
+assert.equal(
+  gapDayRanges.some((r) => rangesOverlapHalfOpen(slot1320, r)),
+  false,
+  '12:10+16:10 must not occupy 13:20',
+);
+assert.equal(
+  gapDayRanges.some((r) => rangesOverlapHalfOpen(slot1500, r)),
+  false,
+  '12:10+16:10 must not occupy 15:00',
+);
+assert.equal(
+  gapDayRanges.some((r) => rangesOverlapHalfOpen({ start: 12 * 60 + 10, end: 13 * 60 + 20 }, r)),
+  true,
+  '12:10 must still occupy its own lesson',
+);
+assert.equal(
+  gapDayRanges.some((r) => rangesOverlapHalfOpen({ start: 16 * 60 + 10, end: 17 * 60 + 20 }, r)),
+  true,
+  '16:10 must still occupy its own lesson',
+);
 
 // eslint-disable-next-line no-console
 console.log('booking-rules-selftest: OK');
