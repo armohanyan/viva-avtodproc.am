@@ -785,6 +785,9 @@ async function syncBookingSlotRowsFromDesired(
   desired: readonly { dateIso: string; slotTime: string }[],
   transaction: Transaction,
 ): Promise<void> {
+  const desiredDates = [...new Set(desired.map((d) => dateIsoString(d.dateIso)).filter(Boolean))];
+  await purgeClosedBookingSlotsForInstructorDates(instructorUserId, desiredDates, transaction);
+
   const existing = await BookingSlot.findAll({
     where: { bookingId },
     transaction,
@@ -1012,6 +1015,37 @@ async function auditBookingSlotsCleared(
         instructorUserId: s.instructorUserId ?? null,
       })),
     },
+  });
+}
+
+/** Drop leftover `booking_slots` whose booking is cancelled/refunded so unique(instructor, date, time) can be reused. */
+async function purgeClosedBookingSlotsForInstructorDates(
+  instructorUserId: number,
+  dateIsos: readonly string[],
+  transaction: Transaction,
+): Promise<void> {
+  const dates = [...new Set(dateIsos.map((d) => dateIsoString(d)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)))];
+  if (!Number.isFinite(instructorUserId) || instructorUserId <= 0 || dates.length === 0) return;
+  const stale = await BookingSlot.findAll({
+    where: {
+      instructorUserId,
+      dateIso: { [Op.in]: dates },
+    },
+    include: [
+      {
+        model: Booking,
+        as: 'booking',
+        required: true,
+        attributes: ['id', 'status'],
+        where: { status: { [Op.notIn]: [...SLOT_RESERVING_STATUSES] } },
+      },
+    ],
+    transaction,
+  });
+  if (stale.length === 0) return;
+  await BookingSlot.destroy({
+    where: { id: { [Op.in]: stale.map((s) => s.id) } },
+    transaction,
   });
 }
 

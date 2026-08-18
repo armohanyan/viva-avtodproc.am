@@ -252,8 +252,9 @@ export default function AdminDrivingDayModal({
             const raw = await vivaApiJson<Array<{ dateIso?: string; time?: string }>>(
               `/instructors/${encodeURIComponent(id)}/busy-slots?${busyQ.toString()}`,
             );
+            const rows = Array.isArray(raw) ? raw : [];
             const times = new Set<string>();
-            for (const row of raw ?? []) {
+            for (const row of rows) {
               const rowDay = String(row.dateIso ?? "").slice(0, 10);
               if (rowDay !== day) continue;
               if (!row.time) continue;
@@ -270,7 +271,7 @@ export default function AdminDrivingDayModal({
     return () => {
       cancelled = true;
     };
-  }, [open, gridInstructorIds, day]);
+  }, [open, gridInstructorIds, day, reloadKey]);
 
   useEffect(() => {
     if (!open || gridInstructorIds.length === 0) {
