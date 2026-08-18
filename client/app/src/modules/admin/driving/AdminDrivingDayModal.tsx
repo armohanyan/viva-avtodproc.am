@@ -191,6 +191,14 @@ export default function AdminDrivingDayModal({
   const [blocksByInstructor, setBlocksByInstructor] = useState<Map<string, AvailabilityBlock[]>>(
     () => new Map(),
   );
+  /**
+   * Instructor busy slots are instructor-wide (not branch-scoped):
+   * if the instructor has a practical lesson at this time in any branch,
+   * we want to disable the matrix cells in all branch columns.
+   */
+  const [busyTimesByInstructor, setBusyTimesByInstructor] = useState<Map<string, Set<string>>>(
+    () => new Map(),
+  );
   /** Working-slot times per instructor; only instructors with a customized plan are present. */
   const [planTimesByInstructor, setPlanTimesByInstructor] = useState<Map<string, Set<string>>>(
     () => new Map(),
@@ -229,6 +237,40 @@ export default function AdminDrivingDayModal({
       cancelled = true;
     };
   }, [open, gridInstructorIds, reloadKey]);
+
+  useEffect(() => {
+    if (!open || gridInstructorIds.length === 0) {
+      setBusyTimesByInstructor(new Map());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const pairs = await Promise.all(
+        gridInstructorIds.map(async (id) => {
+          try {
+            const busyQ = new URLSearchParams({ from: day, to: day });
+            const raw = await vivaApiJson<Array<{ dateIso?: string; time?: string }>>(
+              `/instructors/${encodeURIComponent(id)}/busy-slots?${busyQ.toString()}`,
+            );
+            const times = new Set<string>();
+            for (const row of raw ?? []) {
+              const rowDay = String(row.dateIso ?? "").slice(0, 10);
+              if (rowDay !== day) continue;
+              if (!row.time) continue;
+              times.add(padSlotTime(row.time));
+            }
+            return [id, times] as const;
+          } catch {
+            return [id, new Set<string>()] as const;
+          }
+        }),
+      );
+      if (!cancelled) setBusyTimesByInstructor(new Map(pairs));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, gridInstructorIds, day]);
 
   useEffect(() => {
     if (!open || gridInstructorIds.length === 0) {
@@ -347,6 +389,15 @@ export default function AdminDrivingDayModal({
       return !times.has(padSlotTime(time));
     },
     [planTimesByInstructor],
+  );
+
+  const isInstructorBusyAtTime = useCallback(
+    (instructorId: string, time: string): boolean => {
+      const times = busyTimesByInstructor.get(String(instructorId));
+      if (!times) return false;
+      return times.has(padSlotTime(time));
+    },
+    [busyTimesByInstructor],
   );
 
   const title = `${formatGridDateLabel(day)} · ${armenianWeekdayShort(day)}`;
@@ -495,7 +546,8 @@ export default function AdminDrivingDayModal({
                           const blocked =
                             !booking &&
                             (isInstructorSlotBlocked(ins.id, time) ||
-                              isOutsideInstructorWorkingSlots(ins.id, time));
+                              isOutsideInstructorWorkingSlots(ins.id, time) ||
+                              isInstructorBusyAtTime(ins.id, time));
                           return (
                             <td
                               key={`${time}-${g.branchId}-${ins.id}`}
