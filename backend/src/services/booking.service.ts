@@ -3646,7 +3646,10 @@ export default class BookingService {
         allowedPracticalTimes = await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId);
       }
     }
-    const slotEntriesNorm = normalizeAdminSlotEntries(patch.slotEntries ?? [], allowedPracticalTimes);
+    const slotEntriesNorm = normalizeAdminSlotEntries(patch.slotEntries ?? [], allowedPracticalTimes, {
+      // Admin updates may keep off-plan times (e.g. lunch custom slots) already on the booking.
+      allowAnyValidTime: true,
+    });
     if (
       slotEntriesNorm.length > 0 &&
       (effectiveType === 'practical' || effectiveType === 'theory_personal')
@@ -3777,6 +3780,172 @@ export default class BookingService {
     BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
+  }
+
+  /**
+   * Admin: drop a single `booking_slots` row. The booking and remaining slots stay.
+   * Recalculates total from remaining slots and notifies staff to review payment.
+   * Removing the last slot is rejected — cancel/delete the booking instead.
+   */
+  static async removeAdminSlot(
+    id: number,
+    slot: { dateIso: string; time: string },
+  ): Promise<BookingAdminDto | null> {
+    const row = await Booking.findByPk(id);
+    if (!row) return null;
+
+    const lessonType = row.lessonType;
+    if (lessonType !== 'practical' && lessonType !== 'theory_personal') {
+      throw new InputValidationError(
+        'Only practical or 1:1 theory bookings have removable slots.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    if (!rawBookingStatusReservesSlot(row.status)) {
+      throw new InputValidationError(
+        'Cannot remove a slot from a cancelled or refunded booking.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+
+    const targetDate = dateIsoString(slot.dateIso);
+    const targetTime = normalizeTimeHHMM(String(slot.time ?? '').trim());
+    if (!targetDate || !targetTime) {
+      throw new InputValidationError('Invalid slot date or time.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    const existing = await BookingSlot.findAll({ where: { bookingId: id } });
+    const targetRow = existing.find(
+      (s) =>
+        dateIsoString(s.dateIso) === targetDate &&
+        (normalizeTimeHHMM(s.slotTime) ?? s.slotTime) === targetTime,
+    );
+    const existingEntries: AdminSlotEntry[] =
+      existing.length > 0
+        ? existing
+            .map((s) => ({
+              dateIso: dateIsoString(s.dateIso),
+              time: normalizeTimeHHMM(s.slotTime) ?? s.slotTime,
+            }))
+            .filter((e) => TIME_RE.test(e.time))
+        : expandLegacyBookingHours(row).map((s) => ({ dateIso: s.dateIso, time: s.time }));
+
+    const match = existingEntries.find((e) => e.dateIso === targetDate && e.time === targetTime);
+    if (!match || (existing.length > 0 && !targetRow)) {
+      throw new InputValidationError('That slot is not on this booking.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    const remaining = existingEntries.filter((e) => !(e.dateIso === targetDate && e.time === targetTime));
+    if (remaining.length === 0) {
+      throw new InputValidationError(
+        'This is the last slot. Cancel the booking to free it.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    remaining.sort(
+      (a, b) => a.dateIso.localeCompare(b.dateIso) || parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time),
+    );
+
+    const instructorUserId = row.instructorUserId;
+    if (instructorUserId == null || !Number.isFinite(instructorUserId)) {
+      throw new InputValidationError(
+        'This booking has no instructor, so a slot cannot be removed.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+
+    const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
+    const hourly = profile ? Number(profile.hourlyPrice) : 0;
+    const previousTotalAmd = bookingTotalPriceAmd(row);
+    const prevPayment = resolveBookingPayment(row);
+    const previousPaid = prevPayment.paidAmountAmd;
+    const computedTotal = Number.isFinite(hourly)
+      ? hourly * billableSlotCountForLesson(lessonType, remaining.length)
+      : previousTotalAmd;
+    const nextTotalAmd = row.prepaidMeta
+      ? 0
+      : Math.max(0, Math.round(Number.isFinite(computedTotal) ? computedTotal : previousTotalAmd));
+
+    const first = remaining[0];
+    const endTime =
+      lessonType === 'practical'
+        ? endTimeExclusiveForPracticalSlotEntries(
+            remaining,
+            await PracticalSlotPlanService.getEffectiveBookableTimes(row.branchId, instructorUserId),
+          )
+        : endTimeExclusiveForSlotEntries(remaining);
+
+    let nextPayStatus: AdminBookingPaymentStatus = 'unpaid';
+    let nextPaidAmt: number | undefined;
+    if (row.prepaidMeta) {
+      nextPayStatus = 'paid';
+    } else if (prevPayment.paymentStatus === 'unpaid' && previousPaid <= 0) {
+      nextPayStatus = 'unpaid';
+    } else if (previousPaid >= nextTotalAmd && nextTotalAmd > 0) {
+      nextPayStatus = 'paid';
+    } else if (previousPaid > 0 && previousPaid < nextTotalAmd) {
+      nextPayStatus = 'partial';
+      nextPaidAmt = previousPaid;
+    } else {
+      nextPayStatus = 'unpaid';
+    }
+
+    const payUpdate = row.prepaidMeta
+      ? adminPaymentDbPatch(0, { adminPaymentStatus: 'paid' }, row.prepaidMeta)
+      : adminPaymentDbPatch(nextTotalAmd, {
+          adminPaymentStatus: nextPayStatus,
+          paidAmountAmd: nextPaidAmt,
+        });
+
+    const stamp = `Slot removed ${targetDate} ${targetTime}. Total ${previousTotalAmd} → ${nextTotalAmd} AMD. Review payment.`;
+    const prevNotes = (row.paymentNotes ?? '').trim();
+    const paymentNotes = (prevNotes ? `${prevNotes}\n${stamp}` : stamp).slice(0, 2000);
+
+    AuditLogService.recordFireAndForget({
+      category: 'booking',
+      action: 'admin_remove_slot',
+      entityType: 'booking',
+      entityId: id,
+      message: `Admin removed one slot from bookingId=${id} (${targetDate} ${targetTime})`,
+      details: {
+        removedDateIso: targetDate,
+        removedTime: targetTime,
+        remainingSlotCount: remaining.length,
+        previousTotalAmd,
+        newTotalAmd: nextTotalAmd,
+      },
+    });
+
+    await sequelize.transaction(async (transaction) => {
+      await row.update(
+        {
+          dateIso: first.dateIso,
+          time: first.time,
+          endTime,
+          totalPriceAmd: nextTotalAmd,
+          paymentNotes,
+          ...payUpdate,
+        },
+        { transaction },
+      );
+      if (targetRow) {
+        await targetRow.destroy({ transaction });
+      } else {
+        await replaceBookingSlotRowsFromEntries(id, instructorUserId, remaining, transaction);
+      }
+    });
+
+    void BookingNotificationService.notifyAdminSlotRemovedPaymentReview({
+      bookingId: id,
+      removedDateIso: targetDate,
+      removedTime: targetTime,
+      previousTotalAmd,
+      newTotalAmd: nextTotalAmd,
+      paidAmountAmd: previousPaid,
+      remainingSlotCount: remaining.length,
+    }).catch(() => {});
+
+    return BookingService.getAdminById(id);
   }
 
   /** Student: extend active payment hold by 5 minutes (only when ≤1 min left, max {@link MAX_PAYMENT_HOLD_EXTENSIONS} times). */

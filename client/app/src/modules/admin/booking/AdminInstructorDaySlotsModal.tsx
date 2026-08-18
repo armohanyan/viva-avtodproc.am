@@ -26,6 +26,8 @@ type Props = {
   maxSelectableSlots?: number;
   maxSelectableSlotsErrorKey?: TranslationKey;
   slotSource?: InstructorDaySlotSource;
+  /** Treat this booking's occupied times as selectable (editing the same booking). */
+  ignoreBusyBookingId?: string;
   onConfirm: (entries: { dateIso: string; time: string }[]) => void;
   t: (k: TranslationKey) => string;
 };
@@ -41,6 +43,7 @@ export default function AdminInstructorDaySlotsModal({
   maxSelectableSlots,
   maxSelectableSlotsErrorKey = "adminBookingValPackagePracticalCount",
   slotSource = "branch",
+  ignoreBusyBookingId = "",
   onConfirm,
   t,
 }: Props) {
@@ -56,6 +59,7 @@ export default function AdminInstructorDaySlotsModal({
     dateIso: viewDay,
     open,
     slotSource,
+    ignoreBusyBookingId,
   });
 
   useEffect(() => {

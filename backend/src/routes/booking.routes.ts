@@ -26,6 +26,7 @@ router.post('/:id/reject-student-cancellation', requireStaff, BookingController.
 router.post('/:id/approve-gift', requireSuperAdmin, BookingController.approveGift);
 router.post('/:id/reject-gift', requireSuperAdmin, BookingController.rejectGift);
 router.post('/:id/cancel-student', BookingController.cancelStudentBooking);
+router.post('/:id/remove-slot', requireStaff, BookingController.removeSlot);
 router.patch('/:id/lesson-passed', BookingController.patchLessonPassed);
 router.patch('/:id', BookingController.update);
 router.delete('/:id', BookingController.remove);

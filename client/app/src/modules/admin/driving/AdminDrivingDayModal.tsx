@@ -81,7 +81,7 @@ type Props = {
     branchId: string;
     dateIso: string;
   }) => void;
-  onBookingCellClick: (bookingId: number) => void;
+  onBookingCellClick: (target: { bookingId: number; dateIso: string; time: string }) => void;
 };
 
 function ensureLunchBreakRow(rows: readonly PracticalSlotPlanRow[]): PracticalSlotPlanRow[] {
@@ -559,7 +559,13 @@ export default function AdminDrivingDayModal({
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
-                                      onClick={() => onBookingCellClick(booking.bookingId)}
+                                      onClick={() =>
+                                        onBookingCellClick({
+                                          bookingId: booking.bookingId,
+                                          dateIso: day,
+                                          time,
+                                        })
+                                      }
                                       className={cn(
                                         "w-full min-h-14 px-1.5 py-1.5 flex flex-col items-center justify-center gap-0.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
                                         paymentCellClass(booking.paymentStatus),

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Trash2, X } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
@@ -8,6 +8,7 @@ import type { Instructor } from "src/data/instructors";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import { cn } from "src/lib/utils";
 import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 import {
   fetchAdminBookingById,
@@ -17,6 +18,7 @@ import {
 import {
   formatGridDateLabel,
   padSlotTime,
+  slotEntryKey,
   sortSlotEntriesChrono,
   sortTimesUnique,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
@@ -36,6 +38,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bookingId: number;
+  /** Slot the admin clicked in the day grid — highlighted so they can remove that one. */
+  focusSlot?: { dateIso: string; time: string } | null;
   instructors: readonly Instructor[];
   branches: readonly Branch[];
   onChanged: () => void;
@@ -76,6 +80,7 @@ export default function PracticalBookingDetailModal({
   open,
   onOpenChange,
   bookingId,
+  focusSlot = null,
   instructors,
   branches,
   onChanged,
@@ -98,6 +103,8 @@ export default function PracticalBookingDetailModal({
   const [submitting, setSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [slotsModalOpen, setSlotsModalOpen] = useState(false);
+  const [slotToRemove, setSlotToRemove] = useState<{ dateIso: string; time: string } | null>(null);
+  const [removingSlot, setRemovingSlot] = useState(false);
 
   const load = useCallback(async () => {
     if (!bookingId) return;
@@ -263,12 +270,40 @@ export default function PracticalBookingDetailModal({
     }
   };
 
+  const focusKey = focusSlot
+    ? slotEntryKey(focusSlot.dateIso.slice(0, 10), padSlotTime(focusSlot.time))
+    : null;
+  const canRemoveIndividualSlot = sortedEntries.length > 1;
+
+  const handleRemoveSlot = async () => {
+    if (!booking || !slotToRemove) return;
+    setRemovingSlot(true);
+    try {
+      await vivaApiJson(`/bookings/${encodeURIComponent(booking.id)}/remove-slot`, {
+        method: "POST",
+        body: {
+          dateIso: slotToRemove.dateIso.slice(0, 10),
+          time: padSlotTime(slotToRemove.time),
+        },
+      });
+      setSlotToRemove(null);
+      showToast(t("adminDrivingSlotRemovedToast"), "success");
+      await load();
+      onChanged();
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+      throw e;
+    } finally {
+      setRemovingSlot(false);
+    }
+  };
+
   return (
     <>
       <AppModal
         open={open}
         onOpenChange={(o) => {
-          if (submitting) return;
+          if (submitting || removingSlot) return;
           onOpenChange(o);
         }}
         title={t("adminDrivingBookingDetailTitle")}
@@ -280,7 +315,7 @@ export default function PracticalBookingDetailModal({
                 type="button"
                 variant="destructive"
                 className="sm:mr-auto"
-                disabled={submitting}
+                disabled={submitting || removingSlot}
                 onClick={() => setDeleteOpen(true)}
               >
                 <Trash2 className="h-4 w-4 mr-1.5" />
@@ -291,7 +326,7 @@ export default function PracticalBookingDetailModal({
                 variant="outline"
                 className="flex-1"
                 onClick={() => onOpenChange(false)}
-                disabled={submitting}
+                disabled={submitting || removingSlot}
               >
                 {t("cancel")}
               </Button>
@@ -299,7 +334,7 @@ export default function PracticalBookingDetailModal({
                 type="submit"
                 form={formId}
                 className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
-                disabled={submitting}
+                disabled={submitting || removingSlot}
               >
                 {submitting ? t("saving") : t("saveChanges")}
               </Button>
@@ -342,12 +377,49 @@ export default function PracticalBookingDetailModal({
                     <span className="ml-1 tabular-nums text-foreground">· {dateLabel}</span>
                   ) : null}
                 </p>
-                <ul className="mt-1 max-h-24 overflow-y-auto space-y-0.5 text-sm text-foreground">
-                  {sortedEntries.map((entry) => (
-                    <li key={`${entry.dateIso}|${entry.time}`} className="tabular-nums">
-                      {formatGridDateLabel(entry.dateIso)} · {entry.time}
-                    </li>
-                  ))}
+                <ul className="mt-1 max-h-40 overflow-y-auto space-y-1 text-sm text-foreground">
+                  {sortedEntries.map((entry) => {
+                    const key = slotEntryKey(entry.dateIso, entry.time);
+                    const isFocus = focusKey === key;
+                    return (
+                      <li
+                        key={key}
+                        className={cn(
+                          "flex items-center justify-between gap-2 rounded-md px-1.5 py-1 tabular-nums",
+                          isFocus ? "bg-primary/10 ring-1 ring-primary/30" : "",
+                        )}
+                      >
+                        <span>
+                          {formatGridDateLabel(entry.dateIso)} · {entry.time}
+                          {isFocus ? (
+                            <span className="ml-1.5 text-[11px] font-medium text-primary">
+                              {t("adminDrivingClickedSlotHint")}
+                            </span>
+                          ) : null}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={submitting || removingSlot}
+                          title={
+                            canRemoveIndividualSlot
+                              ? t("adminDrivingRemoveSlot")
+                              : t("adminDrivingRemoveSlotLastHint")
+                          }
+                          aria-label={t("adminDrivingRemoveSlot")}
+                          onClick={() => {
+                            if (!canRemoveIndividualSlot) {
+                              showToast(t("adminDrivingRemoveSlotLastHint"), "error");
+                              return;
+                            }
+                            setSlotToRemove(entry);
+                          }}
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40"
+                        >
+                          <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             </div>
@@ -414,6 +486,7 @@ export default function PracticalBookingDetailModal({
           branchId={String(booking.branchId)}
           dateIso={firstEntry?.dateIso ?? booking.dateIso}
           slotSource="practical"
+          ignoreBusyBookingId={String(booking.id)}
           initialSelected={sortedEntries}
           t={t}
           onConfirm={(entries) => {
@@ -430,6 +503,23 @@ export default function PracticalBookingDetailModal({
         title={t("bookingCancelTitle")}
         description={t("bookingCancelDesc")}
         confirmLabel={t("delete")}
+        danger
+      />
+
+      <ConfirmDialog
+        open={slotToRemove != null}
+        onClose={() => {
+          if (removingSlot) return;
+          setSlotToRemove(null);
+        }}
+        onConfirm={handleRemoveSlot}
+        title={t("adminDrivingRemoveSlotTitle")}
+        description={
+          slotToRemove
+            ? `${t("adminDrivingRemoveSlotDesc")} ${formatGridDateLabel(slotToRemove.dateIso)} · ${padSlotTime(slotToRemove.time)}`
+            : t("adminDrivingRemoveSlotDesc")
+        }
+        confirmLabel={t("adminDrivingRemoveSlot")}
         danger
       />
     </>

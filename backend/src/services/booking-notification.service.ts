@@ -156,6 +156,48 @@ export default class BookingNotificationService {
     });
   }
 
+  /**
+   * Staff in-app: one slot was dropped from a multi-slot booking — payment may need a refund or adjustment.
+   */
+  static async notifyAdminSlotRemovedPaymentReview(input: {
+    bookingId: number;
+    removedDateIso: string;
+    removedTime: string;
+    previousTotalAmd: number;
+    newTotalAmd: number;
+    paidAmountAmd: number;
+    remainingSlotCount: number;
+  }): Promise<void> {
+    const slotLine = `${input.removedDateIso.slice(0, 10)} ${input.removedTime}`.trim();
+    const paid = Math.max(0, Math.round(input.paidAmountAmd));
+    const prevTotal = Math.max(0, Math.round(input.previousTotalAmd));
+    const newTotal = Math.max(0, Math.round(input.newTotalAmd));
+    const overpaid = Math.max(0, paid - newTotal);
+    const paymentHint =
+      overpaid > 0
+        ? `Paid ${paid} AMD vs new total ${newTotal} AMD (was ${prevTotal} AMD). Handle refund/adjustment of ${overpaid} AMD.`
+        : paid > 0
+          ? `Paid ${paid} AMD. New total ${newTotal} AMD (was ${prevTotal} AMD). Review payment.`
+          : `New total ${newTotal} AMD (was ${prevTotal} AMD). Review payment.`;
+
+    await NotificationService.createForRoles(['admin', 'super_admin'], {
+      type: overpaid > 0 ? Bnt.BOOKING_REFUND_INVITATION : Bnt.BOOKING_UPDATED,
+      title: overpaid > 0 ? 'Slot removed — handle payment' : 'Slot removed — review payment',
+      message: `A slot was removed from booking #${input.bookingId} (${slotLine}). ${input.remainingSlotCount} slot(s) remain. ${paymentHint}`,
+      entityType: 'booking',
+      entityId: String(input.bookingId),
+      dedupeKey: `booking-slot-removed:${input.bookingId}:${input.removedDateIso.slice(0, 10)}:${input.removedTime}`,
+      metadata: {
+        removedDateIso: input.removedDateIso.slice(0, 10),
+        removedTime: input.removedTime,
+        previousTotalAmd: prevTotal,
+        newTotalAmd: newTotal,
+        paidAmountAmd: paid,
+        remainingSlotCount: input.remainingSlotCount,
+      },
+    });
+  }
+
   /** Admin in-app: finance “request refund” tied to a booking. */
   static async notifyAdminFinanceRefundRequestForBooking(financeTxId: number, bookingId: number): Promise<void> {
     await NotificationService.createForRoles(['admin', 'super_admin'], {

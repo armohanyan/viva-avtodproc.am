@@ -105,6 +105,11 @@ const createSchema = createBodySchema.superRefine((data, ctx) => {
 
 const updateSchema = createBodySchema.partial();
 
+const removeSlotBodySchema = z.object({
+  dateIso: z.string().min(1),
+  time: z.string().min(4),
+});
+
 const lessonPassedBodySchema = z.object({
   lessonPassedSuccessfully: z.boolean().nullable(),
 });
@@ -618,6 +623,24 @@ export default class BookingController {
         return next(new PermissionError('Instructor or staff access required', HttpStatusCodesUtil.FORBIDDEN));
       }
 
+      if (!row) {
+        return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      SuccessHandlerUtil.handleUpdate(res, next, row);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async removeSlot(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const body = parseBody(removeSlotBodySchema, req.body);
+      const row = await BookingService.removeAdminSlot(id, {
+        dateIso: body.dateIso,
+        time: body.time,
+      });
       if (!row) {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
       }

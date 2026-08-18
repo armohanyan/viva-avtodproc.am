@@ -35,7 +35,11 @@ export default function AdminDriving() {
   const [slotModalTarget, setSlotModalTarget] = useState<CellTarget | null>(null);
   const [pendingSelection, setPendingSelection] = useState<SlotSelection | null>(null);
   const [dayModalDateIso, setDayModalDateIso] = useState<string | null>(null);
-  const [detailBookingId, setDetailBookingId] = useState<number | null>(null);
+  const [detailTarget, setDetailTarget] = useState<{
+    bookingId: number;
+    dateIso: string;
+    time: string;
+  } | null>(null);
   /** Bumped after a booking is created/updated/deleted so grids reload. */
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -65,7 +69,7 @@ export default function AdminDriving() {
   }, [bumpRefresh]);
 
   const handleBookingDeleted = useCallback(() => {
-    setDetailBookingId(null);
+    setDetailTarget(null);
     bumpRefresh();
   }, [bumpRefresh]);
 
@@ -125,8 +129,8 @@ export default function AdminDriving() {
               customSlot: true,
             });
           }}
-          onBookingCellClick={(bookingId) => {
-            setDetailBookingId(bookingId);
+          onBookingCellClick={(target) => {
+            setDetailTarget(target);
           }}
         />
       ) : null}
@@ -193,13 +197,14 @@ export default function AdminDriving() {
         />
       ) : null}
 
-      {detailBookingId != null ? (
+      {detailTarget != null ? (
         <PracticalBookingDetailModal
           open
           onOpenChange={(open) => {
-            if (!open) setDetailBookingId(null);
+            if (!open) setDetailTarget(null);
           }}
-          bookingId={detailBookingId}
+          bookingId={detailTarget.bookingId}
+          focusSlot={{ dateIso: detailTarget.dateIso, time: detailTarget.time }}
           instructors={activePracticalInstructors}
           branches={branches}
           onChanged={handleBookingChanged}

@@ -6,6 +6,7 @@ import type { NotificationType } from '../models/notification.model';
  */
 export const BookingNotificationPersistedType = {
   BOOKING_CONFIRMED: 'BOOKING_CONFIRMED',
+  BOOKING_UPDATED: 'BOOKING_UPDATED',
   BOOKING_CANCELLED: 'BOOKING_CANCELLED',
   BOOKING_REFUNDED: 'BOOKING_REFUNDED',
   BOOKING_REFUND_INVITATION: 'BOOKING_REFUND_INVITATION',
