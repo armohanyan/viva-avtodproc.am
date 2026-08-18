@@ -17,6 +17,8 @@ import {
   isRefundWindowForCancellation,
   normalizeBookingStatus,
 } from './booking.service';
+import { occupiedRangesMinutes } from './booking-slot-validation.service';
+import { minutesToHHMM, parseTimeToMinutes } from '../utils/booking-slot.util';
 import { isImmediatePaymentRequired } from '../utils/booking-payment-schedule.util';
 import { todayIsoUtc } from '../utils/calendar-month.util';
 
@@ -192,6 +194,20 @@ function computeEndTime(startTime: string, rowEndTime: string | null): string {
   const h = Math.floor(total / 60) % 24;
   const min = total % 60;
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+function occupiedEndTimeForOccurrence(
+  row: Pick<Booking, 'dateIso' | 'time' | 'endTime'>,
+  occurrenceDate: string,
+  occurrenceStartTime: string,
+  slotTimesOnDate: readonly string[],
+): string {
+  const occupied = occupiedRangesMinutes(row.time, row.endTime ?? null, dateIsoString(row.dateIso), occurrenceDate, slotTimesOnDate);
+  const startNorm = normalizeTimeHHMM(occurrenceStartTime);
+  if (!startNorm) return computeEndTime(occurrenceStartTime, row.endTime ?? null);
+  const startMinutes = parseTimeToMinutes(startNorm);
+  const match = occupied.find((r) => r.start === startMinutes);
+  return match ? minutesToHHMM(match.end) : computeEndTime(occurrenceStartTime, row.endTime ?? null);
 }
 
 function resolveViewRange(query: ClassScheduleQuery): { view: ClassScheduleView; start: string; end: string } {
@@ -513,11 +529,23 @@ export default class ClassScheduleService {
                 startTime: normalizeTimeHHMM(row.time),
               },
             ];
+      const slotTimesByDate = new Map<string, string[]>();
+      for (const s of slots) {
+        const occDate = dateIsoString(s.dateIso);
+        const times = slotTimesByDate.get(occDate) ?? [];
+        times.push(normalizeTimeHHMM(s.slotTime));
+        slotTimesByDate.set(occDate, times);
+      }
 
       for (const occ of slotOccurrences) {
         if (occ.date < start || occ.date > end) continue;
 
-        const endTime = computeEndTime(occ.startTime, row.endTime ?? null);
+        const endTime = occupiedEndTimeForOccurrence(
+          row,
+          occ.date,
+          occ.startTime,
+          slotTimesByDate.get(occ.date) ?? [],
+        );
         const cohortIdFromBooking = Math.floor(Number(prepaid?.theoryCohortId) || 0);
         const item: ClassScheduleItemDto = {
           id: `${row.id}:${occ.date}:${occ.startTime}`,

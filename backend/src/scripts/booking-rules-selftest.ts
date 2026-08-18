@@ -73,5 +73,34 @@ assert.equal(
   '16:10 must still occupy its own lesson',
 );
 
+/** Same-day non-adjacent practical starts must not become one long block. */
+const splitSameDayRanges = occupiedRangesMinutes(
+  '10:00',
+  '15:00',
+  '2026-08-08',
+  '2026-08-08',
+  ['10:00', '13:20'],
+);
+assert.equal(
+  splitSameDayRanges.some((r) => rangesOverlapHalfOpen({ start: 11 * 60, end: 12 * 60 }, r)),
+  false,
+  '10:00 + 13:20 must not occupy 11:00',
+);
+assert.equal(
+  splitSameDayRanges.some((r) => rangesOverlapHalfOpen({ start: 12 * 60 + 10, end: 13 * 60 + 20 }, r)),
+  false,
+  '10:00 + 13:20 must not occupy 12:10',
+);
+assert.equal(
+  splitSameDayRanges.some((r) => rangesOverlapHalfOpen({ start: 10 * 60, end: 11 * 60 }, r)),
+  true,
+  '10:00 must still occupy its own lesson',
+);
+assert.equal(
+  splitSameDayRanges.some((r) => rangesOverlapHalfOpen({ start: 13 * 60 + 20, end: 15 * 60 }, r)),
+  true,
+  '13:20 must still occupy its own lesson',
+);
+
 // eslint-disable-next-line no-console
 console.log('booking-rules-selftest: OK');

@@ -36,6 +36,16 @@ const SLOT_RESERVING_STATUSES = [
 export const MIN_CUSTOM_PRACTICAL_DURATION_MINUTES = 30;
 
 export type SlotValidationFailureReason = 'past' | 'outside_hours' | 'branch_closed' | 'instructor_unavailable' | 'booked';
+export type SlotConflictDetail = {
+  bookingId: number;
+  bookingDateIso: string;
+  occupiedDateIso: string;
+  occupiedSlotTimes: string[];
+  occupiedRangeStart: string;
+  occupiedRangeEndExclusive: string;
+  requestedRangeStart: string;
+  requestedRangeEndExclusive: string;
+};
 
 function messageForReason(reason: SlotValidationFailureReason): string {
   switch (reason) {
@@ -117,6 +127,19 @@ export function occupiedRangesMinutes(
   return starts.map((start) => practicalSlotRangeMinutesFromBookable(minutesToHHMM(start), bookable));
 }
 
+function conflictMessage(detail: SlotConflictDetail): string {
+  const occupiedStarts =
+    detail.occupiedSlotTimes.length > 0
+      ? ` Claimed slot starts on that date: ${detail.occupiedSlotTimes.join(', ')}.`
+      : '';
+  return (
+    `Instructor already has booking #${detail.bookingId} on ${detail.occupiedDateIso} ` +
+    `occupying ${detail.occupiedRangeStart}-${detail.occupiedRangeEndExclusive}. ` +
+    `Requested ${detail.requestedRangeStart}-${detail.requestedRangeEndExclusive} overlaps it.` +
+    occupiedStarts
+  );
+}
+
 export default class BookingSlotValidationService {
   /**
    * True when the instructor already has a reserving booking overlapping [rangeStart, rangeEndExclusive).
@@ -128,16 +151,27 @@ export default class BookingSlotValidationService {
     rangeEndExclusive: string;
     excludeBookingId?: number;
   }): Promise<boolean> {
+    const conflict = await this.findInstructorOverlapConflict(input);
+    return conflict != null;
+  }
+
+  static async findInstructorOverlapConflict(input: {
+    instructorUserId: number;
+    dateIso: string;
+    rangeStart: string;
+    rangeEndExclusive: string;
+    excludeBookingId?: number;
+  }): Promise<SlotConflictDetail | null> {
     const dateIso = input.dateIso.slice(0, 10);
     const rangeStart = normalizeTimeHHMM(input.rangeStart);
     const rangeEnd = normalizeTimeHHMM(input.rangeEndExclusive);
-    if (!rangeStart || !rangeEnd) return false;
+    if (!rangeStart || !rangeEnd) return null;
     const proposed = {
       start: parseTimeToMinutes(rangeStart),
       end: parseTimeToMinutes(rangeEnd),
     };
     if (!Number.isFinite(proposed.start) || !Number.isFinite(proposed.end) || proposed.end <= proposed.start) {
-      return false;
+      return null;
     }
 
     const slotRows = await BookingSlot.findAll({
@@ -162,7 +196,7 @@ export default class BookingSlotValidationService {
 
     const byBooking = new Map<
       number,
-      { time: string; endTime: string | null; dateIso: string; slotTimes: string[] }
+      { bookingId: number; time: string; endTime: string | null; dateIso: string; slotTimes: string[] }
     >();
     for (const row of slotRows) {
       const bk = (row as unknown as {
@@ -173,6 +207,7 @@ export default class BookingSlotValidationService {
         cur.slotTimes.push(row.slotTime);
       } else {
         byBooking.set(bk.id, {
+          bookingId: bk.id,
           time: bk.time,
           endTime: bk.endTime,
           dateIso: dateIsoStringSafe(bk.dateIso),
@@ -189,7 +224,19 @@ export default class BookingSlotValidationService {
         dateIso,
         occ.slotTimes,
       );
-      if (occupiedRanges.some((occupied) => rangesOverlapHalfOpen(proposed, occupied))) return true;
+      for (const occupied of occupiedRanges) {
+        if (!rangesOverlapHalfOpen(proposed, occupied)) continue;
+        return {
+          bookingId: occ.bookingId,
+          bookingDateIso: occ.dateIso,
+          occupiedDateIso: dateIso,
+          occupiedSlotTimes: [...occ.slotTimes].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b)),
+          occupiedRangeStart: minutesToHHMM(occupied.start),
+          occupiedRangeEndExclusive: minutesToHHMM(occupied.end),
+          requestedRangeStart: rangeStart,
+          requestedRangeEndExclusive: rangeEnd,
+        };
+      }
     }
 
     // Legacy bookings without booking_slots rows.
@@ -214,10 +261,22 @@ export default class BookingSlotValidationService {
         dateIso,
         [],
       );
-      if (occupiedRanges.some((occupied) => rangesOverlapHalfOpen(proposed, occupied))) return true;
+      for (const occupied of occupiedRanges) {
+        if (!rangesOverlapHalfOpen(proposed, occupied)) continue;
+        return {
+          bookingId: b.id,
+          bookingDateIso: dateIsoStringSafe(b.dateIso),
+          occupiedDateIso: dateIso,
+          occupiedSlotTimes: [normalizeTimeHHMM(b.time) ?? b.time],
+          occupiedRangeStart: minutesToHHMM(occupied.start),
+          occupiedRangeEndExclusive: minutesToHHMM(occupied.end),
+          requestedRangeStart: rangeStart,
+          requestedRangeEndExclusive: rangeEnd,
+        };
+      }
     }
 
-    return false;
+    return null;
   }
 
   static async assertInstructorRangeFree(input: {
@@ -229,10 +288,10 @@ export default class BookingSlotValidationService {
     /** Error copy when the window is a rest/busy block rather than a lesson. */
     busyMessage?: string;
   }): Promise<void> {
-    const busy = await this.instructorHasOverlappingBooking(input);
-    if (busy) {
+    const conflict = await this.findInstructorOverlapConflict(input);
+    if (conflict) {
       throw new InputValidationError(
-        input.busyMessage ?? messageForReason('booked'),
+        input.busyMessage ?? conflictMessage(conflict),
         HttpStatusCodesUtil.CONFLICT,
       );
     }
