@@ -70,6 +70,7 @@ function tr(key: string): string {
 			errorServerGeneric: "Server error. Please try again later.",
 			errorInviteEmailRequired: "Email is required before sending an invitation.",
 			invalidEmail: "Please enter a valid email.",
+			invalidEmailOrPassword: "Invalid email or password.",
 			bookingTheoryGroupAlreadyActive:
 				"You already have a booking for this theory group. Open My bookings to complete payment or manage it.",
 			bookingTheoryGroupFull: "This group is full. There are no seats left.",
@@ -86,6 +87,7 @@ function tr(key: string): string {
 			errorServerGeneric: "Ошибка сервера. Попробуйте позже.",
 			errorInviteEmailRequired: "Перед отправкой приглашения требуется email.",
 			invalidEmail: "Введите корректный email.",
+			invalidEmailOrPassword: "Неверный email или пароль.",
 			bookingTheoryGroupAlreadyActive:
 				"У вас уже есть запись в эту теоретическую группу. Откройте «Мои записи», чтобы оплатить или управлять ею.",
 			bookingTheoryGroupFull: "Группа заполнена. Свободных мест нет.",
@@ -102,6 +104,7 @@ function tr(key: string): string {
 			errorServerGeneric: "Սերվերի սխալ։ Խնդրում ենք փորձել ավելի ուշ։",
 			errorInviteEmailRequired: "Հրավեր ուղարկելուց առաջ պարտադիր է էլ. հասցեն։",
 			invalidEmail: "Խնդրում ենք մուտքագրել վավեր էլ. հասցե։",
+			invalidEmailOrPassword: "Սխալ էլ. փոստ կամ գաղտնաբառ։",
 			bookingTheoryGroupAlreadyActive:
 				"Դուք արդեն ունեք այս տեսական խմբի ամրագրում։ Բացեք «Իմ ամրագրումները»՝ վճարումն ավարտելու կամ կառավարելու համար։",
 			bookingTheoryGroupFull: "Խումբը լիքն է։ Ազատ տեղեր չկան։",
@@ -166,6 +169,7 @@ export function getApiErrorMessage(err: unknown): string {
 		}
 		if (m.includes("authentication required")) return tr("errorAuthRequired");
 		if (m.includes("invalid or expired token")) return tr("errorUnauthorized");
+		if (m.includes("invalid email or password")) return tr("invalidEmailOrPassword");
 		if (m.includes("invalid email")) return tr("invalidEmail");
 		if (m.includes("already has an active booking for this theory group")) {
 			return tr("bookingTheoryGroupAlreadyActive");

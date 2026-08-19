@@ -70,6 +70,7 @@ function tr(key: string): string {
 			errorServerGeneric: "Server error. Please try again later.",
 			errorInviteEmailRequired: "Email is required before sending an invitation.",
 			invalidEmail: "Please enter a valid email.",
+			invalidEmailOrPassword: "Invalid email or password.",
 			bookingSlotUnavailable: "Selected time slot is no longer available. Please choose another slot.",
 			bookingInstructorUnavailable: "Instructor is not available at this time. Please pick another time.",
 			bookingInstructorNotFound: "Selected instructor was not found. Please reselect instructor.",
@@ -98,6 +99,7 @@ function tr(key: string): string {
 			errorServerGeneric: "Ошибка сервера. Попробуйте позже.",
 			errorInviteEmailRequired: "Перед отправкой приглашения требуется email.",
 			invalidEmail: "Введите корректный email.",
+			invalidEmailOrPassword: "Неверный email или пароль.",
 			bookingSlotUnavailable: "Выбранный слот уже недоступен. Выберите другое время.",
 			bookingInstructorUnavailable: "Инструктор недоступен в это время. Выберите другое время.",
 			bookingInstructorNotFound: "Выбранный инструктор не найден. Выберите инструктора снова.",
@@ -126,6 +128,7 @@ function tr(key: string): string {
 			errorServerGeneric: "Սերվերի սխալ։ Խնդրում ենք փորձել ավելի ուշ։",
 			errorInviteEmailRequired: "Հրավեր ուղարկելուց առաջ պարտադիր է էլ. հասցեն։",
 			invalidEmail: "Խնդրում ենք մուտքագրել վավեր էլ. հասցե։",
+			invalidEmailOrPassword: "Սխալ էլ. փոստ կամ գաղտնաբառ։",
 			bookingSlotUnavailable: "Ընտրված ժամը այլևս հասանելի չէ։ Խնդրում ենք ընտրել այլ ժամ։",
 			bookingInstructorUnavailable: "Հրահանգիչը այս ժամին հասանելի չէ։ Ընտրեք այլ ժամ։",
 			bookingInstructorNotFound: "Ընտրված հրահանգիչը չի գտնվել։ Խնդրում ենք ընտրել կրկին։",
@@ -202,6 +205,7 @@ export function getApiErrorMessage(err: unknown): string {
 		}
 		if (m.includes("authentication required")) return tr("errorAuthRequired");
 		if (m.includes("invalid or expired token")) return tr("errorUnauthorized");
+		if (m.includes("invalid email or password")) return tr("invalidEmailOrPassword");
 		if (m.includes("invalid email")) return tr("invalidEmail");
 		if (m.includes("selected slot(s) are no longer available") || m.includes("slot is no longer available")) {
 			return tr("bookingSlotUnavailable");
