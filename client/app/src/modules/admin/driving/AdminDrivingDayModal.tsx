@@ -32,6 +32,7 @@ import { parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
 import {
   isSlotBlockedByAvailabilityRules,
   normalizeAvailabilityBlocksFromApi,
+  slotRangeOverlapsLunch,
   type AvailabilityBlock,
 } from "src/modules/instructors/instructorAvailability";
 
@@ -74,6 +75,8 @@ type Props = {
     branchId: string;
     dateIso: string;
     time: string;
+    /** Off-plan time such as lunch — use custom slot booking. */
+    customSlot?: boolean;
   }) => void;
   /** Admin custom slot (e.g. during lunch) — opens booking with free-form time. */
   onAddCustomSlotClick: (target: {
@@ -95,7 +98,7 @@ function ensureLunchBreakRow(rows: readonly PracticalSlotPlanRow[]): PracticalSl
   const out: PracticalSlotPlanRow[] = [];
   for (const r of rows) {
     out.push({ time: r.time });
-    if (r.time === "13:20") out.push({ time: null });
+    if (r.time === "13:20") out.push({ time: "14:00" });
   }
   return out;
 }
@@ -368,6 +371,10 @@ export default function AdminDrivingDayModal({
   }, [planRows, bookingByInstructorTime]);
 
   const bookableTimes = useMemo(() => bookableTimesFromPlan(displayRows), [displayRows]);
+  const planTimeSet = useMemo(
+    () => new Set(bookableTimesFromPlan(planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN)),
+    [planRows],
+  );
 
   /** Returns a i18n key describing why this slot is blocked, or null if it is not blocked. */
   const resolveBlockReason = useCallback(
@@ -375,15 +382,19 @@ export default function AdminDrivingDayModal({
       if (busyTimesByInstructor.get(String(instructorId))?.has(padSlotTime(time))) {
         return "bookingSlotUnavailable";
       }
+      const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
+      const blocks = blocksByInstructor.get(String(instructorId)) ?? [];
+      const inLunch = slotRangeOverlapsLunch(blocks, slotRange);
+
       const planTimes = planTimesByInstructor.get(String(instructorId));
-      if (planTimes && !planTimes.has(padSlotTime(time))) {
+      if (planTimes && !planTimes.has(padSlotTime(time)) && !inLunch) {
         return "adminDrivingDayModalReasonOutsideWorkSlots";
       }
-      const blocks = blocksByInstructor.get(String(instructorId));
-      if (!blocks || blocks.length === 0) return null;
-      const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
-      if (isSlotBlockedByAvailabilityRules(day, time, blocks, slotRange, { forPracticalPlan: true })) {
-        // Find the specific blocking rule to give a precise reason.
+      if (!blocks.length) return null;
+      if (isSlotBlockedByAvailabilityRules(day, time, blocks, slotRange, {
+        forPracticalPlan: true,
+        skipLunch: true,
+      })) {
         const wday = new Date(day).getDay();
         const isoDay = wday === 0 ? 7 : wday;
         for (const b of blocks) {
@@ -411,38 +422,6 @@ export default function AdminDrivingDayModal({
       return null;
     },
     [blocksByInstructor, busyTimesByInstructor, planTimesByInstructor, bookableTimes, day],
-  );
-
-  /** True when admin schedule rules (day off, busy hours, …) block this instructor's slot. */
-  const isInstructorSlotBlocked = useCallback(
-    (instructorId: string, time: string): boolean => {
-      const blocks = blocksByInstructor.get(String(instructorId));
-      if (!blocks || blocks.length === 0) return false;
-      const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
-      return isSlotBlockedByAvailabilityRules(day, time, blocks, slotRange, {
-        forPracticalPlan: true,
-      });
-    },
-    [blocksByInstructor, bookableTimes, day],
-  );
-
-  /** True when the instructor saved custom working slots and this time is not one of them. */
-  const isOutsideInstructorWorkingSlots = useCallback(
-    (instructorId: string, time: string): boolean => {
-      const times = planTimesByInstructor.get(String(instructorId));
-      if (!times) return false;
-      return !times.has(padSlotTime(time));
-    },
-    [planTimesByInstructor],
-  );
-
-  const isInstructorBusyAtTime = useCallback(
-    (instructorId: string, time: string): boolean => {
-      const times = busyTimesByInstructor.get(String(instructorId));
-      if (!times) return false;
-      return times.has(padSlotTime(time));
-    },
-    [busyTimesByInstructor],
   );
 
   const title = `${formatGridDateLabel(day)} · ${armenianWeekdayShort(day)}`;
@@ -665,22 +644,21 @@ export default function AdminDrivingDayModal({
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div
-                                      className="w-full min-h-14 flex flex-col items-center justify-center gap-0.5 bg-muted/70 cursor-not-allowed select-none"
-                                      aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
+                                      className="w-full min-h-14 flex items-center justify-center bg-muted/70 cursor-not-allowed select-none"
+                                      aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}${
+                                        blockReason && blockReason !== "bookingSlotUnavailable"
+                                          ? ` · ${t(blockReason as Parameters<typeof t>[0])}`
+                                          : ""
+                                      }`}
                                     >
                                       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
                                         {t("bookingSlotUnavailable")}
                                       </span>
-                                      {blockReason && blockReason !== "bookingSlotUnavailable" ? (
-                                        <span className="text-[10px] text-muted-foreground/50 normal-case tracking-normal">
-                                          {t(blockReason as Parameters<typeof t>[0])}
-                                        </span>
-                                      ) : null}
                                     </div>
                                   </TooltipTrigger>
                                   <TooltipContent side="top" className="text-xs">
                                     <p className="font-medium">{t("bookingSlotUnavailable")}</p>
-                                    {blockReason ? (
+                                    {blockReason && blockReason !== "bookingSlotUnavailable" ? (
                                       <p className="opacity-80">{t(blockReason as Parameters<typeof t>[0])}</p>
                                     ) : null}
                                   </TooltipContent>
@@ -694,6 +672,7 @@ export default function AdminDrivingDayModal({
                                       branchId: g.branchId,
                                       dateIso: day,
                                       time,
+                                      customSlot: !planTimeSet.has(time),
                                     })
                                   }
                                   className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"

@@ -108,25 +108,51 @@ function slotFullyInsideWorkWindow(
  * True if this hour slot cannot be booked (lunch, day off, busy windows, or outside `work_hours` when any exist).
  * Mirrors `client/src/modules/instructors/instructorAvailability.ts`.
  */
+const DEFAULT_LUNCH_RANGE = { start: 14 * 60, end: 15 * 60 };
+
+/** Lunch windows from instructor rules, or the default 14:00–15:00 if none are saved. */
+export function lunchRangesFromRules(rules: readonly InstructorScheduleRuleDto[]): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (const b of rules) {
+    if (b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
+      out.push(blockRangeMinutes(b.timeStart, b.timeEnd));
+    }
+  }
+  return out.length > 0 ? out : [DEFAULT_LUNCH_RANGE];
+}
+
+export function slotRangeOverlapsLunch(
+  rules: readonly InstructorScheduleRuleDto[],
+  slotRange: { start: number; end: number },
+): boolean {
+  return lunchRangesFromRules(rules).some((lunch) => rangesOverlapHalfOpen(slotRange, lunch));
+}
+
 export function isSlotBlockedByScheduleRules(
   dateIso: string,
   timeSlot: string,
   rules: readonly InstructorScheduleRuleDto[],
   slotRangeOverride?: { start: number; end: number },
-  options?: { forPracticalPlan?: boolean },
+  options?: { forPracticalPlan?: boolean; skipLunch?: boolean },
 ): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
   const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
   const forPracticalPlan = options?.forPracticalPlan === true;
+  const skipLunch = options?.skipLunch === true;
 
   for (const b of rules) {
-    if (!forPracticalPlan && b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
-      if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
+    if (b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
+      if (!skipLunch && !forPracticalPlan && rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
+      continue;
     }
     if (b.ruleKind === 'recurring_busy' && b.weekday === weekday && b.timeStart && b.timeEnd) {
-      if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
+      const busyRange = blockRangeMinutes(b.timeStart, b.timeEnd);
+      if (skipLunch && lunchRangesFromRules(rules).some((l) => l.start === busyRange.start && l.end === busyRange.end)) {
+        continue;
+      }
+      if (rangesOverlapHalfOpen(slotRange, busyRange)) {
         return true;
       }
     }
@@ -327,7 +353,7 @@ export default class InstructorAvailabilityService {
     dateIso: string,
     timeSlot: string,
     slotRangeOverride?: { start: number; end: number },
-    options?: { forPracticalPlan?: boolean },
+    options?: { forPracticalPlan?: boolean; skipLunch?: boolean },
   ): Promise<boolean> {
     const rules = await this.listForInstructor(instructorUserId);
     return isSlotBlockedByScheduleRules(dateIso, timeSlot, rules, slotRangeOverride, options);

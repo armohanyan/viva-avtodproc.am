@@ -1,7 +1,7 @@
 import { Op } from 'sequelize';
 import { Booking, BookingSlot } from '../models';
 import BranchScheduleService from './branch-schedule.service';
-import InstructorAvailabilityService from './instructor-availability.service';
+import InstructorAvailabilityService, { slotRangeOverlapsLunch } from './instructor-availability.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import {
@@ -313,9 +313,8 @@ export default class BookingSlotValidationService {
     /** Admin create: allow booking slots whose start is already in the past (keeps schedule checks). */
     allowPastSlots?: boolean;
     /**
-     * Admin custom practical time (e.g. during lunch/rest): skip fixed plan membership
-     * and all schedule-rule blocking (lunch, recurring breaks, work hours, day-off).
-     * Only actual booking conflicts are still enforced.
+     * Admin custom practical time (e.g. during lunch): skip fixed plan membership.
+     * Day-off and other busy rules still apply; lunch is skipped via skipLunch for admin.
      */
     allowCustomPracticalTime?: boolean;
     /** Exclusive end HH:MM for a custom practical range (required when allowCustomPracticalTime). */
@@ -356,6 +355,8 @@ export default class BookingSlotValidationService {
 
     const allowHistorical = input.allowHistoricalSlots === true;
     const allowPast = allowHistorical || input.allowPastSlots === true;
+    /** Admin practical create/update (`allowPastSlots`): lunch may be booked; day-off stays blocked. */
+    const skipLunch = allowPast && isPractical;
 
     for (const slot of input.slots) {
       const editingExistingBooking =
@@ -391,11 +392,23 @@ export default class BookingSlotValidationService {
 
       if (!allowHistorical) {
         if (isPractical && effectiveTimes) {
-          if (!allowCustomPractical && (!normalizeTimeHHMM(slot) || !effectiveTimes.includes(slotNorm))) {
-            throw new InputValidationError(
-              'This time is not in the branch and instructor practical schedule.',
-              HttpStatusCodesUtil.BAD_REQUEST,
-            );
+          const inPlan = Boolean(normalizeTimeHHMM(slot) && effectiveTimes.includes(slotNorm));
+          if (!allowCustomPractical && !inPlan) {
+            const lunchSlotRange =
+              proposedRange ??
+              (effectiveTimes.length
+                ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes)
+                : { start: parseTimeToMinutes(slotNorm), end: parseTimeToMinutes(slotNorm) + 60 });
+            const rules = skipLunch
+              ? await InstructorAvailabilityService.listForInstructor(input.instructorUserId)
+              : [];
+            const lunchOk = skipLunch && slotRangeOverlapsLunch(rules, lunchSlotRange);
+            if (!lunchOk) {
+              throw new InputValidationError(
+                'This time is not in the branch and instructor practical schedule.',
+                HttpStatusCodesUtil.BAD_REQUEST,
+              );
+            }
           }
         } else if (!allowCustomPractical) {
           const branchReason = branchScheduleBlockReason(dateIso, slot, branchRules);
@@ -413,19 +426,15 @@ export default class BookingSlotValidationService {
             ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes)
             : { start: parseTimeToMinutes(slotNorm), end: parseTimeToMinutes(slotNorm) + 60 });
 
-        // For admin custom practical slots the time is intentionally off-plan (e.g. lunch).
-        // Skip schedule-rule blocking entirely; only booking conflicts are enforced below.
-        if (!allowCustomPractical) {
-          const instructorUnavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-            input.instructorUserId,
-            dateIso,
-            slot,
-            slotRange,
-            { forPracticalPlan: isPractical },
-          );
-          if (instructorUnavailable) {
-            throw new InputValidationError(messageForReason('instructor_unavailable'), HttpStatusCodesUtil.BAD_REQUEST);
-          }
+        const instructorUnavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+          input.instructorUserId,
+          dateIso,
+          slot,
+          slotRange,
+          { forPracticalPlan: isPractical, skipLunch },
+        );
+        if (instructorUnavailable) {
+          throw new InputValidationError(messageForReason('instructor_unavailable'), HttpStatusCodesUtil.BAD_REQUEST);
         }
         proposedRange = slotRange;
       }

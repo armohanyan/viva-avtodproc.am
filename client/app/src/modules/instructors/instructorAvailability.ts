@@ -129,7 +129,6 @@ export function normalizeAvailabilityBlocksFromApi(raw: unknown): AvailabilityBl
     .filter((b): b is AvailabilityBlock => b != null);
 }
 
-/** Slot is one hour starting at `timeSlot` (e.g. "14:00" → [14:00, 15:00)). */
 function slotRangeMinutes(timeSlot: string): { start: number; end: number } {
   const start = parseTimeToMinutes(timeSlot);
   return { start, end: start + 60 };
@@ -141,6 +140,25 @@ function blockRangeMinutes(timeStart: string, timeEnd: string): { start: number;
 
 function rangesOverlapHalfOpen(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end && a.end > b.start;
+}
+
+const DEFAULT_LUNCH_RANGE = { start: 14 * 60, end: 15 * 60 };
+
+export function lunchRangesFromBlocks(blocks: readonly AvailabilityBlock[]): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  for (const b of blocks) {
+    if (b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
+      out.push(blockRangeMinutes(b.timeStart, b.timeEnd));
+    }
+  }
+  return out.length > 0 ? out : [DEFAULT_LUNCH_RANGE];
+}
+
+export function slotRangeOverlapsLunch(
+  blocks: readonly AvailabilityBlock[],
+  slotRange: { start: number; end: number },
+): boolean {
+  return lunchRangesFromBlocks(blocks).some((lunch) => rangesOverlapHalfOpen(slotRange, lunch));
 }
 
 function slotFullyInsideWorkWindow(
@@ -160,20 +178,26 @@ export function isSlotBlockedByAvailabilityRules(
   timeSlot: string,
   blocks: readonly AvailabilityBlock[],
   slotRangeOverride?: { start: number; end: number },
-  options?: { forPracticalPlan?: boolean },
+  options?: { forPracticalPlan?: boolean; skipLunch?: boolean },
 ): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
   const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
   const forPracticalPlan = options?.forPracticalPlan === true;
+  const skipLunch = options?.skipLunch === true;
 
   for (const b of blocks) {
-    if (!forPracticalPlan && b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
-      if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
+    if (b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
+      if (!skipLunch && !forPracticalPlan && rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
         return true;
       }
+      continue;
     }
     if (b.ruleKind === "recurring_busy" && b.weekday === weekday && b.timeStart && b.timeEnd) {
-      if (rangesOverlapHalfOpen(slotRange, blockRangeMinutes(b.timeStart, b.timeEnd))) {
+      const busyRange = blockRangeMinutes(b.timeStart, b.timeEnd);
+      if (skipLunch && lunchRangesFromBlocks(blocks).some((l) => l.start === busyRange.start && l.end === busyRange.end)) {
+        continue;
+      }
+      if (rangesOverlapHalfOpen(slotRange, busyRange)) {
         return true;
       }
     }

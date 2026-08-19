@@ -128,10 +128,16 @@ export function useInstructorDaySlots({
     return s;
   }, [busySlots]);
 
-  const planTimes = useMemo(
-    () => (usePracticalPlan ? effectiveTimes : []),
-    [usePracticalPlan, effectiveTimes],
-  );
+  const planTimes = useMemo(() => {
+    if (!usePracticalPlan) return [];
+    const times = [...effectiveTimes];
+    const set = new Set(times.map(padSlotTime));
+    if (set.has("13:20") && set.has("15:00") && !set.has("14:00")) {
+      times.push("14:00");
+      times.sort((a, b) => a.localeCompare(b));
+    }
+    return times;
+  }, [usePracticalPlan, effectiveTimes]);
 
   const slots = useMemo((): DaySlotRow[] => {
     const times = usePracticalPlan
@@ -164,10 +170,11 @@ export function useInstructorDaySlots({
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };
       }
 
-      const slotRange = usePracticalPlan ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes) : undefined;
+      const slotRange = usePracticalPlan ? practicalSlotRangeMinutesFromBookable(slot, times) : undefined;
       if (
         isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks, slotRange, {
           forPracticalPlan: usePracticalPlan,
+          skipLunch: usePracticalPlan,
         })
       ) {
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };

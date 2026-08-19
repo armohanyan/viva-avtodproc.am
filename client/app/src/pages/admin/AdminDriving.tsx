@@ -114,11 +114,12 @@ export default function AdminDriving() {
           dateIso={dayModalDateIso}
           instructors={activePracticalInstructors}
           reloadKey={refreshKey}
-          onEmptyCellClick={({ instructor, branchId, dateIso, time }) => {
+          onEmptyCellClick={({ instructor, branchId, dateIso, time, customSlot }) => {
             setPendingSelection({
               instructor,
               branchId,
               entries: [{ dateIso, time }],
+              customSlot: customSlot === true,
             });
           }}
           onAddCustomSlotClick={({ instructor, branchId, dateIso }) => {
