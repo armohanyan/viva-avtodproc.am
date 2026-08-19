@@ -901,6 +901,50 @@ function inferAdminCustomSlotEnd(start: string, bookableSorted: readonly string[
   return minutesToHHMM(startM + 60);
 }
 
+function resolveCustomPracticalEndTime(opts: {
+  start: string;
+  bookableSorted: readonly string[];
+  patchEnd?: string;
+  existingEnd?: string | null;
+  reuseExisting: boolean;
+}): string {
+  const fromPatch = opts.patchEnd ? normalizeTimeHHMM(String(opts.patchEnd).trim()) : null;
+  if (fromPatch) return fromPatch;
+  if (opts.reuseExisting) {
+    const fromRow = opts.existingEnd ? normalizeTimeHHMM(String(opts.existingEnd).trim()) : null;
+    if (fromRow) return fromRow;
+  }
+  return inferAdminCustomSlotEnd(opts.start, opts.bookableSorted);
+}
+
+function practicalEntriesAreOffPlan(
+  entries: readonly AdminSlotEntry[],
+  allowedTimes: readonly string[] | undefined,
+): boolean {
+  if (!allowedTimes?.length || entries.length === 0) return false;
+  const allowed = new Set(allowedTimes);
+  return entries.some((e) => !allowed.has(e.time));
+}
+
+function adminSlotEntriesMatchExisting(
+  entries: readonly AdminSlotEntry[],
+  existing: readonly BookingSlot[],
+  row: Booking,
+): boolean {
+  if (existing.length > 0) {
+    if (existing.length !== entries.length) return false;
+    const have = new Set(
+      existing.map((s) => bookingSlotRowKey(dateIsoString(s.dateIso), normalizeTimeHHMM(s.slotTime) ?? s.slotTime)),
+    );
+    return entries.every((e) => have.has(bookingSlotRowKey(e.dateIso, e.time)));
+  }
+  return (
+    entries.length === 1 &&
+    entries[0]!.dateIso === dateIsoString(row.dateIso) &&
+    entries[0]!.time === (normalizeTimeHHMM(row.time) ?? row.time)
+  );
+}
+
 /** Dedupe, normalize, sort chronologically; drops invalid starts. */
 function normalizeAdminSlotEntries(
   raw: readonly { dateIso: string; time: string }[],
@@ -3430,6 +3474,7 @@ export default class BookingService {
       slots: sorted,
       excludeBookingId: id,
       lessonType,
+      allowPastSlots: true,
     });
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
@@ -3491,6 +3536,11 @@ export default class BookingService {
       meetLink?: string | null;
       adminPaymentStatus?: AdminBookingPaymentStatus;
       paidAmountAmd?: number;
+      paymentNotes?: string | null;
+      paymentReminderDate?: string | null;
+      totalPriceAmd?: number;
+      allowCustomPracticalTime?: boolean;
+      customSlotEndTime?: string;
     }>;
     lessonType: 'practical' | 'theory_personal';
     entries: AdminSlotEntry[];
@@ -3524,26 +3574,65 @@ export default class BookingService {
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, lessonType);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const totalPriceAmd = Number.isFinite(hourly)
+    const computedTotal = Number.isFinite(hourly)
       ? hourly * billableSlotCountForLesson(lessonType, entries.length)
-      : row.totalPriceAmd ?? null;
+      : Number(row.totalPriceAmd ?? 0);
 
-    await BookingSlotValidationService.assertSlotEntriesBookable({
-      branchId,
-      instructorUserId,
-      entries,
-      excludeBookingId: id,
-      lessonType,
-    });
-
-    const first = entries[0];
-    const endTime =
+    const bookable =
       lessonType === 'practical'
-        ? endTimeExclusiveForPracticalSlotEntries(
-            entries,
-            await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId),
-          )
-        : endTimeExclusiveForSlotEntries(entries);
+        ? await PracticalSlotPlanService.getEffectiveBookableTimes(branchId, instructorUserId)
+        : [];
+    const first = entries[0]!;
+    const reuseCustomWindow =
+      first.dateIso === dateIsoString(row.dateIso) &&
+      first.time === (normalizeTimeHHMM(row.time) ?? row.time);
+    const allowCustomPractical =
+      lessonType === 'practical' &&
+      entries.length === 1 &&
+      (patch.allowCustomPracticalTime === true || practicalEntriesAreOffPlan(entries, bookable));
+    const customEnd = allowCustomPractical
+      ? resolveCustomPracticalEndTime({
+          start: first.time,
+          bookableSorted: bookable,
+          patchEnd: patch.customSlotEndTime,
+          existingEnd: row.endTime,
+          reuseExisting: reuseCustomWindow,
+        })
+      : null;
+
+    const existingSlotRows = await BookingSlot.findAll({ where: { bookingId: id } });
+    const scheduleUnchanged =
+      instructorUserId === row.instructorUserId &&
+      branchId === row.branchId &&
+      adminSlotEntriesMatchExisting(entries, existingSlotRows, row);
+    const totalPriceAmd = resolveAdminTotalPriceAmd(
+      patch.totalPriceAmd,
+      scheduleUnchanged ? Number(row.totalPriceAmd ?? computedTotal) : computedTotal,
+    );
+
+    if (!scheduleUnchanged) {
+      await BookingSlotValidationService.assertSlotEntriesBookable({
+        branchId,
+        instructorUserId,
+        entries,
+        excludeBookingId: id,
+        lessonType,
+        allowPastSlots: true,
+        allowCustomPracticalTime: allowCustomPractical,
+        customSlotEndTime: customEnd ?? undefined,
+      });
+    }
+
+    const endTime =
+      scheduleUnchanged && row.endTime
+        ? (normalizeTimeHHMM(String(row.endTime)) ?? row.endTime)
+        : allowCustomPractical && customEnd
+          ? customEnd
+          : lessonType === 'practical'
+            ? endTimeExclusiveForPracticalSlotEntries(entries, bookable) ??
+              (reuseCustomWindow ? normalizeTimeHHMM(String(row.endTime ?? '')) : null) ??
+              endTimeExclusiveForSlotEntries(entries)
+            : endTimeExclusiveForSlotEntries(entries);
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
@@ -3602,11 +3691,16 @@ export default class BookingService {
       paidAmountAmd?: number;
       paymentNotes?: string | null;
       paymentReminderDate?: string | null;
+      totalPriceAmd?: number;
     }>,
   ): Promise<BookingAdminDto | null> {
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
-    const payUpdate = mergeAdminPaymentRowPatch(row, patch, row.totalPriceAmd ?? null);
+    const nextTotalAmd =
+      patch.totalPriceAmd !== undefined
+        ? resolveAdminTotalPriceAmd(patch.totalPriceAmd, bookingTotalPriceAmd(row))
+        : row.totalPriceAmd ?? null;
+    const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalAmd);
 
     AuditLogService.recordFireAndForget({
       category: 'booking',
@@ -3635,6 +3729,7 @@ export default class BookingService {
           ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
           ...(patch.status !== undefined ? { status: patch.status } : {}),
           ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
+          ...(patch.totalPriceAmd !== undefined ? { totalPriceAmd: nextTotalAmd } : {}),
           ...payUpdate,
         },
         { transaction },
@@ -3675,6 +3770,9 @@ export default class BookingService {
       paidAmountAmd?: number;
       paymentNotes?: string | null;
       paymentReminderDate?: string | null;
+      totalPriceAmd?: number;
+      allowCustomPracticalTime?: boolean;
+      customSlotEndTime?: string;
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
@@ -3737,6 +3835,32 @@ export default class BookingService {
     const useMulti =
       slotList.length > 0 &&
       (effectiveType === 'practical' || effectiveType === 'theory' || effectiveType === 'theory_personal');
+    if (useMulti && effectiveType === 'practical' && slotList.length === 1) {
+      const slotNorm = normalizeTimeHHMM(slotList[0] ?? '');
+      let instructorForPlan = row.instructorUserId;
+      if (patch.instructorName !== undefined) {
+        instructorForPlan = await resolveInstructorUserIdByName(patch.instructorName, row.instructorUserId);
+      }
+      const branchIdForPlan = patch.branchId !== undefined ? patch.branchId : row.branchId;
+      const bookable =
+        instructorForPlan != null && Number.isFinite(instructorForPlan)
+          ? await PracticalSlotPlanService.getEffectiveBookableTimes(branchIdForPlan, instructorForPlan)
+          : allowedPracticalTimes;
+      if (
+        slotNorm &&
+        (patch.allowCustomPracticalTime === true ||
+          (Boolean(bookable?.length) && !bookable!.includes(slotNorm)))
+      ) {
+        const dateIso = patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
+        return BookingService.updateAdminWithArbitrarySlotEntriesForExisting({
+          id,
+          row,
+          patch,
+          lessonType: 'practical',
+          entries: [{ dateIso, time: slotNorm }],
+        });
+      }
+    }
     if (useMulti) {
       return BookingService.updateAdminWithConsecutiveSlotsForExisting({
         id,
@@ -3769,9 +3893,38 @@ export default class BookingService {
 
     const nextDateIso = patch.dateIso !== undefined ? patch.dateIso.slice(0, 10) : dateIsoString(row.dateIso);
     const nextTime = patch.time !== undefined ? patch.time : row.time;
+    const nextTimeNorm = normalizeTimeHHMM(String(nextTime ?? '').trim()) ?? String(nextTime ?? '').trim();
     const branchIdForValidation = patch.branchId !== undefined ? patch.branchId : row.branchId;
-    const sorted = await normalizeAndSortSlotsForLesson(effectiveType, [nextTime], branchIdForValidation);
-    const exclusiveEnd = await exclusiveEndForLesson(effectiveType, sorted, branchIdForValidation);
+
+    if (effectiveType === 'practical' && instructorUserId != null && nextTimeNorm) {
+      const bookable = await PracticalSlotPlanService.getEffectiveBookableTimes(
+        branchIdForValidation,
+        instructorUserId,
+      );
+      const offPlan = Boolean(bookable.length) && !bookable.includes(nextTimeNorm);
+      if (patch.allowCustomPracticalTime === true || offPlan) {
+        return BookingService.updateAdminWithArbitrarySlotEntriesForExisting({
+          id,
+          row,
+          patch,
+          lessonType: 'practical',
+          entries: [{ dateIso: nextDateIso, time: nextTimeNorm }],
+        });
+      }
+    }
+
+    const sorted = await normalizeAndSortSlotsForLesson(
+      effectiveType,
+      [nextTime],
+      branchIdForValidation,
+      effectiveType === 'practical' ? instructorUserId ?? undefined : undefined,
+    );
+    const exclusiveEnd = await exclusiveEndForLesson(
+      effectiveType,
+      sorted,
+      branchIdForValidation,
+      effectiveType === 'practical' ? instructorUserId ?? undefined : undefined,
+    );
 
     if (touchesSchedule && instructorUserId != null) {
       await BookingSlotValidationService.assertSlotsBookable({
@@ -3781,6 +3934,7 @@ export default class BookingService {
         slots: sorted,
         excludeBookingId: id,
         lessonType: effectiveType,
+        allowPastSlots: true,
       });
     }
 

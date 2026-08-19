@@ -256,10 +256,10 @@ export default function AdminInstructorAvailabilityTable({
                   g.instructors.map((ins) => (
                     <th
                       key={`${g.branchId}-${ins.id}`}
-                      className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[3.25rem] max-w-[5rem] truncate shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                      className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[7.5rem] max-w-[11rem] whitespace-normal leading-tight shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                       title={ins.name}
                     >
-                      {ins.name.split(" ")[0]}
+                      {ins.name}
                     </th>
                   )),
                 )}

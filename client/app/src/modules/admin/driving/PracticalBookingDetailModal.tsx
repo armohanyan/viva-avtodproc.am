@@ -76,6 +76,18 @@ function slotsFromBooking(booking: AdminBookingRow): { dateIso: string; time: st
   ];
 }
 
+function slotEntriesEqual(
+  a: readonly { dateIso: string; time: string }[],
+  b: readonly { dateIso: string; time: string }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (entry, idx) =>
+      entry.dateIso.slice(0, 10) === b[idx]!.dateIso.slice(0, 10) &&
+      padSlotTime(entry.time) === padSlotTime(b[idx]!.time),
+  );
+}
+
 export default function PracticalBookingDetailModal({
   open,
   onOpenChange,
@@ -191,6 +203,12 @@ export default function PracticalBookingDetailModal({
         .map((entry) => entry.time);
       const times = sortTimesUnique(sameDayTimes.length > 0 ? sameDayTimes : [firstEntry.time]);
       const instructorName = instructor?.name ?? booking.instructorName;
+      const scheduleChanged = !slotEntriesEqual(slotsFromBooking(booking), sortedEntries);
+      const customEnd = booking.endTime ? padSlotTime(String(booking.endTime)) : "";
+      const keepCustomWindow =
+        sortedEntries.length === 1 &&
+        Boolean(customEnd) &&
+        (!scheduleChanged || padSlotTime(sortedEntries[0]!.time) === padSlotTime(booking.time));
 
       await vivaApiJson(`/bookings/${encodeURIComponent(booking.id)}`, {
         method: "PATCH",
@@ -198,19 +216,26 @@ export default function PracticalBookingDetailModal({
           studentId: Number(booking.studentId),
           branchId: Number(booking.branchId),
           status,
-          type: "practical" as const,
-          dateIso: firstEntry.dateIso,
-          slots: times,
-          instructorName,
-          ...(instructor && Number.isFinite(Number(instructor.id))
-            ? { instructorUserId: Number(instructor.id) }
-            : {}),
-          slotEntries: sortedEntries.map((entry) => ({
-            dateIso: entry.dateIso,
-            time: entry.time,
-          })),
           totalPriceAmd,
           ...paymentBody,
+          ...(scheduleChanged
+            ? {
+                type: "practical" as const,
+                dateIso: firstEntry.dateIso,
+                slots: times,
+                instructorName,
+                ...(instructor && Number.isFinite(Number(instructor.id))
+                  ? { instructorUserId: Number(instructor.id) }
+                  : {}),
+                slotEntries: sortedEntries.map((entry) => ({
+                  dateIso: entry.dateIso,
+                  time: entry.time,
+                })),
+                ...(keepCustomWindow
+                  ? { allowCustomPracticalTime: true, customSlotEndTime: customEnd }
+                  : {}),
+              }
+            : {}),
         },
       });
 

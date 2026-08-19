@@ -1594,6 +1594,7 @@ export default function AdminBookings() {
             studentId: editBooking.studentId,
             status: editBooking.status,
             branchId: Number(editBooking.branchId),
+            totalPriceAmd: editTotal,
             ...paymentBody,
           }
         : editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"

@@ -537,11 +537,11 @@ export default function AdminDrivingDayModal({
                     g.instructors.map((ins) => (
                       <th
                         key={`${g.branchId}-${ins.id}`}
-                        className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[7rem] max-w-[10rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                        className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[8.5rem] max-w-[13rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                       >
                         <div className="group/ins flex items-center justify-center gap-0.5 min-w-0">
-                          <span className="truncate" title={ins.name}>
-                            {ins.name.split(" ")[0]}
+                          <span className="whitespace-normal leading-tight" title={ins.name}>
+                            {ins.name}
                           </span>
                           <Tooltip>
                             <TooltipTrigger asChild>

@@ -24,7 +24,6 @@ import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
-import { useAccount } from "src/modules/accounts";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
 import type { ScheduleRuleKind } from "src/modules/instructors/instructorAvailability";
 import InstructorPracticalSlotsSection, {
@@ -173,8 +172,6 @@ export default function AdminInstructors() {
   const editPracticalSlotsSaveRef = useRef<InstructorPracticalSlotsSaveHandle | null>(null);
   const { t, lang } = useLang();
   const { showToast } = useToast();
-  const { user } = useAccount();
-  const isSuperAdmin = user?.accountType === "super_admin";
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
@@ -507,7 +504,7 @@ export default function AdminInstructors() {
   const validateInstructor = (ins: InstructorForm) => {
     if (!ins.name || !ins.email) return t("fillRequired");
     if (!ins.teachesPractical && !ins.teachesTheory) return t("instructorTeachingRequired");
-    if (ins.teachesPractical && branches.length > 0 && isSuperAdmin) {
+    if (ins.teachesPractical && branches.length > 0) {
       const allowed = new Set(branches.map((b) => String(b.id)));
       const picked = (ins.availableBranchIds ?? []).map(String);
       if (picked.length === 0 || picked.some((id) => !allowed.has(id))) {
@@ -558,10 +555,8 @@ export default function AdminInstructors() {
         teachesPractical: editIns.teachesPractical,
         teachesTheory: editIns.teachesTheory,
         fleetCarIds: editIns.fleetCarIds ?? [],
+        availableBranchIds: editIns.availableBranchIds,
       };
-      if (isSuperAdmin) {
-        body.availableBranchIds = editIns.availableBranchIds;
-      }
       await vivaApiJson(`/instructors/${encodeURIComponent(editIns.id)}`, {
         method: "PATCH",
         body,
@@ -582,11 +577,10 @@ export default function AdminInstructors() {
       return;
     }
 
-    const branchIdsForCreate = isSuperAdmin ? newIns.availableBranchIds : [];
     const nextPayload = {
       ...newIns,
       fleetCarIds: newIns.fleetCarIds ?? [],
-      availableBranchIds: branchIdsForCreate,
+      availableBranchIds: newIns.availableBranchIds,
     };
 
     try {
@@ -1028,11 +1022,7 @@ export default function AdminInstructors() {
                     }
                     placeholder={t("instructorBranchesLabel")}
                     ariaLabel={t("instructorBranchesLabel")}
-                    disabled={!isSuperAdmin}
                   />
-                  {!isSuperAdmin ? (
-                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorBranchesSuperAdminOnly")}</p>
-                  ) : null}
                 </div>
               )}
               <div>
@@ -1264,11 +1254,7 @@ export default function AdminInstructors() {
                     }
                     placeholder={t("instructorBranchesLabel")}
                     ariaLabel={t("instructorBranchesLabel")}
-                    disabled={!isSuperAdmin}
                   />
-                  {!isSuperAdmin ? (
-                    <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{t("instructorBranchesSuperAdminOnly")}</p>
-                  ) : null}
                 </div>
               )}
               <div>

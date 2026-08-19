@@ -89,17 +89,6 @@ export default class InstructorController {
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(createSchema, req.body);
-      if (body.availableBranchIds.length > 0) {
-        const staff = (req as StaffRequest).staff;
-        if (!staff || staff.accountType !== 'super_admin') {
-          return next(
-            new PermissionError(
-              'Only a super administrator can assign instructor branches.',
-              HttpStatusCodesUtil.FORBIDDEN,
-            ),
-          );
-        }
-      }
       const row = await InstructorService.create(body);
 
       SuccessHandlerUtil.handleAdd(res, next, row);
@@ -140,16 +129,6 @@ export default class InstructorController {
         }
       }
 
-      if ('availableBranchIds' in body) {
-        if (actor.accountType !== 'super_admin') {
-          return next(
-            new PermissionError(
-              'Only a super administrator can change instructor branches.',
-              HttpStatusCodesUtil.FORBIDDEN,
-            ),
-          );
-        }
-      }
       const row = await InstructorService.update(id, body);
 
       if (!row) {
