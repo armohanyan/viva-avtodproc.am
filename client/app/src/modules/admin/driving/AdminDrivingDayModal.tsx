@@ -399,9 +399,21 @@ export default function AdminDrivingDayModal({
 
   const bookableTimes = useMemo(() => bookableTimesFromPlan(displayRows), [displayRows]);
   const planTimeSet = useMemo(
-    () => new Set(bookableTimesFromPlan(planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN)),
+    () =>
+      new Set(
+        bookableTimesFromPlan(planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN).map(padSlotTime),
+      ),
     [planRows],
   );
+  /** Start times of forced custom bookings that are not on the regular graphic plan. */
+  const forcedSlotTimes = useMemo(() => {
+    const set = new Set<string>();
+    for (const b of bookingByInstructorTime.values()) {
+      const t = padSlotTime(b.time);
+      if (t && !planTimeSet.has(t)) set.add(t);
+    }
+    return set;
+  }, [bookingByInstructorTime, planTimeSet]);
 
   /** Returns a i18n key describing why this slot is blocked, or null if it is not blocked. */
   const resolveBlockReason = useCallback(
@@ -607,10 +619,30 @@ export default function AdminDrivingDayModal({
                   }
 
                   const time = padSlotTime(row.time);
+                  const isForcedSlotRow = forcedSlotTimes.has(time);
                   return (
                     <tr key={`${time}-${rowIdx}`} className="hover:bg-primary/5">
-                      <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-primary font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
-                        {time}
+                      <td
+                        className={cn(
+                          "sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-primary font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]",
+                          isForcedSlotRow &&
+                            "border-t-2 border-b-2 border-l-2 border-t-amber-500 border-b-amber-500 border-l-amber-500",
+                        )}
+                      >
+                        {isForcedSlotRow ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-help" tabIndex={0}>
+                                {time}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="text-xs">
+                              {t("adminDrivingDayModalOffPlanSlot")}
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          time
+                        )}
                       </td>
                       {branchGroups.flatMap((g) =>
                         g.instructors.map((ins) => {
@@ -620,7 +652,11 @@ export default function AdminDrivingDayModal({
                           return (
                             <td
                               key={`${time}-${g.branchId}-${ins.id}`}
-                              className="p-0 border-r border-b border-border/30 last:border-r-0"
+                              className={cn(
+                                "p-0 border-r border-b border-border/30 last:border-r-0",
+                                isForcedSlotRow &&
+                                  "border-t-2 border-b-2 border-t-amber-500 border-b-amber-500 last:border-r-2 last:border-r-amber-500",
+                              )}
                             >
                               {booking ? (
                                 <Tooltip>
