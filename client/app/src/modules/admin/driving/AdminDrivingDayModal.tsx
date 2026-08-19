@@ -369,6 +369,50 @@ export default function AdminDrivingDayModal({
 
   const bookableTimes = useMemo(() => bookableTimesFromPlan(displayRows), [displayRows]);
 
+  /** Returns a i18n key describing why this slot is blocked, or null if it is not blocked. */
+  const resolveBlockReason = useCallback(
+    (instructorId: string, time: string): string | null => {
+      if (busyTimesByInstructor.get(String(instructorId))?.has(padSlotTime(time))) {
+        return "bookingSlotUnavailable";
+      }
+      const planTimes = planTimesByInstructor.get(String(instructorId));
+      if (planTimes && !planTimes.has(padSlotTime(time))) {
+        return "adminDrivingDayModalReasonOutsideWorkSlots";
+      }
+      const blocks = blocksByInstructor.get(String(instructorId));
+      if (!blocks || blocks.length === 0) return null;
+      const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
+      if (isSlotBlockedByAvailabilityRules(day, time, blocks, slotRange, { forPracticalPlan: true })) {
+        // Find the specific blocking rule to give a precise reason.
+        const wday = new Date(day).getDay();
+        const isoDay = wday === 0 ? 7 : wday;
+        for (const b of blocks) {
+          if (b.ruleKind === "day_off" && b.dateIso === day) {
+            return "adminDrivingDayModalReasonDayOff";
+          }
+          if (
+            (b.ruleKind === "recurring_busy" || b.ruleKind === "date_busy") &&
+            b.timeStart &&
+            b.timeEnd
+          ) {
+            const matchDay =
+              b.ruleKind === "recurring_busy" ? b.weekday === isoDay : b.dateIso === day;
+            if (matchDay) {
+              const bStart = parseTimeToMinutes(b.timeStart);
+              const bEnd = parseTimeToMinutes(b.timeEnd);
+              if (slotRange.start < bEnd && slotRange.end > bStart) {
+                return "adminDrivingDayModalReasonBusy";
+              }
+            }
+          }
+        }
+        return "bookingSlotUnavailable";
+      }
+      return null;
+    },
+    [blocksByInstructor, busyTimesByInstructor, planTimesByInstructor, bookableTimes, day],
+  );
+
   /** True when admin schedule rules (day off, busy hours, …) block this instructor's slot. */
   const isInstructorSlotBlocked = useCallback(
     (instructorId: string, time: string): boolean => {
@@ -524,13 +568,34 @@ export default function AdminDrivingDayModal({
                 {displayRows.map((row, rowIdx) => {
                   if (row.time == null || row.time === "") {
                     return (
-                      <tr key={`break-${rowIdx}`}>
-                        <td
-                          colSpan={1 + branchGroups.reduce((n, g) => n + g.instructors.length, 0)}
-                          className="sticky left-0 z-10 bg-muted/60 px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-b border-border/40"
-                        >
+                      <tr key={`break-${rowIdx}`} className="hover:bg-primary/5">
+                        <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-muted-foreground font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)] text-xs">
                           {t("adminDrivingDayModalBreak")}
                         </td>
+                        {branchGroups.flatMap((g) =>
+                          g.instructors.map((ins) => (
+                            <td
+                              key={`break-${rowIdx}-${g.branchId}-${ins.id}`}
+                              className="p-0 border-r border-b border-border/30 last:border-r-0"
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onAddCustomSlotClick({
+                                    instructor: ins,
+                                    branchId: g.branchId,
+                                    dateIso: day,
+                                  })
+                                }
+                                className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
+                                title={`${ins.name} · ${t("adminDrivingDayModalBreak")}`}
+                                aria-label={`${ins.name} · ${t("adminDrivingDayModalBreak")}`}
+                              >
+                                +
+                              </button>
+                            </td>
+                          )),
+                        )}
                       </tr>
                     );
                   }
@@ -544,11 +609,8 @@ export default function AdminDrivingDayModal({
                       {branchGroups.flatMap((g) =>
                         g.instructors.map((ins) => {
                           const booking = resolveCellBooking(ins, g.branchId, time);
-                          const blocked =
-                            !booking &&
-                            (isInstructorSlotBlocked(ins.id, time) ||
-                              isOutsideInstructorWorkingSlots(ins.id, time) ||
-                              isInstructorBusyAtTime(ins.id, time));
+                          const blockReason = !booking ? resolveBlockReason(ins.id, time) : null;
+                          const blocked = blockReason != null;
                           return (
                             <td
                               key={`${time}-${g.branchId}-${ins.id}`}
@@ -600,15 +662,29 @@ export default function AdminDrivingDayModal({
                                   </TooltipContent>
                                 </Tooltip>
                               ) : blocked ? (
-                                <div
-                                  className="w-full min-h-14 flex items-center justify-center bg-muted/70 cursor-not-allowed select-none"
-                                  title={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
-                                  aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
-                                >
-                                  <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                                    {t("bookingSlotUnavailable")}
-                                  </span>
-                                </div>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="w-full min-h-14 flex flex-col items-center justify-center gap-0.5 bg-muted/70 cursor-not-allowed select-none"
+                                      aria-label={`${ins.name} · ${time} · ${t("bookingSlotUnavailable")}`}
+                                    >
+                                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                                        {t("bookingSlotUnavailable")}
+                                      </span>
+                                      {blockReason && blockReason !== "bookingSlotUnavailable" ? (
+                                        <span className="text-[10px] text-muted-foreground/50 normal-case tracking-normal">
+                                          {t(blockReason as Parameters<typeof t>[0])}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="text-xs">
+                                    <p className="font-medium">{t("bookingSlotUnavailable")}</p>
+                                    {blockReason ? (
+                                      <p className="opacity-80">{t(blockReason as Parameters<typeof t>[0])}</p>
+                                    ) : null}
+                                  </TooltipContent>
+                                </Tooltip>
                               ) : (
                                 <button
                                   type="button"
