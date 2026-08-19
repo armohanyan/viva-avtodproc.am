@@ -52,6 +52,8 @@ export type QuickPracticalBookingModalProps = {
   onCreated: () => void;
   /** Admin-only custom off-plan slot (e.g. rest hour). */
   customSlot?: boolean;
+  /** Exclusive end HH:MM when opening a custom slot from the day grid. */
+  customSlotEndTime?: string;
 };
 
 type Status = "confirmed" | "pending" | "cancelled" | "refunded";
@@ -106,6 +108,7 @@ export default function QuickPracticalBookingModal({
   onChangeSlots,
   onCreated,
   customSlot = false,
+  customSlotEndTime,
 }: QuickPracticalBookingModalProps) {
   const formId = useId();
   const { t } = useLang();
@@ -176,14 +179,18 @@ export default function QuickPracticalBookingModal({
     setIsGift(false);
     setGiftNote("");
     const start = normalizeUiTime(slotEntries[0]?.time ?? "") ?? "14:00";
-    const end = addMinutesToTime(start, DEFAULT_CUSTOM_DURATION_MINUTES);
+    const suggestedEnd = normalizeUiTime(customSlotEndTime ?? "");
+    const end =
+      suggestedEnd && parseTimeToMinutes(suggestedEnd) > parseTimeToMinutes(start)
+        ? suggestedEnd
+        : addMinutesToTime(start, DEFAULT_CUSTOM_DURATION_MINUTES);
     setCustomTimeStart(start);
     setCustomTimeEnd(end);
     setSetDelayedRest(false);
     setDelayedRestStart(end);
     setDelayedRestEnd(addMinutesToTime(end, 60));
     setBusyRanges([]);
-  }, [open, initialBranchId, customSlot]);
+  }, [open, initialBranchId, customSlot, customSlotEndTime]);
 
   useEffect(() => {
     if (!open) return;

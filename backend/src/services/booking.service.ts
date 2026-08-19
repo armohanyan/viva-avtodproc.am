@@ -889,6 +889,18 @@ const MAX_ADMIN_SLOT_ENTRIES = 64;
 
 type AdminSlotEntry = { dateIso: string; time: string };
 
+/** Exclusive end for an off-plan admin slot: next bookable start, otherwise +60 minutes. */
+function inferAdminCustomSlotEnd(start: string, bookableSorted: readonly string[]): string {
+  const startM = parseTimeToMinutes(normalizeTimeHHMM(start) ?? start);
+  let next: number | null = null;
+  for (const t of bookableSorted) {
+    const m = parseTimeToMinutes(t);
+    if (Number.isFinite(m) && m > startM && (next == null || m < next)) next = m;
+  }
+  if (next != null) return minutesToHHMM(next);
+  return minutesToHHMM(startM + 60);
+}
+
 /** Dedupe, normalize, sort chronologically; drops invalid starts. */
 function normalizeAdminSlotEntries(
   raw: readonly { dateIso: string; time: string }[],
@@ -2673,8 +2685,9 @@ export default class BookingService {
     createdByAccountType?: 'admin' | 'super_admin' | null;
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
-    const allowCustomPractical =
+    let allowCustomPractical =
       input.type === 'practical' && input.allowCustomPracticalTime === true;
+    let customSlotEndTime = input.customSlotEndTime;
     if (input.type === 'practical' && input.allowHistoricalSlots !== true && !allowCustomPractical) {
       let instructorUserId = input.instructorUserId;
       if (!Number.isFinite(instructorUserId)) {
@@ -2689,9 +2702,27 @@ export default class BookingService {
           ? await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, instructorUserId!)
           : bookableTimesFromPlan(await PracticalSlotPlanService.getPlan(input.branchId));
     }
-    const entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? [], allowedPracticalTimes, {
+    let entriesNorm = normalizeAdminSlotEntries(input.slotEntries ?? [], allowedPracticalTimes, {
       allowAnyValidTime: allowCustomPractical,
     });
+    if (
+      input.type === 'practical' &&
+      !allowCustomPractical &&
+      (input.slotEntries?.length ?? 0) > 0
+    ) {
+      const rawValid = normalizeAdminSlotEntries(input.slotEntries ?? [], undefined, {
+        allowAnyValidTime: true,
+      });
+      const allowed = new Set(allowedPracticalTimes ?? []);
+      const offPlan = rawValid.filter((e) => allowed.size > 0 && !allowed.has(e.time));
+      if (rawValid.length === 1 && offPlan.length === 1) {
+        allowCustomPractical = true;
+        entriesNorm = rawValid;
+        if (!customSlotEndTime) {
+          customSlotEndTime = inferAdminCustomSlotEnd(rawValid[0]!.time, allowedPracticalTimes ?? []);
+        }
+      }
+    }
     if (entriesNorm.length > 0 && (input.type === 'practical' || input.type === 'theory_personal')) {
       if (entriesNorm.length > MAX_ADMIN_SLOT_ENTRIES) {
         throw new InputValidationError(
@@ -2718,7 +2749,7 @@ export default class BookingService {
         createdByUserId: input.createdByUserId,
         allowHistoricalSlots: input.allowHistoricalSlots,
         allowCustomPracticalTime: allowCustomPractical,
-        customSlotEndTime: input.customSlotEndTime,
+        customSlotEndTime,
         isGift: input.isGift,
         giftNote: input.giftNote,
         createdByAccountType: input.createdByAccountType,
@@ -2732,6 +2763,39 @@ export default class BookingService {
       (input.type === 'practical' || input.type === 'theory' || input.type === 'theory_personal');
 
     if (useMulti) {
+      const slotNorm = slotList.length === 1 ? normalizeTimeHHMM(slotList[0] ?? '') : null;
+      if (
+        input.type === 'practical' &&
+        !allowCustomPractical &&
+        slotNorm &&
+        (allowedPracticalTimes?.length ?? 0) > 0 &&
+        !allowedPracticalTimes!.includes(slotNorm)
+      ) {
+        return BookingService.createAdminWithArbitrarySlotEntries({
+          studentId: input.studentId,
+          instructorName: input.instructorName ?? '',
+          instructorUserId: input.instructorUserId,
+          entries: [{ dateIso, time: slotNorm }],
+          lessonType: 'practical',
+          status: input.status,
+          branchId: input.branchId,
+          consumePackageCredits: input.consumePackageCredits,
+          packageOrderId: input.packageOrderId,
+          meetLink: input.meetLink,
+          adminPaymentStatus: input.adminPaymentStatus,
+          paidAmountAmd: input.paidAmountAmd,
+          paymentNotes: input.paymentNotes,
+          paymentReminderDate: input.paymentReminderDate,
+          totalPriceAmd: input.totalPriceAmd,
+          createdByUserId: input.createdByUserId,
+          allowHistoricalSlots: input.allowHistoricalSlots,
+          allowCustomPracticalTime: true,
+          customSlotEndTime: customSlotEndTime ?? inferAdminCustomSlotEnd(slotNorm, allowedPracticalTimes ?? []),
+          isGift: input.isGift,
+          giftNote: input.giftNote,
+          createdByAccountType: input.createdByAccountType,
+        });
+      }
       const lessonType: 'practical' | 'theory' | 'theory_personal' =
         input.type === 'theory' ? 'theory' : input.type === 'theory_personal' ? 'theory_personal' : 'practical';
       return BookingService.createAdminWithConsecutiveSlots({

@@ -130,13 +130,7 @@ export function useInstructorDaySlots({
 
   const planTimes = useMemo(() => {
     if (!usePracticalPlan) return [];
-    const times = [...effectiveTimes];
-    const set = new Set(times.map(padSlotTime));
-    if (set.has("13:20") && set.has("15:00") && !set.has("14:00")) {
-      times.push("14:00");
-      times.sort((a, b) => a.localeCompare(b));
-    }
-    return times;
+    return [...effectiveTimes];
   }, [usePracticalPlan, effectiveTimes]);
 
   const slots = useMemo((): DaySlotRow[] => {

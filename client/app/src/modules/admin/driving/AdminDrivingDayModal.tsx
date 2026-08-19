@@ -77,6 +77,8 @@ type Props = {
     time: string;
     /** Off-plan time such as lunch — use custom slot booking. */
     customSlot?: boolean;
+    /** Exclusive end for a custom slot (typically the next plan time, e.g. 15:00 after 14:00). */
+    customSlotEndTime?: string;
   }) => void;
   /** Admin custom slot (e.g. during lunch) — opens booking with free-form time. */
   onAddCustomSlotClick: (target: {
@@ -87,42 +89,71 @@ type Props = {
   onBookingCellClick: (target: { bookingId: number; dateIso: string; time: string }) => void;
 };
 
+function padPlanRow(row: PracticalSlotPlanRow): PracticalSlotPlanRow {
+  if (row.time == null || row.time === "") return { time: null };
+  return { time: padSlotTime(row.time) };
+}
+
+/** One 14:00 row in the 13:20–15:00 lunch gap so admin can book that hour. Never duplicate. */
 function ensureLunchBreakRow(rows: readonly PracticalSlotPlanRow[]): PracticalSlotPlanRow[] {
-  if (rows.some((r) => r.time == null || r.time === "")) {
-    return rows.map((r) => ({ time: r.time }));
-  }
-  const times = rows.map((r) => r.time).filter((t): t is string => Boolean(t));
-  const has1320 = times.includes("13:20");
-  const has1500 = times.includes("15:00");
-  if (!has1320 || !has1500) return rows.map((r) => ({ time: r.time }));
+  const padded = rows.map(padPlanRow);
+  const times = padded.map((r) => r.time).filter((t): t is string => Boolean(t));
+  const set = new Set(times);
+  const hasGap = set.has("13:20") && set.has("15:00");
   const out: PracticalSlotPlanRow[] = [];
-  for (const r of rows) {
+  const seenTimed = new Set<string>();
+  let lunchInserted = !hasGap || set.has("14:00");
+  for (const r of padded) {
+    if (r.time == null || r.time === "") {
+      if (!lunchInserted) {
+        out.push({ time: "14:00" });
+        seenTimed.add("14:00");
+        lunchInserted = true;
+      } else if (!set.has("14:00") && !hasGap) {
+        out.push({ time: null });
+      }
+      continue;
+    }
+    if (seenTimed.has(r.time)) continue;
+    seenTimed.add(r.time);
     out.push({ time: r.time });
-    if (r.time === "13:20") out.push({ time: "14:00" });
+    if (!lunchInserted && r.time === "13:20") {
+      out.push({ time: "14:00" });
+      seenTimed.add("14:00");
+      lunchInserted = true;
+    }
   }
   return out;
+}
+
+function nextTimedAfter(rows: readonly PracticalSlotPlanRow[], time: string): string | undefined {
+  const start = padSlotTime(time);
+  const idx = rows.findIndex((r) => r.time != null && r.time !== "" && padSlotTime(r.time) === start);
+  if (idx < 0) return undefined;
+  for (let i = idx + 1; i < rows.length; i++) {
+    const t = rows[i]?.time;
+    if (t) return padSlotTime(t);
+  }
+  return undefined;
 }
 
 function mergeOrphanTimes(
   planRows: readonly PracticalSlotPlanRow[],
   orphanTimes: readonly string[],
 ): PracticalSlotPlanRow[] {
-  if (orphanTimes.length === 0) return [...planRows];
   const known = new Set(
     planRows.map((r) => (r.time ? padSlotTime(r.time) : "")).filter(Boolean),
   );
-  // Deduplicate: many bookings can share one off-plan time (e.g. 14:00 in the lunch gap).
   const extras = [
     ...new Set(orphanTimes.map(padSlotTime).filter((t) => t && !known.has(t))),
   ].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
-  if (extras.length === 0) return [...planRows];
 
   const timed: { time: string; mins: number }[] = [];
   const seenTimed = new Set<string>();
-  const breaks: PracticalSlotPlanRow[] = [];
+  let hadBreak = false;
   for (const r of planRows) {
     if (r.time == null || r.time === "") {
-      breaks.push({ time: null });
+      hadBreak = true;
       continue;
     }
     const t = padSlotTime(r.time);
@@ -137,18 +168,14 @@ function mergeOrphanTimes(
   }
   timed.sort((a, b) => a.mins - b.mins);
 
-  // Re-insert a single break after 13:20 when present (keeps spreadsheet-like layout).
   const out: PracticalSlotPlanRow[] = [];
-  let breakInserted = breaks.length === 0;
+  let breakInserted = !hadBreak;
   for (const row of timed) {
     out.push({ time: row.time });
-    if (!breakInserted && row.time === "13:20") {
+    if (!breakInserted && row.time === "13:20" && !seenTimed.has("14:00")) {
       out.push({ time: null });
       breakInserted = true;
     }
-  }
-  if (!breakInserted) {
-    for (const b of breaks) out.push(b);
   }
   return out;
 }
@@ -581,7 +608,7 @@ export default function AdminDrivingDayModal({
 
                   const time = padSlotTime(row.time);
                   return (
-                    <tr key={time} className="hover:bg-primary/5">
+                    <tr key={`${time}-${rowIdx}`} className="hover:bg-primary/5">
                       <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-primary font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)]">
                         {time}
                       </td>
@@ -666,15 +693,22 @@ export default function AdminDrivingDayModal({
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    const instructorTimes = planTimesByInstructor.get(String(ins.id));
+                                    const inSavedPlan = instructorTimes
+                                      ? instructorTimes.has(time)
+                                      : planTimeSet.has(time);
                                     onEmptyCellClick({
                                       instructor: ins,
                                       branchId: g.branchId,
                                       dateIso: day,
                                       time,
-                                      customSlot: !planTimeSet.has(time),
-                                    })
-                                  }
+                                      customSlot: !inSavedPlan,
+                                      customSlotEndTime: inSavedPlan
+                                        ? undefined
+                                        : nextTimedAfter(displayRows, time),
+                                    });
+                                  }}
                                   className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
                                   title={`${ins.name} · ${time}`}
                                   aria-label={`${ins.name} · ${time}`}

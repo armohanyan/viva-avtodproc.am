@@ -25,6 +25,7 @@ type SlotSelection = {
   entries: { dateIso: string; time: string }[];
   /** Admin custom off-plan time (e.g. lunch hour); skips fixed schedule membership. */
   customSlot?: boolean;
+  customSlotEndTime?: string;
 };
 
 export default function AdminDriving() {
@@ -114,12 +115,13 @@ export default function AdminDriving() {
           dateIso={dayModalDateIso}
           instructors={activePracticalInstructors}
           reloadKey={refreshKey}
-          onEmptyCellClick={({ instructor, branchId, dateIso, time, customSlot }) => {
+          onEmptyCellClick={({ instructor, branchId, dateIso, time, customSlot, customSlotEndTime }) => {
             setPendingSelection({
               instructor,
               branchId,
               entries: [{ dateIso, time }],
               customSlot: customSlot === true,
+              customSlotEndTime,
             });
           }}
           onAddCustomSlotClick={({ instructor, branchId, dateIso }) => {
@@ -181,6 +183,7 @@ export default function AdminDriving() {
           students={students}
           onStudentCreated={handleStudentCreated}
           customSlot={pendingSelection.customSlot === true}
+          customSlotEndTime={pendingSelection.customSlotEndTime}
           onChangeSlots={() => {
             if (pendingSelection.customSlot) return;
             const first = pendingSelection.entries[0];
