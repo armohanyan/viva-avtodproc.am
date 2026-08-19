@@ -313,8 +313,9 @@ export default class BookingSlotValidationService {
     /** Admin create: allow booking slots whose start is already in the past (keeps schedule checks). */
     allowPastSlots?: boolean;
     /**
-     * Admin custom practical time (e.g. during rest): skip fixed plan membership,
-     * but still enforce day-off / busy / conflicts. Lunch rule stays skipped via forPracticalPlan.
+     * Admin custom practical time (e.g. during lunch/rest): skip fixed plan membership
+     * and all schedule-rule blocking (lunch, recurring breaks, work hours, day-off).
+     * Only actual booking conflicts are still enforced.
      */
     allowCustomPracticalTime?: boolean;
     /** Exclusive end HH:MM for a custom practical range (required when allowCustomPracticalTime). */
@@ -412,15 +413,19 @@ export default class BookingSlotValidationService {
             ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes)
             : { start: parseTimeToMinutes(slotNorm), end: parseTimeToMinutes(slotNorm) + 60 });
 
-        const instructorUnavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
-          input.instructorUserId,
-          dateIso,
-          slot,
-          slotRange,
-          { forPracticalPlan: isPractical },
-        );
-        if (instructorUnavailable) {
-          throw new InputValidationError(messageForReason('instructor_unavailable'), HttpStatusCodesUtil.BAD_REQUEST);
+        // For admin custom practical slots the time is intentionally off-plan (e.g. lunch).
+        // Skip schedule-rule blocking entirely; only booking conflicts are enforced below.
+        if (!allowCustomPractical) {
+          const instructorUnavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
+            input.instructorUserId,
+            dateIso,
+            slot,
+            slotRange,
+            { forPracticalPlan: isPractical },
+          );
+          if (instructorUnavailable) {
+            throw new InputValidationError(messageForReason('instructor_unavailable'), HttpStatusCodesUtil.BAD_REQUEST);
+          }
         }
         proposedRange = slotRange;
       }
