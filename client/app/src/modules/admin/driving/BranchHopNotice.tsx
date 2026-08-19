@@ -1,4 +1,3 @@
-import { MapPin } from "lucide-react";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
 import type { BranchHopWarning } from "src/modules/admin/driving/instructorBranchHop";
@@ -24,13 +23,6 @@ function hopLine(t: (key: TranslationKey) => string, hop: BranchHopWarning): str
   return lines.join(" ");
 }
 
-export function branchHopTooltipText(
-  t: (key: TranslationKey) => string,
-  hop: BranchHopWarning,
-): string {
-  return hopLine(t, hop);
-}
-
 export function BranchHopBanner({ hop }: { hop: BranchHopWarning }) {
   const { t } = useLang();
   return (
@@ -46,15 +38,5 @@ export function BranchHopBanner({ hop }: { hop: BranchHopWarning }) {
       <p className="font-semibold">{t("adminDrivingBranchHopTitle")}</p>
       <p className="mt-1 opacity-90">{hopLine(t, hop)}</p>
     </div>
-  );
-}
-
-export function BranchHopPin({ tight }: { tight: boolean }) {
-  return (
-    <MapPin
-      className={cn("h-4 w-4", tight ? "text-amber-800" : "text-amber-700")}
-      strokeWidth={2.4}
-      aria-hidden
-    />
   );
 }

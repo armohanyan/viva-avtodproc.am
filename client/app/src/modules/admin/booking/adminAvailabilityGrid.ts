@@ -26,6 +26,75 @@ export type GridBranchGroup = {
   instructors: Instructor[];
 };
 
+/** One instructor column in the day graphic (home branch + extra read-only other-branch columns). */
+export type DayGridInstructorColumn = {
+  instructor: Instructor;
+  groupBranchId: string;
+  bookingBranchId: string;
+  bookingBranchName: string;
+  branchCode: string;
+  readOnly: boolean;
+  showBranchCode: boolean;
+};
+
+/** First three letters of the branch name (Armenian or Latin), e.g. Իսակովի → Իսա. */
+export function branchShortCode(name: string): string {
+  const letters = Array.from(String(name ?? "").normalize("NFC")).filter((ch) => /\p{L}/u.test(ch));
+  if (letters.length >= 3) return letters.slice(0, 3).join("");
+  const compact = String(name ?? "").replace(/\s+/g, "").trim();
+  return compact.slice(0, 3) || String(name ?? "").trim();
+}
+
+/**
+ * Under every branch group, a multi-branch instructor gets one extra column per other served
+ * branch (read-only), labeled with a 3-letter branch code.
+ */
+export function expandDayGridInstructorColumns(
+  groups: readonly GridBranchGroup[],
+  allBranches: readonly Branch[],
+): { group: GridBranchGroup; columns: DayGridInstructorColumn[] }[] {
+  const byId = new Map(allBranches.map((b) => [String(b.id), b]));
+  return groups.map((group) => {
+    const columns: DayGridInstructorColumn[] = [];
+    for (const ins of group.instructors) {
+      const served = (ins.availableBranchIds ?? [])
+        .map((id) => byId.get(String(id)))
+        .filter((b): b is Branch => Boolean(b))
+        .sort((a, b) => a.name.localeCompare(b.name, "hy"));
+      const multi = served.length > 1;
+      if (!multi) {
+        const home = byId.get(String(group.branchId));
+        columns.push({
+          instructor: ins,
+          groupBranchId: group.branchId,
+          bookingBranchId: group.branchId,
+          bookingBranchName: home?.name ?? group.branchName,
+          branchCode: branchShortCode(home?.name ?? group.branchName),
+          readOnly: false,
+          showBranchCode: false,
+        });
+        continue;
+      }
+      const ordered = [
+        ...served.filter((b) => String(b.id) === String(group.branchId)),
+        ...served.filter((b) => String(b.id) !== String(group.branchId)),
+      ];
+      for (const b of ordered) {
+        columns.push({
+          instructor: ins,
+          groupBranchId: group.branchId,
+          bookingBranchId: String(b.id),
+          bookingBranchName: b.name,
+          branchCode: branchShortCode(b.name),
+          readOnly: String(b.id) !== String(group.branchId),
+          showBranchCode: true,
+        });
+      }
+    }
+    return { group, columns };
+  });
+}
+
 export function padSlotTime(t: string): string {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(t).trim());
   if (!m) return t;

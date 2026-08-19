@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
-import { BranchHopPin, branchHopTooltipText } from "src/modules/admin/driving/BranchHopNotice";
-import {
-  findBranchHop,
-  instructorDayLessons,
-} from "src/modules/admin/driving/instructorBranchHop";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import {
@@ -21,6 +16,7 @@ import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvide
 import {
   armenianWeekdayShort,
   buildBranchInstructorGroups,
+  expandDayGridInstructorColumns,
   formatGridDateLabel,
   padSlotTime,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
@@ -29,7 +25,6 @@ import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
   bookableTimesFromPlan,
-  exclusiveEndForBookableTime,
   normalizePracticalSlotPlan,
   practicalSlotRangeMinutesFromBookable,
   type PracticalSlotPlanRow,
@@ -194,6 +189,55 @@ function paymentCellClass(status: DrivingDayCellBooking["paymentStatus"]): strin
   return "bg-red-600 text-white hover:bg-red-500";
 }
 
+function DrivingDayLegend() {
+  const { t } = useLang();
+  return (
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] sm:text-xs text-muted-foreground">
+      <li className="flex items-center gap-1.5">
+        <span className="inline-block h-3.5 w-5 shrink-0 rounded-sm bg-emerald-600" aria-hidden />
+        {t("adminDrivingDayModalLegendPaid")}
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span className="inline-block h-3.5 w-5 shrink-0 rounded-sm bg-red-600" aria-hidden />
+        {t("adminDrivingDayModalLegendUnpaid")}
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span
+          className="inline-flex h-3.5 items-center rounded-sm border-2 border-amber-500 px-1 text-[9px] font-semibold tabular-nums leading-none text-foreground"
+          aria-hidden
+        >
+          09:00
+        </span>
+        {t("adminDrivingDayModalLegendForced")}
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span className="inline-flex h-3.5 max-w-[3.5rem] items-center justify-center truncate rounded-sm bg-muted px-0.5 text-[8px] font-medium text-muted-foreground">
+          Ա Ազա
+        </span>
+        {t("adminDrivingDayModalLegendOtherBranch")}
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span
+          className="inline-flex h-3.5 w-5 shrink-0 items-center justify-center rounded-sm border border-dashed border-muted-foreground/40 text-[9px] leading-none text-muted-foreground/50"
+          aria-hidden
+        >
+          +
+        </span>
+        {t("adminDrivingDayModalLegendEmpty")}
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span
+          className="inline-flex h-3.5 w-5 shrink-0 items-center justify-center rounded-sm bg-muted-foreground/20"
+          aria-hidden
+        >
+          <span className="h-1.5 w-3 rounded-[1px] bg-foreground/55" />
+        </span>
+        {t("adminDrivingDayModalLegendOccupied")}
+      </li>
+    </ul>
+  );
+}
+
 export default function AdminDrivingDayModal({
   open,
   onOpenChange,
@@ -212,6 +256,11 @@ export default function AdminDrivingDayModal({
   const branchGroups = useMemo(
     () => buildBranchInstructorGroups(branches, instructors, adminBranchId),
     [branches, instructors, adminBranchId],
+  );
+
+  const dayColumnGroups = useMemo(
+    () => expandDayGridInstructorColumns(branchGroups, branches),
+    [branchGroups, branches],
   );
 
   const primaryBranchId = useMemo(() => {
@@ -365,18 +414,6 @@ export default function AdminDrivingDayModal({
     void load();
   }, [open, load, reloadKey]);
 
-  const lessonsByInstructorId = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof instructorDayLessons>>();
-    const seen = new Set<number>();
-    for (const item of items) {
-      const id = Number(item.instructor?.id);
-      if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
-      seen.add(id);
-      map.set(String(id), instructorDayLessons(items, id, day));
-    }
-    return map;
-  }, [items, day]);
-
   const bookingByInstructorTime = useMemo(() => {
     const map = new Map<string, DrivingDayCellBooking>();
     for (const item of items) {
@@ -519,9 +556,9 @@ export default function AdminDrivingDayModal({
       headerClassName="px-4 sm:px-6 pb-3 pt-4"
       footerClassName="px-4 sm:px-6 py-3"
       footer={
-        <div className="flex w-full items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground hidden sm:block">{t("adminDrivingDayModalHint")}</p>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <DrivingDayLegend />
+          <Button type="button" variant="outline" className="shrink-0 self-end sm:self-auto" onClick={() => onOpenChange(false)}>
             {t("cancel")}
           </Button>
         </div>
@@ -553,48 +590,80 @@ export default function AdminDrivingDayModal({
                   >
                     {t("adminDrivingDayModalTimeCol")}
                   </th>
-                  {branchGroups.map((g) => (
+                  {dayColumnGroups.map(({ group, columns }) => (
                     <th
-                      key={g.branchId}
-                      colSpan={g.instructors.length}
+                      key={group.branchId}
+                      colSpan={Math.max(1, columns.length)}
                       className="sticky top-0 z-30 bg-card text-center text-primary font-semibold px-2 py-2 border-r border-b border-primary/15 last:border-r-0 shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                     >
-                      {g.branchName}
+                      {group.branchName}
                     </th>
                   ))}
                 </tr>
                 <tr>
-                  {branchGroups.flatMap((g) =>
-                    g.instructors.map((ins) => (
+                  {dayColumnGroups.flatMap(({ group, columns }) =>
+                    columns.map((col) => (
                       <th
-                        key={`${g.branchId}-${ins.id}`}
-                        className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[8.5rem] max-w-[13rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                        key={`${group.branchId}-${col.instructor.id}-${col.bookingBranchId}`}
+                        className={cn(
+                          "sticky top-9 z-30 text-center text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[8.5rem] max-w-[13rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]",
+                          col.readOnly ? "bg-muted/50 text-muted-foreground" : "bg-card text-primary/90",
+                        )}
                       >
                         <div className="group/ins flex items-center justify-center gap-0.5 min-w-0">
-                          <span className="whitespace-normal leading-tight" title={ins.name}>
-                            {ins.name}
-                          </span>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onAddCustomSlotClick({
-                                    instructor: ins,
-                                    branchId: g.branchId,
-                                    dateIso: day,
-                                  })
-                                }
-                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-primary/50 opacity-70 hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
-                                aria-label={t("adminDrivingDayModalAddCustomSlot")}
-                              >
-                                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[14rem] text-center">
-                              {t("adminDrivingDayModalAddCustomSlot")}
-                            </TooltipContent>
-                          </Tooltip>
+                          {col.readOnly ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="whitespace-normal leading-tight cursor-default"
+                                  title={`${col.instructor.name} · ${col.bookingBranchName}`}
+                                >
+                                  {col.instructor.name}
+                                  <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-[16rem] text-center text-xs">
+                                {t("adminDrivingDayModalOtherBranchCol").replace("{branch}", col.bookingBranchName)}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span
+                              className="whitespace-normal leading-tight"
+                              title={
+                                col.showBranchCode
+                                  ? `${col.instructor.name} · ${col.bookingBranchName}`
+                                  : col.instructor.name
+                              }
+                            >
+                              {col.instructor.name}
+                              {col.showBranchCode ? (
+                                <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
+                              ) : null}
+                            </span>
+                          )}
+                          {col.readOnly ? null : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onAddCustomSlotClick({
+                                      instructor: col.instructor,
+                                      branchId: col.bookingBranchId,
+                                      dateIso: day,
+                                    })
+                                  }
+                                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-primary/50 opacity-70 hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                                  aria-label={t("adminDrivingDayModalAddCustomSlot")}
+                                >
+                                  <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-[14rem] text-center">
+                                {t("adminDrivingDayModalAddCustomSlot")}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </div>
                       </th>
                     )),
@@ -609,27 +678,31 @@ export default function AdminDrivingDayModal({
                         <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-muted-foreground font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)] text-xs">
                           {t("adminDrivingDayModalBreak")}
                         </td>
-                        {branchGroups.flatMap((g) =>
-                          g.instructors.map((ins) => (
+                        {dayColumnGroups.flatMap(({ group, columns }) =>
+                          columns.map((col) => (
                             <td
-                              key={`break-${rowIdx}-${g.branchId}-${ins.id}`}
+                              key={`break-${rowIdx}-${group.branchId}-${col.instructor.id}-${col.bookingBranchId}`}
                               className="p-0 border-r border-b border-border/30 last:border-r-0"
                             >
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onAddCustomSlotClick({
-                                    instructor: ins,
-                                    branchId: g.branchId,
-                                    dateIso: day,
-                                  })
-                                }
-                                className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
-                                title={`${ins.name} · ${t("adminDrivingDayModalBreak")}`}
-                                aria-label={`${ins.name} · ${t("adminDrivingDayModalBreak")}`}
-                              >
-                                +
-                              </button>
+                              {col.readOnly ? (
+                                <div className="w-full min-h-14 bg-muted/30" aria-hidden />
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onAddCustomSlotClick({
+                                      instructor: col.instructor,
+                                      branchId: col.bookingBranchId,
+                                      dateIso: day,
+                                    })
+                                  }
+                                  className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
+                                  title={`${col.instructor.name} · ${t("adminDrivingDayModalBreak")}`}
+                                  aria-label={`${col.instructor.name} · ${t("adminDrivingDayModalBreak")}`}
+                                >
+                                  +
+                                </button>
+                              )}
                             </td>
                           )),
                         )}
@@ -663,19 +736,13 @@ export default function AdminDrivingDayModal({
                           time
                         )}
                       </td>
-                      {branchGroups.flatMap((g) =>
-                        g.instructors.map((ins) => {
-                          const booking = resolveCellBooking(ins, g.branchId, time);
-                          const blockReason = !booking ? resolveBlockReason(ins.id, time) : null;
+                      {dayColumnGroups.flatMap(({ group, columns }) =>
+                        columns.map((col) => {
+                          const ins = col.instructor;
+                          const booking = resolveCellBooking(ins, col.bookingBranchId, time);
+                          const blockReason =
+                            !booking && !col.readOnly ? resolveBlockReason(ins.id, time) : null;
                           const blocked = blockReason != null;
-                          const hop =
-                            !booking && !blocked
-                              ? findBranchHop(lessonsByInstructorId.get(String(ins.id)) ?? [], {
-                                  start: time,
-                                  end: exclusiveEndForBookableTime(time, bookableTimes),
-                                  branchId: g.branchId,
-                                })
-                              : null;
                           const openEmpty = () => {
                             const instructorTimes = planTimesByInstructor.get(String(ins.id));
                             const inSavedPlan = instructorTimes
@@ -683,7 +750,7 @@ export default function AdminDrivingDayModal({
                               : planTimeSet.has(time);
                             onEmptyCellClick({
                               instructor: ins,
-                              branchId: g.branchId,
+                              branchId: col.bookingBranchId,
                               dateIso: day,
                               time,
                               customSlot: !inSavedPlan,
@@ -694,11 +761,12 @@ export default function AdminDrivingDayModal({
                           };
                           return (
                             <td
-                              key={`${time}-${g.branchId}-${ins.id}`}
+                              key={`${time}-${group.branchId}-${ins.id}-${col.bookingBranchId}`}
                               className={cn(
                                 "p-0 border-r border-b border-border/30 last:border-r-0",
                                 isForcedSlotRow &&
                                   "border-t-2 border-b-2 border-t-amber-500 border-b-amber-500 last:border-r-2 last:border-r-amber-500",
+                                col.readOnly && "bg-muted/20",
                               )}
                             >
                               {booking ? (
@@ -716,6 +784,7 @@ export default function AdminDrivingDayModal({
                                       className={cn(
                                         "w-full min-h-14 px-1.5 py-1.5 flex flex-col items-center justify-center gap-0.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
                                         paymentCellClass(booking.paymentStatus),
+                                        col.readOnly && "opacity-90",
                                       )}
                                     >
                                       <span className="text-xs sm:text-[13px] leading-snug font-semibold line-clamp-2">
@@ -733,6 +802,9 @@ export default function AdminDrivingDayModal({
                                     className="max-w-[min(18rem,90vw)] space-y-1 text-left whitespace-normal"
                                   >
                                     <p className="font-medium">{booking.studentName}</p>
+                                    {col.showBranchCode ? (
+                                      <p className="opacity-90">{col.bookingBranchName}</p>
+                                    ) : null}
                                     {booking.studentPhone ? (
                                       <p className="opacity-90 tabular-nums">{booking.studentPhone}</p>
                                     ) : null}
@@ -746,6 +818,11 @@ export default function AdminDrivingDayModal({
                                     ) : null}
                                   </TooltipContent>
                                 </Tooltip>
+                              ) : col.readOnly ? (
+                                <div
+                                  className="w-full min-h-14 bg-muted/30"
+                                  aria-label={`${ins.name} ${col.branchCode} · ${time}`}
+                                />
                               ) : blocked ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -767,29 +844,6 @@ export default function AdminDrivingDayModal({
                                     {blockReason && blockReason !== "bookingSlotUnavailable" ? (
                                       <p className="opacity-80">{t(blockReason as Parameters<typeof t>[0])}</p>
                                     ) : null}
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : hop ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      onClick={openEmpty}
-                                      className={cn(
-                                        "w-full min-h-14 px-1 py-1 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
-                                        hop.tight
-                                          ? "bg-amber-200/90 hover:bg-amber-300/90"
-                                          : "bg-amber-100/80 hover:bg-amber-200/80",
-                                      )}
-                                      title={`${ins.name} · ${time}`}
-                                      aria-label={`${ins.name} · ${time} · ${t("adminDrivingBranchHopCell")}`}
-                                    >
-                                      <BranchHopPin tight={hop.tight} />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-[min(18rem,90vw)] text-left text-xs whitespace-normal">
-                                    <p className="font-medium">{t("adminDrivingBranchHopTitle")}</p>
-                                    <p className="mt-1 opacity-90">{branchHopTooltipText(t, hop)}</p>
                                   </TooltipContent>
                                 </Tooltip>
                               ) : (
