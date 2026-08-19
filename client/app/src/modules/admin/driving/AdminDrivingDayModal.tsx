@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Plus } from "lucide-react";
+import { BranchHopPin, branchHopTooltipText } from "src/modules/admin/driving/BranchHopNotice";
+import {
+  findBranchHop,
+  instructorDayLessons,
+} from "src/modules/admin/driving/instructorBranchHop";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import {
@@ -24,6 +29,7 @@ import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
   bookableTimesFromPlan,
+  exclusiveEndForBookableTime,
   normalizePracticalSlotPlan,
   practicalSlotRangeMinutesFromBookable,
   type PracticalSlotPlanRow,
@@ -52,6 +58,7 @@ type ClassScheduleItem = {
   lessonType: string;
   date: string;
   startTime: string;
+  endTime?: string;
   student: { name: string; phone: string | null; phone2: string | null };
   instructor: { id: number | null; name: string };
   branch: { id: number; name: string };
@@ -358,6 +365,18 @@ export default function AdminDrivingDayModal({
     void load();
   }, [open, load, reloadKey]);
 
+  const lessonsByInstructorId = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof instructorDayLessons>>();
+    const seen = new Set<number>();
+    for (const item of items) {
+      const id = Number(item.instructor?.id);
+      if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+      seen.add(id);
+      map.set(String(id), instructorDayLessons(items, id, day));
+    }
+    return map;
+  }, [items, day]);
+
   const bookingByInstructorTime = useMemo(() => {
     const map = new Map<string, DrivingDayCellBooking>();
     for (const item of items) {
@@ -649,6 +668,30 @@ export default function AdminDrivingDayModal({
                           const booking = resolveCellBooking(ins, g.branchId, time);
                           const blockReason = !booking ? resolveBlockReason(ins.id, time) : null;
                           const blocked = blockReason != null;
+                          const hop =
+                            !booking && !blocked
+                              ? findBranchHop(lessonsByInstructorId.get(String(ins.id)) ?? [], {
+                                  start: time,
+                                  end: exclusiveEndForBookableTime(time, bookableTimes),
+                                  branchId: g.branchId,
+                                })
+                              : null;
+                          const openEmpty = () => {
+                            const instructorTimes = planTimesByInstructor.get(String(ins.id));
+                            const inSavedPlan = instructorTimes
+                              ? instructorTimes.has(time)
+                              : planTimeSet.has(time);
+                            onEmptyCellClick({
+                              instructor: ins,
+                              branchId: g.branchId,
+                              dateIso: day,
+                              time,
+                              customSlot: !inSavedPlan,
+                              customSlotEndTime: inSavedPlan
+                                ? undefined
+                                : nextTimedAfter(displayRows, time),
+                            });
+                          };
                           return (
                             <td
                               key={`${time}-${g.branchId}-${ins.id}`}
@@ -726,25 +769,33 @@ export default function AdminDrivingDayModal({
                                     ) : null}
                                   </TooltipContent>
                                 </Tooltip>
+                              ) : hop ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={openEmpty}
+                                      className={cn(
+                                        "w-full min-h-14 px-1 py-1 flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
+                                        hop.tight
+                                          ? "bg-amber-200/90 hover:bg-amber-300/90"
+                                          : "bg-amber-100/80 hover:bg-amber-200/80",
+                                      )}
+                                      title={`${ins.name} · ${time}`}
+                                      aria-label={`${ins.name} · ${time} · ${t("adminDrivingBranchHopCell")}`}
+                                    >
+                                      <BranchHopPin tight={hop.tight} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-[min(18rem,90vw)] text-left text-xs whitespace-normal">
+                                    <p className="font-medium">{t("adminDrivingBranchHopTitle")}</p>
+                                    <p className="mt-1 opacity-90">{branchHopTooltipText(t, hop)}</p>
+                                  </TooltipContent>
+                                </Tooltip>
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    const instructorTimes = planTimesByInstructor.get(String(ins.id));
-                                    const inSavedPlan = instructorTimes
-                                      ? instructorTimes.has(time)
-                                      : planTimeSet.has(time);
-                                    onEmptyCellClick({
-                                      instructor: ins,
-                                      branchId: g.branchId,
-                                      dateIso: day,
-                                      time,
-                                      customSlot: !inSavedPlan,
-                                      customSlotEndTime: inSavedPlan
-                                        ? undefined
-                                        : nextTimedAfter(displayRows, time),
-                                    });
-                                  }}
+                                  onClick={openEmpty}
                                   className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
                                   title={`${ins.name} · ${time}`}
                                   aria-label={`${ins.name} · ${time}`}

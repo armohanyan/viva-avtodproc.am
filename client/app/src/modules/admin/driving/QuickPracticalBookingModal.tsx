@@ -32,6 +32,11 @@ import {
   validateAdminBookingPayment,
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
+import { BranchHopBanner } from "src/modules/admin/driving/BranchHopNotice";
+import {
+  findBranchHop,
+  instructorDayLessons,
+} from "src/modules/admin/driving/instructorBranchHop";
 import {
   minutesToHHMM,
   normalizeTimeHHMM,
@@ -138,6 +143,7 @@ export default function QuickPracticalBookingModal({
   const [delayedRestStart, setDelayedRestStart] = useState("15:10");
   const [delayedRestEnd, setDelayedRestEnd] = useState("16:10");
   const [busyRanges, setBusyRanges] = useState<BusyRange[]>([]);
+  const [dayLessons, setDayLessons] = useState<ReturnType<typeof instructorDayLessons>>([]);
 
   const dateIso = slotEntries[0]?.dateIso?.slice(0, 10) ?? "";
 
@@ -190,6 +196,7 @@ export default function QuickPracticalBookingModal({
     setDelayedRestStart(end);
     setDelayedRestEnd(addMinutesToTime(end, 60));
     setBusyRanges([]);
+    setDayLessons([]);
   }, [open, initialBranchId, customSlot, customSlotEndTime]);
 
   useEffect(() => {
@@ -203,10 +210,11 @@ export default function QuickPracticalBookingModal({
     });
   }, [open, suggestedTotalAmd]);
 
-  /** Load instructor busy ranges for the day (start/end) so custom times cannot overlap lessons. */
+  /** Load instructor lessons for the day: overlap checks (custom) + branch-hop warning. */
   useEffect(() => {
-    if (!open || !customSlot || !dateIso || !Number.isFinite(Number(instructor.id))) {
+    if (!open || !dateIso || !Number.isFinite(Number(instructor.id))) {
       setBusyRanges([]);
+      setDayLessons([]);
       return;
     }
     let cancelled = false;
@@ -224,12 +232,16 @@ export default function QuickPracticalBookingModal({
             startTime: string;
             endTime: string;
             date: string;
+            branch?: { id: number; name: string };
           }>;
         }>(`/admin/class-schedule?${qs.toString()}`);
         if (cancelled) return;
+        const items = res.items ?? [];
         const id = Number(instructor.id);
+        const lessons = instructorDayLessons(items, id, dateIso);
+        setDayLessons(lessons);
         const byBooking = new Map<number, BusyRange>();
-        for (const item of res.items ?? []) {
+        for (const item of items) {
           if (item.date?.slice(0, 10) !== dateIso || Number(item.instructor?.id) !== id) continue;
           const start = normalizeUiTime(item.startTime) ?? item.startTime;
           const end = normalizeUiTime(item.endTime) ?? item.endTime;
@@ -246,13 +258,16 @@ export default function QuickPracticalBookingModal({
         }
         setBusyRanges([...byBooking.values()]);
       } catch {
-        if (!cancelled) setBusyRanges([]);
+        if (!cancelled) {
+          setBusyRanges([]);
+          setDayLessons([]);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, customSlot, dateIso, instructor.id]);
+  }, [open, dateIso, instructor.id]);
 
   const firstEntry = sortedEntries[0];
   const dateLabel = useMemo(() => {
@@ -261,6 +276,21 @@ export default function QuickPracticalBookingModal({
     if (dates.length === 1) return formatGridDateLabel(dates[0]);
     return `${formatGridDateLabel(dates[0])} – ${formatGridDateLabel(dates[dates.length - 1])}`;
   }, [sortedEntries, dateIso]);
+
+  const branchHop = useMemo(() => {
+    const start = customSlot
+      ? normalizeUiTime(customTimeStart)
+      : (sortedEntries[0]?.time ?? null);
+    if (!start) return null;
+    const last = customSlot
+      ? start
+      : (sortedEntries[sortedEntries.length - 1]?.time ?? start);
+    const end = customSlot
+      ? customEndNorm
+      : addMinutesToTime(last, DEFAULT_CUSTOM_DURATION_MINUTES);
+    if (!end) return null;
+    return findBranchHop(dayLessons, { start, end, branchId: String(branchId) });
+  }, [customSlot, customTimeStart, customEndNorm, sortedEntries, dayLessons, branchId]);
 
   const validateCustomWindow = (start: string, end: string): string | null => {
     const startM = parseTimeToMinutes(start);
@@ -484,6 +514,7 @@ export default function QuickPracticalBookingModal({
       }
     >
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        {branchHop ? <BranchHopBanner hop={branchHop} /> : null}
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-medium text-muted-foreground">
