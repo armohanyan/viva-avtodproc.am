@@ -31,14 +31,14 @@ export type DayGridInstructorColumn = {
   instructor: Instructor;
   bookingBranchId: string;
   bookingBranchName: string;
-  /** Compact branch tag, e.g. «Ա 75», «գն8». */
+  /** Compact label derived from the branch name (initials + trailing number). */
   branchCode: string;
   showBranchCode: boolean;
 };
 
 /**
- * Minimal branch label for column headers.
- * «Ազատամարտիկների 75» → «Ա 75»; «Գարեգին Նժդեհ 8» → «գն8».
+ * Minimal branch label from the live branch name: first letter(s) of word(s) + trailing number.
+ * One-word names keep a space before the number; multi-word names concatenate lowercase initials.
  */
 export function branchMinimalLabel(name: string): string {
   const raw = String(name ?? "").normalize("NFC").trim();
@@ -68,7 +68,8 @@ export function branchShortCode(name: string): string {
 
 /**
  * Flat instructor columns: one column per instructor × served branch.
- * Multi-branch instructors get adjacent columns labeled with {@link branchMinimalLabel}.
+ * Multi-branch instructors are listed first (adjacent columns per branch), then single-branch.
+ * Labels come from {@link branchMinimalLabel} on each branch’s name — nothing is hardcoded.
  * When `branchIdFilter` is set, only that branch’s columns are included.
  */
 export function buildInstructorBranchColumns(
@@ -78,15 +79,25 @@ export function buildInstructorBranchColumns(
 ): DayGridInstructorColumn[] {
   const filterId = branchIdFilter?.trim() || null;
   const byId = new Map(branches.map((b) => [String(b.id), b]));
-  const sortedInstructors = [...instructors].sort((a, b) => a.name.localeCompare(b.name, "hy"));
-  const columns: DayGridInstructorColumn[] = [];
 
-  for (const ins of sortedInstructors) {
+  const withServed = instructors.map((ins) => {
     const allServed = (ins.availableBranchIds ?? [])
       .map((id) => byId.get(String(id)))
       .filter((b): b is Branch => Boolean(b))
       .sort((a, b) => a.name.localeCompare(b.name, "hy"));
     const served = filterId ? allServed.filter((b) => String(b.id) === filterId) : allServed;
+    return { ins, allServed, served };
+  });
+
+  withServed.sort((a, b) => {
+    const aMulti = a.allServed.length > 1 ? 0 : 1;
+    const bMulti = b.allServed.length > 1 ? 0 : 1;
+    if (aMulti !== bMulti) return aMulti - bMulti;
+    return a.ins.name.localeCompare(b.ins.name, "hy");
+  });
+
+  const columns: DayGridInstructorColumn[] = [];
+  for (const { ins, allServed, served } of withServed) {
     if (served.length === 0) continue;
     const showBranchCode = allServed.length > 1;
     for (const b of served) {
