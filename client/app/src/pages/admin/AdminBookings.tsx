@@ -515,6 +515,8 @@ export default function AdminBookings() {
   const [editSystemPayment, setEditSystemPayment] = useState<AdminBookingFinanceLink | null>(null);
   const [slotPick, setSlotPick] = useState<LessonBookingPayload | null>(null);
   const [editSlotPick, setEditSlotPick] = useState<LessonBookingPayload | null>(null);
+  /** Slot keys (`date|time`) marked paid when edit payment status is partial. */
+  const [editPaidSlotKeys, setEditPaidSlotKeys] = useState<Set<string>>(() => new Set());
   const [theoryCohortId, setTheoryCohortId] = useState("");
   const [editTheoryCohortId, setEditTheoryCohortId] = useState("");
   const lastEditSlotInitKey = useRef("");
@@ -899,11 +901,13 @@ export default function AdminBookings() {
   useEffect(() => {
     if (!editBooking) {
       setEditSlotPick(null);
+      setEditPaidSlotKeys(new Set());
       lastEditSlotInitKey.current = "";
       return;
     }
     if (editBooking.type !== "practical" && editBooking.type !== "theory" && editBooking.type !== "theory_personal") {
       setEditSlotPick(null);
+      setEditPaidSlotKeys(new Set());
       lastEditSlotInitKey.current = "";
       return;
     }
@@ -917,8 +921,15 @@ export default function AdminBookings() {
     if (lastEditSlotInitKey.current === key) return;
     lastEditSlotInitKey.current = key;
     const inst = instructors.find((i) => i.name === editBooking.instructorName);
+    const covered = new Set<string>();
     if (editBooking.slotEntries && editBooking.slotEntries.length > 0) {
       const sorted = normalizeSlotEntriesFromApi(editBooking.slotEntries);
+      for (const raw of editBooking.slotEntries) {
+        if (raw.paymentCovered) {
+          covered.add(`${raw.dateIso.slice(0, 10)}|${padSlotTime(raw.time)}`);
+        }
+      }
+      setEditPaidSlotKeys(covered);
       const first = sorted[0];
       const sameDayTimes = sorted.filter((e) => e.dateIso === first.dateIso).map((e) => e.time);
       setEditSlotPick({
@@ -931,6 +942,7 @@ export default function AdminBookings() {
       });
       return;
     }
+    setEditPaidSlotKeys(new Set());
     const times = hourlyStartsFromBookingRange(editBooking.time, editBooking.endTime);
     const slotTimes = times.length > 0 ? times : [editBooking.time];
     setEditSlotPick({
@@ -1582,6 +1594,28 @@ export default function AdminBookings() {
     setEditPaymentErrorKey(null);
 
     const paymentOnlySave = bookingModalTab === "payment";
+    const editSlotList =
+      editSlotPick?.slotEntries && editSlotPick.slotEntries.length > 0
+        ? editSlotPick.slotEntries
+        : (editSlotPick?.times ?? []).map((time) => ({
+            dateIso: editSlotPick!.dateIso,
+            time,
+          }));
+    const showEditPaidSlots =
+      editBookingPayment.status === "partial" && editSlotList.length > 1;
+    if (showEditPaidSlots && editPaidSlotKeys.size === 0) {
+      setBookingModalTab("payment");
+      showToast(t("adminDrivingPaidSlotsRequired"), "error");
+      return;
+    }
+    const paidSlotEntries =
+      editBookingPayment.status === "partial"
+        ? editSlotList.length === 1
+          ? editSlotList.map((e) => ({ dateIso: e.dateIso.slice(0, 10), time: padSlotTime(e.time) }))
+          : editSlotList
+              .filter((e) => editPaidSlotKeys.has(`${e.dateIso.slice(0, 10)}|${padSlotTime(e.time)}`))
+              .map((e) => ({ dateIso: e.dateIso.slice(0, 10), time: padSlotTime(e.time) }))
+        : undefined;
 
     try {
       const pick = editSlotPick!;
@@ -1596,6 +1630,7 @@ export default function AdminBookings() {
             branchId: Number(editBooking.branchId),
             totalPriceAmd: editTotal,
             ...paymentBody,
+            ...(paidSlotEntries ? { paidSlotEntries } : {}),
           }
         : editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
           ? {
@@ -1613,6 +1648,7 @@ export default function AdminBookings() {
                 ? { meetLink: editBooking.meetLink?.trim() || null }
                 : {}),
               ...paymentBody,
+              ...(paidSlotEntries ? { paidSlotEntries } : {}),
             }
           : {
               studentId: editBooking.studentId,
@@ -1623,6 +1659,7 @@ export default function AdminBookings() {
               status: editBooking.status,
               branchId: Number(editBooking.branchId),
               ...paymentBody,
+              ...(paidSlotEntries ? { paidSlotEntries } : {}),
             };
       await vivaApiJson(`/bookings/${encodeURIComponent(editBooking.id)}`, {
         method: "PATCH",
@@ -2688,12 +2725,55 @@ export default function AdminBookings() {
                     </p>
                   </div>
                 ) : (
-                  <AdminBookingPaymentSection
-                    totalPriceAmd={editBooking.totalPriceAmd ?? 0}
-                    value={editBookingPayment}
-                    onChange={setEditBookingPayment}
-                    errorKey={editPaymentErrorKey}
-                  />
+                  <>
+                    <AdminBookingPaymentSection
+                      totalPriceAmd={editBooking.totalPriceAmd ?? 0}
+                      value={editBookingPayment}
+                      onChange={setEditBookingPayment}
+                      errorKey={editPaymentErrorKey}
+                    />
+                    {editBookingPayment.status === "partial" &&
+                    ((editSlotPick?.slotEntries?.length ?? 0) > 1 ||
+                      (editSlotPick?.times.length ?? 0) > 1) ? (
+                      <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+                        <p className="text-sm font-medium text-foreground">{t("adminDrivingPaidSlotsHint")}</p>
+                        <ul className="space-y-1.5 text-sm text-foreground">
+                          {(editSlotPick?.slotEntries && editSlotPick.slotEntries.length > 0
+                            ? editSlotPick.slotEntries
+                            : (editSlotPick?.times ?? []).map((time) => ({
+                                dateIso: editSlotPick!.dateIso,
+                                time,
+                              }))
+                          ).map((entry, idx) => {
+                            const key = `${entry.dateIso.slice(0, 10)}|${padSlotTime(entry.time)}`;
+                            const checked = editPaidSlotKeys.has(key);
+                            return (
+                              <li key={`${key}-${idx}`}>
+                                <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      setEditPaidSlotKeys((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(key)) next.delete(key);
+                                        else next.add(key);
+                                        return next;
+                                      });
+                                    }}
+                                    className="h-4 w-4 rounded border-input accent-primary"
+                                  />
+                                  <span className="tabular-nums">
+                                    {formatShortDateFromIso(entry.dateIso, lang)} · {padSlotTime(entry.time)}
+                                  </span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </TabsContent>
             </Tabs>

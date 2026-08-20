@@ -15,6 +15,11 @@ export class BookingSlot extends Model<InferAttributes<BookingSlot>, InferCreati
   declare instructorUserId: CreationOptional<number | null>;
   declare dateIso: string;
   declare slotTime: string;
+  /**
+   * When the parent booking is `partial`, marks which hours are already paid.
+   * Fully paid / unpaid bookings override this in schedule coloring (all covered / none).
+   */
+  declare paymentCovered: CreationOptional<boolean>;
 }
 
 BookingSlot.init(
@@ -24,6 +29,7 @@ BookingSlot.init(
     instructorUserId: fkUnsignedIntNullable(),
     dateIso: { type: DataTypes.DATEONLY, allowNull: false },
     slotTime: { type: DataTypes.STRING(16), allowNull: false },
+    paymentCovered: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   },
   {
     sequelize,

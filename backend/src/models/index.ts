@@ -1256,6 +1256,7 @@ async function ensureBookingSlotsTable(): Promise<void> {
         \`instructor_user_id\` INT UNSIGNED NOT NULL,
         \`date_iso\` DATE NOT NULL,
         \`slot_time\` VARCHAR(16) NOT NULL,
+        \`payment_covered\` TINYINT(1) NOT NULL DEFAULT 0,
         \`created_at\` DATETIME NOT NULL,
         \`updated_at\` DATETIME NOT NULL,
         PRIMARY KEY (\`id\`),
@@ -1268,6 +1269,33 @@ async function ensureBookingSlotsTable(): Promise<void> {
   }
   // Do not DELETE/INSERT booking_slots at startup — that caused production slot loss on PM2 restart.
   // One-time backfill belongs in a versioned migration script, not syncModels().
+}
+
+/** Per-hour payment flag for partial bookings (day graphic green vs red). */
+async function ensureBookingSlotsPaymentCoveredColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_slots'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'booking_slots'
+       AND COLUMN_NAME = 'payment_covered'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length > 0) {
+    return;
+  }
+  await sequelize.query(
+    'ALTER TABLE `booking_slots` ADD COLUMN `payment_covered` TINYINT(1) NOT NULL DEFAULT 0 AFTER `slot_time`',
+  );
 }
 
 /**
@@ -2596,6 +2624,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsHoldExtensionCountColumn();
   await ensureBookingsMultiSlotColumns();
   await ensureBookingSlotsTable();
+  await ensureBookingSlotsPaymentCoveredColumn();
   await ensureMarketingSettingsIdColumn();
   await ensureAuthTables();
   await ensureStudentInvitationsTable();

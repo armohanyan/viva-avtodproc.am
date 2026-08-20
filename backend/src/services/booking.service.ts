@@ -391,7 +391,7 @@ export type BookingAdminDto = {
   /** `null` = not set; instructor or staff may update. */
   lessonPassedSuccessfully: boolean | null;
   /** From `booking_slots` when loaded (admin calendar / multi-day edits). */
-  slotEntries?: { dateIso: string; time: string }[];
+  slotEntries?: { dateIso: string; time: string; paymentCovered?: boolean }[];
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
   /** Set when the booking is fully paid (admin or online). */
@@ -868,6 +868,60 @@ async function syncBookingSlotRowsFromDesired(
       },
     });
   }
+}
+
+/**
+ * Sync per-hour `payment_covered` flags from booking payment status / explicit paid slots.
+ * - paid → all covered
+ * - unpaid / pending / failed → none covered
+ * - partial → only `paidSlotEntries` (when provided); otherwise leave existing flags
+ */
+async function syncSlotPaymentCoverage(
+  bookingId: number,
+  opts: {
+    paymentStatus: string | null | undefined;
+    paidSlotEntries?: readonly { dateIso: string; time: string }[] | null;
+  },
+  transaction: Transaction,
+): Promise<void> {
+  const status = String(opts.paymentStatus ?? '')
+    .trim()
+    .toLowerCase();
+  if (status === 'paid') {
+    await BookingSlot.update({ paymentCovered: true }, { where: { bookingId }, transaction });
+    return;
+  }
+  if (status === 'unpaid' || status === 'pending' || status === 'failed') {
+    await BookingSlot.update({ paymentCovered: false }, { where: { bookingId }, transaction });
+    return;
+  }
+  if (status !== 'partial' || opts.paidSlotEntries == null) {
+    return;
+  }
+  const slots = await BookingSlot.findAll({ where: { bookingId }, transaction });
+  if (slots.length === 0) return;
+  const coveredKeys = new Set(
+    opts.paidSlotEntries.map((e) =>
+      bookingSlotRowKey(dateIsoString(e.dateIso), normalizeTimeHHMM(e.time) ?? e.time),
+    ),
+  );
+  for (const slot of slots) {
+    const key = bookingSlotRowKey(dateIsoString(slot.dateIso), normalizeTimeHHMM(slot.slotTime) ?? slot.slotTime);
+    const covered = coveredKeys.has(key);
+    if (Boolean(slot.paymentCovered) !== covered) {
+      await slot.update({ paymentCovered: covered }, { transaction });
+    }
+  }
+}
+
+function effectivePaymentStatusAfterPatch(
+  row: Booking,
+  payUpdate: Partial<{ paymentStatus: string | null }>,
+): string {
+  if (payUpdate.paymentStatus != null && String(payUpdate.paymentStatus).trim()) {
+    return String(payUpdate.paymentStatus).trim().toLowerCase();
+  }
+  return String(row.paymentStatus ?? '').trim().toLowerCase();
 }
 
 async function replaceBookingSlotRows(
@@ -1673,7 +1727,7 @@ export default class BookingService {
       ],
     });
     const bookingIds = rows.map((r) => r.id);
-    const slotByBooking = new Map<number, { dateIso: string; time: string }[]>();
+    const slotByBooking = new Map<number, { dateIso: string; time: string; paymentCovered?: boolean }[]>();
     if (bookingIds.length > 0) {
       const slotRows = await BookingSlot.findAll({
         where: { bookingId: { [Op.in]: bookingIds } },
@@ -1685,7 +1739,11 @@ export default class BookingService {
       for (const s of slotRows) {
         const bid = s.bookingId;
         const list = slotByBooking.get(bid) ?? [];
-        list.push({ dateIso: dateIsoString(s.dateIso), time: s.slotTime });
+        list.push({
+          dateIso: dateIsoString(s.dateIso),
+          time: s.slotTime,
+          paymentCovered: Boolean(s.paymentCovered),
+        });
         slotByBooking.set(bid, list);
       }
     }
@@ -1877,7 +1935,7 @@ export default class BookingService {
   private static async attachSlotsAndFinance(items: BookingAdminListItemDto[]): Promise<BookingAdminListItemDto[]> {
     const bookingIds = items.map((b) => b.id);
     if (bookingIds.length === 0) return items;
-    const slotByBooking = new Map<number, { dateIso: string; time: string }[]>();
+    const slotByBooking = new Map<number, { dateIso: string; time: string; paymentCovered?: boolean }[]>();
     const [slotRows, financeRows] = await Promise.all([
       BookingSlot.findAll({
         where: { bookingId: { [Op.in]: bookingIds } },
@@ -1893,7 +1951,11 @@ export default class BookingService {
     ]);
     for (const s of slotRows) {
       const list = slotByBooking.get(s.bookingId) ?? [];
-      list.push({ dateIso: dateIsoString(s.dateIso), time: s.slotTime });
+      list.push({
+        dateIso: dateIsoString(s.dateIso),
+        time: s.slotTime,
+        paymentCovered: Boolean(s.paymentCovered),
+      });
       slotByBooking.set(s.bookingId, list);
     }
     const manualByBooking = new Map<number, AdminBookingFinanceLinkDto>();
@@ -2569,6 +2631,8 @@ export default class BookingService {
     isGift?: boolean;
     giftNote?: string | null;
     createdByAccountType?: 'admin' | 'super_admin' | null;
+    /** When payment is partial: which hours are already paid (day graphic). */
+    paidSlotEntries?: readonly { dateIso: string; time: string }[];
   }): Promise<BookingAdminDto | null> {
     const entries = input.entries;
     const instructor =
@@ -2681,6 +2745,14 @@ export default class BookingService {
         );
         newId = created.id;
         await replaceBookingSlotRowsFromEntries(newId, instructorUserId, entries, transaction);
+        await syncSlotPaymentCoverage(
+          newId,
+          {
+            paymentStatus: payStatus,
+            paidSlotEntries: input.paidSlotEntries,
+          },
+          transaction,
+        );
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -2727,6 +2799,7 @@ export default class BookingService {
     isGift?: boolean;
     giftNote?: string | null;
     createdByAccountType?: 'admin' | 'super_admin' | null;
+    paidSlotEntries?: readonly { dateIso: string; time: string }[];
   }): Promise<BookingAdminDto | null> {
     let allowedPracticalTimes: string[] | undefined;
     let allowCustomPractical =
@@ -2797,6 +2870,7 @@ export default class BookingService {
         isGift: input.isGift,
         giftNote: input.giftNote,
         createdByAccountType: input.createdByAccountType,
+        paidSlotEntries: input.paidSlotEntries,
       });
     }
 
@@ -2838,6 +2912,7 @@ export default class BookingService {
           isGift: input.isGift,
           giftNote: input.giftNote,
           createdByAccountType: input.createdByAccountType,
+          paidSlotEntries: input.paidSlotEntries,
         });
       }
       const lessonType: 'practical' | 'theory' | 'theory_personal' =
@@ -2865,6 +2940,7 @@ export default class BookingService {
         isGift: input.isGift,
         giftNote: input.giftNote,
         createdByAccountType: input.createdByAccountType,
+        paidSlotEntries: input.paidSlotEntries,
       });
     }
 
@@ -3177,6 +3253,7 @@ export default class BookingService {
     isGift?: boolean;
     giftNote?: string | null;
     createdByAccountType?: 'admin' | 'super_admin' | null;
+    paidSlotEntries?: readonly { dateIso: string; time: string }[];
   }): Promise<BookingAdminDto | null> {
     const dateIso = input.dateIso.slice(0, 10);
 
@@ -3337,6 +3414,14 @@ export default class BookingService {
             slotTime,
           })),
           { transaction },
+        );
+        await syncSlotPaymentCoverage(
+          newId,
+          {
+            paymentStatus: payStatusMulti,
+            paidSlotEntries: input.paidSlotEntries,
+          },
+          transaction,
         );
       });
     } catch (e) {
@@ -3501,6 +3586,16 @@ export default class BookingService {
         await replaceBookingSlotRows(id, instructorUserId, dateIso, sorted, transaction);
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+        } else {
+          await syncSlotPaymentCoverage(
+            id,
+            {
+              paymentStatus: effectivePaymentStatusAfterPatch(row, payUpdate),
+              paidSlotEntries: (patch as { paidSlotEntries?: readonly { dateIso: string; time: string }[] })
+                .paidSlotEntries,
+            },
+            transaction,
+          );
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: id,
@@ -3541,6 +3636,7 @@ export default class BookingService {
       totalPriceAmd?: number;
       allowCustomPracticalTime?: boolean;
       customSlotEndTime?: string;
+      paidSlotEntries?: readonly { dateIso: string; time: string }[];
     }>;
     lessonType: 'practical' | 'theory_personal';
     entries: AdminSlotEntry[];
@@ -3658,6 +3754,15 @@ export default class BookingService {
         await replaceBookingSlotRowsFromEntries(id, instructorUserId, entries, transaction);
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+        } else {
+          await syncSlotPaymentCoverage(
+            id,
+            {
+              paymentStatus: effectivePaymentStatusAfterPatch(row, payUpdate),
+              paidSlotEntries: patch.paidSlotEntries,
+            },
+            transaction,
+          );
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: id,
@@ -3692,6 +3797,7 @@ export default class BookingService {
       paymentNotes?: string | null;
       paymentReminderDate?: string | null;
       totalPriceAmd?: number;
+      paidSlotEntries?: readonly { dateIso: string; time: string }[];
     }>,
   ): Promise<BookingAdminDto | null> {
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
@@ -3701,6 +3807,15 @@ export default class BookingService {
         ? resolveAdminTotalPriceAmd(patch.totalPriceAmd, bookingTotalPriceAmd(row))
         : row.totalPriceAmd ?? null;
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalAmd);
+
+    if (patch.branchId !== undefined && patch.branchId !== row.branchId && row.instructorUserId != null) {
+      const branchOk = await InstructorBranch.findOne({
+        where: { instructorUserId: row.instructorUserId, branchId: patch.branchId },
+      });
+      if (!branchOk) {
+        throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+    }
 
     AuditLogService.recordFireAndForget({
       category: 'booking',
@@ -3717,6 +3832,7 @@ export default class BookingService {
           paidAmountAmd: patch.paidAmountAmd,
           paymentNotes: patch.paymentNotes,
           paymentReminderDate: patch.paymentReminderDate,
+          paidSlotEntryCount: patch.paidSlotEntries?.length ?? null,
         },
         previousStatus: row.status,
         previousPaymentStatus: row.paymentStatus,
@@ -3737,6 +3853,15 @@ export default class BookingService {
       if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
         await auditBookingSlotsCleared(row.id, 'slots_cleared_status', 'Status no longer reserves slot', transaction);
         await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+      } else {
+        await syncSlotPaymentCoverage(
+          id,
+          {
+            paymentStatus: effectivePaymentStatusAfterPatch(row, payUpdate),
+            paidSlotEntries: patch.paidSlotEntries,
+          },
+          transaction,
+        );
       }
       await recordRefundLedgerWhenAdminMarksRefundedInTx({
         bookingId: id,
@@ -3773,6 +3898,7 @@ export default class BookingService {
       totalPriceAmd?: number;
       allowCustomPracticalTime?: boolean;
       customSlotEndTime?: string;
+      paidSlotEntries?: readonly { dateIso: string; time: string }[];
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
@@ -3979,6 +4105,15 @@ export default class BookingService {
         }
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: row.id }, transaction });
+        } else {
+          await syncSlotPaymentCoverage(
+            row.id,
+            {
+              paymentStatus: effectivePaymentStatusAfterPatch(row, payUpdate),
+              paidSlotEntries: patch.paidSlotEntries,
+            },
+            transaction,
+          );
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: row.id,

@@ -29,7 +29,7 @@ export type AdminBookingListItem = {
   dateIso: string;
   time: string;
   endTime?: string | null;
-  slotEntries?: { dateIso: string; time: string }[];
+  slotEntries?: { dateIso: string; time: string; paymentCovered?: boolean }[];
   totalPriceAmd?: number | null;
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;

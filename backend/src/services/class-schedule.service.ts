@@ -269,12 +269,18 @@ function inferBookingType(
   return 'single';
 }
 
-function resolvePaymentStatus(row: Booking): ClassSchedulePaymentStatus {
+function resolvePaymentStatusForOccurrence(
+  row: Booking,
+  slot: BookingSlot | null | undefined,
+): ClassSchedulePaymentStatus {
   const prepaid = row.prepaidMeta as Record<string, unknown> | null;
   if (prepaid && (Number(prepaid.packageOrderId) > 0 || Number(prepaid.extraPracticalUnits) > 0)) {
     return 'free';
   }
   if (row.paymentStatus === 'paid' || row.paidAt != null) return 'paid';
+  if (row.paymentStatus === 'partial' && slot && Boolean(slot.paymentCovered)) {
+    return 'paid';
+  }
   if (row.paymentStatus === 'unpaid' || row.paymentStatus === 'pending' || row.paymentStatus === 'failed') {
     return 'pending';
   }
@@ -500,7 +506,6 @@ export default class ClassScheduleService {
             ? { id: 0, name: `Order #${packageOrderId}`, isIncludedLesson: true }
             : null;
 
-      const payment = { status: resolvePaymentStatus(row) };
       const notes = buildNotes(row);
       const paymentNotes = row.paymentNotes?.trim() ? row.paymentNotes.trim() : null;
       const cancellationRequestedAt = row.cancellationRequestedAt
@@ -522,11 +527,13 @@ export default class ClassScheduleService {
           ? slots.map((s) => ({
               date: dateIsoString(s.dateIso),
               startTime: normalizeTimeHHMM(s.slotTime),
+              slot: s as BookingSlot,
             }))
           : [
               {
                 date: dateIsoString(row.dateIso),
                 startTime: normalizeTimeHHMM(row.time),
+                slot: null as BookingSlot | null,
               },
             ];
       const slotTimesByDate = new Map<string, string[]>();
@@ -572,7 +579,7 @@ export default class ClassScheduleService {
             address: branchRow?.mapUrl?.trim() || branchRow?.phone?.trim() || '',
           },
           package: packageBlock,
-          payment,
+          payment: { status: resolvePaymentStatusForOccurrence(row, occ.slot) },
           notes,
           paymentNotes,
           cancellationRequestedAt,

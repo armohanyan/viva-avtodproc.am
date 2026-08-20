@@ -51,6 +51,15 @@ const createBodySchema = z.object({
   allowCustomPracticalTime: z.boolean().optional(),
   /** Exclusive end HH:MM for allowCustomPracticalTime bookings. */
   customSlotEndTime: z.string().min(4).optional(),
+  /** When payment is partial: which slot hours are already paid (day graphic). */
+  paidSlotEntries: z
+    .array(
+      z.object({
+        dateIso: z.string().min(1),
+        time: z.string().min(4),
+      }),
+    )
+    .optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -494,6 +503,7 @@ export default class BookingController {
             createdByAccountType: readStaffAccountTypeFromToken(req),
             allowCustomPracticalTime: body.allowCustomPracticalTime,
             customSlotEndTime: body.customSlotEndTime,
+            paidSlotEntries: body.paidSlotEntries,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -564,6 +574,7 @@ export default class BookingController {
         createdByAccountType: readStaffAccountTypeFromToken(req),
         allowCustomPracticalTime: body.allowCustomPracticalTime,
         customSlotEndTime: body.customSlotEndTime,
+        paidSlotEntries: body.paidSlotEntries,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

@@ -30,6 +30,13 @@ import {
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
 import AdminInstructorDaySlotsModal from "src/modules/admin/booking/AdminInstructorDaySlotsModal";
+import { BranchHopBanner } from "src/modules/admin/driving/BranchHopNotice";
+import {
+  findBranchHop,
+  instructorDayLessons,
+  type ClassScheduleHopItem,
+} from "src/modules/admin/driving/instructorBranchHop";
+import { minutesToHHMM, parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
 import type { Branch } from "src/modules/branches";
 
 type Status = "confirmed" | "pending" | "cancelled" | "refunded";
@@ -45,6 +52,8 @@ type Props = {
   onChanged: () => void;
   onDeleted: () => void;
 };
+
+const DEFAULT_LESSON_MINUTES = 70;
 
 function parseTotalPriceAmd(str: string, fallback: number): number {
   const parsed = parseAmdInput(str);
@@ -76,6 +85,20 @@ function slotsFromBooking(booking: AdminBookingRow): { dateIso: string; time: st
   ];
 }
 
+function paidKeysFromBooking(booking: AdminBookingRow): Set<string> {
+  const keys = new Set<string>();
+  const entries = booking.slotEntries ?? [];
+  if (entries.length > 0) {
+    for (const e of entries) {
+      if (e.paymentCovered) {
+        keys.add(slotEntryKey(e.dateIso.slice(0, 10), padSlotTime(e.time)));
+      }
+    }
+    return keys;
+  }
+  return keys;
+}
+
 function slotEntriesEqual(
   a: readonly { dateIso: string; time: string }[],
   b: readonly { dateIso: string; time: string }[],
@@ -86,6 +109,12 @@ function slotEntriesEqual(
       entry.dateIso.slice(0, 10) === b[idx]!.dateIso.slice(0, 10) &&
       padSlotTime(entry.time) === padSlotTime(b[idx]!.time),
   );
+}
+
+function addMinutesToTime(time: string, minutes: number): string {
+  const start = parseTimeToMinutes(time);
+  if (!Number.isFinite(start)) return time;
+  return minutesToHHMM(Math.min(23 * 60 + 59, start + minutes));
 }
 
 export default function PracticalBookingDetailModal({
@@ -106,17 +135,21 @@ export default function PracticalBookingDetailModal({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("pending");
+  const [branchId, setBranchId] = useState("");
   const [totalPriceStr, setTotalPriceStr] = useState("");
   const [bookingPayment, setBookingPayment] = useState<AdminBookingPaymentState>(() =>
     adminPaymentFromBooking({}),
   );
   const [paymentErrorKey, setPaymentErrorKey] = useState<TranslationKey | null>(null);
   const [slotEntries, setSlotEntries] = useState<{ dateIso: string; time: string }[]>([]);
+  /** Slot keys marked as paid when booking payment is partial. */
+  const [paidSlotKeys, setPaidSlotKeys] = useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [slotsModalOpen, setSlotsModalOpen] = useState(false);
   const [slotToRemove, setSlotToRemove] = useState<{ dateIso: string; time: string } | null>(null);
   const [removingSlot, setRemovingSlot] = useState(false);
+  const [dayLessons, setDayLessons] = useState<ReturnType<typeof instructorDayLessons>>([]);
 
   const load = useCallback(async () => {
     if (!bookingId) return;
@@ -127,6 +160,7 @@ export default function PracticalBookingDetailModal({
       const row = normalizeAdminBookingRow(raw);
       setBooking(row);
       setStatus((row.status as Status) || "pending");
+      setBranchId(String(row.branchId));
       setTotalPriceStr(
         row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd))
           ? String(Math.round(Number(row.totalPriceAmd)))
@@ -142,6 +176,7 @@ export default function PracticalBookingDetailModal({
           : null),
       );
       setSlotEntries(slotsFromBooking(row));
+      setPaidSlotKeys(paidKeysFromBooking(row));
       setPaymentErrorKey(null);
     } catch (e) {
       setLoadError(getApiErrorMessage(e));
@@ -163,6 +198,43 @@ export default function PracticalBookingDetailModal({
     return null;
   }, [booking, instructors]);
 
+  const branchOptions = useMemo(() => {
+    const available = instructor?.availableBranchIds ?? [];
+    if (available.length === 0) return branches;
+    const allowed = new Set(available.map(String));
+    if (branchId) allowed.add(String(branchId));
+    const filtered = branches.filter((b) => allowed.has(String(b.id)));
+    return filtered.length > 0 ? filtered : branches;
+  }, [instructor, branches, branchId]);
+
+  useEffect(() => {
+    if (!open || !instructor || !booking) {
+      setDayLessons([]);
+      return;
+    }
+    const dateIso = (slotEntries[0]?.dateIso ?? booking.dateIso).slice(0, 10);
+    const instructorIdNum = Number(instructor.id);
+    if (!dateIso || !Number.isFinite(instructorIdNum) || instructorIdNum <= 0) {
+      setDayLessons([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await vivaApiJson<{ items?: ClassScheduleHopItem[] }>(
+          `/admin/class-schedule?date=${encodeURIComponent(dateIso)}&lessonType=practical`,
+        );
+        if (cancelled) return;
+        setDayLessons(instructorDayLessons(data.items ?? [], instructorIdNum, dateIso));
+      } catch {
+        if (!cancelled) setDayLessons([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, instructor, booking, slotEntries]);
+
   const totalPriceAmd = useMemo(
     () => parseTotalPriceAmd(totalPriceStr, Number(booking?.totalPriceAmd) || 0),
     [totalPriceStr, booking?.totalPriceAmd],
@@ -170,6 +242,15 @@ export default function PracticalBookingDetailModal({
 
   const sortedEntries = useMemo(() => sortSlotEntriesChrono(slotEntries), [slotEntries]);
   const firstEntry = sortedEntries[0];
+  const showPaidSlotPickers = bookingPayment.status === "partial" && sortedEntries.length > 1;
+
+  const branchHop = useMemo(() => {
+    if (!firstEntry) return null;
+    const start = firstEntry.time;
+    const last = sortedEntries[sortedEntries.length - 1]?.time ?? start;
+    const end = addMinutesToTime(last, DEFAULT_LESSON_MINUTES);
+    return findBranchHop(dayLessons, { start, end, branchId: String(branchId) });
+  }, [firstEntry, sortedEntries, dayLessons, branchId]);
 
   const dateLabel = useMemo(() => {
     const dates = Array.from(new Set(sortedEntries.map((e) => e.dateIso)));
@@ -177,6 +258,16 @@ export default function PracticalBookingDetailModal({
     if (dates.length === 1) return formatGridDateLabel(dates[0]!);
     return `${formatGridDateLabel(dates[0]!)} – ${formatGridDateLabel(dates[dates.length - 1]!)}`;
   }, [sortedEntries]);
+
+  const togglePaidSlot = (entry: { dateIso: string; time: string }) => {
+    const key = slotEntryKey(entry.dateIso, entry.time);
+    setPaidSlotKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,6 +280,11 @@ export default function PracticalBookingDetailModal({
       return;
     }
     setPaymentErrorKey(null);
+
+    if (showPaidSlotPickers && paidSlotKeys.size === 0) {
+      showToast(t("adminDrivingPaidSlotsRequired"), "error");
+      return;
+    }
 
     const paymentBody = adminPaymentApiPayload(bookingPayment, totalPriceAmd);
     const paid =
@@ -210,14 +306,24 @@ export default function PracticalBookingDetailModal({
         Boolean(customEnd) &&
         (!scheduleChanged || padSlotTime(sortedEntries[0]!.time) === padSlotTime(booking.time));
 
+      const paidSlotEntries =
+        paymentBody.adminPaymentStatus === "partial"
+          ? sortedEntries.length === 1
+            ? sortedEntries.map((entry) => ({ dateIso: entry.dateIso, time: entry.time }))
+            : sortedEntries
+                .filter((entry) => paidSlotKeys.has(slotEntryKey(entry.dateIso, entry.time)))
+                .map((entry) => ({ dateIso: entry.dateIso, time: entry.time }))
+          : undefined;
+
       await vivaApiJson(`/bookings/${encodeURIComponent(booking.id)}`, {
         method: "PATCH",
         body: {
           studentId: Number(booking.studentId),
-          branchId: Number(booking.branchId),
+          branchId: Number(branchId),
           status,
           totalPriceAmd,
           ...paymentBody,
+          ...(paidSlotEntries ? { paidSlotEntries } : {}),
           ...(scheduleChanged
             ? {
                 type: "practical" as const,
@@ -260,7 +366,7 @@ export default function PracticalBookingDetailModal({
               createdAt: new Date(bookingPayment.datetimeLocal).toISOString(),
               customer: (booking.studentName ?? "").trim() || `Student #${booking.studentId}`,
               email: (booking.studentEmail ?? "").trim(),
-              branchId: Number(booking.branchId),
+              branchId: Number(branchId),
               method: bookingPayment.method,
               grossAmd: paid,
               status: financeStatusFromBookingStatus(status),
@@ -376,6 +482,8 @@ export default function PracticalBookingDetailModal({
           <p className="text-sm text-destructive">{loadError}</p>
         ) : booking ? (
           <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+            {branchHop ? <BranchHopBanner hop={branchHop} /> : null}
+
             <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-muted-foreground">
@@ -402,10 +510,14 @@ export default function PracticalBookingDetailModal({
                     <span className="ml-1 tabular-nums text-foreground">· {dateLabel}</span>
                   ) : null}
                 </p>
-                <ul className="mt-1 max-h-40 overflow-y-auto space-y-1 text-sm text-foreground">
+                {showPaidSlotPickers ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t("adminDrivingPaidSlotsHint")}</p>
+                ) : null}
+                <ul className="mt-1 max-h-48 overflow-y-auto space-y-1 text-sm text-foreground">
                   {sortedEntries.map((entry) => {
                     const key = slotEntryKey(entry.dateIso, entry.time);
                     const isFocus = focusKey === key;
+                    const isPaidHour = paidSlotKeys.has(key);
                     return (
                       <li
                         key={key}
@@ -414,14 +526,34 @@ export default function PracticalBookingDetailModal({
                           isFocus ? "bg-primary/10 ring-1 ring-primary/30" : "",
                         )}
                       >
-                        <span>
-                          {formatGridDateLabel(entry.dateIso)} · {entry.time}
-                          {isFocus ? (
-                            <span className="ml-1.5 text-[11px] font-medium text-primary">
-                              {t("adminDrivingClickedSlotHint")}
-                            </span>
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          {showPaidSlotPickers ? (
+                            <label className="inline-flex shrink-0 items-center gap-1.5 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={isPaidHour}
+                                disabled={submitting || removingSlot}
+                                onChange={() => togglePaidSlot(entry)}
+                                className="h-3.5 w-3.5 rounded border-input accent-primary"
+                                aria-label={t("adminDrivingSlotPaidCheckbox")}
+                              />
+                              <span className="sr-only">{t("adminDrivingSlotPaidCheckbox")}</span>
+                            </label>
                           ) : null}
-                        </span>
+                          <span className="min-w-0 truncate">
+                            {formatGridDateLabel(entry.dateIso)} · {entry.time}
+                            {isFocus ? (
+                              <span className="ml-1.5 text-[11px] font-medium text-primary">
+                                {t("adminDrivingClickedSlotHint")}
+                              </span>
+                            ) : null}
+                            {showPaidSlotPickers && isPaidHour ? (
+                              <span className="ml-1.5 text-[11px] font-medium text-emerald-700">
+                                {t("adminDrivingSlotPaidBadge")}
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
                         <button
                           type="button"
                           disabled={submitting || removingSlot}
@@ -465,10 +597,17 @@ export default function PracticalBookingDetailModal({
                 <label className="block text-sm font-medium text-muted-foreground mb-1">
                   {t("adminDrivingQuickBookingBranchLabel")}
                 </label>
-                <p className="h-10 flex items-center rounded-lg border border-input bg-muted/30 px-3 text-sm text-foreground">
-                  {branches.find((b) => String(b.id) === String(booking.branchId))?.name ??
-                    `#${booking.branchId}`}
-                </p>
+                <select
+                  value={branchId}
+                  onChange={(e) => setBranchId(e.target.value)}
+                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {branchOptions.map((br) => (
+                    <option key={br.id} value={br.id}>
+                      {br.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">
@@ -508,14 +647,19 @@ export default function PracticalBookingDetailModal({
           }}
           instructorId={instructor.id}
           instructorName={instructor.name}
-          branchId={String(booking.branchId)}
+          branchId={String(branchId || booking.branchId)}
           dateIso={firstEntry?.dateIso ?? booking.dateIso}
           slotSource="practical"
           ignoreBusyBookingId={String(booking.id)}
           initialSelected={sortedEntries}
           t={t}
           onConfirm={(entries) => {
-            setSlotEntries(sortSlotEntriesChrono(entries));
+            const next = sortSlotEntriesChrono(entries);
+            setSlotEntries(next);
+            setPaidSlotKeys((prev) => {
+              const allowed = new Set(next.map((e) => slotEntryKey(e.dateIso, e.time)));
+              return new Set([...prev].filter((k) => allowed.has(k)));
+            });
             setSlotsModalOpen(false);
           }}
         />
