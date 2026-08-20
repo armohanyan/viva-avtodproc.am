@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "src/components/ui/select";
 import { useLang } from "src/lib/i18n";
-import { localeForLang } from "src/lib/adminFormat";
+import { formatDateTime } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 
@@ -28,12 +28,6 @@ type ContactRequestRow = {
   status: ContactRequestStatus;
   createdAt: string;
 };
-
-function formatDateTime(iso: string, lang: ReturnType<typeof useLang>["lang"]): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(localeForLang(lang), { dateStyle: "short", timeStyle: "short" });
-}
 
 type Props = {
   onCountsChange?: () => void;

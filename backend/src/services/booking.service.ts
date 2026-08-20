@@ -871,6 +871,24 @@ async function syncBookingSlotRowsFromDesired(
 }
 
 /**
+ * Keep linked finance rows on the same branch as the booking when the booking branch changes.
+ * Manual/system income txs are branch-scoped; mismatch breaks later finance edits.
+ */
+async function syncLinkedFinanceTransactionsBranch(
+  bookingId: number,
+  nextBranchId: number,
+  transaction: Transaction,
+): Promise<void> {
+  if (!Number.isFinite(bookingId) || bookingId <= 0 || !Number.isFinite(nextBranchId) || nextBranchId <= 0) {
+    return;
+  }
+  await FinanceTransaction.update(
+    { branchId: nextBranchId },
+    { where: { bookingId }, transaction },
+  );
+}
+
+/**
  * Sync per-hour `payment_covered` flags from booking payment status / explicit paid slots.
  * - paid → all covered
  * - unpaid / pending / failed → none covered
@@ -3568,6 +3586,7 @@ export default class BookingService {
 
     try {
       await sequelize.transaction(async (transaction) => {
+        const previousBranchId = row.branchId;
         await row.update(
           {
             ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
@@ -3583,6 +3602,9 @@ export default class BookingService {
           },
           { transaction },
         );
+        if (branchId !== previousBranchId) {
+          await syncLinkedFinanceTransactionsBranch(id, branchId, transaction);
+        }
         await replaceBookingSlotRows(id, instructorUserId, dateIso, sorted, transaction);
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
@@ -3735,6 +3757,7 @@ export default class BookingService {
 
     try {
       await sequelize.transaction(async (transaction) => {
+        const previousBranchId = row.branchId;
         await row.update(
           {
             ...(patch.studentId !== undefined ? { studentUserId: nextStudentId } : {}),
@@ -3751,6 +3774,9 @@ export default class BookingService {
           },
           { transaction },
         );
+        if (branchId !== previousBranchId) {
+          await syncLinkedFinanceTransactionsBranch(id, branchId, transaction);
+        }
         await replaceBookingSlotRowsFromEntries(id, instructorUserId, entries, transaction);
         if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
@@ -3840,6 +3866,7 @@ export default class BookingService {
     });
 
     await sequelize.transaction(async (transaction) => {
+      const previousBranchId = row.branchId;
       await row.update(
         {
           ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
@@ -3850,6 +3877,9 @@ export default class BookingService {
         },
         { transaction },
       );
+      if (patch.branchId !== undefined && patch.branchId !== previousBranchId) {
+        await syncLinkedFinanceTransactionsBranch(id, patch.branchId, transaction);
+      }
       if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
         await auditBookingSlotsCleared(row.id, 'slots_cleared_status', 'Status no longer reserves slot', transaction);
         await BookingSlot.destroy({ where: { bookingId: id }, transaction });
@@ -4082,6 +4112,7 @@ export default class BookingService {
 
     try {
       await sequelize.transaction(async (transaction) => {
+        const previousBranchId = row.branchId;
         await row.update(
           {
             ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
@@ -4099,6 +4130,10 @@ export default class BookingService {
           },
           { transaction },
         );
+
+        if (patch.branchId !== undefined && patch.branchId !== previousBranchId) {
+          await syncLinkedFinanceTransactionsBranch(row.id, patch.branchId, transaction);
+        }
 
         if (touchesSchedule) {
           await replaceBookingSlotRows(row.id, instructorUserId!, nextDateIso, sorted, transaction);

@@ -13,6 +13,7 @@ import { useNotifications } from "src/modules/notifications/useNotifications";
 import { notificationTargetHref, type NotificationPanel } from "src/modules/notifications/notificationLinks";
 import { localizedNotificationTitle } from "src/modules/notifications/notificationTitle";
 import { useLang } from "src/lib/i18n";
+import { formatDateTimeCompact } from "src/utils/locale.utils";
 import { cn } from "src/lib/utils";
 
 type Props = {
@@ -25,7 +26,6 @@ export default function NotificationBell({ listHref, panel, onNavigate }: Props)
   const { t, lang } = useLang();
   const { items, unread, markRead, markAllRead, loading } = useNotifications(8);
   const latest = items.slice(0, 6);
-  const locale = lang === "am" ? "hy-AM" : lang === "ru" ? "ru-RU" : "en-US";
 
   return (
     <DropdownMenu>
@@ -72,7 +72,7 @@ export default function NotificationBell({ listHref, panel, onNavigate }: Props)
                 </span>
                 <span className="text-xs text-muted-foreground line-clamp-2">{n.message}</span>
                 <span className="text-[10px] text-muted-foreground">
-                  {new Date(n.createdAt).toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {formatDateTimeCompact(n.createdAt, lang)}
                 </span>
               </Link>
             </DropdownMenuItem>

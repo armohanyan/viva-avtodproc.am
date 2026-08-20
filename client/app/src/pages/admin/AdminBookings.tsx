@@ -7,6 +7,7 @@ import { formatCohortSessionTimeLabel, formatShortDateFromIso, todayIsoDate } fr
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { Input } from "src/components/ui/input";
+import { TimeSelectInput } from "src/components/ui/time-select-input";
 import { Button } from "src/components/ui/button";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
@@ -2705,12 +2706,9 @@ export default function AdminBookings() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColTime")}</label>
-                      <Input
-                        type="time"
+                      <TimeSelectInput
                         value={editBooking.time}
-                        onChange={(e) => setEditBooking({ ...editBooking, time: e.target.value })}
-                        className="h-10"
-                        step={60}
+                        onChange={(time) => setEditBooking({ ...editBooking, time })}
                       />
                     </div>
                   </div>

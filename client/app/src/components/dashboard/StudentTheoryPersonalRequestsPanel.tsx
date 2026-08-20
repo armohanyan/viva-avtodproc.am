@@ -8,7 +8,7 @@ import { useLang, type TranslationKey } from "src/lib/i18n";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { cn } from "src/lib/utils";
-import { localeFromLang } from "src/components/dashboard/studentBookingDisplay";
+import { formatDateTime } from "src/utils/locale.utils";
 
 type RequestStatus = "pending" | "contacted" | "booked" | "cancelled";
 
@@ -71,7 +71,6 @@ export default function StudentTheoryPersonalRequestsPanel() {
   }, [load]);
 
   const activeRows = rows.filter((r) => r.status === "pending" || r.status === "contacted");
-  const locale = localeFromLang(lang);
 
   const confirmCancelRequest = async () => {
     if (!cancelTarget) return;
@@ -139,10 +138,7 @@ export default function StudentTheoryPersonalRequestsPanel() {
                 activeRows.map((r) => (
                   <tr key={r.id} className="border-b border-border last:border-b-0 hover:bg-muted/20">
                     <td className="py-3 px-4 text-muted-foreground whitespace-nowrap tabular-nums">
-                      {new Date(r.createdAt).toLocaleString(locale, {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
+                      {formatDateTime(r.createdAt, lang)}
                     </td>
                     <td className="py-3 px-4 text-foreground font-medium">{r.instructorName}</td>
                     <td className="py-3 px-4 align-top">

@@ -79,32 +79,29 @@ export default function AdminDriving() {
       <PanelPageHeader
         icon={Car}
         title={t("adminDrivingTitle")}
-        subtitle={t("adminDrivingSubtitle")}
       />
 
-      <div className="rounded-xl border border-border bg-card p-4">
-        {activePracticalInstructors.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {loading ? t("loading") : t("adminDrivingEmptyInstructors")}
-          </p>
-        ) : (
-          <AdminInstructorAvailabilityTable
-            key={refreshKey}
-            instructors={activePracticalInstructors}
-            bookingBranchId=""
-            studentName=""
-            selectedEntries={[]}
-            onEntriesChange={() => {}}
-            onInstructorPicked={() => {}}
-            slotSource="practical"
-            onCellClick={({ instructor, branchId, dateIso }) => {
-              setSlotModalTarget({ instructor, branchId, dateIso });
-            }}
-            onDateClick={(dateIso) => setDayModalDateIso(dateIso)}
-            t={t}
-          />
-        )}
-      </div>
+      {activePracticalInstructors.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {loading ? t("loading") : t("adminDrivingEmptyInstructors")}
+        </p>
+      ) : (
+        <AdminInstructorAvailabilityTable
+          key={refreshKey}
+          instructors={activePracticalInstructors}
+          bookingBranchId=""
+          studentName=""
+          selectedEntries={[]}
+          onEntriesChange={() => {}}
+          onInstructorPicked={() => {}}
+          slotSource="practical"
+          onCellClick={({ instructor, branchId, dateIso }) => {
+            setSlotModalTarget({ instructor, branchId, dateIso });
+          }}
+          onDateClick={(dateIso) => setDayModalDateIso(dateIso)}
+          t={t}
+        />
+      )}
 
       {dayModalDateIso ? (
         <AdminDrivingDayModal

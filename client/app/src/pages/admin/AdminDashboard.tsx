@@ -16,7 +16,7 @@ import { dashboardRevenueAmdInPeriod } from "src/modules/admin/dashboard/adminDa
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { formatShortDateFromIso, localeForLang } from "src/lib/adminFormat";
+import { formatDateTime, formatShortDateFromIso } from "src/lib/adminFormat";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
@@ -79,12 +79,6 @@ type RecentContactRequestRow = {
   status: "active" | "archived";
   createdAt: string;
 };
-
-function formatDateTime(iso: string, lang: ReturnType<typeof useLang>["lang"]): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(localeForLang(lang), { dateStyle: "short", timeStyle: "short" });
-}
 
 function canonicalBookingStatusForDashboard(raw: string): TranslationKey {
   if (raw === "confirmed" || raw === "pending" || raw === "cancelled" || raw === "refunded") return raw;

@@ -406,15 +406,17 @@ export default class FinanceService {
     const bookingIdNorm =
       bookingIdFromInput != null && Number.isFinite(bookingIdFromInput) ? bookingIdFromInput : null;
 
-    const nextBranchId = input.branchId !== undefined ? input.branchId : row.branchId;
-
     let linkedBooking: Booking | null = null;
+    let branchIdToWrite = input.branchId !== undefined ? input.branchId : row.branchId;
     if (bookingIdNorm != null) {
       const booking = await Booking.findByPk(bookingIdNorm);
       if (!booking) {
         throw new ErrorsUtil.InputValidationError('Linked booking was not found.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      if (booking.branchId !== nextBranchId) {
+      // When branch is omitted, keep the transaction aligned with the booking (e.g. after a booking branch move).
+      if (input.branchId === undefined) {
+        branchIdToWrite = booking.branchId;
+      } else if (booking.branchId !== branchIdToWrite) {
         throw new ErrorsUtil.InputValidationError(
           'Transaction branch must match the linked booking branch.',
           HttpStatusCodesUtil.BAD_REQUEST,
@@ -454,7 +456,9 @@ export default class FinanceService {
         : {}),
       ...(input.email !== undefined ? { email: input.email.trim() } : {}),
       ...(input.description !== undefined ? { description: input.description.trim() } : {}),
-      ...(input.branchId !== undefined ? { branchId: input.branchId } : {}),
+      ...(input.branchId !== undefined || (linkedBooking != null && row.branchId !== branchIdToWrite)
+        ? { branchId: branchIdToWrite }
+        : {}),
       ...(input.channel !== undefined ? { channel: input.channel } : {}),
       ...(input.method !== undefined ? { method: input.method } : {}),
       ...(input.grossAmd !== undefined ? { grossAmd: input.grossAmd } : {}),

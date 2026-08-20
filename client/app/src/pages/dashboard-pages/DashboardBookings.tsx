@@ -25,6 +25,7 @@ import {
   studentUpcomingRowShowsActions,
   type StudentBookingCancelResponse,
 } from "src/components/dashboard/studentBookingDisplay";
+import { formatDateTimeCompact } from "src/utils/locale.utils";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 
 function isPracticalLesson(b: StudentDemoBooking): boolean {
@@ -237,12 +238,7 @@ export function DashboardBookingsListTab() {
                             {(b.status === "pending" || b.status === "pending_payment") && holdActive(b) ? (
                               <p className="text-[11px] text-amber-700 dark:text-amber-500 tabular-nums">
                                 {t("bookingPaymentRemainingLabel")}:{" "}
-                                {new Date(b.holdExpiresAt!).toLocaleString(locale, {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {formatDateTimeCompact(b.holdExpiresAt!, lang)}
                               </p>
                             ) : null}
                           </div>

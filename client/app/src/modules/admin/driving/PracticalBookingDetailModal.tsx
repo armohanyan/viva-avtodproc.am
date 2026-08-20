@@ -30,13 +30,6 @@ import {
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
 import AdminInstructorDaySlotsModal from "src/modules/admin/booking/AdminInstructorDaySlotsModal";
-import { BranchHopBanner } from "src/modules/admin/driving/BranchHopNotice";
-import {
-  findBranchHop,
-  instructorDayLessons,
-  type ClassScheduleHopItem,
-} from "src/modules/admin/driving/instructorBranchHop";
-import { minutesToHHMM, parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
 import type { Branch } from "src/modules/branches";
 
 type Status = "confirmed" | "pending" | "cancelled" | "refunded";
@@ -52,8 +45,6 @@ type Props = {
   onChanged: () => void;
   onDeleted: () => void;
 };
-
-const DEFAULT_LESSON_MINUTES = 70;
 
 function parseTotalPriceAmd(str: string, fallback: number): number {
   const parsed = parseAmdInput(str);
@@ -111,12 +102,6 @@ function slotEntriesEqual(
   );
 }
 
-function addMinutesToTime(time: string, minutes: number): string {
-  const start = parseTimeToMinutes(time);
-  if (!Number.isFinite(start)) return time;
-  return minutesToHHMM(Math.min(23 * 60 + 59, start + minutes));
-}
-
 export default function PracticalBookingDetailModal({
   open,
   onOpenChange,
@@ -149,7 +134,6 @@ export default function PracticalBookingDetailModal({
   const [slotsModalOpen, setSlotsModalOpen] = useState(false);
   const [slotToRemove, setSlotToRemove] = useState<{ dateIso: string; time: string } | null>(null);
   const [removingSlot, setRemovingSlot] = useState(false);
-  const [dayLessons, setDayLessons] = useState<ReturnType<typeof instructorDayLessons>>([]);
 
   const load = useCallback(async () => {
     if (!bookingId) return;
@@ -207,34 +191,6 @@ export default function PracticalBookingDetailModal({
     return filtered.length > 0 ? filtered : branches;
   }, [instructor, branches, branchId]);
 
-  useEffect(() => {
-    if (!open || !instructor || !booking) {
-      setDayLessons([]);
-      return;
-    }
-    const dateIso = (slotEntries[0]?.dateIso ?? booking.dateIso).slice(0, 10);
-    const instructorIdNum = Number(instructor.id);
-    if (!dateIso || !Number.isFinite(instructorIdNum) || instructorIdNum <= 0) {
-      setDayLessons([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await vivaApiJson<{ items?: ClassScheduleHopItem[] }>(
-          `/admin/class-schedule?date=${encodeURIComponent(dateIso)}&lessonType=practical`,
-        );
-        if (cancelled) return;
-        setDayLessons(instructorDayLessons(data.items ?? [], instructorIdNum, dateIso));
-      } catch {
-        if (!cancelled) setDayLessons([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, instructor, booking, slotEntries]);
-
   const totalPriceAmd = useMemo(
     () => parseTotalPriceAmd(totalPriceStr, Number(booking?.totalPriceAmd) || 0),
     [totalPriceStr, booking?.totalPriceAmd],
@@ -243,14 +199,6 @@ export default function PracticalBookingDetailModal({
   const sortedEntries = useMemo(() => sortSlotEntriesChrono(slotEntries), [slotEntries]);
   const firstEntry = sortedEntries[0];
   const showPaidSlotPickers = bookingPayment.status === "partial" && sortedEntries.length > 1;
-
-  const branchHop = useMemo(() => {
-    if (!firstEntry) return null;
-    const start = firstEntry.time;
-    const last = sortedEntries[sortedEntries.length - 1]?.time ?? start;
-    const end = addMinutesToTime(last, DEFAULT_LESSON_MINUTES);
-    return findBranchHop(dayLessons, { start, end, branchId: String(branchId) });
-  }, [firstEntry, sortedEntries, dayLessons, branchId]);
 
   const dateLabel = useMemo(() => {
     const dates = Array.from(new Set(sortedEntries.map((e) => e.dateIso)));
@@ -356,6 +304,7 @@ export default function PracticalBookingDetailModal({
               method: bookingPayment.method,
               grossAmd: paid,
               status: financeStatusFromBookingStatus(status),
+              branchId: Number(branchId),
               bookingId: bookingIdNum,
             },
           });
@@ -482,8 +431,6 @@ export default function PracticalBookingDetailModal({
           <p className="text-sm text-destructive">{loadError}</p>
         ) : booking ? (
           <form id={formId} onSubmit={handleSubmit} className="space-y-4">
-            {branchHop ? <BranchHopBanner hop={branchHop} /> : null}
-
             <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-muted-foreground">

@@ -7,6 +7,7 @@ import { Badge } from "src/components/ui/badge";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import { useNotifications } from "src/modules/notifications/useNotifications";
 import { useLang } from "src/lib/i18n";
+import { formatDateTime } from "src/utils/locale.utils";
 import { notificationTargetHref, type NotificationPanel } from "src/modules/notifications/notificationLinks";
 import { localizedNotificationTitle } from "src/modules/notifications/notificationTitle";
 
@@ -19,7 +20,6 @@ type Props = {
 export default function NotificationsListPage({ title, subtitle, panel }: Props) {
   const { t, lang } = useLang();
   const { items, unread, loading, markRead, markAllRead, remove } = useNotifications(20);
-  const locale = lang === "am" ? "hy-AM" : lang === "ru" ? "ru-RU" : "en-US";
 
   return (
     <>
@@ -77,7 +77,7 @@ export default function NotificationsListPage({ title, subtitle, panel }: Props)
                       </Badge>
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">
-                      {new Date(n.createdAt).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" })}
+                      {formatDateTime(n.createdAt, lang)}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex justify-end gap-2">

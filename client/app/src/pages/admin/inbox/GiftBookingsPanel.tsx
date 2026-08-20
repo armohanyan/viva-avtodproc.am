@@ -6,7 +6,7 @@ import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
 import { useLang, type TranslationKey } from "src/lib/i18n";
-import { formatShortDateFromIso, localeForLang } from "src/lib/adminFormat";
+import { formatDateTime, formatShortDateFromIso } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useAccount } from "src/modules/accounts";
@@ -43,12 +43,6 @@ const GIFT_STATUS_BADGE_CLASS: Record<GiftBookingStatus, string> = {
   approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-100",
   rejected: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-100",
 };
-
-function formatDateTime(iso: string, lang: ReturnType<typeof useLang>["lang"]): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(localeForLang(lang), { dateStyle: "short", timeStyle: "short" });
-}
 
 type Props = {
   onCountsChange?: () => void;

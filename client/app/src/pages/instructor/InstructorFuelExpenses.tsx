@@ -6,6 +6,7 @@ import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
 import { Input } from "src/components/ui/input";
+import { TimeSelectInput } from "src/components/ui/time-select-input";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { downscaleImageFileForUpload } from "src/lib/downscaleImageFile";
@@ -333,12 +334,11 @@ export default function InstructorFuelExpenses() {
                 <label className="mb-1 block text-sm font-medium" htmlFor={`${formId}-time`}>
                   {t("instructorFuelTimeLabel")}
                 </label>
-                <Input
+                <TimeSelectInput
                   id={`${formId}-time`}
-                  type="time"
                   value={form.time}
-                  onChange={(e) => setForm((f) => (f ? { ...f, time: e.target.value } : f))}
-                  className="h-10"
+                  onChange={(v) => setForm((f) => (f ? { ...f, time: v } : f))}
+                  triggerClassName="h-10"
                 />
               </div>
             </div>

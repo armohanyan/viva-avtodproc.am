@@ -15,7 +15,7 @@ import {
   aggregateBusyCountsByInstructorDay,
   aggregatePendingCountsByInstructorDay,
   armenianWeekdayShort,
-  buildBranchInstructorGroups,
+  buildInstructorBranchColumns,
   defaultGridRangeStart,
   formatGridDateLabel,
   gridDateRange,
@@ -101,8 +101,8 @@ export default function AdminInstructorAvailabilityTable({
   const dates = useMemo(() => gridDateRange(rangeStartIso), [rangeStartIso]);
   const rangeEndIso = dates[dates.length - 1] ?? rangeStartIso;
 
-  const branchGroups = useMemo(
-    () => buildBranchInstructorGroups(branches, instructors, branchIdFilter),
+  const instructorColumns = useMemo(
+    () => buildInstructorBranchColumns(branches, instructors, branchIdFilter),
     [branches, instructors, branchIdFilter],
   );
 
@@ -228,41 +228,32 @@ export default function AdminInstructorAvailabilityTable({
         <p className="text-xs text-muted-foreground">{t("instructorAvailabilityCalendarLoading")}</p>
       ) : null}
 
-      {branchGroups.length === 0 ? (
+      {instructorColumns.length === 0 ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
       ) : (
         <div className="rounded-lg border border-primary/30 max-h-[min(calc(100dvh-14rem),720px)] overflow-auto overscroll-contain touch-pan-x touch-pan-y">
           <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
             <thead>
               <tr>
-                <th
-                  rowSpan={2}
-                  className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[7.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]"
-                >
+                <th className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[7.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]">
                   {t("adminBookingAvailabilityGridDateCol")}
                 </th>
-                {branchGroups.map((g) => (
+                {instructorColumns.map((col) => (
                   <th
-                    key={g.branchId}
-                    colSpan={g.instructors.length}
-                    className="sticky top-0 z-30 bg-card text-center text-primary font-semibold px-2 py-2 border-r border-b border-primary/15 last:border-r-0 shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                    key={`${col.instructor.id}-${col.bookingBranchId}`}
+                    className="sticky top-0 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[7.5rem] max-w-[11rem] whitespace-normal leading-tight shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                    title={
+                      col.showBranchCode
+                        ? `${col.instructor.name} · ${col.bookingBranchName}`
+                        : col.instructor.name
+                    }
                   >
-                    {g.branchName}
+                    {col.instructor.name}
+                    {col.showBranchCode ? (
+                      <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
+                    ) : null}
                   </th>
                 ))}
-              </tr>
-              <tr>
-                {branchGroups.flatMap((g) =>
-                  g.instructors.map((ins) => (
-                    <th
-                      key={`${g.branchId}-${ins.id}`}
-                      className="sticky top-9 z-30 bg-card text-center text-primary/90 text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[7.5rem] max-w-[11rem] whitespace-normal leading-tight shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
-                      title={ins.name}
-                    >
-                      {ins.name}
-                    </th>
-                  )),
-                )}
               </tr>
             </thead>
             <tbody>
@@ -288,32 +279,33 @@ export default function AdminInstructorAvailabilityTable({
                       </div>
                     )}
                   </td>
-                  {branchGroups.flatMap((g) =>
-                    g.instructors.map((ins) => {
-                      const busyCount = lessonCountForCell(lessonCounts, ins.id, dateIso, g.branchId);
+                  {instructorColumns.map((col) => {
+                      const ins = col.instructor;
+                      const branchId = col.bookingBranchId;
+                      const busyCount = lessonCountForCell(lessonCounts, ins.id, dateIso, branchId);
                       const pendingCount = lessonCountForCell(
                         pendingLessonCounts,
                         ins.id,
                         dateIso,
-                        g.branchId,
+                        branchId,
                       );
                       const cellLabel =
                         pendingCount > 0 ? `${busyCount} + ${pendingCount}` : String(busyCount);
                       const hasPick =
                         selectionOwnerId === ins.id &&
                         (selectedByInstructorDay.has(
-                          `${ins.id}|${g.branchId}|${dateIso.slice(0, 10)}`,
+                          `${ins.id}|${branchId}|${dateIso.slice(0, 10)}`,
                         ) ||
                           selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`));
                       const disabled = !cellClickMode && !studentName.trim();
                       return (
-                        <td key={`${dateIso}-${g.branchId}-${ins.id}`} className="p-0 border-r border-b border-border/30 last:border-r-0">
+                        <td key={`${dateIso}-${ins.id}-${branchId}`} className="p-0 border-r border-b border-border/30 last:border-r-0">
                           <button
                             type="button"
                             disabled={disabled}
                             onClick={() => {
                               if (cellClickMode) {
-                                onCellClick?.({ instructor: ins, branchId: g.branchId, dateIso, busyCount });
+                                onCellClick?.({ instructor: ins, branchId, dateIso, busyCount });
                                 return;
                               }
                               if (!studentName.trim()) return;
@@ -326,7 +318,7 @@ export default function AdminInstructorAvailabilityTable({
                                 onEntriesChange([], "");
                               }
                               setActiveInstructorId(ins.id);
-                              setSlotModal({ instructor: ins, branchId: g.branchId, dateIso });
+                              setSlotModal({ instructor: ins, branchId, dateIso });
                             }}
                             className={cn(
                               "w-full min-h-10 py-1 flex items-center justify-center font-semibold tabular-nums transition-colors text-primary",
@@ -349,8 +341,7 @@ export default function AdminInstructorAvailabilityTable({
                           </button>
                         </td>
                       );
-                    }),
-                  )}
+                    })}
                 </tr>
               ))}
             </tbody>

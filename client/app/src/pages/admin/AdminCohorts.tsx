@@ -10,6 +10,7 @@ import { formatCohortSessionTimeLabel, formatShortDateFromIso } from "src/lib/ad
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
+import { TimeSelectInput } from "src/components/ui/time-select-input";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import MultiSelectDropdown from "src/components/MultiSelectDropdown";
@@ -602,20 +603,18 @@ export default function AdminCohorts() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeStart")}</label>
-                  <Input
-                    type="time"
+                  <TimeSelectInput
                     value={editCohort.sessionStartTime ?? ""}
-                    onChange={(e) => setEditCohort({ ...editCohort, sessionStartTime: e.target.value || null })}
-                    className="h-10"
+                    onChange={(v) => setEditCohort({ ...editCohort, sessionStartTime: v || null })}
+                    triggerClassName="h-10"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeEnd")}</label>
-                  <Input
-                    type="time"
+                  <TimeSelectInput
                     value={editCohort.sessionEndTime ?? ""}
-                    onChange={(e) => setEditCohort({ ...editCohort, sessionEndTime: e.target.value || null })}
-                    className="h-10"
+                    onChange={(v) => setEditCohort({ ...editCohort, sessionEndTime: v || null })}
+                    triggerClassName="h-10"
                   />
                 </div>
               </div>
@@ -805,20 +804,18 @@ export default function AdminCohorts() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeStart")}</label>
-                <Input
-                  type="time"
+                <TimeSelectInput
                   value={newCohort.sessionStartTime}
-                  onChange={(e) => setNewCohort({ ...newCohort, sessionStartTime: e.target.value })}
-                  className="h-10"
+                  onChange={(v) => setNewCohort({ ...newCohort, sessionStartTime: v })}
+                  triggerClassName="h-10"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortLabelSessionTimeEnd")}</label>
-                <Input
-                  type="time"
+                <TimeSelectInput
                   value={newCohort.sessionEndTime}
-                  onChange={(e) => setNewCohort({ ...newCohort, sessionEndTime: e.target.value })}
-                  className="h-10"
+                  onChange={(v) => setNewCohort({ ...newCohort, sessionEndTime: v })}
+                  triggerClassName="h-10"
                 />
               </div>
             </div>

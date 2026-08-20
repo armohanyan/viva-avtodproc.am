@@ -6,6 +6,7 @@ import { useToast } from "src/lib/toast";
 import { Badge } from "src/components/ui/badge";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
+import { TimeSelectInput } from "src/components/ui/time-select-input";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
@@ -1407,11 +1408,11 @@ export default function AdminInstructors() {
                         <div className="grid grid-cols-2 gap-3 mt-3">
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityFrom")}</label>
-                            <Input type="time" step={60} value={offWindowStart} onChange={(e) => setOffWindowStart(e.target.value)} className="h-10" />
+                            <TimeSelectInput value={offWindowStart} onChange={setOffWindowStart} triggerClassName="h-10" />
                           </div>
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityTo")}</label>
-                            <Input type="time" step={60} value={offWindowEnd} onChange={(e) => setOffWindowEnd(e.target.value)} className="h-10" />
+                            <TimeSelectInput value={offWindowEnd} onChange={setOffWindowEnd} triggerClassName="h-10" />
                           </div>
                         </div>
                       )}
@@ -1431,11 +1432,11 @@ export default function AdminInstructors() {
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityFrom")}</label>
-                          <Input type="time" step={60} value={weeklyBreakStart} onChange={(e) => setWeeklyBreakStart(e.target.value)} className="h-10" />
+                          <TimeSelectInput value={weeklyBreakStart} onChange={setWeeklyBreakStart} triggerClassName="h-10" />
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityTo")}</label>
-                          <Input type="time" step={60} value={weeklyBreakEnd} onChange={(e) => setWeeklyBreakEnd(e.target.value)} className="h-10" />
+                          <TimeSelectInput value={weeklyBreakEnd} onChange={setWeeklyBreakEnd} triggerClassName="h-10" />
                         </div>
                       </div>
                       <Button type="button" variant="secondary" className="w-full" onClick={() => void applyWeeklyBreakPattern()}>

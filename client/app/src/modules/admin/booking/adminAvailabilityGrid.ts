@@ -26,73 +26,80 @@ export type GridBranchGroup = {
   instructors: Instructor[];
 };
 
-/** One instructor column in the day graphic (home branch + extra read-only other-branch columns). */
+/** One instructor × branch column in the availability / day grids (all columns are bookable). */
 export type DayGridInstructorColumn = {
   instructor: Instructor;
-  groupBranchId: string;
   bookingBranchId: string;
   bookingBranchName: string;
+  /** Compact branch tag, e.g. «Ա 75», «գն8». */
   branchCode: string;
-  readOnly: boolean;
   showBranchCode: boolean;
 };
 
-/** First three letters of the branch name (Armenian or Latin), e.g. Իսակովի → Իսա. */
+/**
+ * Minimal branch label for column headers.
+ * «Ազատամարտիկների 75» → «Ա 75»; «Գարեգին Նժդեհ 8» → «գն8».
+ */
+export function branchMinimalLabel(name: string): string {
+  const raw = String(name ?? "").normalize("NFC").trim();
+  if (!raw) return "";
+  const m = raw.match(/^(.*?)\s+(\d\S*)$/u);
+  const textPart = (m?.[1] ?? raw).trim();
+  const numPart = m?.[2] ?? "";
+  const words = textPart.split(/\s+/).filter(Boolean);
+  const initials = words
+    .map((w) => {
+      const letters = Array.from(w).filter((ch) => /\p{L}/u.test(ch));
+      return letters[0] ?? "";
+    })
+    .filter(Boolean);
+  if (initials.length === 0) return numPart || raw;
+  if (initials.length === 1) {
+    return numPart ? `${initials[0]} ${numPart}` : initials[0]!;
+  }
+  const compact = initials.join("").toLocaleLowerCase("hy");
+  return numPart ? `${compact}${numPart}` : compact;
+}
+
+/** @deprecated Prefer {@link branchMinimalLabel}. */
 export function branchShortCode(name: string): string {
-  const letters = Array.from(String(name ?? "").normalize("NFC")).filter((ch) => /\p{L}/u.test(ch));
-  if (letters.length >= 3) return letters.slice(0, 3).join("");
-  const compact = String(name ?? "").replace(/\s+/g, "").trim();
-  return compact.slice(0, 3) || String(name ?? "").trim();
+  return branchMinimalLabel(name);
 }
 
 /**
- * Under every branch group, a multi-branch instructor gets one extra column per other served
- * branch (read-only), labeled with a 3-letter branch code.
+ * Flat instructor columns: one column per instructor × served branch.
+ * Multi-branch instructors get adjacent columns labeled with {@link branchMinimalLabel}.
+ * When `branchIdFilter` is set, only that branch’s columns are included.
  */
-export function expandDayGridInstructorColumns(
-  groups: readonly GridBranchGroup[],
-  allBranches: readonly Branch[],
-): { group: GridBranchGroup; columns: DayGridInstructorColumn[] }[] {
-  const byId = new Map(allBranches.map((b) => [String(b.id), b]));
-  return groups.map((group) => {
-    const columns: DayGridInstructorColumn[] = [];
-    for (const ins of group.instructors) {
-      const served = (ins.availableBranchIds ?? [])
-        .map((id) => byId.get(String(id)))
-        .filter((b): b is Branch => Boolean(b))
-        .sort((a, b) => a.name.localeCompare(b.name, "hy"));
-      const multi = served.length > 1;
-      if (!multi) {
-        const home = byId.get(String(group.branchId));
-        columns.push({
-          instructor: ins,
-          groupBranchId: group.branchId,
-          bookingBranchId: group.branchId,
-          bookingBranchName: home?.name ?? group.branchName,
-          branchCode: branchShortCode(home?.name ?? group.branchName),
-          readOnly: false,
-          showBranchCode: false,
-        });
-        continue;
-      }
-      const ordered = [
-        ...served.filter((b) => String(b.id) === String(group.branchId)),
-        ...served.filter((b) => String(b.id) !== String(group.branchId)),
-      ];
-      for (const b of ordered) {
-        columns.push({
-          instructor: ins,
-          groupBranchId: group.branchId,
-          bookingBranchId: String(b.id),
-          bookingBranchName: b.name,
-          branchCode: branchShortCode(b.name),
-          readOnly: String(b.id) !== String(group.branchId),
-          showBranchCode: true,
-        });
-      }
+export function buildInstructorBranchColumns(
+  branches: readonly Branch[],
+  instructors: readonly Instructor[],
+  branchIdFilter?: string | null,
+): DayGridInstructorColumn[] {
+  const filterId = branchIdFilter?.trim() || null;
+  const byId = new Map(branches.map((b) => [String(b.id), b]));
+  const sortedInstructors = [...instructors].sort((a, b) => a.name.localeCompare(b.name, "hy"));
+  const columns: DayGridInstructorColumn[] = [];
+
+  for (const ins of sortedInstructors) {
+    const allServed = (ins.availableBranchIds ?? [])
+      .map((id) => byId.get(String(id)))
+      .filter((b): b is Branch => Boolean(b))
+      .sort((a, b) => a.name.localeCompare(b.name, "hy"));
+    const served = filterId ? allServed.filter((b) => String(b.id) === filterId) : allServed;
+    if (served.length === 0) continue;
+    const showBranchCode = allServed.length > 1;
+    for (const b of served) {
+      columns.push({
+        instructor: ins,
+        bookingBranchId: String(b.id),
+        bookingBranchName: b.name,
+        branchCode: branchMinimalLabel(b.name),
+        showBranchCode,
+      });
     }
-    return { group, columns };
-  });
+  }
+  return columns;
 }
 
 export function padSlotTime(t: string): string {

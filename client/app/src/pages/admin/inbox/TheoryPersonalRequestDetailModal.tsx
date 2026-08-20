@@ -4,7 +4,7 @@ import { Button } from "src/components/ui/button";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { useLang } from "src/lib/i18n";
-import { localeForLang } from "src/lib/adminFormat";
+import { formatDateTime } from "src/lib/adminFormat";
 import { cn } from "src/lib/utils";
 
 export type TheoryPersonalRequestRow = {
@@ -78,10 +78,7 @@ export function TheoryPersonalRequestDetailModal({
           ? t("theoryPersonalRequestStatusBooked")
           : t("theoryPersonalRequestStatusCancelled");
 
-  const createdLabel = new Date(row.createdAt).toLocaleString(localeForLang(lang), {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const createdLabel = formatDateTime(row.createdAt, lang);
 
   const closed = row.status === "booked" || row.status === "cancelled";
   const canRemove = row.status !== "booked";

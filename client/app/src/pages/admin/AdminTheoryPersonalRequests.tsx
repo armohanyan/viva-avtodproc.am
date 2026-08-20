@@ -8,7 +8,7 @@ import { Card } from "src/components/ui/card";
 import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
 import { useLang } from "src/lib/i18n";
-import { localeForLang } from "src/lib/adminFormat";
+import { formatDateTime } from "src/lib/adminFormat";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
@@ -33,12 +33,6 @@ type RequestRow = {
   bookedLessonId: number | null;
   createdAt: string;
 };
-
-function formatDateTime(iso: string, lang: ReturnType<typeof useLang>["lang"]): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(localeForLang(lang), { dateStyle: "short", timeStyle: "short" });
-}
 
 function statusBadgeClass(status: RequestStatus): string {
   if (status === "pending") return "bg-amber-100 text-amber-800";

@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
-import { Input } from "src/components/ui/input";
+import { TimeSelectInput } from "src/components/ui/time-select-input";
 import AdminStudentPicker from "src/components/admin/AdminStudentPicker";
 import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
 import { cn } from "src/lib/utils";
@@ -32,11 +32,6 @@ import {
   validateAdminBookingPayment,
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
-import { BranchHopBanner } from "src/modules/admin/driving/BranchHopNotice";
-import {
-  findBranchHop,
-  instructorDayLessons,
-} from "src/modules/admin/driving/instructorBranchHop";
 import {
   minutesToHHMM,
   normalizeTimeHHMM,
@@ -143,7 +138,6 @@ export default function QuickPracticalBookingModal({
   const [delayedRestStart, setDelayedRestStart] = useState("15:10");
   const [delayedRestEnd, setDelayedRestEnd] = useState("16:10");
   const [busyRanges, setBusyRanges] = useState<BusyRange[]>([]);
-  const [dayLessons, setDayLessons] = useState<ReturnType<typeof instructorDayLessons>>([]);
 
   const dateIso = slotEntries[0]?.dateIso?.slice(0, 10) ?? "";
 
@@ -196,7 +190,6 @@ export default function QuickPracticalBookingModal({
     setDelayedRestStart(end);
     setDelayedRestEnd(addMinutesToTime(end, 60));
     setBusyRanges([]);
-    setDayLessons([]);
   }, [open, initialBranchId, customSlot, customSlotEndTime]);
 
   useEffect(() => {
@@ -210,11 +203,10 @@ export default function QuickPracticalBookingModal({
     });
   }, [open, suggestedTotalAmd]);
 
-  /** Load instructor lessons for the day: overlap checks (custom) + branch-hop warning. */
+  /** Load instructor lessons for the day (custom-slot overlap checks). */
   useEffect(() => {
     if (!open || !dateIso || !Number.isFinite(Number(instructor.id))) {
       setBusyRanges([]);
-      setDayLessons([]);
       return;
     }
     let cancelled = false;
@@ -238,8 +230,6 @@ export default function QuickPracticalBookingModal({
         if (cancelled) return;
         const items = res.items ?? [];
         const id = Number(instructor.id);
-        const lessons = instructorDayLessons(items, id, dateIso);
-        setDayLessons(lessons);
         const byBooking = new Map<number, BusyRange>();
         for (const item of items) {
           if (item.date?.slice(0, 10) !== dateIso || Number(item.instructor?.id) !== id) continue;
@@ -258,10 +248,7 @@ export default function QuickPracticalBookingModal({
         }
         setBusyRanges([...byBooking.values()]);
       } catch {
-        if (!cancelled) {
-          setBusyRanges([]);
-          setDayLessons([]);
-        }
+        if (!cancelled) setBusyRanges([]);
       }
     })();
     return () => {
@@ -276,21 +263,6 @@ export default function QuickPracticalBookingModal({
     if (dates.length === 1) return formatGridDateLabel(dates[0]);
     return `${formatGridDateLabel(dates[0])} – ${formatGridDateLabel(dates[dates.length - 1])}`;
   }, [sortedEntries, dateIso]);
-
-  const branchHop = useMemo(() => {
-    const start = customSlot
-      ? normalizeUiTime(customTimeStart)
-      : (sortedEntries[0]?.time ?? null);
-    if (!start) return null;
-    const last = customSlot
-      ? start
-      : (sortedEntries[sortedEntries.length - 1]?.time ?? start);
-    const end = customSlot
-      ? customEndNorm
-      : addMinutesToTime(last, DEFAULT_CUSTOM_DURATION_MINUTES);
-    if (!end) return null;
-    return findBranchHop(dayLessons, { start, end, branchId: String(branchId) });
-  }, [customSlot, customTimeStart, customEndNorm, sortedEntries, dayLessons, branchId]);
 
   const validateCustomWindow = (start: string, end: string): string | null => {
     const startM = parseTimeToMinutes(start);
@@ -514,7 +486,6 @@ export default function QuickPracticalBookingModal({
       }
     >
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
-        {branchHop ? <BranchHopBanner hop={branchHop} /> : null}
         <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-medium text-muted-foreground">
@@ -547,33 +518,25 @@ export default function QuickPracticalBookingModal({
                     <label className="block text-[11px] font-medium text-muted-foreground mb-1">
                       {t("adminDrivingQuickBookingCustomStart")}
                     </label>
-                    <Input
-                      type="time"
-                      step={60}
+                    <TimeSelectInput
                       value={customTimeStart}
-                      onChange={(e) => handleCustomStartChange(e.target.value)}
-                      className="h-10 tabular-nums"
-                      required
+                      onChange={handleCustomStartChange}
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-medium text-muted-foreground mb-1">
                       {t("adminDrivingQuickBookingCustomEnd")}
                     </label>
-                    <Input
-                      type="time"
-                      step={60}
+                    <TimeSelectInput
                       value={customTimeEnd}
-                      onChange={(e) => {
-                        setCustomTimeEnd(e.target.value);
-                        const end = normalizeUiTime(e.target.value);
+                      onChange={(next) => {
+                        setCustomTimeEnd(next);
+                        const end = normalizeUiTime(next);
                         if (end && !setDelayedRest) {
                           setDelayedRestStart(end);
                           setDelayedRestEnd(addMinutesToTime(end, 60));
                         }
                       }}
-                      className="h-10 tabular-nums"
-                      required
                     />
                   </div>
                 </div>
@@ -610,24 +573,20 @@ export default function QuickPracticalBookingModal({
                         <label className="block text-[11px] font-medium text-muted-foreground mb-1">
                           {t("adminDrivingQuickBookingDelayedLunchStart")}
                         </label>
-                        <Input
-                          type="time"
-                          step={60}
+                        <TimeSelectInput
                           value={delayedRestStart}
-                          onChange={(e) => setDelayedRestStart(e.target.value)}
-                          className="h-9 tabular-nums"
+                          onChange={setDelayedRestStart}
+                          triggerClassName="h-9"
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] font-medium text-muted-foreground mb-1">
                           {t("adminDrivingQuickBookingDelayedLunchEnd")}
                         </label>
-                        <Input
-                          type="time"
-                          step={60}
+                        <TimeSelectInput
                           value={delayedRestEnd}
-                          onChange={(e) => setDelayedRestEnd(e.target.value)}
-                          className="h-9 tabular-nums"
+                          onChange={setDelayedRestEnd}
+                          triggerClassName="h-9"
                         />
                       </div>
                     </div>

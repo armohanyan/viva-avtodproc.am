@@ -15,8 +15,7 @@ import { cn } from "src/lib/utils";
 import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import {
   armenianWeekdayShort,
-  buildBranchInstructorGroups,
-  expandDayGridInstructorColumns,
+  buildInstructorBranchColumns,
   formatGridDateLabel,
   padSlotTime,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
@@ -253,21 +252,16 @@ export default function AdminDrivingDayModal({
   const { branchId: adminBranchId } = useAdminBranchFilter();
   const day = dateIso.slice(0, 10);
 
-  const branchGroups = useMemo(
-    () => buildBranchInstructorGroups(branches, instructors, adminBranchId),
+  const dayColumns = useMemo(
+    () => buildInstructorBranchColumns(branches, instructors, adminBranchId),
     [branches, instructors, adminBranchId],
-  );
-
-  const dayColumnGroups = useMemo(
-    () => expandDayGridInstructorColumns(branchGroups, branches),
-    [branchGroups, branches],
   );
 
   const primaryBranchId = useMemo(() => {
     const filtered = (adminBranchId ?? "").trim();
     if (filtered) return filtered;
-    return branchGroups[0]?.branchId ?? "";
-  }, [adminBranchId, branchGroups]);
+    return dayColumns[0]?.bookingBranchId ?? "";
+  }, [adminBranchId, dayColumns]);
 
   const { rows: planRows, loading: planLoading } = usePracticalSlotPlan(primaryBranchId, open);
 
@@ -292,11 +286,9 @@ export default function AdminDrivingDayModal({
 
   const gridInstructorIds = useMemo(() => {
     const ids = new Set<string>();
-    for (const g of branchGroups) {
-      for (const ins of g.instructors) ids.add(String(ins.id));
-    }
+    for (const col of dayColumns) ids.add(String(col.instructor.id));
     return [...ids];
-  }, [branchGroups]);
+  }, [dayColumns]);
 
   useEffect(() => {
     if (!open || gridInstructorIds.length === 0) {
@@ -533,11 +525,8 @@ export default function AdminDrivingDayModal({
       `name:${(ins.name ?? "").trim().toLowerCase()}|${branchId}|${time}`,
     );
     if (byNameBranch) return byNameBranch;
-    // Only fall back to instructor-only key when this instructor appears in a single branch column.
-    const appearances = branchGroups.reduce(
-      (n, g) => n + g.instructors.filter((i) => i.id === ins.id).length,
-      0,
-    );
+    // Only fall back to instructor-only key when this instructor has a single column.
+    const appearances = dayColumns.filter((c) => c.instructor.id === ins.id).length;
     if (appearances !== 1) return undefined;
     return (
       bookingByInstructorTime.get(`${ins.id}|${time}`) ??
@@ -571,7 +560,7 @@ export default function AdminDrivingDayModal({
           <Loader2 className="h-4 w-4 animate-spin" />
           {t("loading")}
         </div>
-      ) : branchGroups.length === 0 ? (
+      ) : dayColumns.length === 0 ? (
         <p className="py-8 text-sm text-muted-foreground">{t("adminDrivingEmptyInstructors")}</p>
       ) : (
         <TooltipProvider delayDuration={200}>
@@ -584,90 +573,52 @@ export default function AdminDrivingDayModal({
             <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
               <thead>
                 <tr>
-                  <th
-                    rowSpan={2}
-                    className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[4.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]"
-                  >
+                  <th className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[4.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]">
                     {t("adminDrivingDayModalTimeCol")}
                   </th>
-                  {dayColumnGroups.map(({ group, columns }) => (
+                  {dayColumns.map((col) => (
                     <th
-                      key={group.branchId}
-                      colSpan={Math.max(1, columns.length)}
-                      className="sticky top-0 z-30 bg-card text-center text-primary font-semibold px-2 py-2 border-r border-b border-primary/15 last:border-r-0 shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
+                      key={`${col.instructor.id}-${col.bookingBranchId}`}
+                      className="sticky top-0 z-30 bg-card text-center text-xs font-medium text-primary/90 px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[8.5rem] max-w-[13rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
                     >
-                      {group.branchName}
+                      <div className="group/ins flex items-center justify-center gap-0.5 min-w-0">
+                        <span
+                          className="whitespace-normal leading-tight"
+                          title={
+                            col.showBranchCode
+                              ? `${col.instructor.name} · ${col.bookingBranchName}`
+                              : col.instructor.name
+                          }
+                        >
+                          {col.instructor.name}
+                          {col.showBranchCode ? (
+                            <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
+                          ) : null}
+                        </span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onAddCustomSlotClick({
+                                  instructor: col.instructor,
+                                  branchId: col.bookingBranchId,
+                                  dateIso: day,
+                                })
+                              }
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-primary/50 opacity-70 hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                              aria-label={t("adminDrivingDayModalAddCustomSlot")}
+                            >
+                              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-[14rem] text-center">
+                            {t("adminDrivingDayModalAddCustomSlot")}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     </th>
                   ))}
-                </tr>
-                <tr>
-                  {dayColumnGroups.flatMap(({ group, columns }) =>
-                    columns.map((col) => (
-                      <th
-                        key={`${group.branchId}-${col.instructor.id}-${col.bookingBranchId}`}
-                        className={cn(
-                          "sticky top-9 z-30 text-center text-xs font-medium px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[8.5rem] max-w-[13rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]",
-                          col.readOnly ? "bg-muted/50 text-muted-foreground" : "bg-card text-primary/90",
-                        )}
-                      >
-                        <div className="group/ins flex items-center justify-center gap-0.5 min-w-0">
-                          {col.readOnly ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span
-                                  className="whitespace-normal leading-tight cursor-default"
-                                  title={`${col.instructor.name} · ${col.bookingBranchName}`}
-                                >
-                                  {col.instructor.name}
-                                  <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-[16rem] text-center text-xs">
-                                {t("adminDrivingDayModalOtherBranchCol").replace("{branch}", col.bookingBranchName)}
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <span
-                              className="whitespace-normal leading-tight"
-                              title={
-                                col.showBranchCode
-                                  ? `${col.instructor.name} · ${col.bookingBranchName}`
-                                  : col.instructor.name
-                              }
-                            >
-                              {col.instructor.name}
-                              {col.showBranchCode ? (
-                                <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
-                              ) : null}
-                            </span>
-                          )}
-                          {col.readOnly ? null : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onAddCustomSlotClick({
-                                      instructor: col.instructor,
-                                      branchId: col.bookingBranchId,
-                                      dateIso: day,
-                                    })
-                                  }
-                                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-primary/50 opacity-70 hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
-                                  aria-label={t("adminDrivingDayModalAddCustomSlot")}
-                                >
-                                  <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-[14rem] text-center">
-                                {t("adminDrivingDayModalAddCustomSlot")}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
-                      </th>
-                    )),
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -678,34 +629,28 @@ export default function AdminDrivingDayModal({
                         <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-muted-foreground font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)] text-xs">
                           {t("adminDrivingDayModalBreak")}
                         </td>
-                        {dayColumnGroups.flatMap(({ group, columns }) =>
-                          columns.map((col) => (
+                        {dayColumns.map((col) => (
                             <td
-                              key={`break-${rowIdx}-${group.branchId}-${col.instructor.id}-${col.bookingBranchId}`}
+                              key={`break-${rowIdx}-${col.instructor.id}-${col.bookingBranchId}`}
                               className="p-0 border-r border-b border-border/30 last:border-r-0"
                             >
-                              {col.readOnly ? (
-                                <div className="w-full min-h-14 bg-muted/30" aria-hidden />
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onAddCustomSlotClick({
-                                      instructor: col.instructor,
-                                      branchId: col.bookingBranchId,
-                                      dateIso: day,
-                                    })
-                                  }
-                                  className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
-                                  title={`${col.instructor.name} · ${t("adminDrivingDayModalBreak")}`}
-                                  aria-label={`${col.instructor.name} · ${t("adminDrivingDayModalBreak")}`}
-                                >
-                                  +
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onAddCustomSlotClick({
+                                    instructor: col.instructor,
+                                    branchId: col.bookingBranchId,
+                                    dateIso: day,
+                                  })
+                                }
+                                className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
+                                title={`${col.instructor.name} · ${t("adminDrivingDayModalBreak")}`}
+                                aria-label={`${col.instructor.name} · ${t("adminDrivingDayModalBreak")}`}
+                              >
+                                +
+                              </button>
                             </td>
-                          )),
-                        )}
+                          ))}
                       </tr>
                     );
                   }
@@ -736,12 +681,10 @@ export default function AdminDrivingDayModal({
                           time
                         )}
                       </td>
-                      {dayColumnGroups.flatMap(({ group, columns }) =>
-                        columns.map((col) => {
+                      {dayColumns.map((col) => {
                           const ins = col.instructor;
                           const booking = resolveCellBooking(ins, col.bookingBranchId, time);
-                          const blockReason =
-                            !booking && !col.readOnly ? resolveBlockReason(ins.id, time) : null;
+                          const blockReason = !booking ? resolveBlockReason(ins.id, time) : null;
                           const blocked = blockReason != null;
                           const openEmpty = () => {
                             const instructorTimes = planTimesByInstructor.get(String(ins.id));
@@ -761,12 +704,11 @@ export default function AdminDrivingDayModal({
                           };
                           return (
                             <td
-                              key={`${time}-${group.branchId}-${ins.id}-${col.bookingBranchId}`}
+                              key={`${time}-${ins.id}-${col.bookingBranchId}`}
                               className={cn(
                                 "p-0 border-r border-b border-border/30 last:border-r-0",
                                 isForcedSlotRow &&
                                   "border-t-2 border-b-2 border-t-amber-500 border-b-amber-500 last:border-r-2 last:border-r-amber-500",
-                                col.readOnly && "bg-muted/20",
                               )}
                             >
                               {booking ? (
@@ -784,7 +726,6 @@ export default function AdminDrivingDayModal({
                                       className={cn(
                                         "w-full min-h-14 px-1.5 py-1.5 flex flex-col items-center justify-center gap-0.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50",
                                         paymentCellClass(booking.paymentStatus),
-                                        col.readOnly && "opacity-90",
                                       )}
                                     >
                                       <span className="text-xs sm:text-[13px] leading-snug font-semibold line-clamp-2">
@@ -818,11 +759,6 @@ export default function AdminDrivingDayModal({
                                     ) : null}
                                   </TooltipContent>
                                 </Tooltip>
-                              ) : col.readOnly ? (
-                                <div
-                                  className="w-full min-h-14 bg-muted/30"
-                                  aria-label={`${ins.name} ${col.branchCode} · ${time}`}
-                                />
                               ) : blocked ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -859,8 +795,7 @@ export default function AdminDrivingDayModal({
                               )}
                             </td>
                           );
-                        }),
-                      )}
+                        })}
                     </tr>
                   );
                 })}
