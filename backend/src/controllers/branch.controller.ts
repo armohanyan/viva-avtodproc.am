@@ -14,6 +14,7 @@ const createSchema = z.object({
   cityId: z.coerce.number().int().positive(),
   name: z.string().min(1),
   mapUrl: z.string().min(1),
+  label: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().optional(),
   workHours: z.string().optional(),
@@ -27,6 +28,7 @@ function toBranchJson(b: Awaited<ReturnType<typeof BranchService.list>>[number])
     cityId: b.cityId,
     name: b.name,
     mapUrl: b.mapUrl,
+    label: b.label ?? undefined,
     phone: b.phone ?? undefined,
     email: b.email ?? undefined,
     workHours: b.workHours ?? undefined,
@@ -84,6 +86,7 @@ export default class BranchController {
       const body = parseBody(createSchema, req.body);
       const row = await BranchService.create({
         ...body,
+        label: body.label?.trim() ? body.label.trim() : null,
         phone: body.phone ?? null,
         email: body.email ?? null,
         workHours: body.workHours ?? null,
@@ -99,6 +102,7 @@ export default class BranchController {
       const body = parseBody(updateSchema, req.body);
       const row = await BranchService.update(Number(req.params.id), {
         ...body,
+        label: body.label === undefined ? undefined : body.label.trim() || null,
         phone: body.phone === undefined ? undefined : body.phone ?? null,
         email: body.email === undefined ? undefined : body.email ?? null,
         workHours: body.workHours === undefined ? undefined : body.workHours ?? null,

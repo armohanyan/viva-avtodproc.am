@@ -31,7 +31,7 @@ export type DayGridInstructorColumn = {
   instructor: Instructor;
   bookingBranchId: string;
   bookingBranchName: string;
-  /** Compact label derived from the branch name (initials + trailing number). */
+  /** Compact branch label for multi-branch instructor headers (from branch.label, else derived). */
   branchCode: string;
   showBranchCode: boolean;
 };
@@ -66,10 +66,16 @@ export function branchShortCode(name: string): string {
   return branchMinimalLabel(name);
 }
 
+/** Prefer the stored branch label; fall back to a compact form of the address name. */
+export function branchDisplayLabel(branch: Pick<Branch, "name" | "label">): string {
+  const label = String(branch.label ?? "").trim();
+  return label || branchMinimalLabel(branch.name);
+}
+
 /**
  * Flat instructor columns: one column per instructor × served branch.
  * Multi-branch instructors are listed first (adjacent columns per branch), then single-branch.
- * Labels come from {@link branchMinimalLabel} on each branch’s name — nothing is hardcoded.
+ * Labels come from each branch’s `label` (else {@link branchMinimalLabel} on `name`).
  * When `branchIdFilter` is set, only that branch’s columns are included.
  */
 export function buildInstructorBranchColumns(
@@ -105,7 +111,7 @@ export function buildInstructorBranchColumns(
         instructor: ins,
         bookingBranchId: String(b.id),
         bookingBranchName: b.name,
-        branchCode: branchMinimalLabel(b.name),
+        branchCode: branchDisplayLabel(b),
         showBranchCode,
       });
     }

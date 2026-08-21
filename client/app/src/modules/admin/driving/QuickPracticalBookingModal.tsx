@@ -58,8 +58,6 @@ export type QuickPracticalBookingModalProps = {
 
 type Status = "confirmed" | "pending" | "cancelled" | "refunded";
 
-type BusyRange = { start: string; end: string };
-
 const MIN_CUSTOM_DURATION_MINUTES = 30;
 const DEFAULT_CUSTOM_DURATION_MINUTES = 70;
 
@@ -137,7 +135,6 @@ export default function QuickPracticalBookingModal({
   const [setDelayedRest, setSetDelayedRest] = useState(false);
   const [delayedRestStart, setDelayedRestStart] = useState("15:10");
   const [delayedRestEnd, setDelayedRestEnd] = useState("16:10");
-  const [busyRanges, setBusyRanges] = useState<BusyRange[]>([]);
 
   const dateIso = slotEntries[0]?.dateIso?.slice(0, 10) ?? "";
 
@@ -189,7 +186,6 @@ export default function QuickPracticalBookingModal({
     setSetDelayedRest(false);
     setDelayedRestStart(end);
     setDelayedRestEnd(addMinutesToTime(end, 60));
-    setBusyRanges([]);
   }, [open, initialBranchId, customSlot, customSlotEndTime]);
 
   useEffect(() => {
@@ -202,59 +198,6 @@ export default function QuickPracticalBookingModal({
       return { ...prev, paidStr: String(total) };
     });
   }, [open, suggestedTotalAmd]);
-
-  /** Load instructor lessons for the day (custom-slot overlap checks). */
-  useEffect(() => {
-    if (!open || !dateIso || !Number.isFinite(Number(instructor.id))) {
-      setBusyRanges([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const qs = new URLSearchParams({
-          view: "day",
-          startDate: dateIso,
-          lessonType: "practical",
-        });
-        const res = await vivaApiJson<{
-          items?: Array<{
-            bookingId: number;
-            instructor?: { id: number | null };
-            startTime: string;
-            endTime: string;
-            date: string;
-            branch?: { id: number; name: string };
-          }>;
-        }>(`/admin/class-schedule?${qs.toString()}`);
-        if (cancelled) return;
-        const items = res.items ?? [];
-        const id = Number(instructor.id);
-        const byBooking = new Map<number, BusyRange>();
-        for (const item of items) {
-          if (item.date?.slice(0, 10) !== dateIso || Number(item.instructor?.id) !== id) continue;
-          const start = normalizeUiTime(item.startTime) ?? item.startTime;
-          const end = normalizeUiTime(item.endTime) ?? item.endTime;
-          if (!start || !end) continue;
-          const prev = byBooking.get(item.bookingId);
-          if (!prev) {
-            byBooking.set(item.bookingId, { start, end });
-            continue;
-          }
-          const nextStart =
-            parseTimeToMinutes(start) < parseTimeToMinutes(prev.start) ? start : prev.start;
-          const nextEnd = parseTimeToMinutes(end) > parseTimeToMinutes(prev.end) ? end : prev.end;
-          byBooking.set(item.bookingId, { start: nextStart, end: nextEnd });
-        }
-        setBusyRanges([...byBooking.values()]);
-      } catch {
-        if (!cancelled) setBusyRanges([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, dateIso, instructor.id]);
 
   const firstEntry = sortedEntries[0];
   const dateLabel = useMemo(() => {
@@ -272,11 +215,6 @@ export default function QuickPracticalBookingModal({
     }
     if (endM - startM < MIN_CUSTOM_DURATION_MINUTES) {
       return t("adminDrivingQuickBookingCustomTimeMinDuration");
-    }
-    for (const busy of busyRanges) {
-      if (rangesConflict(start, end, busy.start, busy.end)) {
-        return t("adminDrivingQuickBookingCustomTimeBusy");
-      }
     }
     return null;
   };
@@ -344,12 +282,6 @@ export default function QuickPracticalBookingModal({
       if (customEndNorm && rangesConflict(firstEntry.time, customEndNorm, restStart, restEnd)) {
         showToast(t("adminDrivingQuickBookingDelayedLunchOverlap"), "error");
         return;
-      }
-      for (const busy of busyRanges) {
-        if (rangesConflict(restStart, restEnd, busy.start, busy.end)) {
-          showToast(t("adminDrivingQuickBookingDelayedLunchBusy"), "error");
-          return;
-        }
       }
     }
 

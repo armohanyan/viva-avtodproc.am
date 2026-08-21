@@ -509,6 +509,31 @@ async function ensureUsersPhone2Column(): Promise<void> {
   await sequelize.query('ALTER TABLE `users` ADD COLUMN `phone2` VARCHAR(64) NULL AFTER `phone`');
 }
 
+/** Adds `branches.label` when the table predates the Sequelize field (sync without alter skips new columns). */
+async function ensureBranchesLabelColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const rows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches' AND COLUMN_NAME = 'label'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (rows.length > 0) {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'branches'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  console.info('[migrate] Adding branches.label …');
+  await sequelize.query('ALTER TABLE `branches` ADD COLUMN `label` VARCHAR(64) NULL AFTER `name`');
+}
+
 /** Adds `finance_transactions.booking_id` when the table predates the Sequelize field (sync without alter skips new columns). */
 async function ensureFinanceTransactionsBookingIdColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -2602,6 +2627,7 @@ export async function syncModels(): Promise<void> {
   await ensureUsersPasswordResetColumns();
   await ensureUsersIsActiveColumn();
   await ensureUsersPhone2Column();
+  await ensureBranchesLabelColumn();
   await ensureCarExpensesDropPaymentColumns();
   await ensureCarExpensesTitleColumn();
   await ensureFinanceExpensesTable();

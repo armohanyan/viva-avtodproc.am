@@ -6,6 +6,8 @@ export class Branch extends Model<InferAttributes<Branch>, InferCreationAttribut
   declare id: CreationOptional<number>;
   declare cityId: number;
   declare name: string;
+  /** Short display label for instructor grids (driving / daily graphic). */
+  declare label: CreationOptional<string | null>;
   declare mapUrl: string;
   declare phone: CreationOptional<string | null>;
   declare email: CreationOptional<string | null>;
@@ -17,6 +19,7 @@ Branch.init(
     id: autoIncrementPk(),
     cityId: fkUnsignedInt(),
     name: { type: DataTypes.STRING(512), allowNull: false },
+    label: { type: DataTypes.STRING(64), allowNull: true },
     mapUrl: { type: DataTypes.TEXT, allowNull: false },
     phone: { type: DataTypes.STRING(64), allowNull: true },
     email: { type: DataTypes.STRING(255), allowNull: true },

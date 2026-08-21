@@ -36,6 +36,7 @@ export default function AdminBranches() {
   const [addBranchOpen, setAddBranchOpen] = useState(false);
   const [newBranch, setNewBranch] = useState({
     name: "",
+    label: "",
     cityId: DEFAULT_PRIMARY_CITY_ID,
     mapUrl: "",
     phone: "",
@@ -65,7 +66,7 @@ export default function AdminBranches() {
     const q = branchSearch.trim().toLowerCase();
     return branches.filter((b) => {
       const cityLabel = cityNameById(cities, b.cityId);
-      const hay = [b.name, b.cityId, cityLabel, b.mapUrl, b.phone, b.email, b.workHours].filter(Boolean).join(" ").toLowerCase();
+      const hay = [b.name, b.label, b.cityId, cityLabel, b.mapUrl, b.phone, b.email, b.workHours].filter(Boolean).join(" ").toLowerCase();
       return !q || hay.includes(q);
     });
   }, [branches, cities, branchSearch]);
@@ -133,6 +134,7 @@ export default function AdminBranches() {
         name: editBranch.name.trim(),
         cityId: editBranch.cityId,
         mapUrl: editBranch.mapUrl.trim(),
+        label: editBranch.label?.trim() ?? "",
         phone: editBranch.phone?.trim() || undefined,
         email: editBranch.email?.trim() || undefined,
         workHours: editBranch.workHours?.trim() || undefined,
@@ -161,6 +163,7 @@ export default function AdminBranches() {
         name: newBranch.name.trim(),
         cityId: newBranch.cityId,
         mapUrl: newBranch.mapUrl.trim(),
+        label: newBranch.label.trim() || undefined,
         phone: newBranch.phone.trim() || undefined,
         email: newBranch.email.trim() || undefined,
         workHours: newBranch.workHours.trim() || undefined,
@@ -168,6 +171,7 @@ export default function AdminBranches() {
       setAddBranchOpen(false);
       setNewBranch({
         name: "",
+        label: "",
         cityId: cities[0]?.id ?? DEFAULT_PRIMARY_CITY_ID,
         mapUrl: "",
         phone: "",
@@ -369,6 +373,7 @@ export default function AdminBranches() {
             onClick={() => {
               setNewBranch({
                 name: "",
+                label: "",
                 cityId: cities[0]?.id ?? DEFAULT_PRIMARY_CITY_ID,
                 mapUrl: "",
                 phone: "",
@@ -388,6 +393,7 @@ export default function AdminBranches() {
             filename="admin-branches.csv"
             headers={[
               t("branchAddressLabel"),
+              t("branchLabelField"),
               t("branchCityLabel"),
               t("phone"),
               t("email"),
@@ -396,6 +402,7 @@ export default function AdminBranches() {
             ]}
             rows={filteredBranches.map((b) => [
               b.name,
+              b.label ?? "—",
               cityNameById(cities, b.cityId),
               b.phone ?? "—",
               b.email ?? "—",
@@ -405,10 +412,10 @@ export default function AdminBranches() {
           />
         </DataTableToolbar>
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[48rem]">
+          <table className="w-full text-sm min-w-[52rem]">
             <thead className="bg-muted/40">
               <tr>
-                {[t("branchAddressLabel"), t("branchCityLabel"), t("phone"), t("email"), t("workHours"), t("branchMapEmbedUrl"), t("actions")].map((h) => (
+                {[t("branchAddressLabel"), t("branchLabelField"), t("branchCityLabel"), t("phone"), t("email"), t("workHours"), t("branchMapEmbedUrl"), t("actions")].map((h) => (
                   <th
                     key={h}
                     className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap"
@@ -420,7 +427,7 @@ export default function AdminBranches() {
             </thead>
             <tbody className="divide-y divide-border">
               {branchesLoading ? (
-                <TableSkeletonRows cols={7} cellClassName="px-4 py-3" />
+                <TableSkeletonRows cols={8} cellClassName="px-4 py-3" />
               ) : (
               filteredBranches.map((b) => (
                 <AdminTableRowContextMenu
@@ -449,6 +456,9 @@ export default function AdminBranches() {
                         <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                         {b.name}
                       </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[8rem] truncate">
+                      {b.label ?? "—"}
                     </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate">
                       {cityNameById(cities, b.cityId)}
@@ -596,6 +606,15 @@ export default function AdminBranches() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchLabelField")}</label>
+                <Input
+                  value={editBranch.label ?? ""}
+                  onChange={(e) => setEditBranch({ ...editBranch, label: e.target.value })}
+                  className="h-10"
+                  placeholder={t("branchLabelPlaceholder")}
+                />
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchMapEmbedUrl")} *</label>
                 <Input
                   value={editBranch.mapUrl}
@@ -671,6 +690,15 @@ export default function AdminBranches() {
                 onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
                 className="h-10"
                 placeholder={t("branchAddressPlaceholder")}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchLabelField")}</label>
+              <Input
+                value={newBranch.label}
+                onChange={(e) => setNewBranch({ ...newBranch, label: e.target.value })}
+                className="h-10"
+                placeholder={t("branchLabelPlaceholder")}
               />
             </div>
             <div>

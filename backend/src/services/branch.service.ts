@@ -9,6 +9,7 @@ export default class BranchService {
     cityId: number;
     name: string;
     mapUrl: string;
+    label?: string | null;
     phone?: string | null;
     email?: string | null;
     workHours?: string | null;
@@ -22,6 +23,7 @@ export default class BranchService {
       cityId: number;
       name: string;
       mapUrl: string;
+      label: string | null;
       phone: string | null;
       email: string | null;
       workHours: string | null;
