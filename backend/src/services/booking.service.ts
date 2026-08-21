@@ -568,7 +568,13 @@ export type AdminPackageAtomicCreateDto = {
 
 function dateIsoString(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    // Calendar dates must use local Y/M/D — toISOString() shifts UTC+4 midnights back one day.
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
   return String(v).slice(0, 10);
 }
 
@@ -580,12 +586,18 @@ function parseOptionalIsoDateOnly(raw: string | undefined): string | undefined {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined;
 }
 
+/**
+ * Inclusive YYYY-MM-DD range. A single filled bound means that calendar day only
+ * (admin UI often sets only "from" when filtering one lesson day).
+ */
 function normalizeOptionalDateRange(
   fromRaw: string | undefined,
   toRaw: string | undefined,
 ): { from?: string; to?: string } {
   let from = parseOptionalIsoDateOnly(fromRaw);
   let to = parseOptionalIsoDateOnly(toRaw);
+  if (from && !to) to = from;
+  if (to && !from) from = to;
   if (from && to && to < from) to = from;
   return { ...(from ? { from } : {}), ...(to ? { to } : {}) };
 }
@@ -1907,26 +1919,15 @@ export default class BookingService {
     }
 
     const slotRange = normalizeOptionalDateRange(query.slotStartDate, query.slotEndDate);
-    if (slotRange.from || slotRange.to) {
-      const bookingDateWhere: Record<symbol | string, string | string[]> = {};
-      const slotDateSqlParts: string[] = [];
-      if (slotRange.from && slotRange.to) {
-        bookingDateWhere[Op.between] = [slotRange.from, slotRange.to];
-        slotDateSqlParts.push(
-          `\`bs\`.\`date_iso\` BETWEEN ${sequelize.escape(slotRange.from)} AND ${sequelize.escape(slotRange.to)}`,
-        );
-      } else if (slotRange.from) {
-        bookingDateWhere[Op.gte] = slotRange.from;
-        slotDateSqlParts.push(`\`bs\`.\`date_iso\` >= ${sequelize.escape(slotRange.from)}`);
-      } else if (slotRange.to) {
-        bookingDateWhere[Op.lte] = slotRange.to;
-        slotDateSqlParts.push(`\`bs\`.\`date_iso\` <= ${sequelize.escape(slotRange.to)}`);
-      }
+    if (slotRange.from && slotRange.to) {
+      // Compare via DATE_FORMAT so DATEONLY never goes through Date/UTC coercion.
+      const bookingDateSql = `DATE_FORMAT(\`Booking\`.\`date_iso\`, '%Y-%m-%d') BETWEEN ${sequelize.escape(slotRange.from)} AND ${sequelize.escape(slotRange.to)}`;
+      const slotDateSql = `\`bs\`.\`date_iso\` BETWEEN ${sequelize.escape(slotRange.from)} AND ${sequelize.escape(slotRange.to)}`;
       andParts.push({
         [Op.or]: [
-          { dateIso: bookingDateWhere },
+          literal(bookingDateSql),
           literal(
-            `EXISTS (SELECT 1 FROM \`booking_slots\` AS \`bs\` WHERE \`bs\`.\`booking_id\` = \`Booking\`.\`id\` AND ${slotDateSqlParts.join(' AND ')})`,
+            `EXISTS (SELECT 1 FROM \`booking_slots\` AS \`bs\` WHERE \`bs\`.\`booking_id\` = \`Booking\`.\`id\` AND ${slotDateSql})`,
           ),
         ],
       });

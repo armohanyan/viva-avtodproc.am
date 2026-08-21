@@ -10,7 +10,7 @@ import {
   hoursUntilLessonStart,
   isRefundWindowForCancellation,
 } from '../services/booking.service';
-import { occupiedRangesMinutes } from '../services/booking-slot-validation.service';
+import { clipOccupiedRangeForForceSlot, occupiedRangesMinutes } from '../services/booking-slot-validation.service';
 import { rangesOverlapHalfOpen } from '../utils/booking-slot.util';
 
 const far = hoursUntilLessonStart('2099-06-15', '10:00');
@@ -100,6 +100,17 @@ assert.equal(
   splitSameDayRanges.some((r) => rangesOverlapHalfOpen({ start: 13 * 60 + 20, end: 15 * 60 }, r)),
   true,
   '13:20 must still occupy its own lesson',
+);
+
+/** Force/custom slot: pre-lunch 13:20 plan occupancy must not claim through lunch. */
+const lunch = [{ start: 14 * 60, end: 15 * 60 }];
+const plan1320 = { start: 13 * 60 + 20, end: 15 * 60 };
+const clipped = clipOccupiedRangeForForceSlot(plan1320, lunch);
+assert.deepEqual(clipped, { start: 13 * 60 + 20, end: 14 * 60 });
+assert.equal(
+  rangesOverlapHalfOpen({ start: 14 * 60 + 30, end: 15 * 60 + 30 }, clipped),
+  false,
+  'force slot 14:30-15:30 must be free vs clipped 13:20 occupancy',
 );
 
 // eslint-disable-next-line no-console

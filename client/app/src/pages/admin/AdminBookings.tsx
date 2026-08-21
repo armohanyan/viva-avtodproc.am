@@ -2123,7 +2123,12 @@ export default function AdminBookings() {
                 type="date"
                 value={createdFrom}
                 max={createdTo || undefined}
-                onChange={(e) => setCreatedFrom(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCreatedFrom(v);
+                  // One filled bound → that calendar day until the other side is set.
+                  if (v && !createdTo) setCreatedTo(v);
+                }}
                 className="h-9"
                 aria-label={t("adminBookingsFilterCreatedFrom")}
               />
@@ -2137,7 +2142,11 @@ export default function AdminBookings() {
                 type="date"
                 value={createdTo}
                 min={createdFrom || undefined}
-                onChange={(e) => setCreatedTo(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCreatedTo(v);
+                  if (v && !createdFrom) setCreatedFrom(v);
+                }}
                 className="h-9"
                 aria-label={t("adminBookingsFilterCreatedTo")}
               />
@@ -2151,7 +2160,12 @@ export default function AdminBookings() {
                 type="date"
                 value={slotStartDate}
                 max={slotEndDate || undefined}
-                onChange={(e) => setSlotStartDate(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSlotStartDate(v);
+                  // One filled bound → that lesson day until the other side is set.
+                  if (v && !slotEndDate) setSlotEndDate(v);
+                }}
                 className="h-9"
                 aria-label={t("adminBookingsFilterSlotFrom")}
               />
@@ -2165,7 +2179,11 @@ export default function AdminBookings() {
                 type="date"
                 value={slotEndDate}
                 min={slotStartDate || undefined}
-                onChange={(e) => setSlotEndDate(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSlotEndDate(v);
+                  if (v && !slotStartDate) setSlotStartDate(v);
+                }}
                 className="h-9"
                 aria-label={t("adminBookingsFilterSlotTo")}
               />

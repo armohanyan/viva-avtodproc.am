@@ -1,7 +1,10 @@
 import { Op } from 'sequelize';
 import { Booking, BookingSlot } from '../models';
 import BranchScheduleService from './branch-schedule.service';
-import InstructorAvailabilityService, { slotRangeOverlapsLunch } from './instructor-availability.service';
+import InstructorAvailabilityService, {
+  lunchRangesFromRules,
+  slotRangeOverlapsLunch,
+} from './instructor-availability.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import {
@@ -127,6 +130,42 @@ export function occupiedRangesMinutes(
   return starts.map((start) => practicalSlotRangeMinutesFromBookable(minutesToHHMM(start), bookable));
 }
 
+/**
+ * Force/custom slots may use lunch. A pre-lunch plan lesson's exclusive end jumps to the next
+ * bookable after lunch (e.g. 13:20→15:00); for force-slot conflict checks, stop that occupancy
+ * at lunch start so lunch itself stays bookable. Real bookings that claim a start inside lunch
+ * (or span past an intermediate bookable slot) are left unchanged.
+ */
+export function clipOccupiedRangeForForceSlot(
+  occupied: { start: number; end: number },
+  lunchRanges: readonly { start: number; end: number }[],
+  bookableSorted: readonly string[] = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN),
+  claimedSlotTimesOnDate: readonly string[] = [],
+): { start: number; end: number } {
+  if (lunchRanges.length === 0) return occupied;
+
+  const claimedDuringLunch = claimedSlotTimesOnDate.some((t) => {
+    const m = parseTimeToMinutes(normalizeTimeHHMM(t) ?? t);
+    if (!Number.isFinite(m)) return false;
+    return lunchRanges.some((l) => m >= l.start && m < l.end);
+  });
+  if (claimedDuringLunch) return occupied;
+
+  const bookableBetween = bookableSorted.some((t) => {
+    const m = parseTimeToMinutes(t);
+    return Number.isFinite(m) && m > occupied.start && m < occupied.end;
+  });
+  if (bookableBetween) return occupied;
+
+  let end = occupied.end;
+  for (const lunch of lunchRanges) {
+    if (occupied.start < lunch.start && end > lunch.start) {
+      end = Math.min(end, lunch.start);
+    }
+  }
+  return end > occupied.start ? { start: occupied.start, end } : occupied;
+}
+
 function conflictMessage(detail: SlotConflictDetail): string {
   const occupiedStarts =
     detail.occupiedSlotTimes.length > 0
@@ -161,6 +200,11 @@ export default class BookingSlotValidationService {
     rangeStart: string;
     rangeEndExclusive: string;
     excludeBookingId?: number;
+    /**
+     * Force/custom practical slot: do not let a pre-lunch plan lesson claim through lunch
+     * (plan exclusive end jumps 13:20→15:00 across the lunch gap).
+     */
+    ignoreLunchOccupancy?: boolean;
   }): Promise<SlotConflictDetail | null> {
     const dateIso = input.dateIso.slice(0, 10);
     const rangeStart = normalizeTimeHHMM(input.rangeStart);
@@ -173,6 +217,11 @@ export default class BookingSlotValidationService {
     if (!Number.isFinite(proposed.start) || !Number.isFinite(proposed.end) || proposed.end <= proposed.start) {
       return null;
     }
+
+    const bookableSorted = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN);
+    const lunchRanges = input.ignoreLunchOccupancy
+      ? lunchRangesFromRules(await InstructorAvailabilityService.listForInstructor(input.instructorUserId))
+      : [];
 
     const slotRows = await BookingSlot.findAll({
       where: {
@@ -224,7 +273,10 @@ export default class BookingSlotValidationService {
         dateIso,
         occ.slotTimes,
       );
-      for (const occupied of occupiedRanges) {
+      for (const rawOccupied of occupiedRanges) {
+        const occupied = input.ignoreLunchOccupancy
+          ? clipOccupiedRangeForForceSlot(rawOccupied, lunchRanges, bookableSorted, occ.slotTimes)
+          : rawOccupied;
         if (!rangesOverlapHalfOpen(proposed, occupied)) continue;
         return {
           bookingId: occ.bookingId,
@@ -261,7 +313,12 @@ export default class BookingSlotValidationService {
         dateIso,
         [],
       );
-      for (const occupied of occupiedRanges) {
+      for (const rawOccupied of occupiedRanges) {
+        const occupied = input.ignoreLunchOccupancy
+          ? clipOccupiedRangeForForceSlot(rawOccupied, lunchRanges, bookableSorted, [
+              normalizeTimeHHMM(b.time) ?? b.time,
+            ])
+          : rawOccupied;
         if (!rangesOverlapHalfOpen(proposed, occupied)) continue;
         return {
           bookingId: b.id,
@@ -287,6 +344,7 @@ export default class BookingSlotValidationService {
     excludeBookingId?: number;
     /** Error copy when the window is a rest/busy block rather than a lesson. */
     busyMessage?: string;
+    ignoreLunchOccupancy?: boolean;
   }): Promise<void> {
     const conflict = await this.findInstructorOverlapConflict(input);
     if (conflict) {
@@ -355,8 +413,8 @@ export default class BookingSlotValidationService {
 
     const allowHistorical = input.allowHistoricalSlots === true;
     const allowPast = allowHistorical || input.allowPastSlots === true;
-    /** Admin practical create/update (`allowPastSlots`): lunch may be booked; day-off stays blocked. */
-    const skipLunch = allowPast && isPractical;
+    /** Admin practical create/update, or force/custom slot: lunch may be booked; day-off stays blocked. */
+    const skipLunch = (allowPast && isPractical) || allowCustomPractical;
 
     for (const slot of input.slots) {
       const editingExistingBooking =
@@ -451,6 +509,7 @@ export default class BookingSlotValidationService {
         rangeStart: minutesToHHMM(rangeForBusy.start),
         rangeEndExclusive: minutesToHHMM(rangeForBusy.end),
         excludeBookingId: input.excludeBookingId,
+        ignoreLunchOccupancy: allowCustomPractical,
       });
     }
   }
