@@ -1,6 +1,5 @@
 import { Op, Transaction } from 'sequelize';
-import { InstructorBranch, InstructorProfile, TheoryCohort, TheoryCohortInstructor, User } from '../models';
-import InstructorBranchService from './instructor-branch.service';
+import { InstructorProfile, TheoryCohort, TheoryCohortInstructor, User } from '../models';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
@@ -42,10 +41,8 @@ export default class TheoryCohortInstructorService {
     return out;
   }
 
-  static async assertAssignableTheoryInstructors(
-    instructorUserIds: readonly number[],
-    branchId: number,
-  ): Promise<void> {
+  /** Theory-group teachers are not scoped to the cohort branch (practical branches may differ). */
+  static async assertAssignableTheoryInstructors(instructorUserIds: readonly number[]): Promise<void> {
     const ids = uniqPositiveIds(instructorUserIds);
     if (ids.length === 0) {
       throw new InputValidationError(
@@ -62,7 +59,6 @@ export default class TheoryCohortInstructorService {
       if (!foundIds.has(id)) {
         throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      await InstructorBranchService.assertInstructorServesBranch(id, branchId);
     }
     const profiles = await InstructorProfile.findAll({
       where: { userId: { [Op.in]: ids } },
@@ -83,11 +79,10 @@ export default class TheoryCohortInstructorService {
   static async syncInstructors(
     cohortId: number,
     instructorUserIds: readonly number[],
-    branchId: number,
     t?: Transaction,
   ): Promise<void> {
     const want = uniqPositiveIds(instructorUserIds);
-    await this.assertAssignableTheoryInstructors(want, branchId);
+    await this.assertAssignableTheoryInstructors(want);
     const existing = await TheoryCohortInstructor.findAll({
       where: { cohortId },
       transaction: t,
@@ -124,13 +119,10 @@ export default class TheoryCohortInstructorService {
     const name = cohort.instructorName?.trim();
     if (!name) return [];
     const firstName = name.split(',')[0]?.trim() ?? name;
-    const links = await InstructorBranch.findAll({ where: { branchId: cohort.branchId } });
-    const branchInstructorIds = links.map((l) => l.instructorUserId);
     const instructor = await User.findOne({
       where: {
         name: firstName,
         accountType: 'instructor',
-        ...(branchInstructorIds.length > 0 ? { id: { [Op.in]: branchInstructorIds } } : {}),
       },
       attributes: ['id'],
     });

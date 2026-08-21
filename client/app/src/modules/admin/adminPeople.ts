@@ -1,6 +1,5 @@
 import type { Instructor } from "src/data/instructors";
 import {
-  filterInstructorsServingBranches,
   withSelectedInstructorByName,
   withSelectedInstructorsByIds,
 } from "src/modules/instructors/instructor-booking";
@@ -10,17 +9,15 @@ export function allInstructorNames(instructors: readonly Instructor[]): string[]
   return [...instructors].map((i) => i.name).sort((a, b) => a.localeCompare(b));
 }
 
-/** Active theory instructors who serve at least one of the given branches (N:N). */
-export function theoryInstructorsForBranch(
+/**
+ * Active instructors with theory teaching enabled.
+ * Not filtered by branch — theory-group cohorts may use a different branch than the instructor's practical branches.
+ */
+export function activeTheoryInstructors(
   instructors: readonly Instructor[],
-  branchId: string | null | undefined,
   opts?: { selectedName?: string; selectedIds?: readonly string[] },
 ): Instructor[] {
-  const branchIds = branchId ? [branchId] : [];
-  const filtered = filterInstructorsServingBranches(
-    instructors.filter((i) => i.status === "active" && i.teachesTheory),
-    branchIds,
-  );
+  const filtered = instructors.filter((i) => i.status === "active" && i.teachesTheory);
   let list = withSelectedInstructorByName(filtered, opts?.selectedName, instructors);
   list = withSelectedInstructorsByIds(list, opts?.selectedIds, instructors);
   return list;

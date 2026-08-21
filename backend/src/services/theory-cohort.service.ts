@@ -1,8 +1,6 @@
 import { Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { Op } from 'sequelize';
-import { InstructorBranch, TheoryCohort, TheoryCohortEnrollment, TheoryCohortSession, User } from '../models';
-import InstructorBranchService from './instructor-branch.service';
+import { TheoryCohort, TheoryCohortEnrollment, TheoryCohortSession, User } from '../models';
 import TheoryCohortInstructorService from './theory-cohort-instructor.service';
 import TheoryCohortSessionService from './theory-cohort-session.service';
 import {
@@ -116,7 +114,6 @@ async function resolveInstructorUserIdsFromInput(input: {
   instructorUserIds?: readonly number[] | null;
   instructorUserId?: number | null;
   instructorName?: string;
-  branchId: number;
 }): Promise<number[]> {
   const fromList = (input.instructorUserIds ?? [])
     .map((n) => Math.round(Number(n)))
@@ -133,13 +130,10 @@ async function resolveInstructorUserIdsFromInput(input: {
   const name = input.instructorName?.trim();
   if (!name) return [];
   const firstName = name.split(',')[0]?.trim() ?? name;
-  const links = await InstructorBranch.findAll({ where: { branchId: input.branchId } });
-  const branchInstructorIds = links.map((l) => l.instructorUserId);
   const instructor = await User.findOne({
     where: {
       name: firstName,
       accountType: 'instructor',
-      ...(branchInstructorIds.length > 0 ? { id: { [Op.in]: branchInstructorIds } } : {}),
     },
     attributes: ['id'],
   });
@@ -171,14 +165,6 @@ function validateScheduleFields(input: {
       throw new InputValidationError(err, HttpStatusCodesUtil.BAD_REQUEST);
     }
   }
-}
-
-async function assertCohortInstructorServesBranch(
-  instructorUserId: number | null,
-  branchId: number,
-): Promise<void> {
-  if (instructorUserId == null) return;
-  await InstructorBranchService.assertInstructorServesBranch(instructorUserId, branchId);
 }
 
 export default class TheoryCohortService {
@@ -237,12 +223,8 @@ export default class TheoryCohortService {
       instructorUserIds: input.instructorUserIds,
       instructorUserId: input.instructorUserId,
       instructorName: input.instructorName,
-      branchId: input.branchId,
     });
-    await TheoryCohortInstructorService.assertAssignableTheoryInstructors(
-      resolvedInstructorIds,
-      input.branchId,
-    );
+    await TheoryCohortInstructorService.assertAssignableTheoryInstructors(resolvedInstructorIds);
     const instructorUserId = resolvedInstructorIds[0] ?? null;
     const instructorName =
       (await TheoryCohortInstructorService.buildInstructorDisplayName(resolvedInstructorIds)) ||
@@ -268,12 +250,7 @@ export default class TheoryCohortService {
         },
         { transaction: t },
       );
-      await TheoryCohortInstructorService.syncInstructors(
-        c.id,
-        resolvedInstructorIds,
-        input.branchId,
-        t,
-      );
+      await TheoryCohortInstructorService.syncInstructors(c.id, resolvedInstructorIds, t);
       await c.reload({ transaction: t });
       await TheoryCohortSessionService.syncSessionsForCohort(c, t);
       const genCount = await sessionCountForCohort(c.id);
@@ -326,7 +303,6 @@ export default class TheoryCohortService {
       totalLessons: nextTotal,
     });
 
-    const nextBranchId = patch.branchId !== undefined ? patch.branchId : c.branchId;
     const instructorsTouched =
       patch.instructorUserIds !== undefined ||
       patch.instructorUserId !== undefined ||
@@ -337,20 +313,8 @@ export default class TheoryCohortService {
         instructorUserIds: patch.instructorUserIds,
         instructorUserId: patch.instructorUserId,
         instructorName: patch.instructorName ?? c.instructorName,
-        branchId: nextBranchId,
       });
-      await TheoryCohortInstructorService.assertAssignableTheoryInstructors(
-        nextInstructorIds,
-        nextBranchId,
-      );
-    } else if (patch.branchId !== undefined && patch.branchId !== c.branchId) {
-      nextInstructorIds = await TheoryCohortInstructorService.resolveInstructorUserIds(c);
-      if (nextInstructorIds.length > 0) {
-        await TheoryCohortInstructorService.assertAssignableTheoryInstructors(
-          nextInstructorIds,
-          nextBranchId,
-        );
-      }
+      await TheoryCohortInstructorService.assertAssignableTheoryInstructors(nextInstructorIds);
     }
     const nextInstructorUserId =
       nextInstructorIds !== undefined
@@ -364,9 +328,6 @@ export default class TheoryCohortService {
           : c.instructorUserId != null && Number.isFinite(Number(c.instructorUserId)) && Number(c.instructorUserId) > 0
             ? Math.round(Number(c.instructorUserId))
             : null;
-    if (nextInstructorUserId != null) {
-      await assertCohortInstructorServesBranch(nextInstructorUserId, nextBranchId);
-    }
     const nextInstructorName =
       nextInstructorIds !== undefined
         ? (await TheoryCohortInstructorService.buildInstructorDisplayName(nextInstructorIds)) ||
@@ -377,7 +338,7 @@ export default class TheoryCohortService {
 
     return sequelize.transaction(async (t) => {
     if (nextInstructorIds !== undefined) {
-      await TheoryCohortInstructorService.syncInstructors(c.id, nextInstructorIds, nextBranchId, t);
+      await TheoryCohortInstructorService.syncInstructors(c.id, nextInstructorIds, t);
     }
     await c.update({
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),

@@ -21,7 +21,7 @@ import PanelPageHeader from "src/components/PanelPageHeader";
 import { Plus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
-import { theoryInstructorsForBranch } from "src/modules/admin/adminPeople";
+import { activeTheoryInstructors } from "src/modules/admin/adminPeople";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
@@ -170,10 +170,10 @@ export default function AdminCohorts() {
 
   const addCohortInstructors = useMemo(
     () =>
-      theoryInstructorsForBranch(instructors, newCohort.branchId, {
+      activeTheoryInstructors(instructors, {
         selectedIds: newCohort.instructorUserIds,
       }),
-    [instructors, newCohort.branchId, newCohort.instructorUserIds],
+    [instructors, newCohort.instructorUserIds],
   );
   const addCohortInstructorOptions = useMemo(
     () => addCohortInstructors.map((i) => ({ value: i.id, label: i.name })),
@@ -182,11 +182,11 @@ export default function AdminCohorts() {
 
   const editCohortInstructors = useMemo(
     () =>
-      theoryInstructorsForBranch(instructors, editCohort?.branchId, {
+      activeTheoryInstructors(instructors, {
         selectedIds: editCohort?.instructorUserIds,
         selectedName: editCohort?.instructorName,
       }),
-    [instructors, editCohort?.branchId, editCohort?.instructorName, editCohort?.instructorUserIds],
+    [instructors, editCohort?.instructorName, editCohort?.instructorUserIds],
   );
   const editCohortInstructorOptions = useMemo(
     () => editCohortInstructors.map((i) => ({ value: i.id, label: i.name })),
@@ -549,15 +549,9 @@ export default function AdminCohorts() {
                 <select
                   value={editCohort.branchId}
                   onChange={(e) => {
-                    const branchId = e.target.value;
-                    const nextInstructors = theoryInstructorsForBranch(instructors, branchId, {
-                      selectedIds: editCohort.instructorUserIds,
-                    });
-                    const allowed = new Set(nextInstructors.map((i) => i.id));
                     setEditCohort({
                       ...editCohort,
-                      branchId,
-                      instructorUserIds: editCohort.instructorUserIds.filter((id) => allowed.has(id)),
+                      branchId: e.target.value,
                     });
                   }}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -757,15 +751,9 @@ export default function AdminCohorts() {
               <select
                 value={newCohort.branchId}
                 onChange={(e) => {
-                  const branchId = e.target.value;
-                  const nextInstructors = theoryInstructorsForBranch(instructors, branchId, {
-                    selectedIds: newCohort.instructorUserIds,
-                  });
-                  const allowed = new Set(nextInstructors.map((i) => i.id));
                   setNewCohort({
                     ...newCohort,
-                    branchId,
-                    instructorUserIds: newCohort.instructorUserIds.filter((id) => allowed.has(id)),
+                    branchId: e.target.value,
                   });
                 }}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
