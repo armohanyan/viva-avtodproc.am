@@ -42,6 +42,14 @@ function statusBadgeClass(status: RequestStatus): string {
 }
 
 export default function AdminTheoryPersonalRequests(): JSX.Element {
+  return (
+    <AdminLayout>
+      <AdminTheoryPersonalRequestsContent />
+    </AdminLayout>
+  );
+}
+
+function AdminTheoryPersonalRequestsContent(): JSX.Element {
   const { branchId: filterBranchId } = useAdminBranchFilter();
   const { t, lang } = useLang();
   const { showToast } = useToast();
@@ -149,7 +157,7 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-4 p-4 md:p-6">
         <PanelPageHeader title={t("adminTheoryPersonalRequests")} />
         <Card className="overflow-hidden p-0">
@@ -305,6 +313,6 @@ export default function AdminTheoryPersonalRequests(): JSX.Element {
           <p className="text-sm text-muted-foreground">{t("couldNotLoadData")}</p>
         ) : null}
       </AppModal>
-    </AdminLayout>
+    </>
   );
 }

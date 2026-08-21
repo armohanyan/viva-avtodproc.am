@@ -33,6 +33,14 @@ type SlotSelection = {
 };
 
 export default function AdminDriving() {
+  return (
+    <AdminLayout>
+      <AdminDrivingContent />
+    </AdminLayout>
+  );
+}
+
+function AdminDrivingContent() {
   const { t } = useLang();
   const { instructors, loading } = useInstructors();
   const { branches } = useBranches();
@@ -97,7 +105,7 @@ export default function AdminDriving() {
       : t("adminDrivingEmptyFiltered");
 
   return (
-    <AdminLayout>
+    <>
       <PanelPageHeader
         icon={Car}
         title={t("adminDrivingTitle")}
@@ -243,6 +251,6 @@ export default function AdminDriving() {
           onDeleted={handleBookingDeleted}
         />
       ) : null}
-    </AdminLayout>
+    </>
   );
 }
