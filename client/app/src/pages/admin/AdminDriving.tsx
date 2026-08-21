@@ -1,12 +1,16 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Car } from "lucide-react";
 import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import AdminInstructorAvailabilityTable from "src/modules/admin/booking/AdminInstructorAvailabilityTable";
 import AdminInstructorDaySlotsModal from "src/modules/admin/booking/AdminInstructorDaySlotsModal";
 import AdminDrivingDayModal from "src/modules/admin/driving/AdminDrivingDayModal";
+import AdminDrivingFilters, {
+  filterInstructorsBySearch,
+} from "src/modules/admin/driving/AdminDrivingFilters";
 import PracticalBookingDetailModal from "src/modules/admin/driving/PracticalBookingDetailModal";
 import QuickPracticalBookingModal from "src/modules/admin/driving/QuickPracticalBookingModal";
+import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { useBranches } from "src/modules/branches";
 import { useAdminStudentsMini, type AdminStudentMini } from "src/modules/admin/useAdminStudents";
@@ -32,7 +36,10 @@ export default function AdminDriving() {
   const { t } = useLang();
   const { instructors, loading } = useInstructors();
   const { branches } = useBranches();
+  const { branchId: adminBranchId } = useAdminBranchFilter();
   const { students, refresh: refreshStudents } = useAdminStudentsMini({ enrollmentStatus: "all" });
+  const [search, setSearch] = useState("");
+  const [branchFilterId, setBranchFilterId] = useState(() => adminBranchId ?? "");
   const [slotModalTarget, setSlotModalTarget] = useState<CellTarget | null>(null);
   const [pendingSelection, setPendingSelection] = useState<SlotSelection | null>(null);
   const [dayModalDateIso, setDayModalDateIso] = useState<string | null>(null);
@@ -44,9 +51,18 @@ export default function AdminDriving() {
   /** Bumped after a booking is created/updated/deleted so grids reload. */
   const [refreshKey, setRefreshKey] = useState(0);
 
+  useEffect(() => {
+    setBranchFilterId(adminBranchId ?? "");
+  }, [adminBranchId]);
+
   const activePracticalInstructors = useMemo(
     () => instructors.filter((i) => i.status === "active" && i.teachesPractical),
     [instructors],
+  );
+
+  const filteredInstructors = useMemo(
+    () => filterInstructorsBySearch(activePracticalInstructors, search),
+    [activePracticalInstructors, search],
   );
 
   const bumpRefresh = useCallback(() => {
@@ -74,6 +90,12 @@ export default function AdminDriving() {
     bumpRefresh();
   }, [bumpRefresh]);
 
+  const emptyMessage = loading
+    ? t("loading")
+    : activePracticalInstructors.length === 0
+      ? t("adminDrivingEmptyInstructors")
+      : t("adminDrivingEmptyFiltered");
+
   return (
     <AdminLayout>
       <PanelPageHeader
@@ -81,15 +103,22 @@ export default function AdminDriving() {
         title={t("adminDrivingTitle")}
       />
 
-      {activePracticalInstructors.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {loading ? t("loading") : t("adminDrivingEmptyInstructors")}
-        </p>
+      <AdminDrivingFilters
+        search={search}
+        onSearchChange={setSearch}
+        branchId={branchFilterId}
+        onBranchIdChange={setBranchFilterId}
+        className="mb-4"
+      />
+
+      {filteredInstructors.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
       ) : (
         <AdminInstructorAvailabilityTable
           key={refreshKey}
-          instructors={activePracticalInstructors}
-          bookingBranchId=""
+          instructors={filteredInstructors}
+          bookingBranchId={branchFilterId}
+          ignoreGlobalBranchFilter
           studentName=""
           selectedEntries={[]}
           onEntriesChange={() => {}}
@@ -111,6 +140,8 @@ export default function AdminDriving() {
           }}
           dateIso={dayModalDateIso}
           instructors={activePracticalInstructors}
+          initialSearch={search}
+          initialBranchId={branchFilterId}
           reloadKey={refreshKey}
           onEmptyCellClick={({ instructor, branchId, dateIso, time, customSlot, customSlotEndTime }) => {
             setPendingSelection({

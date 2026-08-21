@@ -1425,6 +1425,8 @@ adminPackagesPageSubtitle: "Configure lesson packages, pricing, and included fea
   adminDrivingSubtitle:
     "See how many practical lessons each instructor has per day. Click a date for the full day grid, or a cell to book.",
   adminDrivingEmptyInstructors: "No active practical instructors yet.",
+  adminDrivingSearchPlaceholder: "Search instructor…",
+  adminDrivingEmptyFiltered: "No instructors match the current search or branch filter.",
   adminDrivingCellLessonsSuffix: "lessons",
   adminDrivingQuickBookingTitle: "New practical booking",
   adminDrivingQuickBookingInstructorLabel: "Instructor",
@@ -3715,6 +3717,8 @@ const ru: typeof en = {
   adminDrivingSubtitle:
     "Сколько практических уроков у каждого инструктора по дням. Нажмите на дату для сетки дня или на ячейку, чтобы записаться.",
   adminDrivingEmptyInstructors: "Пока нет активных инструкторов вождения.",
+  adminDrivingSearchPlaceholder: "Поиск инструктора…",
+  adminDrivingEmptyFiltered: "Нет инструкторов по текущему поиску или фильтру филиала.",
   adminDrivingCellLessonsSuffix: "уроков",
   adminDrivingQuickBookingTitle: "Новая запись на вождение",
   adminDrivingQuickBookingInstructorLabel: "Инструктор",
@@ -6020,6 +6024,8 @@ const am: typeof en = {
   adminDrivingSubtitle:
     "Տեսեք յուրաքանչյուր դասավանդողի օրական գործնական դասերի քանակը։ Սեղմեք ամսաթվին՝ օրվա գրաֆիկը բացելու համար, կամ վանդակին՝ ամրագրելու համար։",
   adminDrivingEmptyInstructors: "Դեռ չկան ակտիվ վարման դասավանդողներ։",
+  adminDrivingSearchPlaceholder: "Փնտրել դասավանդող…",
+  adminDrivingEmptyFiltered: "Ընթացիկ որոնման կամ մասնաճյուղի ֆիլտրին համապատասխան դասավանդողներ չկան։",
   adminDrivingCellLessonsSuffix: "դաս",
   adminDrivingQuickBookingTitle: "Նոր գործնական ամրագրում",
   adminDrivingQuickBookingInstructorLabel: "Դասավանդող",

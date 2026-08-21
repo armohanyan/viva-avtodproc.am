@@ -25,11 +25,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
     translationKey: "adminSidebarLearn",
     collapsible: true,
     children: [
-      {
-        href: "/admin/learn/groups",
-        translationKey: "adminSidebarGroups",
-        allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES,
-      },
+      { href: "/admin/learn/groups", translationKey: "adminSidebarGroups" },
       { href: "/admin/learn/packages", translationKey: "packages" },
       { href: "/admin/learn/exam-questions", translationKey: "adminLearnNavQuestionnaire" },
     ],

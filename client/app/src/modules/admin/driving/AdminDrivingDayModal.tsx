@@ -19,6 +19,9 @@ import {
   formatGridDateLabel,
   padSlotTime,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
+import AdminDrivingFilters, {
+  filterInstructorsBySearch,
+} from "src/modules/admin/driving/AdminDrivingFilters";
 import { useBranches } from "src/modules/branches";
 import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
@@ -69,6 +72,10 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   dateIso: string;
   instructors: readonly Instructor[];
+  /** Seed search when the modal opens (from the driving page toolbar). */
+  initialSearch?: string;
+  /** Seed branch filter when the modal opens; empty = all branches. */
+  initialBranchId?: string;
   /** Bumped by parent after create/edit/delete so the day grid reloads. */
   reloadKey?: number;
   onEmptyCellClick: (target: {
@@ -242,6 +249,8 @@ export default function AdminDrivingDayModal({
   onOpenChange,
   dateIso,
   instructors,
+  initialSearch = "",
+  initialBranchId,
   reloadKey = 0,
   onEmptyCellClick,
   onAddCustomSlotClick,
@@ -252,16 +261,32 @@ export default function AdminDrivingDayModal({
   const { branchId: adminBranchId } = useAdminBranchFilter();
   const day = dateIso.slice(0, 10);
 
+  const [search, setSearch] = useState(initialSearch);
+  const [branchFilterId, setBranchFilterId] = useState(
+    () => (initialBranchId !== undefined ? initialBranchId : adminBranchId ?? ""),
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setSearch(initialSearch);
+    setBranchFilterId(initialBranchId !== undefined ? initialBranchId : adminBranchId ?? "");
+  }, [open, dateIso, initialSearch, initialBranchId, adminBranchId]);
+
+  const filteredInstructors = useMemo(
+    () => filterInstructorsBySearch(instructors, search),
+    [instructors, search],
+  );
+
   const dayColumns = useMemo(
-    () => buildInstructorBranchColumns(branches, instructors, adminBranchId),
-    [branches, instructors, adminBranchId],
+    () => buildInstructorBranchColumns(branches, filteredInstructors, branchFilterId),
+    [branches, filteredInstructors, branchFilterId],
   );
 
   const primaryBranchId = useMemo(() => {
-    const filtered = (adminBranchId ?? "").trim();
+    const filtered = branchFilterId.trim();
     if (filtered) return filtered;
     return dayColumns[0]?.bookingBranchId ?? "";
-  }, [adminBranchId, dayColumns]);
+  }, [branchFilterId, dayColumns]);
 
   const { rows: planRows, loading: planLoading } = usePracticalSlotPlan(primaryBranchId, open);
 
@@ -553,6 +578,14 @@ export default function AdminDrivingDayModal({
         </div>
       }
     >
+      <AdminDrivingFilters
+        search={search}
+        onSearchChange={setSearch}
+        branchId={branchFilterId}
+        onBranchIdChange={setBranchFilterId}
+        className="mb-3 shrink-0 px-1"
+      />
+
       {error ? <p className="mb-3 text-sm text-destructive">{error}</p> : null}
 
       {busy && items.length === 0 ? (
@@ -561,7 +594,11 @@ export default function AdminDrivingDayModal({
           {t("loading")}
         </div>
       ) : dayColumns.length === 0 ? (
-        <p className="py-8 text-sm text-muted-foreground">{t("adminDrivingEmptyInstructors")}</p>
+        <p className="py-8 text-sm text-muted-foreground">
+          {instructors.length === 0
+            ? t("adminDrivingEmptyInstructors")
+            : t("adminDrivingEmptyFiltered")}
+        </p>
       ) : (
         <TooltipProvider delayDuration={200}>
           <div className="relative min-h-0 flex-1 rounded-lg border border-primary/30 max-h-[min(82vh,980px)] overflow-auto overscroll-contain">

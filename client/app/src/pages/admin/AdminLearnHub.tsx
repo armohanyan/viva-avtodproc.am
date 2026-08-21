@@ -8,7 +8,6 @@ import { Skeleton } from "src/components/ui/skeleton";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
-import { useAccount } from "src/modules/accounts";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 
 type LearnHubStats = {
@@ -31,8 +30,6 @@ const initialStats: LearnHubStats = {
 export default function AdminLearnHub() {
   const { t } = useLang();
   const { showToast } = useToast();
-  const { user } = useAccount();
-  const canManageGroups = user?.accountType === "super_admin";
   const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const [stats, setStats] = useState<LearnHubStats>(initialStats);
   const [loading, setLoading] = useState(true);
@@ -41,7 +38,7 @@ export default function AdminLearnHub() {
     setLoading(true);
     try {
       const [cohorts, packages, questions] = await Promise.all([
-        canManageGroups ? vivaApiJson<Array<{ status?: string }>>("/theory-cohorts") : Promise.resolve([]),
+        vivaApiJson<Array<{ status?: string }>>("/theory-cohorts"),
         vivaApiJson<Array<{ status?: string }>>("/packages"),
         vivaApiJson<Array<{ id: string }>>("/exam-questions"),
       ]);
@@ -60,14 +57,14 @@ export default function AdminLearnHub() {
     } finally {
       setLoading(false);
     }
-  }, [canManageGroups, showToast]);
+  }, [showToast]);
 
   useEffect(() => {
     void loadStats();
   }, [loadStats, branchFilterRevision]);
 
-  const cards = useMemo(() => {
-    const all = [
+  const cards = useMemo(
+    () => [
       {
         key: "groups",
         icon: UsersRound,
@@ -75,7 +72,6 @@ export default function AdminLearnHub() {
         value: stats.groupsTotal,
         note: `${t("active")}: ${stats.groupsActive}`,
         href: "/admin/learn/groups",
-        superAdminOnly: true as const,
       },
       {
         key: "packages",
@@ -93,17 +89,16 @@ export default function AdminLearnHub() {
         note: t("adminLearnOpenExamTests"),
         href: "/admin/learn/exam-questions",
       },
-    ];
-    return canManageGroups ? all : all.filter((c) => !("superAdminOnly" in c));
-  }, [
-    canManageGroups,
-    stats.groupsActive,
-    stats.groupsTotal,
-    stats.packagesActive,
-    stats.packagesTotal,
-    stats.questionsTotal,
-    t,
-  ]);
+    ],
+    [
+      stats.groupsActive,
+      stats.groupsTotal,
+      stats.packagesActive,
+      stats.packagesTotal,
+      stats.questionsTotal,
+      t,
+    ],
+  );
 
   return (
     <AdminLayout>

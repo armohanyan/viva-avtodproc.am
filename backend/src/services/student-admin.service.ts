@@ -319,12 +319,25 @@ export default class StudentAdminService {
     if (!user || !profile) return null;
     let nextEmail: string | undefined;
     if (patch.email !== undefined || patch.inviteToSystem !== undefined) {
-      const inviteToSystem = patch.inviteToSystem ?? !isInternalNoLoginEmail(user.email);
-      const candidate = (patch.email ?? user.email ?? '').trim().toLowerCase();
-      if (inviteToSystem && (!candidate || isInternalNoLoginEmail(candidate))) {
+      const currentIsInternal = isInternalNoLoginEmail(user.email);
+      let candidate: string;
+      if (patch.email !== undefined) {
+        const trimmed = patch.email.trim().toLowerCase();
+        // Empty email is optional: keep existing no-login address, or clear a real email to no-login.
+        candidate = !trimmed ? (currentIsInternal ? user.email : '') : trimmed;
+      } else {
+        candidate = (user.email ?? '').trim().toLowerCase();
+      }
+      const hasRealEmail = Boolean(candidate) && !isInternalNoLoginEmail(candidate);
+      const inviteToSystem = patch.inviteToSystem ?? hasRealEmail;
+      if (inviteToSystem && !hasRealEmail) {
         throw new InputValidationError('Email is required when inviteToSystem is true', HttpStatusCodesUtil.BAD_REQUEST);
       }
-      nextEmail = !inviteToSystem && !candidate ? generateInternalNoLoginEmail(userId) : candidate;
+      nextEmail = hasRealEmail
+        ? candidate
+        : currentIsInternal
+          ? user.email
+          : generateInternalNoLoginEmail(userId);
       const other = await User.findOne({ where: { email: nextEmail, id: { [Op.ne]: userId } } });
       if (other) {
         throw new ConflictError('Email already in use', HttpStatusCodesUtil.CONFLICT);

@@ -57,7 +57,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/theory-personal-requests", component: AdminRedirectTheoryPersonalRequestsToInbox, allowedAccountTypes: STAFF },
   { path: "/admin/theory-personal-requests", component: AdminTheoryPersonalRequestsPage, allowedAccountTypes: STAFF },
   { path: "/admin/learn/exam-questions", component: AdminExamQuestionsPage, allowedAccountTypes: STAFF },
-  { path: "/admin/learn/groups", component: AdminCohortsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/learn/groups", component: AdminCohortsPage, allowedAccountTypes: STAFF },
   { path: "/admin/learn/packages", component: AdminPackagesPage, allowedAccountTypes: STAFF },
   { path: "/admin/learn", component: AdminLearnHubPage, allowedAccountTypes: STAFF },
   { path: "/admin/packages", component: AdminRedirectPackagesToLearn, allowedAccountTypes: STAFF },

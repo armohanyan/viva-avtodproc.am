@@ -25,9 +25,18 @@ function readBearerToken(req: Request): string | undefined {
   return raw?.startsWith('Bearer ') ? raw.slice(7).trim() : undefined;
 }
 
+/** Empty string is allowed (optional email); non-empty values must be valid emails. */
+const optionalStudentEmailSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === '' || z.string().email().safeParse(value).success, {
+    message: 'Invalid email',
+  })
+  .optional();
+
 const studentPayloadBaseSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email().optional(),
+  email: optionalStudentEmailSchema,
   inviteToSystem: z.boolean().optional(),
   phone: z.string().max(64).optional(),
   phone2: z.string().max(64).optional().nullable(),

@@ -62,6 +62,11 @@ type Props = {
   slotSource?: InstructorDaySlotSource;
   /** When this changes, busy-slot counts are reloaded (e.g. after a booking is deleted). */
   reloadKey?: number | string;
+  /**
+   * When true, {@link bookingBranchId} alone filters columns (empty = all branches) and the
+   * global admin header branch filter is ignored.
+   */
+  ignoreGlobalBranchFilter?: boolean;
   t: (k: TranslationKey) => string;
 };
 
@@ -80,12 +85,15 @@ export default function AdminInstructorAvailabilityTable({
   onDateClick,
   slotSource = "branch",
   reloadKey = 0,
+  ignoreGlobalBranchFilter = false,
   t,
 }: Props) {
   const cellClickMode = Boolean(onCellClick);
   const { branches } = useBranches();
   const { branchId: adminBranchId, revision: branchFilterRevision } = useAdminBranchFilter();
-  const branchIdFilter = bookingBranchId.trim() || adminBranchId;
+  const branchIdFilter = ignoreGlobalBranchFilter
+    ? bookingBranchId.trim()
+    : bookingBranchId.trim() || adminBranchId;
   const [rangeStartIso, setRangeStartIso] = useState(defaultGridRangeStart);
   const [busyByInstructor, setBusyByInstructor] = useState<Map<string, InstructorBusySlotRow[]>>(new Map());
   const [gridLoading, setGridLoading] = useState(false);
