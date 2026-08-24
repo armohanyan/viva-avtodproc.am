@@ -21,6 +21,7 @@ import {
   upsertTopicAnswerProgress,
 } from "src/lib/examStats";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
+import { getThemeExamPackIds } from "src/lib/themeExamPacks";
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 import ExamQuizToolbar from "src/components/exam/ExamQuizToolbar";
@@ -50,7 +51,7 @@ export default function DashboardExamQuiz() {
   );
 }
 
-function DashboardExamQuizView() {
+export function DashboardExamQuizView() {
   const { t, lang } = useLang();
   const { active: focusMode, toggle: toggleFocusMode } = usePanelFocusMode();
   usePanelFocusModeCleanupOnUnmount();
@@ -58,15 +59,33 @@ function DashboardExamQuizView() {
   const [learnMatch, learnParams] = useRoute("/dashboard/learn/exam-tests/quiz/:mode");
   const [roadSignsMatch, roadSignsParams] = useRoute("/dashboard/learn/road-signs/quiz/:mode");
   const [legacyMatch, legacyParams] = useRoute("/dashboard/exam-tests/quiz/:mode");
-  const match = learnMatch || roadSignsMatch || legacyMatch;
-  const params = roadSignsMatch ? roadSignsParams : learnMatch ? learnParams : legacyParams;
+  const [instructorThemeMatch, instructorThemeParams] = useRoute(
+    "/instructor/questions/theme-exams/quiz/:mode",
+  );
+  const match = learnMatch || roadSignsMatch || legacyMatch || instructorThemeMatch;
+  const params = instructorThemeMatch
+    ? instructorThemeParams
+    : roadSignsMatch
+      ? roadSignsParams
+      : learnMatch
+        ? learnParams
+        : legacyParams;
   const modeParam = params?.mode ?? "";
   const mode: ExamQuizMode | null = isExamMode(modeParam) ? modeParam : null;
-  const backHref = roadSignsMatch
-    ? "/dashboard/learn/road-signs"
-    : learnMatch
-      ? "/dashboard/learn/exam-tests"
-      : "/dashboard/exam-tests";
+  const themeExamParam =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("themeExam") : null;
+  const themeExamIndex =
+    themeExamParam != null && /^\d+$/.test(themeExamParam) ? Number.parseInt(themeExamParam, 10) : null;
+  const useThemeExam = mode === "full" && themeExamIndex !== null;
+  const backHref = instructorThemeMatch
+    ? "/instructor/questions/theme-exams"
+    : useThemeExam
+      ? "/dashboard/learn/theme-exams"
+      : roadSignsMatch
+        ? "/dashboard/learn/road-signs"
+        : learnMatch
+          ? "/dashboard/learn/exam-tests"
+          : "/dashboard/exam-tests";
   const timedExam = mode === "full";
 
   const topicParam =
@@ -75,18 +94,35 @@ function DashboardExamQuizView() {
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ticket") : null;
   const ticketIndex =
     ticketParam != null && /^\d+$/.test(ticketParam) ? Number.parseInt(ticketParam, 10) : null;
-  const useExamTicket = mode === "full" && ticketIndex !== null;
-  const topicId = useExamTicket
-    ? `exam-ticket-${ticketIndex}`
-    : roadSignsMatch && mode === "topics" && topicParam
-      ? `road-signs-${topicParam}`
-      : roadSignsMatch && mode === "full"
-        ? "road-signs-full"
-        : mode === "full" && !useExamTicket
-          ? "exam-full"
-          : mode === "signs"
-            ? "exam-signs"
-            : topicParam || "exam-full";
+  const useExamTicket = mode === "full" && ticketIndex !== null && !useThemeExam;
+  const fixedPackActive = useExamTicket || useThemeExam;
+  const [themeExamQuestionIds, setThemeExamQuestionIds] = useState<string[]>([]);
+  const [themeExamReady, setThemeExamReady] = useState(!useThemeExam);
+
+  useEffect(() => {
+    if (!useThemeExam || themeExamIndex === null) {
+      setThemeExamQuestionIds([]);
+      setThemeExamReady(true);
+      return;
+    }
+    const ids = getThemeExamPackIds(themeExamIndex);
+    setThemeExamQuestionIds(ids ?? []);
+    setThemeExamReady(true);
+  }, [useThemeExam, themeExamIndex]);
+
+  const topicId = useThemeExam
+    ? `theme-exam-${themeExamIndex}`
+    : useExamTicket
+      ? `exam-ticket-${ticketIndex}`
+      : roadSignsMatch && mode === "topics" && topicParam
+        ? `road-signs-${topicParam}`
+        : roadSignsMatch && mode === "full"
+          ? "road-signs-full"
+          : mode === "full" && !useExamTicket && !useThemeExam
+            ? "exam-full"
+            : mode === "signs"
+              ? "exam-signs"
+              : topicParam || "exam-full";
   const thematicTopicId = mode === "topics" && topicParam && !roadSignsMatch ? topicParam : undefined;
   const signCategoryTopicId = mode === "topics" && topicParam && roadSignsMatch ? topicParam : undefined;
   const topicBackHref = signCategoryTopicId
@@ -96,7 +132,11 @@ function DashboardExamQuizView() {
       : roadSignsMatch
         ? "/dashboard/learn/road-signs"
         : "/dashboard/learn/thematic-tests";
-  const effectiveBackHref = mode === "topics" ? topicBackHref : backHref;
+  const effectiveBackHref = useThemeExam
+    ? backHref
+    : mode === "topics"
+      ? topicBackHref
+      : backHref;
 
   const [examCardQuestionIds, setExamCardQuestionIds] = useState<string[][]>(
     () => defaultExamQuestionMeta().examCardQuestionIds,
@@ -124,31 +164,36 @@ function DashboardExamQuizView() {
     };
   }, [useExamTicket]);
 
+  const fixedQuestionIds = useMemo(() => {
+    if (useThemeExam) return themeExamQuestionIds;
+    if (useExamTicket && examMetaReady) return examCardQuestionIds[ticketIndex!] ?? [];
+    return [];
+  }, [useThemeExam, themeExamQuestionIds, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex]);
+  const fixedPackPending = (useExamTicket && !examMetaReady) || (useThemeExam && !themeExamReady);
+
   const { pool, loading: poolLoading } = useExamQuizQuestionPool({
     mode,
     thematicTopicId,
     signCategoryTopicId,
-    examTicketActive: useExamTicket,
-    examTicketMetaPending: useExamTicket && !examMetaReady,
-    examTicketQuestionIds:
-      useExamTicket && examMetaReady ? (examCardQuestionIds[ticketIndex!] ?? []) : [],
+    examTicketActive: fixedPackActive,
+    examTicketMetaPending: fixedPackPending,
+    examTicketQuestionIds: fixedPackActive && !fixedPackPending ? fixedQuestionIds : [],
   });
 
-  const quizLoading = (useExamTicket && !examMetaReady) || poolLoading;
+  const quizLoading = fixedPackPending || poolLoading;
   const [round, setRound] = useState(0);
   const [endedByTimeout, setEndedByTimeout] = useState(false);
   const questions = useMemo(() => {
     if (!mode) return [];
-    if (useExamTicket) {
-      if (!examMetaReady) return [];
-      const ids = examCardQuestionIds[ticketIndex!] ?? [];
-      return selectQuestionsForMode(mode, pool, { fixedQuestionIds: ids });
+    if (fixedPackActive) {
+      if (fixedPackPending) return [];
+      return selectQuestionsForMode(mode, pool, { fixedQuestionIds });
     }
     return selectQuestionsForMode(mode, pool);
-  }, [mode, round, thematicTopicId, pool, useExamTicket, examMetaReady, examCardQuestionIds, ticketIndex]);
+  }, [mode, round, thematicTopicId, pool, fixedPackActive, fixedPackPending, fixedQuestionIds]);
   const topicQuestionIds = useMemo(() => questions.map((q) => q.id), [questions]);
   // Only modes with a stable question set can be resumed across sessions; shuffled modes (signs, ad-hoc full) cannot.
-  const resumable = mode === "topics" || useExamTicket;
+  const resumable = mode === "topics" || fixedPackActive;
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
@@ -274,7 +319,7 @@ function DashboardExamQuizView() {
     setEndedByTimeout(false);
     statsSavedRef.current = false;
     discardSessionRef.current = false;
-  }, [round, mode, ticketIndex]);
+  }, [round, mode, ticketIndex, themeExamIndex]);
 
   useEffect(() => {
     if (questions.length === 0) return;
@@ -394,7 +439,11 @@ function DashboardExamQuizView() {
   };
 
   if (!match || !mode) {
-    return <Redirect to="/dashboard/learn/exam-tests" />;
+    return <Redirect to={instructorThemeMatch ? "/instructor/questions/theme-exams" : "/dashboard/learn/exam-tests"} />;
+  }
+
+  if (useThemeExam && themeExamReady && themeExamQuestionIds.length === 0) {
+    return <Redirect to={backHref} />;
   }
 
   if (quizLoading) {

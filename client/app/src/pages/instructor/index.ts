@@ -9,3 +9,5 @@ export { default as InstructorFuelExpensesPage } from "./InstructorFuelExpenses"
 export { default as InstructorQuestionsPage } from "./InstructorQuestions";
 export { default as InstructorQuestionsCategoryPage } from "./InstructorQuestionsCategory";
 export { default as InstructorQuestionPresentPage } from "./InstructorQuestionPresent";
+export { default as InstructorThemeExamsPage } from "./InstructorThemeExams";
+export { default as InstructorThemeExamQuizPage } from "./InstructorThemeExamQuiz";

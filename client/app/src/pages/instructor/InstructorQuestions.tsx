@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { ArrowUpRight, BookOpen, Signpost } from "lucide-react";
+import { ArrowUpRight, BookOpen, Shuffle, Signpost } from "lucide-react";
 import InstructorPanelLayout from "src/components/InstructorPanelLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Card } from "src/components/ui/card";
@@ -86,6 +86,21 @@ export default function InstructorQuestions() {
 						title={t("instructorQuestionsTitle")}
 						subtitle={t("instructorQuestionsSubtitle")}
 					/>
+
+					<section className="mb-10">
+						<Card className="border-primary/30 bg-card hover:border-primary/50 transition-colors">
+							<Link href="/instructor/questions/theme-exams" className="flex items-center gap-3 p-4">
+								<div className="w-9 h-9 rounded-lg border border-amber-200 bg-amber-50 flex items-center justify-center shrink-0">
+									<Shuffle className="w-4 h-4 text-amber-700" aria-hidden />
+								</div>
+								<div className="min-w-0 flex-1">
+									<p className="text-sm font-medium text-foreground">{t("themeExamsTitle")}</p>
+									<p className="text-xs text-muted-foreground mt-0.5">{t("themeExamsSubtitle")}</p>
+								</div>
+								<ArrowUpRight className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden />
+							</Link>
+						</Card>
+					</section>
 
 					<section className="mb-10">
 						<h2 className="text-lg font-semibold text-foreground mb-3">{t("instructorQuestionsThematicHeading")}</h2>
