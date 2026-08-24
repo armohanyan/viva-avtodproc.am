@@ -83,13 +83,13 @@ export default function ThemeExamsPage({ quizHrefForPack, subnav }: ThemeExamsPa
 
   const preview = useMemo(() => {
     if (selectedSlots.length === 0) {
-      return { poolSize: 0, examCount: 0, remainder: 0 };
+      return { poolSize: 0, examCount: 0 };
     }
-    const { poolSize, packs, remainder } = buildThemeExamPacks(idsBySlot, selectedSlots);
-    return { poolSize, examCount: packs.length, remainder };
+    const { poolSize, packs } = buildThemeExamPacks(idsBySlot, selectedSlots);
+    return { poolSize, examCount: packs.length };
   }, [idsBySlot, selectedSlots]);
 
-  const canGenerate = selectedSlots.length > 0 && preview.poolSize >= THEME_EXAM_QUESTIONS_PER_TEST;
+  const canGenerate = selectedSlots.length > 0 && preview.poolSize > 0;
 
   const handleGenerate = () => {
     if (!canGenerate) return;
@@ -138,24 +138,12 @@ export default function ThemeExamsPage({ quizHrefForPack, subnav }: ThemeExamsPa
             {selectedSlots.length === 0 ? (
               <p>{t("themeExamsHintSelect")}</p>
             ) : (
-              <>
-                <p>
-                  {t("themeExamsPoolSummary")
-                    .replace("{count}", String(preview.poolSize))
-                    .replace("{exams}", String(preview.examCount))
-                    .replace("{size}", String(THEME_EXAM_QUESTIONS_PER_TEST))}
-                </p>
-                {preview.poolSize > 0 && preview.poolSize < THEME_EXAM_QUESTIONS_PER_TEST ? (
-                  <p className="text-amber-700 dark:text-amber-400">{t("themeExamsNeedMore")}</p>
-                ) : null}
-                {preview.remainder > 0 && preview.examCount > 0 ? (
-                  <p>
-                    {t("themeExamsRemainder")
-                      .replace("{remainder}", String(preview.remainder))
-                      .replace("{size}", String(THEME_EXAM_QUESTIONS_PER_TEST))}
-                  </p>
-                ) : null}
-              </>
+              <p>
+                {t("themeExamsPoolSummary")
+                  .replace("{count}", String(preview.poolSize))
+                  .replace("{exams}", String(preview.examCount))
+                  .replace("{size}", String(THEME_EXAM_QUESTIONS_PER_TEST))}
+              </p>
             )}
           </div>
           <Button type="button" onClick={handleGenerate} disabled={!canGenerate} className="shrink-0 gap-2">
@@ -177,7 +165,7 @@ export default function ThemeExamsPage({ quizHrefForPack, subnav }: ThemeExamsPa
               ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
-              {session.packs.length} × {THEME_EXAM_QUESTIONS_PER_TEST} {t("instructorQuestionsCountLabel")}
+              {t("themeExamsExamCount").replace("{count}", String(session.packs.length))}
             </p>
           </div>
 

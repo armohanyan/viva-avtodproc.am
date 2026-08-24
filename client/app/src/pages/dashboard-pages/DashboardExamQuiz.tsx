@@ -220,6 +220,21 @@ export function DashboardExamQuizView() {
 
   const finished = Boolean(mode && questions.length > 0 && index >= questions.length);
 
+  useEffect(() => {
+    if (!finished) return;
+    const scrollToOverview = () => {
+      const overview = document.getElementById("exam-quiz-results-overview");
+      if (overview) {
+        overview.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    // Wait a frame so the results view is mounted before scrolling.
+    const frame = window.requestAnimationFrame(scrollToOverview);
+    return () => window.cancelAnimationFrame(frame);
+  }, [finished, round]);
+
   const questionDetailHref = useCallback(
     (questionId: string) => {
       if (roadSignsMatch) return `/dashboard/learn/road-signs/question/${questionId}`;
@@ -471,7 +486,7 @@ export function DashboardExamQuizView() {
     return (
         <div className={cn("mx-auto w-full", focusMode ? "max-w-4xl" : "max-w-lg")}>
           <Reveal delay={0.06}>
-            <Card className="p-8 border-border text-center">
+            <Card id="exam-quiz-results-overview" className="p-8 border-border text-center scroll-mt-4">
               <h2 className="text-2xl font-bold text-foreground mb-2">{t("examQuizResultsTitle")}</h2>
               {endedByTimeout ? (
                 <p className="text-sm text-amber-700 dark:text-amber-400 mb-4">{t("examQuizAutoSubmitted")}</p>
@@ -520,39 +535,34 @@ export function DashboardExamQuizView() {
                         const isSelectedOption = userAns === optionIndex;
                         const isCorrectOption = optionIndex === question.correctIndex;
                         const explanation = loc.explanation;
-                        const explanationKey = `${question.id}-${optionIndex}`;
-                        const isOpen = Boolean(openExplanations[explanationKey]);
-                        const showExplanationToggle = Boolean(explanation) && isCorrectOption;
                         return (
                           <div
-                            key={explanationKey}
-                            className={`rounded-lg border px-3 py-2 text-xs ${
-                              isSelectedOption
-                                ? ok
-                                  ? "border-emerald-600 bg-emerald-600 text-white"
-                                  : "border-red-600 bg-red-600 text-white"
-                                : "border-border text-muted-foreground"
-                            }`}
+                            key={`${question.id}-${optionIndex}`}
+                            className={cn(
+                              "rounded-lg border px-3 py-2 text-xs",
+                              isCorrectOption
+                                ? "border-emerald-600 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100"
+                                : isSelectedOption
+                                  ? "border-red-600 bg-red-600 text-white"
+                                  : "border-border text-muted-foreground",
+                            )}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span>{opt}</span>
-                              {showExplanationToggle ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setOpenExplanations((prev) => ({
-                                      ...prev,
-                                      [explanationKey]: !prev[explanationKey],
-                                    }))
-                                  }
-                                  className="inline-flex items-center text-primary hover:text-primary/90"
-                                  aria-label={t("examQuizShowExplanation")}
-                                >
-                                  <CircleHelp className="w-3.5 h-3.5" />
-                                </button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="flex-1 min-w-0">{opt}</span>
+                              {isCorrectOption ? (
+                                <span className="shrink-0 font-medium text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                                  {t("examQuizCorrectAnswer")}
+                                </span>
+                              ) : null}
+                              {isSelectedOption && !isCorrectOption ? (
+                                <span className="shrink-0 font-medium text-[10px] uppercase tracking-wide text-white/90">
+                                  {t("examQuizYourAnswer")}
+                                </span>
                               ) : null}
                             </div>
-                            {explanation && isOpen ? <p className="mt-2 text-muted-foreground">{explanation}</p> : null}
+                            {isCorrectOption && explanation ? (
+                              <p className="mt-2 text-emerald-900/80 dark:text-emerald-100/80">{explanation}</p>
+                            ) : null}
                           </div>
                         );
                       })}

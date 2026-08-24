@@ -1,4 +1,4 @@
-/** Theme-based practice exams: 20 questions each from selected thematic topics. */
+/** Theme-based practice exams: up to 20 questions each from selected thematic topics. */
 
 export const THEME_EXAM_QUESTIONS_PER_TEST = 20;
 
@@ -7,7 +7,7 @@ const STORAGE_KEY = "viva.themeExamPacks.v1";
 export type ThemeExamSession = {
   /** Thematic UI slot ids (`"1"`…`"11"`). */
   selectedTopicSlots: string[];
-  /** Each pack is exactly `THEME_EXAM_QUESTIONS_PER_TEST` question ids (no overlap). */
+  /** Packs of up to `THEME_EXAM_QUESTIONS_PER_TEST` ids; last pack may be shorter. */
   packs: string[][];
   createdAt: number;
 };
@@ -22,12 +22,12 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return items;
 }
 
-/** Unique question ids from selected thematic cards, then random packs of 20. */
+/** Unique question ids from selected thematic cards, then random packs of up to 20 (last may be shorter). */
 export function buildThemeExamPacks(
   questionIdsBySlot: ReadonlyMap<string, readonly string[]>,
   selectedTopicSlots: readonly string[],
   questionsPerTest: number = THEME_EXAM_QUESTIONS_PER_TEST,
-): { poolSize: number; packs: string[][]; remainder: number } {
+): { poolSize: number; packs: string[][] } {
   const seen = new Set<string>();
   const pool: string[] = [];
   for (const slot of selectedTopicSlots) {
@@ -42,11 +42,10 @@ export function buildThemeExamPacks(
 
   shuffleInPlace(pool);
   const packs: string[][] = [];
-  for (let i = 0; i + questionsPerTest <= pool.length; i += questionsPerTest) {
+  for (let i = 0; i < pool.length; i += questionsPerTest) {
     packs.push(pool.slice(i, i + questionsPerTest));
   }
-  const remainder = pool.length % questionsPerTest;
-  return { poolSize: pool.length, packs, remainder };
+  return { poolSize: pool.length, packs };
 }
 
 export function saveThemeExamSession(session: ThemeExamSession): void {
