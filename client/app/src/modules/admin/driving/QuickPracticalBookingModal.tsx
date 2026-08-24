@@ -526,7 +526,7 @@ export default function QuickPracticalBookingModal({
                 </div>
               </div>
             ) : (
-              <ul className="mt-1 max-h-24 overflow-y-auto space-y-0.5 text-sm text-foreground">
+              <ul className="mt-1 max-h-40 overflow-y-auto space-y-0.5 text-sm text-foreground">
                 {sortedEntries.map((entry) => (
                   <li key={`${entry.dateIso}|${entry.time}`} className="tabular-nums">
                     {formatGridDateLabel(entry.dateIso)} · {entry.time}

@@ -65,6 +65,24 @@ export function adminBookingsHrefFromTheoryPersonalRequest(row: {
   return `/admin/bookings?${p.toString()}`;
 }
 
+/** Build admin bookings URL that opens the add modal for attaching a student to a theory group cohort. */
+export function adminBookingsHrefFromTheoryGroup(opts: {
+  cohortId: string | number;
+  branchId?: string | number | null;
+  studentId?: string | number | null;
+}): string {
+  const p = new URLSearchParams({
+    new: "1",
+    flow: "theory_group",
+    cohort: String(opts.cohortId),
+  });
+  const branch = String(opts.branchId ?? "").trim();
+  if (branch) p.set("branch", branch);
+  const student = String(opts.studentId ?? "").trim();
+  if (student) p.set("student", student);
+  return `/admin/bookings?${p.toString()}`;
+}
+
 export function parseThemesFromBookingSearch(themesParam: string): string[] {
   if (!themesParam.trim()) return [];
   return themesParam

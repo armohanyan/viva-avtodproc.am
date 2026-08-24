@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Loader2, Plus } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
 import { Button } from "src/components/ui/button";
 import {
@@ -12,12 +12,15 @@ import type { Instructor } from "src/data/instructors";
 import { useLang } from "src/lib/i18n";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { cn } from "src/lib/utils";
+import { yerevanAddCalendarDays } from "src/lib/yerevanLessonCalendar";
 import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import {
   armenianWeekdayShort,
   buildInstructorBranchColumns,
   formatGridDateLabel,
   padSlotTime,
+  slotEntryKey,
+  sortSlotEntriesChrono,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
 import AdminDrivingFilters, {
   filterInstructorsBySearch,
@@ -71,6 +74,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dateIso: string;
+  /** Navigate to another calendar day while the modal stays open. */
+  onDateChange: (dateIso: string) => void;
   instructors: readonly Instructor[];
   /** Seed search when the modal opens (from the driving page toolbar). */
   initialSearch?: string;
@@ -95,7 +100,21 @@ type Props = {
     dateIso: string;
   }) => void;
   onBookingCellClick: (target: { bookingId: number; dateIso: string; time: string }) => void;
+  /** Double-click multi-select → open quick booking with all selected slots. */
+  onBookMultiSlots: (target: {
+    instructor: Instructor;
+    branchId: string;
+    entries: { dateIso: string; time: string }[];
+  }) => void;
 };
+
+type MultiSlotSelection = {
+  instructor: Instructor;
+  branchId: string;
+  entries: { dateIso: string; time: string }[];
+};
+
+const EMPTY_CLICK_DELAY_MS = 280;
 
 function padPlanRow(row: PracticalSlotPlanRow): PracticalSlotPlanRow {
   if (row.time == null || row.time === "") return { time: null };
@@ -224,6 +243,13 @@ function DrivingDayLegend() {
       </li>
       <li className="flex items-center gap-1.5">
         <span
+          className="inline-block h-3.5 w-5 shrink-0 rounded-sm bg-primary/30 ring-1 ring-inset ring-primary"
+          aria-hidden
+        />
+        {t("adminDrivingDayModalLegendSelected")}
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span
           className="inline-flex h-3.5 w-5 shrink-0 items-center justify-center rounded-sm border border-dashed border-muted-foreground/40 text-[9px] leading-none text-muted-foreground/50"
           aria-hidden
         >
@@ -248,6 +274,7 @@ export default function AdminDrivingDayModal({
   open,
   onOpenChange,
   dateIso,
+  onDateChange,
   instructors,
   initialSearch = "",
   initialBranchId,
@@ -255,6 +282,7 @@ export default function AdminDrivingDayModal({
   onEmptyCellClick,
   onAddCustomSlotClick,
   onBookingCellClick,
+  onBookMultiSlots,
 }: Props) {
   const { t } = useLang();
   const { branches } = useBranches();
@@ -265,12 +293,28 @@ export default function AdminDrivingDayModal({
   const [branchFilterId, setBranchFilterId] = useState(
     () => (initialBranchId !== undefined ? initialBranchId : adminBranchId ?? ""),
   );
+  const [multiSelection, setMultiSelection] = useState<MultiSlotSelection | null>(null);
+  const emptyClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setSearch(initialSearch);
     setBranchFilterId(initialBranchId !== undefined ? initialBranchId : adminBranchId ?? "");
-  }, [open, dateIso, initialSearch, initialBranchId, adminBranchId]);
+  }, [open, initialSearch, initialBranchId, adminBranchId]);
+
+  useEffect(() => {
+    if (!open) {
+      setMultiSelection(null);
+      if (emptyClickTimerRef.current) {
+        clearTimeout(emptyClickTimerRef.current);
+        emptyClickTimerRef.current = null;
+      }
+    }
+  }, [open]);
+
+  useEffect(() => {
+    setMultiSelection(null);
+  }, [reloadKey]);
 
   const filteredInstructors = useMemo(
     () => filterInstructorsBySearch(instructors, search),
@@ -536,8 +580,56 @@ export default function AdminDrivingDayModal({
     [blocksByInstructor, busyTimesByInstructor, planTimesByInstructor, bookableTimes, day],
   );
 
-  const title = `${formatGridDateLabel(day)} · ${armenianWeekdayShort(day)}`;
   const busy = loading || planLoading;
+  const weekday = armenianWeekdayShort(day);
+
+  const selectedKeys = useMemo(() => {
+    if (!multiSelection) return new Set<string>();
+    return new Set(multiSelection.entries.map((e) => slotEntryKey(e.dateIso, e.time)));
+  }, [multiSelection]);
+
+  const sortedMultiEntries = useMemo(
+    () => (multiSelection ? sortSlotEntriesChrono(multiSelection.entries) : []),
+    [multiSelection],
+  );
+
+  const isCellSelected = (instructorId: string | number, branchId: string, time: string) => {
+    if (!multiSelection) return false;
+    if (String(multiSelection.instructor.id) !== String(instructorId)) return false;
+    if (multiSelection.branchId !== branchId) return false;
+    return selectedKeys.has(slotEntryKey(day, time));
+  };
+
+  const toggleMultiSelect = (
+    instructor: Instructor,
+    branchId: string,
+    time: string,
+  ) => {
+    const entry = { dateIso: day, time: padSlotTime(time) };
+    const key = slotEntryKey(entry.dateIso, entry.time);
+    setMultiSelection((prev) => {
+      if (
+        !prev ||
+        String(prev.instructor.id) !== String(instructor.id) ||
+        prev.branchId !== branchId
+      ) {
+        return { instructor, branchId, entries: [entry] };
+      }
+      const exists = prev.entries.some((e) => slotEntryKey(e.dateIso, e.time) === key);
+      if (exists) {
+        const next = prev.entries.filter((e) => slotEntryKey(e.dateIso, e.time) !== key);
+        return next.length === 0 ? null : { ...prev, entries: next };
+      }
+      return { ...prev, entries: [...prev.entries, entry] };
+    });
+  };
+
+  const clearEmptyClickTimer = () => {
+    if (emptyClickTimerRef.current) {
+      clearTimeout(emptyClickTimerRef.current);
+      emptyClickTimerRef.current = null;
+    }
+  };
 
   const resolveCellBooking = (
     ins: Instructor,
@@ -564,17 +656,97 @@ export default function AdminDrivingDayModal({
       open={open}
       onOpenChange={onOpenChange}
       title={t("adminDrivingDayModalTitle")}
-      description={title}
+      description={
+        <div className="flex items-center justify-between gap-2 pt-0.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => onDateChange(yerevanAddCalendarDays(day, -1))}
+            aria-label={t("adminBookingSlotsModalPrevDay")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-sm font-semibold text-foreground tabular-nums">
+              {formatGridDateLabel(day)}
+            </p>
+            {weekday ? <p className="text-xs text-muted-foreground">{weekday}</p> : null}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => onDateChange(yerevanAddCalendarDays(day, 1))}
+            aria-label={t("adminBookingSlotsModalNextDay")}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      }
       contentClassName="w-[min(98vw,1800px)] max-w-[min(98vw,1800px)] max-h-[min(96vh,1200px)] sm:max-w-[min(98vw,1800px)]"
       bodyClassName="px-2 sm:px-4 py-3 overflow-hidden flex flex-col"
       headerClassName="px-4 sm:px-6 pb-3 pt-4"
       footerClassName="px-4 sm:px-6 py-3"
       footer={
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <DrivingDayLegend />
-          <Button type="button" variant="outline" className="shrink-0 self-end sm:self-auto" onClick={() => onOpenChange(false)}>
-            {t("cancel")}
-          </Button>
+        <div className="flex w-full flex-col gap-3">
+          {sortedMultiEntries.length > 0 && multiSelection ? (
+            <div className="rounded-lg border border-primary/25 bg-primary/5 px-3 py-2">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <p className="text-xs font-medium text-foreground">
+                  {t("adminDrivingDayModalSelectedSlots")}
+                  <span className="ml-1.5 text-muted-foreground font-normal">
+                    · {multiSelection.instructor.name}
+                    {" · "}
+                    {sortedMultiEntries.length}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMultiSelection(null)}
+                  className="shrink-0 text-xs font-medium text-primary hover:underline"
+                >
+                  {t("adminDrivingDayModalClearSelection")}
+                </button>
+              </div>
+              <ul className="max-h-20 overflow-y-auto space-y-0.5 text-xs text-foreground tabular-nums">
+                {sortedMultiEntries.map((e) => (
+                  <li key={slotEntryKey(e.dateIso, e.time)}>
+                    {formatGridDateLabel(e.dateIso)} · {e.time}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <DrivingDayLegend />
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-end sm:self-auto">
+              {sortedMultiEntries.length > 0 && multiSelection ? (
+                <Button
+                  type="button"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                  onClick={() => {
+                    onBookMultiSlots({
+                      instructor: multiSelection.instructor,
+                      branchId: multiSelection.branchId,
+                      entries: sortedMultiEntries,
+                    });
+                  }}
+                >
+                  {t("adminDrivingDayModalBookMultiSlots")}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                {t("cancel")}
+              </Button>
+            </div>
+          </div>
         </div>
       }
     >
@@ -739,6 +911,24 @@ export default function AdminDrivingDayModal({
                                 : nextTimedAfter(displayRows, time),
                             });
                           };
+                          const instructorTimes = planTimesByInstructor.get(String(ins.id));
+                          const inSavedPlan = instructorTimes
+                            ? instructorTimes.has(time)
+                            : planTimeSet.has(time);
+                          const selected = isCellSelected(ins.id, col.bookingBranchId, time);
+                          const scheduleEmptyClick = () => {
+                            clearEmptyClickTimer();
+                            emptyClickTimerRef.current = setTimeout(() => {
+                              emptyClickTimerRef.current = null;
+                              openEmpty();
+                            }, EMPTY_CLICK_DELAY_MS);
+                          };
+                          const handleEmptyDoubleClick = () => {
+                            clearEmptyClickTimer();
+                            // Multi-select only for regular plan slots (same instructor + branch).
+                            if (!inSavedPlan) return;
+                            toggleMultiSelect(ins, col.bookingBranchId, time);
+                          };
                           return (
                             <td
                               key={`${time}-${ins.id}-${col.bookingBranchId}`}
@@ -822,12 +1012,19 @@ export default function AdminDrivingDayModal({
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={openEmpty}
-                                  className="w-full min-h-14 px-1 py-1 text-transparent hover:bg-primary/15 hover:text-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors"
+                                  onClick={scheduleEmptyClick}
+                                  onDoubleClick={handleEmptyDoubleClick}
+                                  className={cn(
+                                    "w-full min-h-14 px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50 transition-colors",
+                                    selected
+                                      ? "bg-primary/25 text-primary ring-2 ring-inset ring-primary font-semibold tabular-nums"
+                                      : "text-transparent hover:bg-primary/15 hover:text-primary/40",
+                                  )}
                                   title={`${ins.name} · ${time}`}
                                   aria-label={`${ins.name} · ${time}`}
+                                  aria-pressed={selected}
                                 >
-                                  +
+                                  {selected ? time : "+"}
                                 </button>
                               )}
                             </td>

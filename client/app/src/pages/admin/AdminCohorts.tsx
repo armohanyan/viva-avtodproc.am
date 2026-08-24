@@ -18,15 +18,17 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
+import { Plus, UserPlus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { activeTheoryInstructors } from "src/modules/admin/adminPeople";
+import { isTheoryCohortBookableStatus } from "src/modules/admin/booking/adminTheoryCohort";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 import CohortScheduleFields, { type CohortScheduleFormSlice } from "src/modules/admin/cohorts/CohortScheduleFields";
+import AttachStudentToCohortModal from "src/modules/admin/cohorts/AttachStudentToCohortModal";
 
 type Cohort = {
   id: string;
@@ -73,6 +75,12 @@ export default function AdminCohorts() {
   const { branches } = useBranches();
   const { instructors } = useInstructors();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
+
+  const [attachCohort, setAttachCohort] = useState<Cohort | null>(null);
+
+  const openAttachStudent = useCallback((c: Cohort) => {
+    setAttachCohort(c);
+  }, []);
 
   const refreshCohorts = useCallback(async () => {
     try {
@@ -484,6 +492,18 @@ export default function AdminCohorts() {
                     icon: Users,
                     onClick: () => void openStudentsDialog(c),
                   },
+                  ...(isTheoryCohortBookableStatus(c.status) && c.enrolled < c.seats
+                    ? [
+                        {
+                          kind: "item" as const,
+                          id: "attach",
+                          label: t("cohortAriaAttachStudent"),
+                          ariaLabel: t("cohortAriaAttachStudent"),
+                          icon: UserPlus,
+                          onClick: () => openAttachStudent(c),
+                        },
+                      ]
+                    : []),
                   {
                     kind: "item",
                     id: "delete",
@@ -845,6 +865,18 @@ export default function AdminCohorts() {
             </div>
         </form>
       </AppModal>
+
+      
+      <AttachStudentToCohortModal
+        cohort={attachCohort}
+        open={!!attachCohort}
+        onOpenChange={(open) => {
+          if (!open) setAttachCohort(null);
+        }}
+        onAttached={() => {
+          void refreshCohorts();
+        }}
+      />
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} title={t("cohortDeleteTitle")} description={t("cohortDeleteDesc")} confirmLabel={t("delete")} danger />
     </AdminLayout>

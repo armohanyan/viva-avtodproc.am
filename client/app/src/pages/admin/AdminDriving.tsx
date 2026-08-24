@@ -30,6 +30,8 @@ type SlotSelection = {
   /** Admin custom off-plan time (e.g. lunch hour); skips fixed schedule membership. */
   customSlot?: boolean;
   customSlotEndTime?: string;
+  /** Opened from day-grid multi-select; "change slots" returns to the day modal. */
+  fromDayMulti?: boolean;
 };
 
 export default function AdminDriving() {
@@ -147,6 +149,7 @@ function AdminDrivingContent() {
             if (!open) setDayModalDateIso(null);
           }}
           dateIso={dayModalDateIso}
+          onDateChange={setDayModalDateIso}
           instructors={activePracticalInstructors}
           initialSearch={search}
           initialBranchId={branchFilterId}
@@ -170,6 +173,14 @@ function AdminDrivingContent() {
           }}
           onBookingCellClick={(target) => {
             setDetailTarget(target);
+          }}
+          onBookMultiSlots={({ instructor, branchId, entries }) => {
+            setPendingSelection({
+              instructor,
+              branchId,
+              entries,
+              fromDayMulti: true,
+            });
           }}
         />
       ) : null}
@@ -222,6 +233,10 @@ function AdminDrivingContent() {
           customSlotEndTime={pendingSelection.customSlotEndTime}
           onChangeSlots={() => {
             if (pendingSelection.customSlot) return;
+            if (pendingSelection.fromDayMulti) {
+              setPendingSelection(null);
+              return;
+            }
             const first = pendingSelection.entries[0];
             if (!first) {
               setPendingSelection(null);
