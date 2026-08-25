@@ -3332,11 +3332,14 @@ export default class BookingService {
       throw new InputValidationError('At least one slot is required.', HttpStatusCodesUtil.BAD_REQUEST);
     }
 
-    const branchOk = await InstructorBranch.findOne({
-      where: { instructorUserId, branchId },
-    });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    // Group theory cohorts may use a different branch than the instructor's practical branches.
+    if (input.lessonType !== 'theory') {
+      const branchOk = await InstructorBranch.findOne({
+        where: { instructorUserId, branchId },
+      });
+      if (!branchOk) {
+        throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
     }
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
@@ -3554,11 +3557,14 @@ export default class BookingService {
       lessonType === 'practical' ? instructorUserId : undefined,
     );
 
-    const branchOk = await InstructorBranch.findOne({
-      where: { instructorUserId, branchId },
-    });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    // Group theory cohorts may use a different branch than the instructor's practical branches.
+    if (lessonType !== 'theory') {
+      const branchOk = await InstructorBranch.findOne({
+        where: { instructorUserId, branchId },
+      });
+      if (!branchOk) {
+        throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
     }
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
@@ -3835,7 +3841,13 @@ export default class BookingService {
         : row.totalPriceAmd ?? null;
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalAmd);
 
-    if (patch.branchId !== undefined && patch.branchId !== row.branchId && row.instructorUserId != null) {
+    // Group theory: instructor may teach at a cohort branch they are not linked to for practical.
+    if (
+      patch.branchId !== undefined &&
+      patch.branchId !== row.branchId &&
+      row.instructorUserId != null &&
+      row.lessonType !== 'theory'
+    ) {
       const branchOk = await InstructorBranch.findOne({
         where: { instructorUserId: row.instructorUserId, branchId: patch.branchId },
       });

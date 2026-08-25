@@ -364,7 +364,10 @@ export default class BookingSlotValidationService {
     dateIso: string;
     slots: readonly string[];
     excludeBookingId?: number;
-    /** Practical lessons use the global slot plan instead of branch work hours. */
+    /**
+     * Practical: global slot plan instead of branch work hours.
+     * Group theory (`theory`): cohort session times — skip branch work hours / closed-day checks.
+     */
     lessonType?: 'practical' | 'theory' | 'theory_personal';
     /** Bulk import of legacy bookings: skip past/schedule checks; still block duplicate slots. */
     allowHistoricalSlots?: boolean;
@@ -468,7 +471,8 @@ export default class BookingSlotValidationService {
               );
             }
           }
-        } else if (!allowCustomPractical) {
+        } else if (!allowCustomPractical && input.lessonType !== 'theory') {
+          // Group theory follows the cohort schedule, not branch business hours.
           const branchReason = branchScheduleBlockReason(dateIso, slot, branchRules);
           if (branchReason === 'branch_closed') {
             throw new InputValidationError(messageForReason('branch_closed'), HttpStatusCodesUtil.BAD_REQUEST);
