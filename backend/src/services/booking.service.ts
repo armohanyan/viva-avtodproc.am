@@ -13,6 +13,7 @@ import {
   StudentProfile,
   TheoryCohort,
   TheoryCohortEnrollment,
+  TheoryCohortSession,
   User,
 } from '../models';
 import { BOOKING_CANCELLATION_REASON } from '../constants/booking-cancellation-reasons';
@@ -2191,7 +2192,37 @@ export default class BookingService {
       expandLegacyBookingHours(b).map((slot) => ({ ...slot, branchId: b.branchId })),
     );
 
-    const merged = [...fromSlots, ...fromLegacy];
+    // Theory-group sessions block practical calendars for hybrid instructors.
+    const theorySessionWhere: Record<string, unknown> = {
+      instructorUserId,
+      dateIso: { [Op.between]: [fromIso.slice(0, 10), toIso.slice(0, 10)] },
+      status: { [Op.in]: ['scheduled', 'completed'] },
+    };
+    if (branchId !== undefined) {
+      theorySessionWhere.branchId = branchId;
+    }
+    const theorySessions = await TheoryCohortSession.findAll({
+      where: theorySessionWhere,
+      attributes: ['dateIso', 'startTime', 'endTime', 'branchId'],
+    });
+    const fromTheory = theorySessions.flatMap((s) => {
+      const dateIso = dateIsoString(s.dateIso);
+      const startM = parseTimeToMinutes(String(s.startTime).slice(0, 5));
+      const endExclM = parseTimeToMinutes(String(s.endTime).slice(0, 5));
+      if (!Number.isFinite(startM) || !Number.isFinite(endExclM) || endExclM <= startM) {
+        const t = normalizeTimeHHMM(String(s.startTime).slice(0, 5));
+        return t
+          ? [{ dateIso, time: t, studentUserId: 0, branchId: s.branchId }]
+          : [];
+      }
+      const out: { dateIso: string; time: string; studentUserId: number; branchId: number }[] = [];
+      for (let m = startM; m < endExclM; m += 60) {
+        out.push({ dateIso, time: minutesToHHMM(m), studentUserId: 0, branchId: s.branchId });
+      }
+      return out;
+    });
+
+    const merged = [...fromSlots, ...fromLegacy, ...fromTheory];
     merged.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time));
     return merged;
   }
@@ -3360,15 +3391,18 @@ export default class BookingService {
       input.lessonType === 'practical' ? instructorUserId : undefined,
     );
 
-    await BookingSlotValidationService.assertSlotsBookable({
-      branchId,
-      instructorUserId,
-      dateIso,
-      slots: sorted,
-      lessonType: input.lessonType,
-      allowHistoricalSlots: input.allowHistoricalSlots,
-      allowPastSlots: true,
-    });
+    // Group theory: cohort schedule is authoritative — do not block enroll on instructor availability.
+    if (input.lessonType !== 'theory') {
+      await BookingSlotValidationService.assertSlotsBookable({
+        branchId,
+        instructorUserId,
+        dateIso,
+        slots: sorted,
+        lessonType: input.lessonType,
+        allowHistoricalSlots: input.allowHistoricalSlots,
+        allowPastSlots: true,
+      });
+    }
 
     let newId = 0;
     try {
@@ -3577,15 +3611,18 @@ export default class BookingService {
           ? hourly * billableSlotCountForLesson(lessonType, sorted.length)
           : row.totalPriceAmd ?? null;
 
-    await BookingSlotValidationService.assertSlotsBookable({
-      branchId,
-      instructorUserId,
-      dateIso,
-      slots: sorted,
-      excludeBookingId: id,
-      lessonType,
-      allowPastSlots: true,
-    });
+    // Group theory: cohort schedule is authoritative — do not block updates on instructor availability.
+    if (lessonType !== 'theory') {
+      await BookingSlotValidationService.assertSlotsBookable({
+        branchId,
+        instructorUserId,
+        dateIso,
+        slots: sorted,
+        excludeBookingId: id,
+        lessonType,
+        allowPastSlots: true,
+      });
+    }
 
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));

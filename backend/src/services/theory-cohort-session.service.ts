@@ -2,6 +2,9 @@ import { Op, Transaction } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import { TheoryCohort, TheoryCohortEnrollment, TheoryCohortSession, User } from '../models';
 import TheoryCohortInstructorService from './theory-cohort-instructor.service';
+import BookingSlotValidationService, {
+  formatSlotConflictMessage,
+} from './booking-slot-validation.service';
 import {
   generateCohortSessions,
   parseLessonWeekdays,
@@ -110,6 +113,51 @@ export default class TheoryCohortSessionService {
       sessionEndTime: cohort.sessionEndTime,
       totalLessons: cohort.totalLessons,
     });
+  }
+
+  /**
+   * Rejects when any planned session overlaps an existing reserving booking for the
+   * assigned instructor. Used on theory-group create/update so admins see booking #.
+   */
+  static async assertInstructorsFreeForPlannedSessions(input: {
+    startDateIso: string;
+    endDateIso: string;
+    lessonWeekdays: readonly number[];
+    sessionStartTime: string;
+    sessionEndTime: string;
+    totalLessons: number;
+    instructorUserIds: readonly number[];
+  }): Promise<void> {
+    const ids = input.instructorUserIds
+      .map((n) => Math.round(Number(n)))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (ids.length === 0) return;
+
+    const planned = generateCohortSessions({
+      startDateIso: input.startDateIso,
+      endDateIso: input.endDateIso,
+      lessonWeekdays: [...input.lessonWeekdays],
+      sessionStartTime: input.sessionStartTime,
+      sessionEndTime: input.sessionEndTime,
+      totalLessons: input.totalLessons,
+    });
+    if (planned.length === 0) return;
+
+    for (const p of planned) {
+      const idx = Math.max(0, Math.floor(p.lessonIndex) - 1);
+      const instructorUserId = ids[idx % ids.length];
+      if (instructorUserId == null) continue;
+
+      const conflict = await BookingSlotValidationService.findInstructorOverlapConflict({
+        instructorUserId,
+        dateIso: p.dateIso,
+        rangeStart: p.startTime,
+        rangeEndExclusive: p.endTime,
+      });
+      if (conflict) {
+        throw new ConflictError(formatSlotConflictMessage(conflict), HttpStatusCodesUtil.CONFLICT);
+      }
+    }
   }
 
   static async listByCohort(cohortId: number): Promise<TheoryCohortSessionDto[]> {

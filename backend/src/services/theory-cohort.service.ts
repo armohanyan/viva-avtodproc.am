@@ -230,6 +230,18 @@ export default class TheoryCohortService {
       (await TheoryCohortInstructorService.buildInstructorDisplayName(resolvedInstructorIds)) ||
       input.instructorName.trim();
 
+    if (startT && endT && resolvedInstructorIds.length > 0) {
+      await TheoryCohortSessionService.assertInstructorsFreeForPlannedSessions({
+        startDateIso: input.startDateIso,
+        endDateIso: input.endDateIso,
+        lessonWeekdays: TheoryCohortSessionService.parseWeekdaysFromStorage(weekdays),
+        sessionStartTime: startT,
+        sessionEndTime: endT,
+        totalLessons,
+        instructorUserIds: resolvedInstructorIds,
+      });
+    }
+
     return sequelize.transaction(async (t) => {
       const c = await TheoryCohort.create(
         {
@@ -335,6 +347,38 @@ export default class TheoryCohortService {
         : patch.instructorName !== undefined
           ? patch.instructorName.trim()
           : undefined;
+
+    const scheduleOrInstructorsTouched =
+      patch.startDateIso !== undefined ||
+      patch.endDateIso !== undefined ||
+      patch.lessonWeekdays !== undefined ||
+      patch.totalLessons !== undefined ||
+      patch.sessionStartTime !== undefined ||
+      patch.sessionEndTime !== undefined ||
+      instructorsTouched;
+
+    if (scheduleOrInstructorsTouched && nextStartT && nextEndT) {
+      const instructorIdsForCheck =
+        nextInstructorIds ??
+        (await TheoryCohortInstructorService.listInstructorUserIdsForCohort(c.id));
+      const ids =
+        instructorIdsForCheck.length > 0
+          ? instructorIdsForCheck
+          : nextInstructorUserId != null
+            ? [nextInstructorUserId]
+            : [];
+      if (ids.length > 0) {
+        await TheoryCohortSessionService.assertInstructorsFreeForPlannedSessions({
+          startDateIso: nextStart,
+          endDateIso: nextEnd,
+          lessonWeekdays: nextWeekdays,
+          sessionStartTime: nextStartT,
+          sessionEndTime: nextEndT,
+          totalLessons: nextTotal,
+          instructorUserIds: ids,
+        });
+      }
+    }
 
     return sequelize.transaction(async (t) => {
     if (nextInstructorIds !== undefined) {

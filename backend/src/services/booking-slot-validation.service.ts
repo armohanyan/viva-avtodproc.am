@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Booking, BookingSlot } from '../models';
+import { Booking, BookingSlot, TheoryCohortSession } from '../models';
 import BranchScheduleService from './branch-schedule.service';
 import InstructorAvailabilityService, {
   lunchRangesFromRules,
@@ -179,6 +179,31 @@ function conflictMessage(detail: SlotConflictDetail): string {
   );
 }
 
+export function formatSlotConflictMessage(detail: SlotConflictDetail): string {
+  return conflictMessage(detail);
+}
+
+export type TheorySessionConflictDetail = {
+  cohortId: number;
+  sessionId: number;
+  occupiedDateIso: string;
+  occupiedRangeStart: string;
+  occupiedRangeEndExclusive: string;
+  requestedRangeStart: string;
+  requestedRangeEndExclusive: string;
+};
+
+function theorySessionConflictMessage(detail: TheorySessionConflictDetail): string {
+  return (
+    `Instructor has theory group session (cohort #${detail.cohortId}) on ${detail.occupiedDateIso} ` +
+    `occupying ${detail.occupiedRangeStart}-${detail.occupiedRangeEndExclusive}. ` +
+    `Requested ${detail.requestedRangeStart}-${detail.requestedRangeEndExclusive} overlaps it.`
+  );
+}
+
+/** Active theory sessions that block practical (and other) bookings for the instructor. */
+const THEORY_SESSION_BLOCKING_STATUSES = ['scheduled', 'completed'] as const;
+
 export default class BookingSlotValidationService {
   /**
    * True when the instructor already has a reserving booking overlapping [rangeStart, rangeEndExclusive).
@@ -191,7 +216,9 @@ export default class BookingSlotValidationService {
     excludeBookingId?: number;
   }): Promise<boolean> {
     const conflict = await this.findInstructorOverlapConflict(input);
-    return conflict != null;
+    if (conflict != null) return true;
+    const theory = await this.findTheoryCohortSessionOverlap(input);
+    return theory != null;
   }
 
   static async findInstructorOverlapConflict(input: {
@@ -336,6 +363,63 @@ export default class BookingSlotValidationService {
     return null;
   }
 
+  /**
+   * Theory-group sessions block the instructor for practical / personal-theory bookings
+   * (hybrid instructors). Cancelled sessions do not block.
+   */
+  static async findTheoryCohortSessionOverlap(input: {
+    instructorUserId: number;
+    dateIso: string;
+    rangeStart: string;
+    rangeEndExclusive: string;
+    excludeCohortId?: number;
+  }): Promise<TheorySessionConflictDetail | null> {
+    const dateIso = input.dateIso.slice(0, 10);
+    const rangeStart = normalizeTimeHHMM(input.rangeStart);
+    const rangeEnd = normalizeTimeHHMM(input.rangeEndExclusive);
+    if (!rangeStart || !rangeEnd) return null;
+    const proposed = {
+      start: parseTimeToMinutes(rangeStart),
+      end: parseTimeToMinutes(rangeEnd),
+    };
+    if (!Number.isFinite(proposed.start) || !Number.isFinite(proposed.end) || proposed.end <= proposed.start) {
+      return null;
+    }
+
+    const sessions = await TheoryCohortSession.findAll({
+      where: {
+        instructorUserId: input.instructorUserId,
+        dateIso,
+        status: { [Op.in]: [...THEORY_SESSION_BLOCKING_STATUSES] },
+        ...(input.excludeCohortId != null && Number.isFinite(input.excludeCohortId)
+          ? { cohortId: { [Op.ne]: input.excludeCohortId } }
+          : {}),
+      },
+      attributes: ['id', 'cohortId', 'startTime', 'endTime', 'dateIso'],
+    });
+
+    for (const s of sessions) {
+      const start = normalizeTimeHHMM(String(s.startTime).slice(0, 5));
+      const end = normalizeTimeHHMM(String(s.endTime).slice(0, 5));
+      if (!start || !end) continue;
+      const occupied = { start: parseTimeToMinutes(start), end: parseTimeToMinutes(end) };
+      if (!Number.isFinite(occupied.start) || !Number.isFinite(occupied.end) || occupied.end <= occupied.start) {
+        continue;
+      }
+      if (!rangesOverlapHalfOpen(proposed, occupied)) continue;
+      return {
+        cohortId: s.cohortId,
+        sessionId: s.id,
+        occupiedDateIso: dateIso,
+        occupiedRangeStart: start,
+        occupiedRangeEndExclusive: end,
+        requestedRangeStart: rangeStart,
+        requestedRangeEndExclusive: rangeEnd,
+      };
+    }
+    return null;
+  }
+
   static async assertInstructorRangeFree(input: {
     instructorUserId: number;
     dateIso: string;
@@ -345,6 +429,8 @@ export default class BookingSlotValidationService {
     /** Error copy when the window is a rest/busy block rather than a lesson. */
     busyMessage?: string;
     ignoreLunchOccupancy?: boolean;
+    /** When true, do not treat theory-group sessions as occupying the range. */
+    skipTheoryCohortSessions?: boolean;
   }): Promise<void> {
     const conflict = await this.findInstructorOverlapConflict(input);
     if (conflict) {
@@ -352,6 +438,20 @@ export default class BookingSlotValidationService {
         input.busyMessage ?? conflictMessage(conflict),
         HttpStatusCodesUtil.CONFLICT,
       );
+    }
+    if (!input.skipTheoryCohortSessions) {
+      const theoryConflict = await this.findTheoryCohortSessionOverlap({
+        instructorUserId: input.instructorUserId,
+        dateIso: input.dateIso,
+        rangeStart: input.rangeStart,
+        rangeEndExclusive: input.rangeEndExclusive,
+      });
+      if (theoryConflict) {
+        throw new InputValidationError(
+          input.busyMessage ?? theorySessionConflictMessage(theoryConflict),
+          HttpStatusCodesUtil.CONFLICT,
+        );
+      }
     }
   }
 
@@ -514,6 +614,7 @@ export default class BookingSlotValidationService {
         rangeEndExclusive: minutesToHHMM(rangeForBusy.end),
         excludeBookingId: input.excludeBookingId,
         ignoreLunchOccupancy: allowCustomPractical,
+        skipTheoryCohortSessions: input.lessonType === 'theory',
       });
     }
   }
