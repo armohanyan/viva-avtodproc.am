@@ -5232,43 +5232,92 @@ export default class BookingService {
    * booking and its finance rows when still present.
    */
   static async purgeArchive(archiveId: number): Promise<boolean> {
+    const n = await BookingService.purgeArchives([archiveId]);
+    return n > 0;
+  }
+
+  /** Permanently remove many archive rows (same rules as {@link purgeArchive}). */
+  static async purgeArchives(archiveIds: readonly number[]): Promise<number> {
+    const ids = [
+      ...new Set(
+        archiveIds
+          .map((id) => Math.floor(Number(id)))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+    if (ids.length === 0) return 0;
+
     return sequelize.transaction(async (transaction) => {
-      const archive = await BookingArchive.findByPk(archiveId, {
+      const archives = await BookingArchive.findAll({
+        where: { id: { [Op.in]: ids } },
         transaction,
         lock: Transaction.LOCK.UPDATE,
       });
-      if (!archive) return false;
+      if (archives.length === 0) return 0;
 
-      if (archive.kind === 'booking' && archive.bookingId != null) {
-        const bookingId = archive.bookingId;
+      const bookingIdsToDestroy = [
+        ...new Set(
+          archives
+            .filter((a) => a.kind === 'booking' && a.bookingId != null)
+            .map((a) => Number(a.bookingId))
+            .filter((id) => Number.isFinite(id) && id > 0),
+        ),
+      ];
+
+      for (const bookingId of bookingIdsToDestroy) {
         const booking = await Booking.findByPk(bookingId, {
           transaction,
           lock: Transaction.LOCK.UPDATE,
         });
-        if (booking) {
-          await BookingSlot.destroy({ where: { bookingId }, transaction });
-          await FinanceTransaction.destroy({ where: { bookingId }, transaction });
-          await Booking.destroy({ where: { id: bookingId }, transaction });
-        }
+        if (!booking) continue;
+        await BookingSlot.destroy({ where: { bookingId }, transaction });
+        await FinanceTransaction.destroy({ where: { bookingId }, transaction });
+        await Booking.destroy({ where: { id: bookingId }, transaction });
       }
 
-      await archive.destroy({ transaction });
+      const deleted = await BookingArchive.destroy({
+        where: { id: { [Op.in]: archives.map((a) => a.id) } },
+        transaction,
+      });
 
       AuditLogService.recordFireAndForget({
         category: 'booking',
         action: 'booking_archive_purge',
         entityType: 'booking_archive',
-        entityId: archiveId,
+        entityId: archives[0]!.id,
         severity: 'warn',
-        message: `Admin permanently deleted archiveId=${archiveId}`,
+        message: `Admin permanently deleted ${deleted} archive row(s)`,
         details: {
-          kind: archive.kind,
-          bookingId: archive.bookingId,
-          remark: archive.remark,
+          archiveIds: archives.map((a) => a.id),
+          bookingIds: bookingIdsToDestroy,
+          count: deleted,
         },
       });
-      return true;
+      return deleted;
     });
+  }
+
+  /** Permanently remove all archive rows matching optional filters (branch / kind). */
+  static async purgeAllArchives(opts?: {
+    branchId?: number;
+    kind?: 'booking' | 'slot';
+  }): Promise<number> {
+    const where: WhereOptions = {};
+    if (opts?.branchId != null && Number.isFinite(opts.branchId) && opts.branchId > 0) {
+      where.branchId = opts.branchId;
+    }
+    if (opts?.kind === 'booking' || opts?.kind === 'slot') {
+      where.kind = opts.kind;
+    }
+    const rows = await BookingArchive.findAll({
+      where,
+      attributes: ['id'],
+      raw: true,
+    });
+    const ids = rows
+      .map((r) => Number((r as { id: number }).id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    return BookingService.purgeArchives(ids);
   }
 
   /**

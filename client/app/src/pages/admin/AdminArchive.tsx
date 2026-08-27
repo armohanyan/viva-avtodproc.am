@@ -49,6 +49,11 @@ type BookingArchiveRow = {
   archivedAt: string;
 };
 
+type PurgeDialog =
+  | { mode: "one"; id: number }
+  | { mode: "selected"; ids: number[] }
+  | { mode: "all" };
+
 function lessonTypeLabel(t: (k: string) => string, lessonType: string | null): string {
   if (lessonType === "practical") return t("lessonTypePractical");
   if (lessonType === "theory") return t("lessonTypeTheory");
@@ -62,12 +67,14 @@ export default function AdminArchivePage(): JSX.Element {
   const [rows, setRows] = useState<BookingArchiveRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [kindFilter, setKindFilter] = useState<ArchiveFilter>("all");
-  const [purgeId, setPurgeId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [purgeDialog, setPurgeDialog] = useState<PurgeDialog | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await vivaApiJson<BookingArchiveRow[]>("/bookings/archives");
       setRows(Array.isArray(data) ? data : []);
+      setSelectedIds(new Set());
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     } finally {
@@ -84,25 +91,136 @@ export default function AdminArchivePage(): JSX.Element {
     return rows.filter((r) => r.kind === kindFilter);
   }, [rows, kindFilter]);
 
-  const handlePurge = async () => {
-    if (purgeId == null) return;
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
+  const someFilteredSelected = filtered.some((r) => selectedIds.has(r.id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const r of filtered) next.delete(r.id);
+      } else {
+        for (const r of filtered) next.add(r.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handlePurgeConfirm = async () => {
+    if (!purgeDialog) return;
     try {
-      await vivaApiJson(`/bookings/archives/${purgeId}`, { method: "DELETE" });
-      setPurgeId(null);
-      setRows((prev) => prev.filter((r) => r.id !== purgeId));
+      if (purgeDialog.mode === "one") {
+        await vivaApiJson(`/bookings/archives/${purgeDialog.id}`, { method: "DELETE" });
+        setRows((prev) => prev.filter((r) => r.id !== purgeDialog.id));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(purgeDialog.id);
+          return next;
+        });
+      } else if (purgeDialog.mode === "selected") {
+        const res = await vivaApiJson<{ deleted: number }>("/bookings/archives/purge", {
+          method: "POST",
+          body: { ids: purgeDialog.ids },
+        });
+        const idSet = new Set(purgeDialog.ids);
+        setRows((prev) => prev.filter((r) => !idSet.has(r.id)));
+        setSelectedIds(new Set());
+        showToast(
+          t("adminArchiveBulkPurgedToast").replace("{count}", String(res?.deleted ?? purgeDialog.ids.length)),
+          "success",
+        );
+        setPurgeDialog(null);
+        return;
+      } else {
+        const body =
+          kindFilter === "all" ? {} : { kind: kindFilter as ArchiveKind };
+        const res = await vivaApiJson<{ deleted: number }>("/bookings/archives/purge-all", {
+          method: "POST",
+          body,
+        });
+        await load();
+        showToast(
+          t("adminArchiveBulkPurgedToast").replace("{count}", String(res?.deleted ?? 0)),
+          "success",
+        );
+        setPurgeDialog(null);
+        return;
+      }
       showToast(t("adminArchivePurgedToast"), "success");
+      setPurgeDialog(null);
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
       throw e;
     }
   };
 
+  const purgeTitle =
+    purgeDialog?.mode === "all"
+      ? t("adminArchivePurgeAllTitle")
+      : purgeDialog?.mode === "selected"
+        ? t("adminArchivePurgeSelectedTitle")
+        : t("adminArchivePurgeTitle");
+
+  const purgeDesc =
+    purgeDialog?.mode === "all"
+      ? t("adminArchivePurgeAllDesc")
+      : purgeDialog?.mode === "selected"
+        ? t("adminArchivePurgeSelectedDesc").replace(
+            "{count}",
+            String(purgeDialog.ids.length),
+          )
+        : t("adminArchivePurgeDesc");
+
   return (
     <AdminLayout>
       <div className="flex flex-col gap-4 p-4 md:p-6">
-        <PanelPageHeader title={t("adminArchiveNav")} subtitle={t("adminArchivePageDesc")} />
+        <PanelPageHeader
+          title={t("adminArchiveNav")}
+          subtitle={t("adminArchivePageDesc")}
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={loading || selectedIds.size === 0}
+                onClick={() =>
+                  setPurgeDialog({ mode: "selected", ids: [...selectedIds] })
+                }
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                {t("adminArchiveDeleteSelected")}
+                {selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                disabled={loading || filtered.length === 0}
+                onClick={() => setPurgeDialog({ mode: "all" })}
+              >
+                {t("adminArchiveDeleteAll")}
+              </Button>
+            </div>
+          }
+        />
         <div className="flex items-center justify-end">
-          <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as ArchiveFilter)}>
+          <Select
+            value={kindFilter}
+            onValueChange={(v) => {
+              setKindFilter(v as ArchiveFilter);
+              setSelectedIds(new Set());
+            }}
+          >
             <SelectTrigger className="w-[12rem]">
               <SelectValue />
             </SelectTrigger>
@@ -121,6 +239,19 @@ export default function AdminArchivePage(): JSX.Element {
               <table className="w-full min-w-[1100px] text-left text-sm">
                 <thead className="bg-muted/50 border-b">
                   <tr>
+                    <th className="px-3 py-2 w-[1%]">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        checked={allFilteredSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someFilteredSelected && !allFilteredSelected;
+                        }}
+                        onChange={() => toggleSelectAll()}
+                        aria-label={t("adminArchiveSelectAll")}
+                        disabled={loading || filtered.length === 0}
+                      />
+                    </th>
                     <th className="px-3 py-2 font-medium">{t("adminArchiveColWhen")}</th>
                     <th className="px-3 py-2 font-medium">{t("adminArchiveColKind")}</th>
                     <th className="px-3 py-2 font-medium">{t("adminArchiveColWho")}</th>
@@ -134,7 +265,7 @@ export default function AdminArchivePage(): JSX.Element {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <TableSkeletonRows cols={9} cellClassName="px-3 py-2" />
+                    <TableSkeletonRows cols={10} cellClassName="px-3 py-2" />
                   ) : (
                     filtered.map((r) => {
                       const scheduleParts =
@@ -143,6 +274,15 @@ export default function AdminArchivePage(): JSX.Element {
                           : [r.dateIso, r.time, r.endTime ? `→ ${r.endTime}` : null].filter(Boolean);
                       return (
                         <tr key={r.id} className="border-b last:border-0 align-top">
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              className="size-4 accent-primary"
+                              checked={selectedIds.has(r.id)}
+                              onChange={() => toggleOne(r.id)}
+                              aria-label={t("adminArchiveSelectRow")}
+                            />
+                          </td>
                           <td className="text-muted-foreground px-3 py-2 whitespace-nowrap">
                             {formatDateTime(r.archivedAt, lang)}
                           </td>
@@ -175,7 +315,7 @@ export default function AdminArchivePage(): JSX.Element {
                               size="icon"
                               className="text-destructive hover:text-destructive"
                               aria-label={t("delete")}
-                              onClick={() => setPurgeId(r.id)}
+                              onClick={() => setPurgeDialog({ mode: "one", id: r.id })}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -192,11 +332,11 @@ export default function AdminArchivePage(): JSX.Element {
       </div>
 
       <ConfirmDialog
-        open={purgeId != null}
-        onClose={() => setPurgeId(null)}
-        onConfirm={handlePurge}
-        title={t("adminArchivePurgeTitle")}
-        description={t("adminArchivePurgeDesc")}
+        open={purgeDialog != null}
+        onClose={() => setPurgeDialog(null)}
+        onConfirm={handlePurgeConfirm}
+        title={purgeTitle}
+        description={purgeDesc}
         confirmLabel={t("delete")}
         danger
       />

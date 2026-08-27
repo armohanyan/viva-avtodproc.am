@@ -2311,6 +2311,17 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   adminArchivePurgeDesc:
     "This removes the archive entry forever. For archived bookings, the booking row is also deleted from the database.",
   adminArchivePurgedToast: "Archive record deleted.",
+  adminArchiveDeleteSelected: "Delete selected",
+  adminArchiveDeleteAll: "Delete all",
+  adminArchiveSelectAll: "Select all",
+  adminArchiveSelectRow: "Select row",
+  adminArchivePurgeSelectedTitle: "Delete selected archive records?",
+  adminArchivePurgeSelectedDesc:
+    "Permanently delete {count} selected archive record(s). Related archived bookings are also removed from the database.",
+  adminArchivePurgeAllTitle: "Delete all archive records?",
+  adminArchivePurgeAllDesc:
+    "Permanently delete every archive record in the current filter. Related archived bookings are also removed from the database.",
+  adminArchiveBulkPurgedToast: "Deleted {count} archive record(s).",
   adminEditBookingToastPrefix: "Edit booking",
   adminDeleteBookingToastPrefix: "Delete booking",
   dateLabelToday: "Today",
@@ -4677,6 +4688,17 @@ const ru: typeof en = {
   adminArchivePurgeDesc:
     "Запись архива будет удалена безвозвратно. Для архивных бронирований строка бронирования также удаляется из базы.",
   adminArchivePurgedToast: "Запись архива удалена.",
+  adminArchiveDeleteSelected: "Удалить выбранные",
+  adminArchiveDeleteAll: "Удалить все",
+  adminArchiveSelectAll: "Выбрать все",
+  adminArchiveSelectRow: "Выбрать строку",
+  adminArchivePurgeSelectedTitle: "Удалить выбранные записи архива?",
+  adminArchivePurgeSelectedDesc:
+    "Безвозвратно удалить {count} выбранных записей. Связанные архивные бронирования также удаляются из базы.",
+  adminArchivePurgeAllTitle: "Удалить все записи архива?",
+  adminArchivePurgeAllDesc:
+    "Безвозвратно удалить все записи в текущем фильтре. Связанные архивные бронирования также удаляются из базы.",
+  adminArchiveBulkPurgedToast: "Удалено записей архива: {count}.",
   adminEditBookingToastPrefix: "Редактировать запись",
   adminDeleteBookingToastPrefix: "Удалить запись",
   dateLabelToday: "Сегодня",
@@ -7018,6 +7040,17 @@ const am: typeof en = {
   adminArchivePurgeDesc:
     "Արխիվի գրառումը կհեռացվի անվերադարձ։ Արխիվացված ամրագրման դեպքում տողը նույնպես կջնջվի բազայից։",
   adminArchivePurgedToast: "Արխիվի գրառումը ջնջված է։",
+  adminArchiveDeleteSelected: "Ջնջել ընտրվածները",
+  adminArchiveDeleteAll: "Ջնջել բոլորը",
+  adminArchiveSelectAll: "Ընտրել բոլորը",
+  adminArchiveSelectRow: "Ընտրել տողը",
+  adminArchivePurgeSelectedTitle: "Ջնջե՞լ ընտրված արխիվի գրառումները",
+  adminArchivePurgeSelectedDesc:
+    "Մշտապես ջնջել {count} ընտրված գրառում(ներ)։ Կապված արխիվացված ամրագրումները նույնպես կհեռացվեն բազայից։",
+  adminArchivePurgeAllTitle: "Ջնջե՞լ արխիվի բոլոր գրառումները",
+  adminArchivePurgeAllDesc:
+    "Մշտապես ջնջել ընթացիկ ֆիլտրի բոլոր գրառումները։ Կապված արխիվացված ամրագրումները նույնպես կհեռացվեն բազայից։",
+  adminArchiveBulkPurgedToast: "Ջնջված է {count} արխիվի գրառում։",
   adminEditBookingToastPrefix: "Խմբագրել ամրագրումը",
   adminDeleteBookingToastPrefix: "Ջնջել ամրագրումը",
   dateLabelToday: "Այսօր",

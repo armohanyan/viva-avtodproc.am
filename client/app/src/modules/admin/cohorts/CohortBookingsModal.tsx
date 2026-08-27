@@ -103,7 +103,7 @@ export default function CohortBookingsModal({ cohort, open, onOpenChange, onChan
         open={open}
         onOpenChange={onOpenChange}
         title={t("cohortStudentsDialogTitle")}
-        contentClassName="max-w-5xl max-h-[min(92vh,820px)] w-[min(96vw,64rem)]"
+        contentClassName="w-full max-w-[calc(100%-2rem)] sm:max-w-[min(96vw,1200px)] max-h-[min(94vh,900px)]"
       >
         {cohort ? (
           <p className="text-sm font-medium text-foreground -mt-1 mb-3">{cohort.name}</p>

@@ -8,6 +8,8 @@ const router = Router();
 router.get('/', BookingController.list);
 router.get('/gift-requests', requireStaff, BookingController.listGiftRequests);
 router.get('/archives', requireStaff, BookingController.listArchives);
+router.post('/archives/purge', requireStaff, BookingController.purgeArchivesBulk);
+router.post('/archives/purge-all', requireStaff, BookingController.purgeAllArchives);
 router.delete('/archives/:archiveId', requireStaff, BookingController.purgeArchive);
 router.get('/:id', requireStaff, BookingController.getByIdForAdmin);
 router.post('/bulk-import', requireStaff, BookingController.bulkImport);

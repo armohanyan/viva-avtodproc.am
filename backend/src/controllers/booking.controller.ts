@@ -739,6 +739,36 @@ export default class BookingController {
     }
   }
 
+  static async purgeArchivesBulk(req: Request, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          ids: z.array(z.coerce.number().int().positive()).min(1).max(500),
+        }),
+        req.body,
+      );
+      const deleted = await BookingService.purgeArchives(body.ids);
+      SuccessHandlerUtil.handleGet(res, next, { deleted });
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async purgeAllArchives(req: Request, res: Response, next: NextFunction) {
+    try {
+      const branchId = await resolveBranchIdFilter(req);
+      const kindRaw = String((req.body as { kind?: unknown } | undefined)?.kind ?? req.query.kind ?? '').trim();
+      const kind = kindRaw === 'booking' || kindRaw === 'slot' ? kindRaw : undefined;
+      const deleted = await BookingService.purgeAllArchives({
+        ...(branchId != null ? { branchId } : {}),
+        ...(kind ? { kind } : {}),
+      });
+      SuccessHandlerUtil.handleGet(res, next, { deleted });
+    } catch (e) {
+      next(e);
+    }
+  }
+
   /** @deprecated Prefer POST /bookings/:id/archive with a remark. */
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {

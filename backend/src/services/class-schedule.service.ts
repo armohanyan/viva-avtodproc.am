@@ -24,6 +24,27 @@ import { todayIsoUtc } from '../utils/calendar-month.util';
 
 const YEREVAN_TZ = 'Asia/Yerevan';
 
+/** Bookings that no longer occupy the calendar (slots freed / cancelled / archived). */
+const SCHEDULE_NON_OCCUPYING_STATUSES = [
+  'cancelled',
+  'canceled',
+  'refunded',
+  'archived',
+  'rejected',
+  'deleted',
+] as const;
+
+function scheduleStatusWhere(statusFilterRaw: string | undefined): Record<string, unknown> | null {
+  const statusFilter = (statusFilterRaw ?? '').trim().toLowerCase();
+  if (!statusFilter || statusFilter === 'all') {
+    return { status: { [Op.notIn]: [...SCHEDULE_NON_OCCUPYING_STATUSES] } };
+  }
+  if (statusFilter === 'cancelled') {
+    return { status: { [Op.in]: ['cancelled', 'canceled'] } };
+  }
+  return { status: statusFilter };
+}
+
 export type ClassScheduleView = 'today' | 'week' | 'month' | 'day' | 'custom';
 
 export type ClassScheduleQuery = {
@@ -360,6 +381,7 @@ export default class ClassScheduleService {
   static async listForAdmin(query: ClassScheduleQuery, branchId?: number): Promise<ClassScheduleResponse> {
     const { view, start, end } = resolveViewRange(query);
     const branchIdFilter = branchId ?? Math.floor(Number(query.branchId) || 0);
+    const statusWhere = scheduleStatusWhere(query.status);
 
     const slotRows = await BookingSlot.findAll({
       attributes: ['bookingId'],
@@ -371,13 +393,17 @@ export default class ClassScheduleService {
       .map((r) => Number((r as { bookingId: number }).bookingId))
       .filter((id) => Number.isFinite(id) && id > 0);
 
-    if (branchIdFilter > 0 && slotBookingIds.length > 0) {
-      const branchSlotBookings = await Booking.findAll({
-        where: { id: { [Op.in]: slotBookingIds }, branchId: branchIdFilter },
+    if (slotBookingIds.length > 0) {
+      const activeSlotBookings = await Booking.findAll({
+        where: {
+          id: { [Op.in]: slotBookingIds },
+          ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
+          ...(statusWhere ?? {}),
+        },
         attributes: ['id'],
         raw: true,
       });
-      slotBookingIds = branchSlotBookings
+      slotBookingIds = activeSlotBookings
         .map((r) => Number((r as { id: number }).id))
         .filter((id) => Number.isFinite(id) && id > 0);
     }
@@ -387,6 +413,7 @@ export default class ClassScheduleService {
       where: {
         dateIso: { [Op.between]: [start, end] },
         ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
+        ...(statusWhere ?? {}),
         [Op.and]: literal(
           'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)',
         ),
@@ -401,6 +428,7 @@ export default class ClassScheduleService {
       where: {
         id: { [Op.in]: bookingIds },
         ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
+        ...(statusWhere ?? {}),
       },
       include: [
         { model: User, as: 'student', required: true, attributes: ['id', 'name', 'phone', 'phone2', 'email'] },
