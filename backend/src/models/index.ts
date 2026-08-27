@@ -6,6 +6,7 @@ import { ensureUnspecifiedFleetCar } from '../services/unspecified-fleet-car.ser
 import { Blog } from './blog.model';
 import { BookedCall } from './booked-call.model';
 import { Booking } from './booking.model';
+import { BookingArchive } from './booking-archive.model';
 import { BookingSlot } from './booking-slot.model';
 import { Branch } from './branch.model';
 import { BranchPracticalSlotPlan } from './branch-practical-slot-plan.model';
@@ -115,6 +116,11 @@ PersonalTheoryLessonRequest.belongsTo(Booking, { foreignKey: 'bookedLessonId', t
 
 Booking.hasMany(BookingSlot, { foreignKey: 'bookingId', sourceKey: 'id', as: 'slotClaims' });
 BookingSlot.belongsTo(Booking, { foreignKey: 'bookingId', targetKey: 'id', as: 'booking' });
+
+Booking.hasMany(BookingArchive, { foreignKey: 'bookingId', sourceKey: 'id', as: 'archives', constraints: false });
+BookingArchive.belongsTo(Booking, { foreignKey: 'bookingId', targetKey: 'id', as: 'booking', constraints: false });
+BookingArchive.belongsTo(User, { foreignKey: 'archivedByUserId', targetKey: 'id', as: 'archivedBy' });
+BookingArchive.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id', as: 'branch', constraints: false });
 
 Booking.hasMany(FinanceTransaction, { foreignKey: 'bookingId', sourceKey: 'id', as: 'financeTransactions' });
 FinanceTransaction.belongsTo(Booking, { foreignKey: 'bookingId', targetKey: 'id', as: 'booking' });
@@ -233,6 +239,7 @@ export {
   Blog,
   BookedCall,
   Booking,
+  BookingArchive,
   BookingSlot,
   Branch,
   BranchPracticalSlotPlan,

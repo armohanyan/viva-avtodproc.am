@@ -8,6 +8,7 @@ router.post('/', TheoryCohortController.create);
 router.post('/preview-sessions', TheoryCohortController.previewSessions);
 router.get('/:id/sessions', TheoryCohortController.listSessions);
 router.get('/:id/enrollments', TheoryCohortController.listEnrollments);
+router.get('/:id/bookings', TheoryCohortController.listBookings);
 router.patch('/:id', TheoryCohortController.update);
 router.delete('/:id', TheoryCohortController.remove);
 router.post('/:id/enrollments', TheoryCohortController.enroll);

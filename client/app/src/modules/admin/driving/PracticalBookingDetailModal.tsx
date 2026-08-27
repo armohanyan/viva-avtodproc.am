@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Loader2, Pencil, Trash2, X } from "lucide-react";
 import { AppModal } from "src/components/AppModal";
-import ConfirmDialog from "src/components/ConfirmDialog";
+import RemarkConfirmDialog from "src/components/RemarkConfirmDialog";
 import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
 import { Button } from "src/components/ui/button";
 import type { Instructor } from "src/data/instructors";
@@ -336,12 +336,15 @@ export default function PracticalBookingDetailModal({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (remark: string) => {
     if (!booking) return;
     try {
-      await vivaApiJson(`/bookings/${encodeURIComponent(booking.id)}`, { method: "DELETE" });
+      await vivaApiJson(`/bookings/${encodeURIComponent(booking.id)}/archive`, {
+        method: "POST",
+        body: { remark },
+      });
       setDeleteOpen(false);
-      showToast(t("bookingCancelledMsg"), "success");
+      showToast(t("bookingArchivedMsg"), "success");
       onDeleted();
       onOpenChange(false);
     } catch (e) {
@@ -355,7 +358,7 @@ export default function PracticalBookingDetailModal({
     : null;
   const canRemoveIndividualSlot = sortedEntries.length > 1;
 
-  const handleRemoveSlot = async () => {
+  const handleRemoveSlot = async (remark: string) => {
     if (!booking || !slotToRemove) return;
     setRemovingSlot(true);
     try {
@@ -364,6 +367,7 @@ export default function PracticalBookingDetailModal({
         body: {
           dateIso: slotToRemove.dateIso.slice(0, 10),
           time: padSlotTime(slotToRemove.time),
+          remark,
         },
       });
       setSlotToRemove(null);
@@ -612,17 +616,17 @@ export default function PracticalBookingDetailModal({
         />
       ) : null}
 
-      <ConfirmDialog
+      <RemarkConfirmDialog
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}
-        title={t("bookingCancelTitle")}
-        description={t("bookingCancelDesc")}
-        confirmLabel={t("delete")}
+        title={t("bookingArchiveTitle")}
+        description={t("bookingArchiveDesc")}
+        confirmLabel={t("adminArchiveConfirm")}
         danger
       />
 
-      <ConfirmDialog
+      <RemarkConfirmDialog
         open={slotToRemove != null}
         onClose={() => {
           if (removingSlot) return;

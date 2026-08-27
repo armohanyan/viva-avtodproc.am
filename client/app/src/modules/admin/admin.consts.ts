@@ -19,6 +19,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
   { href: "/admin/driving", translationKey: "adminSidebarDriving" },
   { href: "/admin/bookings", translationKey: "bookings" },
+  { href: "/admin/archive", translationKey: "adminArchiveNav" },
   { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
   { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/inbox", translationKey: "adminInbox" },

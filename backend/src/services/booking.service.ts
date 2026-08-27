@@ -3,7 +3,9 @@ import { Op, Transaction, UniqueConstraintError, literal, type WhereOptions } fr
 import { sequelize } from '../database/sequelize';
 import {
   Booking,
+  BookingArchive,
   BookingSlot,
+  Branch,
   FinanceTransaction,
   InstructorBranch,
   InstructorProfile,
@@ -404,6 +406,34 @@ export type BookingAdminDto = {
   meetLink?: string | null;
 };
 
+export type BookingArchiveDto = {
+  id: number;
+  kind: 'booking' | 'slot';
+  bookingId: number | null;
+  remark: string;
+  archivedByUserId: number;
+  archivedByName: string;
+  archivedByEmail: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  studentUserId: number | null;
+  studentName: string | null;
+  instructorUserId: number | null;
+  instructorName: string | null;
+  lessonType: string | null;
+  dateIso: string | null;
+  time: string | null;
+  endTime: string | null;
+  slotDateIso: string | null;
+  slotTime: string | null;
+  totalPriceAmd: number | null;
+  paymentStatus: string | null;
+  paidAmountAmd: number | null;
+  bookingStatusBefore: string | null;
+  archivedAt: string;
+  snapshot: Record<string, unknown> | null;
+};
+
 export type AdminBookingFinanceLinkDto = {
   id: number;
   source: 'manual' | 'system';
@@ -450,7 +480,13 @@ export type AdminBookingListResult = {
 };
 
 /** Canonical booking row statuses (DB + API). */
-export type BookingStatus = 'confirmed' | 'pending' | 'pending_payment' | 'cancelled' | 'refunded';
+export type BookingStatus =
+  | 'confirmed'
+  | 'pending'
+  | 'pending_payment'
+  | 'cancelled'
+  | 'refunded'
+  | 'archived';
 
 /** Gift booking request row for the admin inbox (super admin approves/rejects). */
 export type GiftBookingRequestDto = {
@@ -609,7 +645,71 @@ function lessonPassedSuccessfullyFromRow(b: Booking): boolean | null {
   return Boolean(v);
 }
 
-const BOOKING_STATUSES = new Set<string>(['confirmed', 'pending', 'pending_payment', 'cancelled', 'refunded']);
+const BOOKING_STATUSES = new Set<string>([
+  'confirmed',
+  'pending',
+  'pending_payment',
+  'cancelled',
+  'refunded',
+  'archived',
+]);
+
+const ARCHIVE_REMARK_MIN_LEN = 3;
+
+function normalizeArchiveRemark(raw: unknown): string {
+  const remark = String(raw ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (remark.length < ARCHIVE_REMARK_MIN_LEN) {
+    throw new InputValidationError(
+      `A remark of at least ${ARCHIVE_REMARK_MIN_LEN} characters is required.`,
+      HttpStatusCodesUtil.BAD_REQUEST,
+    );
+  }
+  return remark.slice(0, 2000);
+}
+
+function branchDisplayName(branch: Branch | null | undefined): string | null {
+  if (!branch) return null;
+  const label = String(branch.label ?? '').trim();
+  if (label) return label;
+  const name = String(branch.name ?? '').trim();
+  return name || null;
+}
+
+function mapBookingArchiveDto(
+  row: BookingArchive & { archivedBy?: User | null; createdAt?: Date },
+): BookingArchiveDto {
+  const archivedBy = row.archivedBy;
+  const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(String(row.createdAt ?? Date.now()));
+  return {
+    id: row.id,
+    kind: row.kind === 'slot' ? 'slot' : 'booking',
+    bookingId: row.bookingId ?? null,
+    remark: row.remark,
+    archivedByUserId: row.archivedByUserId,
+    archivedByName: archivedBy?.name?.trim() || `User #${row.archivedByUserId}`,
+    archivedByEmail: archivedBy?.email ?? null,
+    branchId: row.branchId ?? null,
+    branchName: row.branchName ?? null,
+    studentUserId: row.studentUserId ?? null,
+    studentName: row.studentName ?? null,
+    instructorUserId: row.instructorUserId ?? null,
+    instructorName: row.instructorName ?? null,
+    lessonType: row.lessonType ?? null,
+    dateIso: row.dateIso != null ? dateIsoString(row.dateIso) : null,
+    time: row.time ?? null,
+    endTime: row.endTime ?? null,
+    slotDateIso: row.slotDateIso != null ? dateIsoString(row.slotDateIso) : null,
+    slotTime: row.slotTime ?? null,
+    totalPriceAmd: row.totalPriceAmd ?? null,
+    paymentStatus: row.paymentStatus ?? null,
+    paidAmountAmd: row.paidAmountAmd ?? null,
+    bookingStatusBefore: row.bookingStatusBefore ?? null,
+    archivedAt: createdAt.toISOString(),
+    snapshot: (row.snapshot as Record<string, unknown> | null) ?? null,
+  };
+}
 
 /** Legacy rows from older builds — coerce for API / UI. */
 export function normalizeBookingStatus(raw: string): BookingStatus {
@@ -1362,12 +1462,20 @@ async function finalizePracticalCancellationInTx(opts: {
   refundIfPaid: boolean;
   cancellationReason?: string | null;
   recordAutoCancelledAt?: boolean;
+  /** Staff archive path — frees slots without refund and keeps the booking row as `archived`. */
+  forceStatus?: 'archived';
 }): Promise<{ status: BookingStatus; refundIssued: boolean }> {
-  const { row, studentUserId, transaction, refundIfPaid, cancellationReason, recordAutoCancelledAt } = opts;
+  const { row, studentUserId, transaction, refundIfPaid, cancellationReason, recordAutoCancelledAt, forceStatus } =
+    opts;
   const st = normalizeBookingStatus(row.status);
   const wasPaid = row.paidAt != null && st === 'confirmed';
   const gross = row.totalPriceAmd != null && Number.isFinite(Number(row.totalPriceAmd)) ? Number(row.totalPriceAmd) : 0;
-  const nextStatus: BookingStatus = refundIfPaid && wasPaid && gross > 0 ? 'refunded' : 'cancelled';
+  const nextStatus: BookingStatus =
+    forceStatus === 'archived'
+      ? 'archived'
+      : refundIfPaid && wasPaid && gross > 0
+        ? 'refunded'
+        : 'cancelled';
 
   const prepaidMeta = coercePrepaidMetaFromRow(row.prepaidMeta as unknown);
   if (prepaidMeta) {
@@ -1810,7 +1918,7 @@ export default class BookingService {
     return {
       [Op.and]: [
         { totalPriceAmd: { [Op.gt]: 0 } },
-        { status: { [Op.notIn]: ['cancelled', 'refunded'] } },
+        { status: { [Op.notIn]: ['cancelled', 'refunded', 'archived'] } },
         { prepaidMeta: null },
         literal(`(
           LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) IN ('unpaid', 'partial')
@@ -1821,7 +1929,7 @@ export default class BookingService {
   }
 
   private static buildAdminListWhere(query: AdminBookingListQuery): WhereOptions {
-    const andParts: WhereOptions[] = [];
+    const andParts: WhereOptions[] = [{ status: { [Op.ne]: 'archived' } }];
     if (query.branchId !== undefined) {
       andParts.push({ branchId: query.branchId });
     }
@@ -2066,6 +2174,31 @@ export default class BookingService {
     return item ?? null;
   }
 
+  /** Admin list of theory-group bookings linked to a cohort via `prepaidMeta.theoryCohortId`. */
+  static async listAdminForTheoryCohort(cohortId: number): Promise<BookingAdminListItemDto[]> {
+    const id = Math.floor(Number(cohortId));
+    if (!Number.isFinite(id) || id <= 0) return [];
+    const rows = await Booking.findAll({
+      where: {
+        lessonType: 'theory',
+        status: { [Op.ne]: 'archived' },
+        [Op.and]: [
+          literal(
+            `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) = ${id}`,
+          ),
+        ],
+      },
+      include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+    });
+    return BookingService.attachSlotsAndFinance(
+      rows.map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
+    );
+  }
+
   static async setLessonPassedSuccessfully(
     bookingId: number,
     value: boolean | null,
@@ -2089,9 +2222,9 @@ export default class BookingService {
     }
 
     const st = normalizeBookingStatus(row.status);
-    if (st === 'cancelled' || st === 'refunded') {
+    if (st === 'cancelled' || st === 'refunded' || st === 'archived') {
       throw new InputValidationError(
-        'Lesson outcome cannot be updated for a cancelled or refunded booking.',
+        'Lesson outcome cannot be updated for a cancelled, refunded, or archived booking.',
         HttpStatusCodesUtil.BAD_REQUEST,
       );
     }
@@ -4223,12 +4356,19 @@ export default class BookingService {
   /**
    * Admin: drop a single `booking_slots` row. The booking and remaining slots stay.
    * Recalculates total from remaining slots and notifies staff to review payment.
-   * Removing the last slot is rejected — cancel/delete the booking instead.
+   * Removing the last slot is rejected — archive/delete the booking instead.
+   * The removed hour is archived (with remark) so the calendar slot can be booked again.
    */
   static async removeAdminSlot(
     id: number,
-    slot: { dateIso: string; time: string },
+    slot: { dateIso: string; time: string; remark: string },
+    archivedByUserId: number,
   ): Promise<BookingAdminDto | null> {
+    const remark = normalizeArchiveRemark(slot.remark);
+    if (!Number.isFinite(archivedByUserId) || archivedByUserId <= 0) {
+      throw new InputValidationError('Staff user is required.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
     const row = await Booking.findByPk(id);
     if (!row) return null;
 
@@ -4241,7 +4381,7 @@ export default class BookingService {
     }
     if (!rawBookingStatusReservesSlot(row.status)) {
       throw new InputValidationError(
-        'Cannot remove a slot from a cancelled or refunded booking.',
+        'Cannot remove a slot from a cancelled, refunded, or archived booking.',
         HttpStatusCodesUtil.BAD_REQUEST,
       );
     }
@@ -4276,7 +4416,7 @@ export default class BookingService {
     const remaining = existingEntries.filter((e) => !(e.dateIso === targetDate && e.time === targetTime));
     if (remaining.length === 0) {
       throw new InputValidationError(
-        'This is the last slot. Cancel the booking to free it.',
+        'This is the last slot. Archive the booking to free it.',
         HttpStatusCodesUtil.BAD_REQUEST,
       );
     }
@@ -4339,22 +4479,61 @@ export default class BookingService {
     const prevNotes = (row.paymentNotes ?? '').trim();
     const paymentNotes = (prevNotes ? `${prevNotes}\n${stamp}` : stamp).slice(0, 2000);
 
+    const [student, instructor, branch] = await Promise.all([
+      User.findByPk(row.studentUserId, { attributes: ['id', 'name'] }),
+      User.findByPk(instructorUserId, { attributes: ['id', 'name'] }),
+      Branch.findByPk(row.branchId, { attributes: ['id', 'name', 'label'] }),
+    ]);
+
     AuditLogService.recordFireAndForget({
       category: 'booking',
       action: 'admin_remove_slot',
       entityType: 'booking',
       entityId: id,
-      message: `Admin removed one slot from bookingId=${id} (${targetDate} ${targetTime})`,
+      message: `Admin archived one slot from bookingId=${id} (${targetDate} ${targetTime})`,
       details: {
         removedDateIso: targetDate,
         removedTime: targetTime,
         remainingSlotCount: remaining.length,
         previousTotalAmd,
         newTotalAmd: nextTotalAmd,
+        remark,
+        archivedByUserId,
       },
     });
 
     await sequelize.transaction(async (transaction) => {
+      await BookingArchive.create(
+        {
+          kind: 'slot',
+          bookingId: id,
+          remark,
+          archivedByUserId,
+          branchId: row.branchId,
+          branchName: branchDisplayName(branch),
+          studentUserId: row.studentUserId,
+          studentName: student?.name?.trim() || null,
+          instructorUserId,
+          instructorName: instructor?.name?.trim() || null,
+          lessonType: row.lessonType,
+          dateIso: dateIsoString(row.dateIso),
+          time: row.time,
+          endTime: row.endTime,
+          slotDateIso: targetDate,
+          slotTime: targetTime,
+          totalPriceAmd: previousTotalAmd,
+          paymentStatus: prevPayment.paymentStatus,
+          paidAmountAmd: previousPaid,
+          bookingStatusBefore: String(row.status ?? ''),
+          snapshot: {
+            remainingSlotCount: remaining.length,
+            previousTotalAmd,
+            newTotalAmd: nextTotalAmd,
+          },
+        },
+        { transaction },
+      );
+
       await row.update(
         {
           dateIso: first.dateIso,
@@ -4906,47 +5085,205 @@ export default class BookingService {
   }
 
   /**
-   * Hard-delete a booking and any linked finance rows (`booking_id` FK is ON DELETE RESTRICT).
-   * Frees instructor slots and restores package / cohort credits like cancellation.
+   * Staff archive of a booking: frees instructor slots (calendar can be rebooked), keeps the booking
+   * row as `archived`, and writes a `booking_archives` audit row with the admin remark.
    */
-  static async remove(id: number): Promise<boolean> {
+  static async archive(
+    id: number,
+    opts: { remark: string; archivedByUserId: number },
+  ): Promise<boolean> {
+    const remark = normalizeArchiveRemark(opts.remark);
+    const archivedByUserId = Number(opts.archivedByUserId);
+    if (!Number.isFinite(archivedByUserId) || archivedByUserId <= 0) {
+      throw new InputValidationError('Staff user is required.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
     return sequelize.transaction(async (transaction) => {
-      const row = await Booking.findByPk(id, { transaction, lock: Transaction.LOCK.UPDATE });
+      const row = await Booking.findByPk(id, {
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
       if (!row) return false;
 
       const st = normalizeBookingStatus(row.status);
+      if (st === 'archived') {
+        throw new InputValidationError('This booking is already archived.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+
+      const slots = await BookingSlot.findAll({
+        where: { bookingId: id },
+        transaction,
+        attributes: ['dateIso', 'slotTime', 'instructorUserId'],
+      });
+      const [branch, student, instructor] = await Promise.all([
+        Branch.findByPk(row.branchId, {
+          attributes: ['id', 'name', 'label'],
+          transaction,
+        }),
+        User.findByPk(row.studentUserId, { attributes: ['id', 'name'], transaction }),
+        row.instructorUserId != null
+          ? User.findByPk(row.instructorUserId, { attributes: ['id', 'name'], transaction })
+          : Promise.resolve(null),
+      ]);
+      const payment = resolveBookingPayment(row);
+
+      await BookingArchive.create(
+        {
+          kind: 'booking',
+          bookingId: id,
+          remark,
+          archivedByUserId,
+          branchId: row.branchId,
+          branchName: branchDisplayName(branch),
+          studentUserId: row.studentUserId,
+          studentName: student?.name?.trim() || null,
+          instructorUserId: row.instructorUserId,
+          instructorName: instructor?.name?.trim() || null,
+          lessonType: row.lessonType,
+          dateIso: dateIsoString(row.dateIso),
+          time: row.time,
+          endTime: row.endTime,
+          totalPriceAmd: bookingTotalPriceAmd(row),
+          paymentStatus: payment.paymentStatus,
+          paidAmountAmd: payment.paidAmountAmd,
+          bookingStatusBefore: String(row.status ?? ''),
+          snapshot: {
+            slots: slots.map((s) => ({
+              dateIso: dateIsoString(s.dateIso),
+              time: s.slotTime,
+              instructorUserId: s.instructorUserId,
+            })),
+            prepaidMeta: row.prepaidMeta ?? null,
+            paymentNotes: row.paymentNotes ?? null,
+          },
+        },
+        { transaction },
+      );
+
       if (st !== 'cancelled' && st !== 'refunded') {
         await finalizePracticalCancellationInTx({
           row,
           studentUserId: row.studentUserId,
           transaction,
           refundIfPaid: false,
+          forceStatus: 'archived',
+          cancellationReason: 'admin_archive',
         });
       } else {
-        await auditBookingSlotsCleared(id, 'slots_cleared_delete', 'Admin hard-delete booking', transaction);
+        await auditBookingSlotsCleared(id, 'slots_cleared_archive', 'Admin archived booking', transaction);
         await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+        await row.update({ status: 'archived' }, { transaction });
       }
 
-      await FinanceTransaction.destroy({ where: { bookingId: id }, transaction });
-      const n = await Booking.destroy({ where: { id }, transaction });
-      if (n > 0) {
-        AuditLogService.recordFireAndForget({
-          category: 'booking',
-          action: 'booking_delete',
-          entityType: 'booking',
-          entityId: id,
-          severity: 'warn',
-          message: `Admin deleted bookingId=${id}`,
-          details: {
-            studentUserId: row.studentUserId,
-            lessonType: row.lessonType,
-            status: row.status,
-            dateIso: dateIsoString(row.dateIso),
-            time: row.time,
-          },
+      AuditLogService.recordFireAndForget({
+        category: 'booking',
+        action: 'booking_archive',
+        entityType: 'booking',
+        entityId: id,
+        severity: 'warn',
+        message: `Admin archived bookingId=${id}`,
+        details: {
+          studentUserId: row.studentUserId,
+          lessonType: row.lessonType,
+          statusBefore: st,
+          dateIso: dateIsoString(row.dateIso),
+          time: row.time,
+          remark,
+          archivedByUserId,
+        },
+      });
+      return true;
+    });
+  }
+
+  static async listArchives(opts?: {
+    branchId?: number;
+    kind?: 'booking' | 'slot';
+  }): Promise<BookingArchiveDto[]> {
+    const where: WhereOptions = {};
+    if (opts?.branchId != null && Number.isFinite(opts.branchId) && opts.branchId > 0) {
+      where.branchId = opts.branchId;
+    }
+    if (opts?.kind === 'booking' || opts?.kind === 'slot') {
+      where.kind = opts.kind;
+    }
+
+    const rows = await BookingArchive.findAll({
+      where,
+      include: [
+        {
+          model: User,
+          as: 'archivedBy',
+          required: false,
+          attributes: ['id', 'name', 'email'],
+        },
+      ],
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+    });
+
+    return rows.map((r) => mapBookingArchiveDto(r));
+  }
+
+  /**
+   * Permanently remove an archive audit row. For `kind=booking`, also hard-deletes the archived
+   * booking and its finance rows when still present.
+   */
+  static async purgeArchive(archiveId: number): Promise<boolean> {
+    return sequelize.transaction(async (transaction) => {
+      const archive = await BookingArchive.findByPk(archiveId, {
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!archive) return false;
+
+      if (archive.kind === 'booking' && archive.bookingId != null) {
+        const bookingId = archive.bookingId;
+        const booking = await Booking.findByPk(bookingId, {
+          transaction,
+          lock: Transaction.LOCK.UPDATE,
         });
+        if (booking) {
+          await BookingSlot.destroy({ where: { bookingId }, transaction });
+          await FinanceTransaction.destroy({ where: { bookingId }, transaction });
+          await Booking.destroy({ where: { id: bookingId }, transaction });
+        }
       }
-      return n > 0;
+
+      await archive.destroy({ transaction });
+
+      AuditLogService.recordFireAndForget({
+        category: 'booking',
+        action: 'booking_archive_purge',
+        entityType: 'booking_archive',
+        entityId: archiveId,
+        severity: 'warn',
+        message: `Admin permanently deleted archiveId=${archiveId}`,
+        details: {
+          kind: archive.kind,
+          bookingId: archive.bookingId,
+          remark: archive.remark,
+        },
+      });
+      return true;
+    });
+  }
+
+  /**
+   * @deprecated Use {@link BookingService.archive}. Kept as a thin alias for older callers.
+   */
+  static async remove(id: number, opts?: { remark?: string; archivedByUserId?: number }): Promise<boolean> {
+    if (opts?.remark == null || opts?.archivedByUserId == null) {
+      throw new InputValidationError(
+        'Archive remark and staff user are required. Use POST /bookings/:id/archive.',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    return BookingService.archive(id, {
+      remark: opts.remark,
+      archivedByUserId: opts.archivedByUserId,
     });
   }
 }

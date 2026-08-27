@@ -9,6 +9,7 @@ import { assertDirectPaymentAllowed } from '../utils/vpos.util';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+import type { StaffRequest } from '../middleware/staff-auth.middleware';
 
 const { ResourceNotFoundError, UnauthorizedError, PermissionError, InputValidationError } = ErrorsUtil;
 
@@ -117,6 +118,11 @@ const updateSchema = createBodySchema.partial();
 const removeSlotBodySchema = z.object({
   dateIso: z.string().min(1),
   time: z.string().min(4),
+  remark: z.string().min(3).max(2000),
+});
+
+const archiveBodySchema = z.object({
+  remark: z.string().min(3).max(2000),
 });
 
 const lessonPassedBodySchema = z.object({
@@ -647,11 +653,20 @@ export default class BookingController {
     try {
       const id = parseBookingRouteId(req, next);
       if (id === undefined) return;
+      const staffId = (req as StaffRequest).staff?.sub != null ? Number((req as StaffRequest).staff!.sub) : Number.NaN;
+      if (!Number.isFinite(staffId) || staffId <= 0) {
+        return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
       const body = parseBody(removeSlotBodySchema, req.body);
-      const row = await BookingService.removeAdminSlot(id, {
-        dateIso: body.dateIso,
-        time: body.time,
-      });
+      const row = await BookingService.removeAdminSlot(
+        id,
+        {
+          dateIso: body.dateIso,
+          time: body.time,
+          remark: body.remark,
+        },
+        staffId,
+      );
       if (!row) {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
       }
@@ -674,9 +689,68 @@ export default class BookingController {
     }
   }
 
+  static async archive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = parseBookingRouteId(req, next);
+      if (id === undefined) return;
+      const staffId = (req as StaffRequest).staff?.sub != null ? Number((req as StaffRequest).staff!.sub) : Number.NaN;
+      if (!Number.isFinite(staffId) || staffId <= 0) {
+        return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      const body = parseBody(archiveBodySchema, req.body);
+      const ok = await BookingService.archive(id, { remark: body.remark, archivedByUserId: staffId });
+      if (!ok) {
+        return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listArchives(req: Request, res: Response, next: NextFunction) {
+    try {
+      const branchId = await resolveBranchIdFilter(req);
+      const kindRaw = String(req.query.kind ?? '').trim();
+      const kind = kindRaw === 'booking' || kindRaw === 'slot' ? kindRaw : undefined;
+      const data = await BookingService.listArchives({
+        ...(branchId != null ? { branchId } : {}),
+        ...(kind ? { kind } : {}),
+      });
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async purgeArchive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const archiveId = Number(req.params.archiveId);
+      if (!Number.isFinite(archiveId) || archiveId <= 0) {
+        return next(new InputValidationError('Invalid archive id', HttpStatusCodesUtil.BAD_REQUEST));
+      }
+      const ok = await BookingService.purgeArchive(archiveId);
+      if (!ok) {
+        return next(new ResourceNotFoundError('Archive not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  /** @deprecated Prefer POST /bookings/:id/archive with a remark. */
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
-      const ok = await BookingService.remove(Number(req.params.id));
+      const staffId = (req as StaffRequest).staff?.sub != null ? Number((req as StaffRequest).staff!.sub) : Number.NaN;
+      if (!Number.isFinite(staffId) || staffId <= 0) {
+        return next(new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      const body = parseBody(archiveBodySchema, req.body ?? {});
+      const ok = await BookingService.archive(Number(req.params.id), {
+        remark: body.remark,
+        archivedByUserId: staffId,
+      });
       if (!ok) {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
       }

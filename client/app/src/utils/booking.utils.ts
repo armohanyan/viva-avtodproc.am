@@ -11,7 +11,15 @@ export function billablePracticalLessonCount(slotCount: number): number {
 }
 
 export function toCanonicalBookingStatus(raw: string): CanonicalBookingStatus {
-  if (raw === "confirmed" || raw === "pending" || raw === "cancelled" || raw === "refunded") return raw;
+  if (
+    raw === "confirmed" ||
+    raw === "pending" ||
+    raw === "cancelled" ||
+    raw === "refunded" ||
+    raw === "archived"
+  ) {
+    return raw;
+  }
   if (raw === "pending_payment") return "pending_payment";
   if (raw === "completed") return "confirmed";
   if (raw === "pending_prebook") return "pending";

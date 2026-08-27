@@ -7,6 +7,8 @@ const router = Router();
 
 router.get('/', BookingController.list);
 router.get('/gift-requests', requireStaff, BookingController.listGiftRequests);
+router.get('/archives', requireStaff, BookingController.listArchives);
+router.delete('/archives/:archiveId', requireStaff, BookingController.purgeArchive);
 router.get('/:id', requireStaff, BookingController.getByIdForAdmin);
 router.post('/bulk-import', requireStaff, BookingController.bulkImport);
 router.post(
@@ -26,9 +28,10 @@ router.post('/:id/reject-student-cancellation', requireStaff, BookingController.
 router.post('/:id/approve-gift', requireSuperAdmin, BookingController.approveGift);
 router.post('/:id/reject-gift', requireSuperAdmin, BookingController.rejectGift);
 router.post('/:id/cancel-student', BookingController.cancelStudentBooking);
+router.post('/:id/archive', requireStaff, BookingController.archive);
 router.post('/:id/remove-slot', requireStaff, BookingController.removeSlot);
 router.patch('/:id/lesson-passed', BookingController.patchLessonPassed);
 router.patch('/:id', BookingController.update);
-router.delete('/:id', BookingController.remove);
+router.delete('/:id', requireStaff, BookingController.remove);
 
 export default router;

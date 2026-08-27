@@ -1,8 +1,10 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, resolveBranchIdFilter } from '../helpers';
+import { TheoryCohort } from '../models';
 import TheoryCohortService from '../services/theory-cohort.service';
 import TheoryCohortSessionService from '../services/theory-cohort-session.service';
+import BookingService from '../services/booking.service';
 import { SuccessHandlerUtil } from '../utils';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -114,6 +116,23 @@ export default class TheoryCohortController {
       if (data === null) {
         return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
       }
+      SuccessHandlerUtil.handleList(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listBookings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const cohortId = Number(req.params.id);
+      if (!Number.isFinite(cohortId) || cohortId <= 0) {
+        return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const exists = await TheoryCohort.findByPk(cohortId, { attributes: ['id'] });
+      if (!exists) {
+        return next(new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND));
+      }
+      const data = await BookingService.listAdminForTheoryCohort(cohortId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {
       next(e);

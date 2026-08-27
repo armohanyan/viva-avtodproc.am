@@ -11,6 +11,7 @@ import { TimeSelectInput } from "src/components/ui/time-select-input";
 import { Button } from "src/components/ui/button";
 import { AppModal } from "src/components/AppModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
+import RemarkConfirmDialog from "src/components/RemarkConfirmDialog";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import XlsxExportButton from "src/components/XlsxExportButton";
@@ -1460,15 +1461,19 @@ export default function AdminBookings() {
     setEditPaymentErrorKey(null);
   }, [editBooking]);
 
-  const handleDelete = async () => {
+  const handleDelete = async (remark: string) => {
     if (!deleteId) return;
     try {
-      await vivaApiJson(`/bookings/${encodeURIComponent(deleteId)}`, { method: "DELETE" });
+      await vivaApiJson(`/bookings/${encodeURIComponent(deleteId)}/archive`, {
+        method: "POST",
+        body: { remark },
+      });
       setDeleteId(null);
       await refresh();
-      showToast(t("bookingCancelledMsg"), "success");
+      showToast(t("bookingArchivedMsg"), "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
+      throw e;
     }
   };
 
@@ -3321,13 +3326,13 @@ export default function AdminBookings() {
         )}
       </AppModal>
 
-      <ConfirmDialog
+      <RemarkConfirmDialog
         open={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
-        title={t("bookingCancelTitle")}
-        description={t("bookingCancelDesc")}
-        confirmLabel={t("delete")}
+        title={t("bookingArchiveTitle")}
+        description={t("bookingArchiveDesc")}
+        confirmLabel={t("adminArchiveConfirm")}
         danger
       />
 

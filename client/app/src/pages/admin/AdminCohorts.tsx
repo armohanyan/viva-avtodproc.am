@@ -18,7 +18,7 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, UserPlus, Users, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
+import { Plus, UserPlus, CalendarCheck, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { activeTheoryInstructors } from "src/modules/admin/adminPeople";
@@ -27,8 +27,9 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
-import CohortScheduleFields, { type CohortScheduleFormSlice } from "src/modules/admin/cohorts/CohortScheduleFields";
+import CohortScheduleFields from "src/modules/admin/cohorts/CohortScheduleFields";
 import AttachStudentToCohortModal from "src/modules/admin/cohorts/AttachStudentToCohortModal";
+import CohortBookingsModal from "src/modules/admin/cohorts/CohortBookingsModal";
 
 type Cohort = {
   id: string;
@@ -49,15 +50,6 @@ type Cohort = {
   instructorUserId: string | null;
   instructorUserIds: string[];
   generatedSessionCount: number;
-};
-
-type CohortStudentRow = {
-  userId: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  phone2: string | null;
-  isActive: boolean;
 };
 
 const statusColor: Record<string, string> = {
@@ -157,9 +149,7 @@ export default function AdminCohorts() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editCohort, setEditCohort] = useState<Cohort | null>(null);
-  const [studentsDialogCohort, setStudentsDialogCohort] = useState<Cohort | null>(null);
-  const [cohortStudents, setCohortStudents] = useState<CohortStudentRow[]>([]);
-  const [cohortStudentsLoading, setCohortStudentsLoading] = useState(false);
+  const [bookingsDialogCohort, setBookingsDialogCohort] = useState<Cohort | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [newCohort, setNewCohort] = useState({
     name: "",
@@ -331,27 +321,6 @@ export default function AdminCohorts() {
     showToast(t("openingMeetingLinkToast"), "info");
   };
 
-  const openStudentsDialog = useCallback(
-    async (cohort: Cohort) => {
-      setStudentsDialogCohort(cohort);
-      setCohortStudents([]);
-      setCohortStudentsLoading(true);
-      try {
-        const data = await vivaApiJson<CohortStudentRow[]>(
-          `/theory-cohorts/${encodeURIComponent(cohort.id)}/enrollments`,
-        );
-        setCohortStudents(Array.isArray(data) ? data : []);
-      } catch (e) {
-        setCohortStudents([]);
-        setStudentsDialogCohort(null);
-        showToast(getApiErrorMessage(e), "error");
-      } finally {
-        setCohortStudentsLoading(false);
-      }
-    },
-    [showToast],
-  );
-
   const filteredCohorts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cohorts.filter((c) => {
@@ -486,11 +455,11 @@ export default function AdminCohorts() {
                   },
                   {
                     kind: "item",
-                    id: "students",
+                    id: "bookings",
                     label: t("cohortAriaViewStudents"),
                     ariaLabel: t("cohortAriaViewStudents"),
-                    icon: Users,
-                    onClick: () => void openStudentsDialog(c),
+                    icon: CalendarCheck,
+                    onClick: () => setBookingsDialogCohort(c),
                   },
                   ...(isTheoryCohortBookableStatus(c.status) && c.enrolled < c.seats
                     ? [
@@ -699,55 +668,16 @@ export default function AdminCohorts() {
         )}
       </AppModal>
 
-      <AppModal
-        open={!!studentsDialogCohort}
+      <CohortBookingsModal
+        cohort={bookingsDialogCohort}
+        open={!!bookingsDialogCohort}
         onOpenChange={(open) => {
-          if (!open) {
-            setStudentsDialogCohort(null);
-            setCohortStudents([]);
-          }
+          if (!open) setBookingsDialogCohort(null);
         }}
-        title={t("cohortStudentsDialogTitle")}
-        contentClassName="max-w-lg max-h-[min(90vh,560px)]"
-      >
-        {studentsDialogCohort ? (
-          <p className="text-sm font-medium text-foreground -mt-1 mb-3">{studentsDialogCohort.name}</p>
-        ) : null}
-        {cohortStudentsLoading ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">{t("loading")}</p>
-        ) : cohortStudents.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">{t("cohortStudentsEmpty")}</p>
-        ) : (
-          <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">{t("name")}</th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">{t("email")}</th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{t("phone")}</th>
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">{t("status")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {cohortStudents.map((s) => (
-                    <tr key={s.userId} className="hover:bg-muted/20">
-                      <td className="px-3 py-2 font-medium text-foreground">{s.name}</td>
-                      <td className="px-3 py-2 text-muted-foreground break-all">{s.email}</td>
-                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                        {[s.phone, s.phone2].filter(Boolean).join(" / ") || "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <Badge className={`text-xs ${s.isActive ? statusColor.active : "bg-slate-100 text-slate-500"}`}>
-                          {s.isActive ? t("active") : t("inactive")}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-      </AppModal>
+        onChanged={() => {
+          void refreshCohorts();
+        }}
+      />
 
       <AppModal
         open={addOpen}
