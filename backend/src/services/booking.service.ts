@@ -2179,30 +2179,45 @@ export default class BookingService {
     return item ?? null;
   }
 
-  /** Group-theory bookings for students attached to this cohort. */
+  /** One row per student attached to the cohort; includes booking fields when a booking exists. */
   static async listAdminForTheoryCohort(cohortId: number): Promise<BookingAdminListItemDto[]> {
     const id = Math.floor(Number(cohortId));
     if (!Number.isFinite(id) || id <= 0) return [];
 
-    const attachedStudentIds = [
-      ...new Set(
-        (
-          await TheoryCohortEnrollment.findAll({
-            where: { cohortId: id },
-            attributes: ['studentUserId'],
-          })
-        )
-          .map((row) => Math.floor(Number(row.studentUserId)))
-          .filter((studentUserId) => Number.isFinite(studentUserId) && studentUserId > 0),
-      ),
-    ];
+    const [cohort, attachedStudents] = await Promise.all([
+      TheoryCohort.findByPk(id),
+      TheoryCohortService.listEnrollments(id),
+    ]);
+    if (!cohort || !attachedStudents) return [];
 
+    const attachedStudentIds = attachedStudents.map((s) => s.userId);
+    const bookingByStudentId = await BookingService.loadTheoryBookingsByStudentForCohort(id, attachedStudentIds);
+
+    const rows: BookingAdminListItemDto[] = [];
+    for (const student of attachedStudents) {
+      const booking = bookingByStudentId.get(student.userId);
+      rows.push(booking ?? BookingService.placeholderAttachedStudentBooking(cohort, student));
+    }
+
+    for (const [studentUserId, booking] of bookingByStudentId) {
+      if (!attachedStudentIds.includes(studentUserId)) {
+        rows.push(booking);
+      }
+    }
+
+    return rows;
+  }
+
+  private static async loadTheoryBookingsByStudentForCohort(
+    cohortId: number,
+    attachedStudentIds: readonly number[],
+  ): Promise<Map<number, BookingAdminListItemDto>> {
     const linkedByCohort = literal(
-      `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) = ${id}`,
+      `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) = ${cohortId}`,
     );
     const matchParts: WhereOptions[] = [linkedByCohort];
     if (attachedStudentIds.length > 0) {
-      matchParts.push({ studentUserId: { [Op.in]: attachedStudentIds } });
+      matchParts.push({ studentUserId: { [Op.in]: [...attachedStudentIds] } });
     }
 
     const rows = await Booking.findAll({
@@ -2215,29 +2230,68 @@ export default class BookingService {
       order: [['id', 'DESC']],
     });
 
-    const byStudent = new Map<number, Booking>();
+    const picked = new Map<number, Booking>();
     for (const row of rows) {
-      const existing = byStudent.get(row.studentUserId);
+      const existing = picked.get(row.studentUserId);
       if (!existing) {
-        byStudent.set(row.studentUserId, row);
+        picked.set(row.studentUserId, row);
         continue;
       }
-      const rowLinked = theoryCohortIdFromPrepaidMeta(row.prepaidMeta) === id;
-      const existingLinked = theoryCohortIdFromPrepaidMeta(existing.prepaidMeta) === id;
+      const rowLinked = theoryCohortIdFromPrepaidMeta(row.prepaidMeta) === cohortId;
+      const existingLinked = theoryCohortIdFromPrepaidMeta(existing.prepaidMeta) === cohortId;
       if (rowLinked && !existingLinked) {
-        byStudent.set(row.studentUserId, row);
+        picked.set(row.studentUserId, row);
         continue;
       }
       if (row.id > existing.id) {
-        byStudent.set(row.studentUserId, row);
+        picked.set(row.studentUserId, row);
       }
     }
 
-    const result = [...byStudent.values()].sort((a, b) => b.id - a.id);
-
-    return BookingService.attachSlotsAndFinance(
-      result.map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
+    const dtos = await BookingService.attachSlotsAndFinance(
+      [...picked.values()].map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
     );
+    return new Map(dtos.map((dto) => [dto.studentId, dto]));
+  }
+
+  private static placeholderAttachedStudentBooking(
+    cohort: TheoryCohort,
+    student: { userId: number; name: string; email: string; phone: string | null; phone2: string | null },
+  ): BookingAdminListItemDto {
+    const startIso = dateIsoString(cohort.startDateIso);
+    const startTime = normalizeTimeHHMM(String(cohort.sessionStartTime ?? '').trim()) ?? '';
+    const endTime = normalizeTimeHHMM(String(cohort.sessionEndTime ?? '').trim());
+    const priceRaw = cohort.getDataValue('priceAmd') as number | null | undefined;
+    const totalPriceAmd =
+      priceRaw != null && Number.isFinite(Number(priceRaw)) && Number(priceRaw) >= 0
+        ? Math.round(Number(priceRaw))
+        : null;
+    return {
+      id: 0,
+      studentId: student.userId,
+      studentName: student.name?.trim() ?? '',
+      studentEmail: student.email?.trim() ?? '',
+      studentPhone: student.phone?.trim() ?? '',
+      studentPhone2: student.phone2?.trim() ?? '',
+      createdByType: 'unknown',
+      createdByUserId: null,
+      instructorName: cohort.instructorName?.trim() ?? '',
+      dateIso: startIso,
+      time: startTime,
+      endTime,
+      totalPriceAmd,
+      type: 'theory',
+      status: 'pending',
+      branchId: cohort.branchId,
+      createdAt: startIso ? `${startIso}T00:00:00.000Z` : new Date(0).toISOString(),
+      cancellationRequestedAt: null,
+      isGift: false,
+      giftStatus: null,
+      giftNote: null,
+      lessonPassedSuccessfully: null,
+      manualFinanceTx: null,
+      systemFinanceTx: null,
+    };
   }
 
   static async setLessonPassedSuccessfully(
@@ -3502,14 +3556,6 @@ export default class BookingService {
       }
       branchId = cohort.branchId;
       instructorUserId = (await resolveTheoryCohortInstructorUser(cohort)).id;
-      try {
-        await TheoryCohortService.enroll(cohort.id, input.studentId);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '';
-        if (!(e instanceof ConflictError) || !msg.includes('already enrolled')) {
-          throw e;
-        }
-      }
     } else {
       const instructor =
         input.instructorUserId != null && Number.isFinite(input.instructorUserId)
@@ -3657,6 +3703,9 @@ export default class BookingService {
           },
           transaction,
         );
+        if (input.lessonType === 'theory' && theoryCohort) {
+          await TheoryCohortService.ensureEnrolledInTx(theoryCohort.id, input.studentId, transaction);
+        }
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -3725,14 +3774,6 @@ export default class BookingService {
       }
       branchId = cohort.branchId;
       instructorUserId = (await resolveTheoryCohortInstructorUser(cohort)).id;
-      try {
-        await TheoryCohortService.enroll(cohort.id, nextStudentId);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '';
-        if (!(e instanceof ConflictError) || !msg.includes('already enrolled')) {
-          throw e;
-        }
-      }
     } else {
       const resolvedInstructorUserId = await resolveInstructorUserIdByName(
         patch.instructorName,
@@ -3855,6 +3896,9 @@ export default class BookingService {
           nextStatusRaw: patch.status,
           transaction,
         });
+        if (lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)) {
+          await TheoryCohortService.ensureEnrolledInTx(patch.theoryCohortId, nextStudentId, transaction);
+        }
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {

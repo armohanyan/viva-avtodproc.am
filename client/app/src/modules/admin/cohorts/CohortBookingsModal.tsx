@@ -146,30 +146,33 @@ export default function CohortBookingsModal({ cohort, open, onOpenChange, onChan
                 </thead>
                 <tbody className="divide-y divide-border">
                   {rows.map((b) => {
-                    const pay = bookingListPaymentRow(b);
+                    const hasBooking = b.id !== "0";
+                    const pay = hasBooking ? bookingListPaymentRow(b) : null;
                     const phones = [b.studentPhone, b.studentPhone2].filter(Boolean).join(" / ") || "—";
-                    const rowActions: AdminTableRowAction[] = [
-                      {
-                        kind: "item",
-                        id: "edit",
-                        label: t("edit"),
-                        icon: Edit2,
-                        onClick: () => openEdit(b.id),
-                      },
-                      {
-                        kind: "item",
-                        id: "delete",
-                        label: t("delete"),
-                        icon: Trash2,
-                        destructive: true,
-                        onClick: () => setDeleteId(b.id),
-                      },
-                    ];
+                    const rowActions: AdminTableRowAction[] = hasBooking
+                      ? [
+                          {
+                            kind: "item",
+                            id: "edit",
+                            label: t("edit"),
+                            icon: Edit2,
+                            onClick: () => openEdit(b.id),
+                          },
+                          {
+                            kind: "item",
+                            id: "delete",
+                            label: t("delete"),
+                            icon: Trash2,
+                            destructive: true,
+                            onClick: () => setDeleteId(b.id),
+                          },
+                        ]
+                      : [];
                     return (
-                      <AdminTableRowContextMenu key={b.id} actions={rowActions}>
+                      <AdminTableRowContextMenu key={hasBooking ? b.id : `student-${b.studentId}`} actions={rowActions}>
                         <tr className="hover:bg-muted/20">
                           <td className="px-3 py-2 text-xs font-mono text-muted-foreground whitespace-nowrap">
-                            {b.id}
+                            {hasBooking ? b.id : "—"}
                           </td>
                           <td className="px-3 py-2 min-w-[10rem]">
                             <div className="font-medium text-foreground">{b.studentName || "—"}</div>
@@ -179,20 +182,24 @@ export default function CohortBookingsModal({ cohort, open, onOpenChange, onChan
                           </td>
                           <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">{phones}</td>
                           <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                            {formatShortDateFromIso(b.dateIso, lang)}
+                            {hasBooking ? formatShortDateFromIso(b.dateIso, lang) : "—"}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
-                            {formatBookingSlotRangeLabel(b.time, b.endTime)}
+                            {hasBooking ? formatBookingSlotRangeLabel(b.time, b.endTime) : "—"}
                           </td>
                           <td className="px-3 py-2">
-                            <Badge
-                              className={`text-xs ${BOOKING_STATUS_BADGE_CLASS[toCanonicalBookingStatus(b.status)] ?? BOOKING_STATUS_BADGE_CLASS.pending}`}
-                            >
-                              {t(toCanonicalBookingStatus(b.status) as TranslationKey)}
-                            </Badge>
+                            {hasBooking ? (
+                              <Badge
+                                className={`text-xs ${BOOKING_STATUS_BADGE_CLASS[toCanonicalBookingStatus(b.status)] ?? BOOKING_STATUS_BADGE_CLASS.pending}`}
+                              >
+                                {t(toCanonicalBookingStatus(b.status) as TranslationKey)}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap">
-                            {pay.status === "na" ? (
+                            {!hasBooking || pay?.status === "na" ? (
                               <span className="text-xs text-muted-foreground">—</span>
                             ) : (
                               <div className="flex flex-col gap-1 items-start min-w-[7rem]">
@@ -210,7 +217,7 @@ export default function CohortBookingsModal({ cohort, open, onOpenChange, onChan
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            <AdminTableRowActions toolbarOnly actions={rowActions} />
+                            {hasBooking ? <AdminTableRowActions toolbarOnly actions={rowActions} /> : null}
                           </td>
                         </tr>
                       </AdminTableRowContextMenu>

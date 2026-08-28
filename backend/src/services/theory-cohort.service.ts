@@ -487,17 +487,35 @@ export default class TheoryCohortService {
     return out;
   }
 
+  /** Idempotent attach inside an existing transaction (used after a group-theory booking is saved). */
+  static async ensureEnrolledInTx(cohortId: number, studentUserId: number, t: Transaction): Promise<void> {
+    const cohort = await TheoryCohort.findByPk(cohortId, { transaction: t, lock: Transaction.LOCK.UPDATE });
+    if (!cohort) {
+      throw new ResourceNotFoundError('Cohort not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    const student = await User.findOne({
+      where: { id: studentUserId, accountType: 'student' },
+      transaction: t,
+    });
+    if (!student) {
+      throw new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    const existing = await TheoryCohortEnrollment.findOne({
+      where: { cohortId, studentUserId },
+      transaction: t,
+    });
+    if (existing) return;
+    const cnt = await TheoryCohortEnrollment.count({ where: { cohortId }, transaction: t });
+    if (cnt >= cohort.seats) {
+      throw new ConflictError('Cohort is full', HttpStatusCodesUtil.CONFLICT);
+    }
+    await TheoryCohortEnrollment.create({ cohortId, studentUserId }, { transaction: t });
+  }
+
   static async enroll(cohortId: number, studentUserId: number): Promise<TheoryCohortDto | null> {
     return sequelize.transaction(async (t) => {
       const cohort = await TheoryCohort.findByPk(cohortId, { transaction: t, lock: Transaction.LOCK.UPDATE });
       if (!cohort) return null;
-      const student = await User.findOne({
-        where: { id: studentUserId, accountType: 'student' },
-        transaction: t,
-      });
-      if (!student) {
-        throw new ResourceNotFoundError('Student not found', HttpStatusCodesUtil.NOT_FOUND);
-      }
       const existing = await TheoryCohortEnrollment.findOne({
         where: { cohortId, studentUserId },
         transaction: t,
@@ -505,13 +523,10 @@ export default class TheoryCohortService {
       if (existing) {
         throw new ConflictError('Student already enrolled', HttpStatusCodesUtil.CONFLICT);
       }
+      await TheoryCohortService.ensureEnrolledInTx(cohortId, studentUserId, t);
       const cnt = await TheoryCohortEnrollment.count({ where: { cohortId }, transaction: t });
-      if (cnt >= cohort.seats) {
-        throw new ConflictError('Cohort is full', HttpStatusCodesUtil.CONFLICT);
-      }
-      await TheoryCohortEnrollment.create({ cohortId, studentUserId }, { transaction: t });
       const genCount = await sessionCountForCohort(cohortId);
-      return toDto(cohort, cnt + 1, genCount);
+      return toDto(cohort, cnt, genCount);
     });
   }
 }
