@@ -615,6 +615,11 @@ function dateIsoString(v: unknown): string {
   return String(v).slice(0, 10);
 }
 
+function theoryCohortIdFromPrepaidMeta(prepaid: unknown): number {
+  if (prepaid == null || typeof prepaid !== 'object') return 0;
+  return Math.floor(Number((prepaid as Record<string, unknown>).theoryCohortId) || 0);
+}
+
 const YEREVAN_OFFSET = '+04:00';
 
 /** Accepts YYYY-MM-DD only; returns undefined when missing/invalid. */
@@ -2174,61 +2179,64 @@ export default class BookingService {
     return item ?? null;
   }
 
-  /** Admin list of group-theory bookings for a cohort (prepaid link and/or enrollment fallback). */
+  /** Group-theory bookings for students attached to this cohort. */
   static async listAdminForTheoryCohort(cohortId: number): Promise<BookingAdminListItemDto[]> {
     const id = Math.floor(Number(cohortId));
     if (!Number.isFinite(id) || id <= 0) return [];
 
-    const enrollmentRows = await TheoryCohortEnrollment.findAll({
-      where: { cohortId: id },
-      attributes: ['studentUserId'],
-    });
-    const enrolledStudentIds = [
+    const attachedStudentIds = [
       ...new Set(
-        enrollmentRows
+        (
+          await TheoryCohortEnrollment.findAll({
+            where: { cohortId: id },
+            attributes: ['studentUserId'],
+          })
+        )
           .map((row) => Math.floor(Number(row.studentUserId)))
           .filter((studentUserId) => Number.isFinite(studentUserId) && studentUserId > 0),
       ),
     ];
 
-    const linkedByPrepaidMeta = literal(
+    const linkedByCohort = literal(
       `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) = ${id}`,
     );
-    const missingOrMatchingCohortLink = literal(`(
-      \`Booking\`.\`prepaid_meta\` IS NULL
-      OR JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId') IS NULL
-      OR CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) IN (0, ${id})
-    )`);
+    const matchParts: WhereOptions[] = [linkedByCohort];
+    if (attachedStudentIds.length > 0) {
+      matchParts.push({ studentUserId: { [Op.in]: attachedStudentIds } });
+    }
 
     const rows = await Booking.findAll({
       where: {
         lessonType: 'theory',
-        status: { [Op.notIn]: ['archived', 'cancelled', 'refunded'] },
-        [Op.or]:
-          enrolledStudentIds.length > 0
-            ? [
-                linkedByPrepaidMeta,
-                {
-                  studentUserId: { [Op.in]: enrolledStudentIds },
-                  [Op.and]: [missingOrMatchingCohortLink],
-                },
-              ]
-            : [linkedByPrepaidMeta],
+        status: { [Op.ne]: 'archived' },
+        ...(matchParts.length > 1 ? { [Op.or]: matchParts } : { [Op.and]: matchParts }),
       },
       include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
-      order: [
-        ['createdAt', 'DESC'],
-        ['id', 'DESC'],
-      ],
+      order: [['id', 'DESC']],
     });
 
-    const uniqueById = new Map<number, (typeof rows)[number]>();
+    const byStudent = new Map<number, Booking>();
     for (const row of rows) {
-      uniqueById.set(row.id, row);
+      const existing = byStudent.get(row.studentUserId);
+      if (!existing) {
+        byStudent.set(row.studentUserId, row);
+        continue;
+      }
+      const rowLinked = theoryCohortIdFromPrepaidMeta(row.prepaidMeta) === id;
+      const existingLinked = theoryCohortIdFromPrepaidMeta(existing.prepaidMeta) === id;
+      if (rowLinked && !existingLinked) {
+        byStudent.set(row.studentUserId, row);
+        continue;
+      }
+      if (row.id > existing.id) {
+        byStudent.set(row.studentUserId, row);
+      }
     }
 
+    const result = [...byStudent.values()].sort((a, b) => b.id - a.id);
+
     return BookingService.attachSlotsAndFinance(
-      [...uniqueById.values()].map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
+      result.map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
     );
   }
 
@@ -3586,7 +3594,11 @@ export default class BookingService {
         if (input.lessonType === 'theory' && input.theoryCohortId != null && Number.isFinite(input.theoryCohortId)) {
           prepaidMeta = { ...(prepaidMeta ?? {}), theoryCohortId: input.theoryCohortId };
         }
-        const billableTotal = prepaidMeta ? 0 : totalPriceAmd;
+        const packagePrepaid =
+          input.consumePackageCredits === true &&
+          prepaidMeta != null &&
+          (prepaidMeta.packageOrderId != null || prepaidMeta.packageBalanceUnits != null);
+        const billableTotal = packagePrepaid ? 0 : totalPriceAmd;
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
@@ -3793,6 +3805,13 @@ export default class BookingService {
     const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
     const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
+    const theoryPrepaidMetaPatch =
+      lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)
+        ? {
+            ...((row.prepaidMeta as Record<string, unknown> | null) ?? {}),
+            theoryCohortId: patch.theoryCohortId,
+          }
+        : undefined;
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -3808,6 +3827,7 @@ export default class BookingService {
             ...(patch.type !== undefined ? { lessonType: patch.type } : { lessonType }),
             ...(patch.status !== undefined ? { status: patch.status } : {}),
             branchId,
+            ...(theoryPrepaidMetaPatch !== undefined ? { prepaidMeta: theoryPrepaidMetaPatch } : {}),
             ...payUpdate,
           },
           { transaction },
