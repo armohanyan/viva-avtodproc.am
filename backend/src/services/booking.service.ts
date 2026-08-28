@@ -2174,19 +2174,46 @@ export default class BookingService {
     return item ?? null;
   }
 
-  /** Admin list of theory-group bookings linked to a cohort via `prepaidMeta.theoryCohortId`. */
+  /** Admin list of group-theory bookings for a cohort (prepaid link and/or enrollment fallback). */
   static async listAdminForTheoryCohort(cohortId: number): Promise<BookingAdminListItemDto[]> {
     const id = Math.floor(Number(cohortId));
     if (!Number.isFinite(id) || id <= 0) return [];
+
+    const enrollmentRows = await TheoryCohortEnrollment.findAll({
+      where: { cohortId: id },
+      attributes: ['studentUserId'],
+    });
+    const enrolledStudentIds = [
+      ...new Set(
+        enrollmentRows
+          .map((row) => Math.floor(Number(row.studentUserId)))
+          .filter((studentUserId) => Number.isFinite(studentUserId) && studentUserId > 0),
+      ),
+    ];
+
+    const linkedByPrepaidMeta = literal(
+      `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) = ${id}`,
+    );
+    const missingOrMatchingCohortLink = literal(`(
+      \`Booking\`.\`prepaid_meta\` IS NULL
+      OR JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId') IS NULL
+      OR CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) IN (0, ${id})
+    )`);
+
     const rows = await Booking.findAll({
       where: {
         lessonType: 'theory',
-        status: { [Op.ne]: 'archived' },
-        [Op.and]: [
-          literal(
-            `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.theoryCohortId')) AS UNSIGNED) = ${id}`,
-          ),
-        ],
+        status: { [Op.notIn]: ['archived', 'cancelled', 'refunded'] },
+        [Op.or]:
+          enrolledStudentIds.length > 0
+            ? [
+                linkedByPrepaidMeta,
+                {
+                  studentUserId: { [Op.in]: enrolledStudentIds },
+                  [Op.and]: [missingOrMatchingCohortLink],
+                },
+              ]
+            : [linkedByPrepaidMeta],
       },
       include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
       order: [
@@ -2194,8 +2221,14 @@ export default class BookingService {
         ['id', 'DESC'],
       ],
     });
+
+    const uniqueById = new Map<number, (typeof rows)[number]>();
+    for (const row of rows) {
+      uniqueById.set(row.id, row);
+    }
+
     return BookingService.attachSlotsAndFinance(
-      rows.map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
+      [...uniqueById.values()].map((b) => BookingService.mapRowToAdminListItemDto(b as BookingWithUsers)),
     );
   }
 
