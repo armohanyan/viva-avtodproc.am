@@ -10,7 +10,7 @@ export class DirectorFuel extends Model<
 > {
   declare id: CreationOptional<number>;
   declare date: string;
-  declare instructorUserId: number;
+  declare instructorUserId: number | null;
   declare carId: CreationOptional<number | null>;
   declare fuelType: string;
   declare liters: number;
@@ -23,7 +23,7 @@ DirectorFuel.init(
   {
     id: autoIncrementPk(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
-    instructorUserId: fkUnsignedInt(),
+    instructorUserId: fkUnsignedIntNullable(),
     carId: fkUnsignedIntNullable(),
     fuelType: { type: DataTypes.STRING(255), allowNull: false },
     liters: { type: DataTypes.DECIMAL(10, 2), allowNull: false },

@@ -81,7 +81,7 @@ export default class DirectorService {
   static async createCash(
     input: {
       date: string;
-      branchId: number;
+      branchId: number | null;
       entryType: string;
       amount: number;
       comment?: string | null;
@@ -97,6 +97,22 @@ export default class DirectorService {
     await row.destroy();
   }
 
+  static async updateCash(
+    id: number,
+    input: {
+      date: string;
+      branchId: number | null;
+      entryType: string;
+      amount: number;
+      comment?: string | null;
+    },
+  ) {
+    const row = await DirectorCashEntry.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
+  }
+
   static async listExpenses(range: DateRange) {
     return DirectorExpense.findAll({
       where: dateWhere(range),
@@ -107,7 +123,7 @@ export default class DirectorService {
   static async createExpense(
     input: {
       date: string;
-      branchId: number;
+      branchId: number | null;
       expType: string;
       amount: number;
       paymentMethod: DirectorPaymentMethod;
@@ -122,6 +138,23 @@ export default class DirectorService {
     const row = await DirectorExpense.findByPk(id);
     if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
     await row.destroy();
+  }
+
+  static async updateExpense(
+    id: number,
+    input: {
+      date: string;
+      branchId: number | null;
+      expType: string;
+      amount: number;
+      paymentMethod: DirectorPaymentMethod;
+      comment?: string | null;
+    },
+  ) {
+    const row = await DirectorExpense.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
   }
 
   static async listRepairs(range: Omit<DateRange, 'branchId'>) {
@@ -152,6 +185,24 @@ export default class DirectorService {
     await row.destroy();
   }
 
+  static async updateRepair(
+    id: number,
+    input: {
+      date: string;
+      carId?: number | null;
+      licensePlate?: string | null;
+      workDone: string;
+      amount: number;
+      paymentMethod: DirectorPaymentMethod;
+      comment?: string | null;
+    },
+  ) {
+    const row = await DirectorRepair.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
+  }
+
   static async listFuel(range: Omit<DateRange, 'branchId'>) {
     return DirectorFuel.findAll({
       where: { date: { [Op.between]: [range.startDate, range.endDate] } },
@@ -162,7 +213,7 @@ export default class DirectorService {
   static async createFuel(
     input: {
       date: string;
-      instructorUserId: number;
+      instructorUserId: number | null;
       carId?: number | null;
       fuelType: string;
       liters: number;
@@ -180,6 +231,24 @@ export default class DirectorService {
     await row.destroy();
   }
 
+  static async updateFuel(
+    id: number,
+    input: {
+      date: string;
+      instructorUserId: number | null;
+      carId?: number | null;
+      fuelType: string;
+      liters: number;
+      amount: number;
+      paymentMethod: DirectorPaymentMethod;
+    },
+  ) {
+    const row = await DirectorFuel.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
+  }
+
   static async listKm(range: Omit<DateRange, 'branchId'>) {
     return DirectorKm.findAll({
       where: { date: { [Op.between]: [range.startDate, range.endDate] } },
@@ -188,7 +257,7 @@ export default class DirectorService {
   }
 
   static async createKm(
-    input: { date: string; instructorUserId: number; km: number; comment?: string | null },
+    input: { date: string; instructorUserId: number | null; km: number; comment?: string | null },
     createdByUserId?: number,
   ) {
     return DirectorKm.create({ ...input, createdByUserId: createdByUserId ?? null });
@@ -200,6 +269,16 @@ export default class DirectorService {
     await row.destroy();
   }
 
+  static async updateKm(
+    id: number,
+    input: { date: string; instructorUserId: number | null; km: number; comment?: string | null },
+  ) {
+    const row = await DirectorKm.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
+  }
+
   static async listInstructorHours(range: Omit<DateRange, 'branchId'>) {
     return DirectorInstructorHours.findAll({
       where: { date: { [Op.between]: [range.startDate, range.endDate] } },
@@ -208,7 +287,7 @@ export default class DirectorService {
   }
 
   static async createInstructorHours(
-    input: { date: string; instructorUserId: number; hours: number; comment?: string | null },
+    input: { date: string; instructorUserId: number | null; hours: number; comment?: string | null },
     createdByUserId?: number,
   ) {
     return DirectorInstructorHours.create({ ...input, createdByUserId: createdByUserId ?? null });
@@ -218,6 +297,16 @@ export default class DirectorService {
     const row = await DirectorInstructorHours.findByPk(id);
     if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
     await row.destroy();
+  }
+
+  static async updateInstructorHours(
+    id: number,
+    input: { date: string; instructorUserId: number | null; hours: number; comment?: string | null },
+  ) {
+    const row = await DirectorInstructorHours.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
   }
 
   static async listSalaries(range: Omit<DateRange, 'branchId'>) {
@@ -246,6 +335,24 @@ export default class DirectorService {
     const row = await DirectorSalary.findByPk(id);
     if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
     await row.destroy();
+  }
+
+  static async updateSalary(
+    id: number,
+    input: {
+      date: string;
+      name: string;
+      role: string;
+      hours?: number | null;
+      hourlyRate?: number | null;
+      totalAmd: number;
+      comment?: string | null;
+    },
+  ) {
+    const row = await DirectorSalary.findByPk(id);
+    if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    await row.update(input);
+    return row;
   }
 
   static async listRevenues(range: DateRange & { isLegacy?: boolean }) {

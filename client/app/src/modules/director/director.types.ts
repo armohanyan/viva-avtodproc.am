@@ -22,7 +22,7 @@ export type DirectorChartPoint = { label: string; value: number };
 export type DirectorCashEntry = {
   id: number;
   date: string;
-  branchId: number;
+  branchId: number | null;
   entryType: string;
   amount: number;
   comment: string | null;
@@ -31,7 +31,7 @@ export type DirectorCashEntry = {
 export type DirectorExpense = {
   id: number;
   date: string;
-  branchId: number;
+  branchId: number | null;
   expType: string;
   amount: number;
   paymentMethod: DirectorPaymentMethod;
@@ -52,7 +52,7 @@ export type DirectorRepair = {
 export type DirectorFuel = {
   id: number;
   date: string;
-  instructorUserId: number;
+  instructorUserId: number | null;
   carId: number | null;
   fuelType: string;
   liters: number;
@@ -63,7 +63,7 @@ export type DirectorFuel = {
 export type DirectorKm = {
   id: number;
   date: string;
-  instructorUserId: number;
+  instructorUserId: number | null;
   km: number;
   comment: string | null;
 };
@@ -71,7 +71,7 @@ export type DirectorKm = {
 export type DirectorInstructorHours = {
   id: number;
   date: string;
-  instructorUserId: number;
+  instructorUserId: number | null;
   hours: number;
   comment: string | null;
 };
@@ -90,7 +90,7 @@ export type DirectorSalary = {
 export type DirectorRevenue = {
   id: number;
   date: string;
-  branchId: number;
+  branchId: number | null;
   amount: number;
   paymentMethod: DirectorPaymentMethod;
   isLegacy: boolean;

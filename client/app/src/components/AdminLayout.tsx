@@ -281,7 +281,7 @@ export default function AdminLayout({ children }: Props) {
 
 	const headerTitle = useMemo(() => {
 		if (isDirectorRoute(location)) {
-			return DIRECTOR_NAV_LINKS.find((n) => n.href === location)?.label ?? "Տնօրենը միջավայր";
+			return DIRECTOR_NAV_LINKS.find((n) => n.href === location)?.label ?? "Տնօրենի միջավայր";
 		}
 		if (location === "/admin/profile") return t("adminProfileTitle");
 		if (location === "/admin/learn/exam-questions") return t("adminExamQuestionsTitle");
@@ -312,7 +312,7 @@ export default function AdminLayout({ children }: Props) {
 						<Button size="sm" asChild className="shrink-0">
 							<Link href="/admin/director" onClick={() => closeMobileNav()}>
 								<Crown className="w-3.5 h-3.5" />
-								<span className="hidden sm:inline">Տնօրենը միջավայր</span>
+								<span className="hidden sm:inline">Տնօրենի միջավայր</span>
 							</Link>
 						</Button>
 					) : null}
@@ -360,7 +360,7 @@ export default function AdminLayout({ children }: Props) {
 						>
 							<img src="/logo.svg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
 							<span className="font-bold text-hero-foreground text-sm truncate">
-								{isDirectorMode ? "Տնօրենը միջավայր" : t("brandName")}
+								{isDirectorMode ? "Տնօրենի միջավայր" : t("brandName")}
 							</span>
 						</Link>
 					</div>

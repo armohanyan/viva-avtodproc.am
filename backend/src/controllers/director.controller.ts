@@ -4,6 +4,17 @@ import type { DirectorOptionCategory } from '../constants/director-option-catego
 import { DIRECTOR_OPTION_CATEGORIES } from '../constants/director-option-category';
 import { DIRECTOR_PAYMENT_METHODS } from '../constants/director-payment-method';
 import { parseBody, resolveBranchIdFilter } from '../helpers';
+import {
+  directorAmdField,
+  directorCommentField,
+  directorDateField,
+  directorDecimalField,
+  directorNullableAmdField,
+  directorNullableDecimalField,
+  directorOptionalIdField,
+  directorPaymentField,
+  directorTextField,
+} from '../helpers/director-form.helper';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import DirectorService from '../services/director.service';
 import { SuccessHandlerUtil } from '../utils';
@@ -77,11 +88,11 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          branchId: z.coerce.number().int().positive(),
-          entryType: z.string().min(1),
-          amount: z.coerce.number().int(),
-          comment: z.string().nullish(),
+          date: directorDateField,
+          branchId: directorOptionalIdField,
+          entryType: directorTextField,
+          amount: directorAmdField,
+          comment: directorCommentField.optional(),
         }),
         req.body,
       );
@@ -101,6 +112,25 @@ export default class DirectorController {
     }
   }
 
+  static async updateCash(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          branchId: directorOptionalIdField,
+          entryType: directorTextField,
+          amount: directorAmdField,
+          comment: directorCommentField.optional(),
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateCash(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async listExpenses(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const data = await DirectorService.listExpenses(await resolveRange(req));
@@ -114,12 +144,12 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          branchId: z.coerce.number().int().positive(),
-          expType: z.string().min(1),
-          amount: z.coerce.number().int().positive(),
-          paymentMethod: paymentSchema,
-          comment: z.string().nullish(),
+          date: directorDateField,
+          branchId: directorOptionalIdField,
+          expType: directorTextField,
+          amount: directorAmdField,
+          paymentMethod: directorPaymentField,
+          comment: directorCommentField.optional(),
         }),
         req.body,
       );
@@ -134,6 +164,26 @@ export default class DirectorController {
     try {
       await DirectorService.deleteExpense(Number(req.params.id));
       res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async updateExpense(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          branchId: directorOptionalIdField,
+          expType: directorTextField,
+          amount: directorAmdField,
+          paymentMethod: directorPaymentField,
+          comment: directorCommentField.optional(),
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateExpense(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
     } catch (e) {
       next(e);
     }
@@ -162,13 +212,13 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          carId: z.coerce.number().int().positive().nullish(),
-          licensePlate: z.string().nullish(),
-          workDone: z.string().min(1),
-          amount: z.coerce.number().int().positive(),
-          paymentMethod: paymentSchema,
-          comment: z.string().nullish(),
+          date: directorDateField,
+          carId: directorOptionalIdField,
+          licensePlate: directorCommentField.optional(),
+          workDone: directorTextField,
+          amount: directorAmdField,
+          paymentMethod: directorPaymentField,
+          comment: directorCommentField.optional(),
         }),
         req.body,
       );
@@ -188,6 +238,27 @@ export default class DirectorController {
     }
   }
 
+  static async updateRepair(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          carId: directorOptionalIdField,
+          licensePlate: directorCommentField.optional(),
+          workDone: directorTextField,
+          amount: directorAmdField,
+          paymentMethod: directorPaymentField,
+          comment: directorCommentField.optional(),
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateRepair(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async listFuel(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const range = await resolveRange(req);
@@ -202,13 +273,13 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          instructorUserId: z.coerce.number().int().positive(),
-          carId: z.coerce.number().int().positive().nullish(),
-          fuelType: z.string().min(1),
-          liters: z.coerce.number().positive(),
-          amount: z.coerce.number().int().positive(),
-          paymentMethod: paymentSchema,
+          date: directorDateField,
+          instructorUserId: directorOptionalIdField,
+          carId: directorOptionalIdField,
+          fuelType: directorTextField,
+          liters: directorDecimalField,
+          amount: directorAmdField,
+          paymentMethod: directorPaymentField,
         }),
         req.body,
       );
@@ -228,6 +299,27 @@ export default class DirectorController {
     }
   }
 
+  static async updateFuel(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          instructorUserId: directorOptionalIdField,
+          carId: directorOptionalIdField,
+          fuelType: directorTextField,
+          liters: directorDecimalField,
+          amount: directorAmdField,
+          paymentMethod: directorPaymentField,
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateFuel(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async listKm(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const range = await resolveRange(req);
@@ -242,10 +334,10 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          instructorUserId: z.coerce.number().int().positive(),
-          km: z.coerce.number().positive(),
-          comment: z.string().nullish(),
+          date: directorDateField,
+          instructorUserId: directorOptionalIdField,
+          km: directorDecimalField,
+          comment: directorCommentField.optional(),
         }),
         req.body,
       );
@@ -265,6 +357,24 @@ export default class DirectorController {
     }
   }
 
+  static async updateKm(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          instructorUserId: directorOptionalIdField,
+          km: directorDecimalField,
+          comment: directorCommentField.optional(),
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateKm(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async listInstructorHours(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const range = await resolveRange(req);
@@ -279,10 +389,10 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          instructorUserId: z.coerce.number().int().positive(),
-          hours: z.coerce.number().positive(),
-          comment: z.string().nullish(),
+          date: directorDateField,
+          instructorUserId: directorOptionalIdField,
+          hours: directorDecimalField,
+          comment: directorCommentField.optional(),
         }),
         req.body,
       );
@@ -302,6 +412,24 @@ export default class DirectorController {
     }
   }
 
+  static async updateInstructorHours(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          instructorUserId: directorOptionalIdField,
+          hours: directorDecimalField,
+          comment: directorCommentField.optional(),
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateInstructorHours(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async listSalaries(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const range = await resolveRange(req);
@@ -316,13 +444,13 @@ export default class DirectorController {
     try {
       const body = parseBody(
         z.object({
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          name: z.string().min(1),
-          role: z.string().min(1),
-          hours: z.coerce.number().positive().nullish(),
-          hourlyRate: z.coerce.number().int().positive().nullish(),
-          totalAmd: z.coerce.number().int().positive(),
-          comment: z.string().nullish(),
+          date: directorDateField,
+          name: directorTextField,
+          role: directorTextField,
+          hours: directorNullableDecimalField,
+          hourlyRate: directorNullableAmdField,
+          totalAmd: directorAmdField,
+          comment: directorCommentField.optional(),
         }),
         req.body,
       );
@@ -337,6 +465,27 @@ export default class DirectorController {
     try {
       await DirectorService.deleteSalary(Number(req.params.id));
       res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async updateSalary(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(
+        z.object({
+          date: directorDateField,
+          name: directorTextField,
+          role: directorTextField,
+          hours: directorNullableDecimalField,
+          hourlyRate: directorNullableAmdField,
+          totalAmd: directorAmdField,
+          comment: directorCommentField.optional(),
+        }),
+        req.body,
+      );
+      const data = await DirectorService.updateSalary(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, data);
     } catch (e) {
       next(e);
     }

@@ -5,9 +5,10 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
+import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorButton,
   DirectorCard,
   DirectorField,
   DirectorFormRow,
@@ -26,11 +27,20 @@ import {
   deleteDirectorExpense,
   fetchDirectorExpenseChart,
   fetchDirectorExpenses,
+  updateDirectorExpense,
 } from "src/modules/director/director.api";
 import { DIRECTOR_OPTION_CATEGORY, DIRECTOR_PAYMENT_LABELS, todayIso } from "src/modules/director/director.consts";
 import type { DirectorExpense, DirectorPaymentMethod } from "src/modules/director/director.types";
 import { useBranches } from "src/modules/branches/useBranches";
-import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
+import {
+  directorAmd,
+  directorDate,
+  directorOptionalComment,
+  directorOptionalId,
+  directorPayment,
+  directorText,
+} from "src/modules/director/directorFormValues";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useState } from "react";
@@ -55,6 +65,7 @@ export default function DirectorExpensesPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorExpense[]>([]);
   const [chart, setChart] = useState<{ label: string; value: number }[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
     branchId: branches[0]?.id ? String(branches[0].id) : "",
@@ -81,31 +92,58 @@ export default function DirectorExpensesPage() {
 
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({
+      date: todayIso(),
+      branchId: branches[0]?.id ? String(branches[0].id) : "",
+      expType: "Վարձակալություն",
+      amount: "",
+      paymentMethod: "card" as DirectorPaymentMethod,
+      comment: "",
+    });
+  };
+
+  const buildBody = () => ({
+    date: directorDate(form.date),
+    branchId: directorOptionalId(form.branchId),
+    expType: directorText(form.expType),
+    amount: directorAmd(form.amount),
+    paymentMethod: directorPayment(form.paymentMethod),
+    comment: directorOptionalComment(form.comment),
+  });
+
   const submit = async () => {
-    const amount = parseAmdInput(form.amount);
-    const branchId = Number(form.branchId);
-    if (!amount || !branchId) {
-      showToast("Լրացրեք բոլոր դաշտերը", "error");
-      return;
-    }
     try {
-      await createDirectorExpense({
-        date: form.date,
-        branchId,
-        expType: form.expType,
-        amount,
-        paymentMethod: form.paymentMethod,
-        comment: form.comment.trim() || null,
-      });
-      setForm((f) => ({ ...f, amount: "", comment: "" }));
+      const body = buildBody();
+      if (editingId != null) {
+        await updateDirectorExpense(editingId, body);
+        showToast("Թարմացված է", "success");
+      } else {
+        await createDirectorExpense(body);
+        showToast("Գրանցված է", "success");
+      }
+      resetForm();
       reload();
-      showToast("Գրանցված է", "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
   };
 
-  const branchName = (id: number) => {
+  const startEdit = (row: DirectorExpense) => {
+    setEditingId(row.id);
+    setForm({
+      date: row.date,
+      branchId: row.branchId != null ? String(row.branchId) : "",
+      expType: row.expType,
+      amount: String(row.amount),
+      paymentMethod: row.paymentMethod,
+      comment: row.comment ?? "",
+    });
+  };
+
+  const branchName = (id: number | null) => {
+    if (id == null) return "—";
     const b = branches.find((x) => String(x.id) === String(id));
     return b?.label || b?.name || `#${id}`;
   };
@@ -121,6 +159,7 @@ export default function DirectorExpensesPage() {
           </DirectorField>
           <DirectorField label="Մասնաճյուղ">
             <DirectorSelect value={form.branchId} onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}>
+              <option value="">—</option>
               {branches.map((b) => (
                 <option key={b.id} value={String(b.id)}>{b.label || b.name}</option>
               ))}
@@ -142,7 +181,12 @@ export default function DirectorExpensesPage() {
           <DirectorField label="Մեկնաբանություն">
             <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
           </DirectorField>
-          <DirectorButton className="self-start" onClick={() => void submit()}>Գրանցել ծախս</DirectorButton>
+          <DirectorFormActions
+            editing={editingId != null}
+            createLabel="Գրանցել ծախս"
+            onSubmit={() => void submit()}
+            onCancel={resetForm}
+          />
         </DirectorFormRow>
         {chart.length > 0 ? (
           <div className="mt-6 h-52 max-w-xs mx-auto">
@@ -177,9 +221,10 @@ export default function DirectorExpensesPage() {
               <DirectorTableTd>{DIRECTOR_PAYMENT_LABELS[r.paymentMethod]}</DirectorTableTd>
               <DirectorTableTd>{branchName(r.branchId)}</DirectorTableTd>
               <DirectorTableTd>
-                <DirectorButton variant="ghost" size="sm" onClick={() => void deleteDirectorExpense(r.id).then(reload)}>
-                  Ջնջել
-                </DirectorButton>
+                <DirectorRecordActions
+                  onEdit={() => startEdit(r)}
+                  onDelete={() => void deleteDirectorExpense(r.id).then(reload)}
+                />
               </DirectorTableTd>
             </DirectorTableRow>
           ))}

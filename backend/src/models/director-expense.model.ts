@@ -10,7 +10,7 @@ export class DirectorExpense extends Model<
 > {
   declare id: CreationOptional<number>;
   declare date: string;
-  declare branchId: number;
+  declare branchId: number | null;
   declare expType: string;
   declare amount: number;
   declare paymentMethod: DirectorPaymentMethod;
@@ -22,7 +22,7 @@ DirectorExpense.init(
   {
     id: autoIncrementPk(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
-    branchId: fkUnsignedInt(),
+    branchId: fkUnsignedIntNullable(),
     expType: { type: DataTypes.STRING(255), allowNull: false },
     amount: { type: DataTypes.INTEGER.UNSIGNED, allowNull: false },
     paymentMethod: {

@@ -5,9 +5,10 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
+import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorButton,
   DirectorCard,
   DirectorField,
   DirectorFormRow,
@@ -27,11 +28,21 @@ import {
   deleteDirectorKm,
   fetchDirectorFuel,
   fetchDirectorKm,
+  updateDirectorFuel,
+  updateDirectorKm,
 } from "src/modules/director/director.api";
 import { DIRECTOR_OPTION_CATEGORY, DIRECTOR_PAYMENT_LABELS, todayIso } from "src/modules/director/director.consts";
 import type { DirectorFuel, DirectorKm, DirectorPaymentMethod } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
-import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
+import {
+  directorAmd,
+  directorDate,
+  directorDecimal,
+  directorOptionalId,
+  directorPayment,
+  directorText,
+} from "src/modules/director/directorFormValues";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useState } from "react";
@@ -46,6 +57,8 @@ export default function DirectorFuelKmPage() {
   const [kmRows, setKmRows] = useState<DirectorKm[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
+  const [fuelEditingId, setFuelEditingId] = useState<number | null>(null);
+  const [kmEditingId, setKmEditingId] = useState<number | null>(null);
 
   const [fuelForm, setFuelForm] = useState({
     date: todayIso(),
@@ -82,49 +95,94 @@ export default function DirectorFuelKmPage() {
 
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
 
-  const instructorName = (id: number) => instructors.find((i) => String(i.id) === String(id))?.name ?? `#${id}`;
+  const instructorName = (id: number | null) =>
+    id == null ? "—" : instructors.find((i) => String(i.id) === String(id))?.name ?? `#${id}`;
+
+  const resetFuelForm = () => {
+    setFuelEditingId(null);
+    setFuelForm({
+      date: todayIso(),
+      instructorUserId: "",
+      carId: "",
+      fuelType: "Գազ",
+      liters: "",
+      amount: "",
+      paymentMethod: "card" as DirectorPaymentMethod,
+    });
+  };
+
+  const resetKmForm = () => {
+    setKmEditingId(null);
+    setKmForm({ date: todayIso(), instructorUserId: "", km: "" });
+  };
 
   const submitFuel = async () => {
-    const amount = parseAmdInput(fuelForm.amount);
-    const liters = Number(fuelForm.liters);
-    const instructorUserId = Number(fuelForm.instructorUserId);
-    if (!amount || !liters || !instructorUserId) {
-      showToast("Լրացրեք բոլոր դաշտերը", "error");
-      return;
-    }
     try {
-      await createDirectorFuel({
-        date: fuelForm.date,
-        instructorUserId,
-        carId: fuelForm.carId ? Number(fuelForm.carId) : null,
-        fuelType: fuelForm.fuelType,
-        liters,
-        amount,
-        paymentMethod: fuelForm.paymentMethod,
-      });
-      setFuelForm((f) => ({ ...f, liters: "", amount: "" }));
+      const body = {
+        date: directorDate(fuelForm.date),
+        instructorUserId: directorOptionalId(fuelForm.instructorUserId),
+        carId: directorOptionalId(fuelForm.carId),
+        fuelType: directorText(fuelForm.fuelType),
+        liters: directorDecimal(fuelForm.liters),
+        amount: directorAmd(fuelForm.amount),
+        paymentMethod: directorPayment(fuelForm.paymentMethod),
+      };
+      if (fuelEditingId != null) {
+        await updateDirectorFuel(fuelEditingId, body);
+        showToast("Թարմացված է", "success");
+      } else {
+        await createDirectorFuel(body);
+        showToast("Գրանցված է", "success");
+      }
+      resetFuelForm();
       reload();
-      showToast("Գրանցված է", "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
   };
 
+  const startEditFuel = (row: DirectorFuel) => {
+    setFuelEditingId(row.id);
+    setFuelForm({
+      date: row.date,
+      instructorUserId: row.instructorUserId != null ? String(row.instructorUserId) : "",
+      carId: row.carId != null ? String(row.carId) : "",
+      fuelType: row.fuelType,
+      liters: String(row.liters),
+      amount: String(row.amount),
+      paymentMethod: row.paymentMethod,
+    });
+  };
+
   const submitKm = async () => {
-    const km = Number(kmForm.km);
-    const instructorUserId = Number(kmForm.instructorUserId);
-    if (!km || !instructorUserId) {
-      showToast("Լրացրեք բոլոր դաշտերը", "error");
-      return;
-    }
     try {
-      await createDirectorKm({ date: kmForm.date, instructorUserId, km, comment: null });
-      setKmForm((f) => ({ ...f, km: "" }));
+      const body = {
+        date: directorDate(kmForm.date),
+        instructorUserId: directorOptionalId(kmForm.instructorUserId),
+        km: directorDecimal(kmForm.km),
+        comment: null,
+      };
+      if (kmEditingId != null) {
+        await updateDirectorKm(kmEditingId, body);
+        showToast("Թարմացված է", "success");
+      } else {
+        await createDirectorKm(body);
+        showToast("Գրանցված է", "success");
+      }
+      resetKmForm();
       reload();
-      showToast("Գրանցված է", "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
+  };
+
+  const startEditKm = (row: DirectorKm) => {
+    setKmEditingId(row.id);
+    setKmForm({
+      date: row.date,
+      instructorUserId: row.instructorUserId != null ? String(row.instructorUserId) : "",
+      km: String(row.km),
+    });
   };
 
   return (
@@ -170,7 +228,12 @@ export default function DirectorFuelKmPage() {
             <DirectorField label="Վճարում">
               <DirectorPaymentSelect value={fuelForm.paymentMethod} onChange={(paymentMethod) => setFuelForm((f) => ({ ...f, paymentMethod }))} />
             </DirectorField>
-            <DirectorButton className="self-start" onClick={() => void submitFuel()}>Գրանցել վառելիք</DirectorButton>
+            <DirectorFormActions
+              editing={fuelEditingId != null}
+              createLabel="Գրանցել վառելիք"
+              onSubmit={() => void submitFuel()}
+              onCancel={resetFuelForm}
+            />
           </DirectorFormRow>
         </DirectorCard>
         <DirectorTableWrap>
@@ -191,7 +254,10 @@ export default function DirectorFuelKmPage() {
                 <DirectorTableTd>{r.liters}</DirectorTableTd>
                 <DirectorTableTd>{formatAmd(r.amount)} ({DIRECTOR_PAYMENT_LABELS[r.paymentMethod]})</DirectorTableTd>
                 <DirectorTableTd>
-                  <DirectorButton variant="ghost" size="sm" onClick={() => void deleteDirectorFuel(r.id).then(reload)}>Ջնջել</DirectorButton>
+                  <DirectorRecordActions
+                    onEdit={() => startEditFuel(r)}
+                    onDelete={() => void deleteDirectorFuel(r.id).then(reload)}
+                  />
                 </DirectorTableTd>
               </DirectorTableRow>
             ))}
@@ -215,7 +281,12 @@ export default function DirectorFuelKmPage() {
             <DirectorField label="ԿՄ">
               <DirectorInput value={kmForm.km} onChange={(e) => setKmForm((f) => ({ ...f, km: e.target.value }))} />
             </DirectorField>
-            <DirectorButton className="self-start" onClick={() => void submitKm()}>Գրանցել ԿՄ</DirectorButton>
+            <DirectorFormActions
+              editing={kmEditingId != null}
+              createLabel="Գրանցել ԿՄ"
+              onSubmit={() => void submitKm()}
+              onCancel={resetKmForm}
+            />
           </DirectorFormRow>
         </DirectorCard>
         <DirectorTableWrap>
@@ -232,7 +303,10 @@ export default function DirectorFuelKmPage() {
                 <DirectorTableTd>{instructorName(r.instructorUserId)}</DirectorTableTd>
                 <DirectorTableTd>{r.km}</DirectorTableTd>
                 <DirectorTableTd>
-                  <DirectorButton variant="ghost" size="sm" onClick={() => void deleteDirectorKm(r.id).then(reload)}>Ջնջել</DirectorButton>
+                  <DirectorRecordActions
+                    onEdit={() => startEditKm(r)}
+                    onDelete={() => void deleteDirectorKm(r.id).then(reload)}
+                  />
                 </DirectorTableTd>
               </DirectorTableRow>
             ))}

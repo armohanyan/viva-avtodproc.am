@@ -23,6 +23,7 @@ import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
+import { useAccount } from "src/modules/accounts";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
@@ -173,6 +174,8 @@ export default function AdminInstructors() {
   const editPracticalSlotsSaveRef = useRef<InstructorPracticalSlotsSaveHandle | null>(null);
   const { t, lang } = useLang();
   const { showToast } = useToast();
+  const { user } = useAccount();
+  const isSuperAdmin = user?.accountType === "super_admin";
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
@@ -549,8 +552,6 @@ export default function AdminInstructors() {
         phone: editIns.phone,
         years: editIns.years,
         hourlyPrice: editIns.hourlyPrice,
-        practicalSalaryPerLessonAmd: editIns.practicalSalaryPerLessonAmd,
-        theorySalaryPerLessonAmd: editIns.theorySalaryPerLessonAmd,
         status: editIns.status,
         imageSrc: editIns.imageSrc,
         teachesPractical: editIns.teachesPractical,
@@ -558,6 +559,10 @@ export default function AdminInstructors() {
         fleetCarIds: editIns.fleetCarIds ?? [],
         availableBranchIds: editIns.availableBranchIds,
       };
+      if (isSuperAdmin) {
+        body.practicalSalaryPerLessonAmd = editIns.practicalSalaryPerLessonAmd;
+        body.theorySalaryPerLessonAmd = editIns.theorySalaryPerLessonAmd;
+      }
       await vivaApiJson(`/instructors/${encodeURIComponent(editIns.id)}`, {
         method: "PATCH",
         body,
@@ -578,11 +583,23 @@ export default function AdminInstructors() {
       return;
     }
 
-    const nextPayload = {
-      ...newIns,
+    const nextPayload: Record<string, unknown> = {
+      name: newIns.name,
+      email: newIns.email,
+      phone: newIns.phone,
+      years: newIns.years,
+      hourlyPrice: newIns.hourlyPrice,
+      status: newIns.status,
+      imageSrc: newIns.imageSrc,
+      teachesPractical: newIns.teachesPractical,
+      teachesTheory: newIns.teachesTheory,
       fleetCarIds: newIns.fleetCarIds ?? [],
       availableBranchIds: newIns.availableBranchIds,
     };
+    if (isSuperAdmin) {
+      nextPayload.practicalSalaryPerLessonAmd = newIns.practicalSalaryPerLessonAmd;
+      nextPayload.theorySalaryPerLessonAmd = newIns.theorySalaryPerLessonAmd;
+    }
 
     try {
       await vivaApiJson("/instructors", { method: "POST", body: nextPayload });
@@ -954,7 +971,7 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
-              {editIns.teachesPractical || editIns.teachesTheory ? (
+              {isSuperAdmin && (editIns.teachesPractical || editIns.teachesTheory) ? (
                 <div
                   className={
                     editIns.teachesPractical && editIns.teachesTheory
@@ -1186,7 +1203,7 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
-              {newIns.teachesPractical || newIns.teachesTheory ? (
+              {isSuperAdmin && (newIns.teachesPractical || newIns.teachesTheory) ? (
                 <div
                   className={
                     newIns.teachesPractical && newIns.teachesTheory

@@ -8,7 +8,7 @@ export class DirectorCashEntry extends Model<
 > {
   declare id: CreationOptional<number>;
   declare date: string;
-  declare branchId: number;
+  declare branchId: number | null;
   declare entryType: string;
   declare amount: number;
   declare comment: CreationOptional<string | null>;
@@ -19,7 +19,7 @@ DirectorCashEntry.init(
   {
     id: autoIncrementPk(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
-    branchId: fkUnsignedInt(),
+    branchId: fkUnsignedIntNullable(),
     entryType: { type: DataTypes.STRING(255), allowNull: false },
     amount: { type: DataTypes.INTEGER, allowNull: false },
     comment: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },

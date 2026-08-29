@@ -19,7 +19,6 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
   { href: "/admin/driving", translationKey: "adminSidebarDriving" },
   { href: "/admin/bookings", translationKey: "bookings" },
-  { href: "/admin/archive", translationKey: "adminArchiveNav" },
   { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
   { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/inbox", translationKey: "adminInbox" },
@@ -44,5 +43,6 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   },
   { href: "/admin/blogs", translationKey: "blogsAdmin", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/accounts", translationKey: "adminAccounts", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { href: "/admin/archive", translationKey: "adminArchiveNav" },
   { href: "/admin/settings", translationKey: "adminSidebarSettings" },
 ];

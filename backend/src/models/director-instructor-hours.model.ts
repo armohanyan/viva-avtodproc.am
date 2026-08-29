@@ -8,7 +8,7 @@ export class DirectorInstructorHours extends Model<
 > {
   declare id: CreationOptional<number>;
   declare date: string;
-  declare instructorUserId: number;
+  declare instructorUserId: number | null;
   declare hours: number;
   declare comment: CreationOptional<string | null>;
   declare createdByUserId: CreationOptional<number | null>;
@@ -18,7 +18,7 @@ DirectorInstructorHours.init(
   {
     id: autoIncrementPk(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
-    instructorUserId: fkUnsignedInt(),
+    instructorUserId: fkUnsignedIntNullable(),
     hours: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     comment: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
     createdByUserId: fkUnsignedIntNullable(),

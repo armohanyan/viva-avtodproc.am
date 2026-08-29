@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, parseParams, parseQuery, resolveBranchIdFilter } from '../helpers';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
+import type { AccessTokenPayload } from '../helpers';
 import { User } from '../models';
 import BookingService from '../services/booking.service';
 import InstructorAvailabilityService from '../services/instructor-availability.service';
@@ -72,6 +73,17 @@ const instructorAvailabilityBlockParamsSchema = z.object({
   blockId: instructorPathUserIdSchema,
 });
 
+function stripInstructorSalaryFields<T extends Record<string, unknown>>(
+  body: T,
+  actor: AccessTokenPayload | undefined,
+): T {
+  if (actor?.accountType === 'super_admin') return body;
+  const next = { ...body };
+  delete next.practicalSalaryPerLessonAmd;
+  delete next.theorySalaryPerLessonAmd;
+  return next;
+}
+
 export default class InstructorController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
@@ -88,7 +100,8 @@ export default class InstructorController {
 
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const body = parseBody(createSchema, req.body);
+      const actor = (req as StaffRequest).staff;
+      const body = stripInstructorSalaryFields(parseBody(createSchema, req.body), actor);
       const row = await InstructorService.create(body);
 
       SuccessHandlerUtil.handleAdd(res, next, row);
@@ -99,8 +112,8 @@ export default class InstructorController {
 
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const body = parseBody(updateSchema, req.body);
       const actor = (req as StaffRequest).staff;
+      const body = stripInstructorSalaryFields(parseBody(updateSchema, req.body), actor);
       const { id } = parseParams(instructorUserIdParamsSchema, req.params);
 
       if (!actor) {

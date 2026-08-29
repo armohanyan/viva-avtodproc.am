@@ -4,9 +4,10 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
+import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorButton,
   DirectorCard,
   DirectorField,
   DirectorFormRow,
@@ -20,10 +21,18 @@ import {
   DirectorTableTh,
   DirectorTableWrap,
 } from "src/modules/director/components/DirectorUi";
-import { createDirectorRepair, deleteDirectorRepair, fetchDirectorRepairs } from "src/modules/director/director.api";
+import { createDirectorRepair, deleteDirectorRepair, fetchDirectorRepairs, updateDirectorRepair } from "src/modules/director/director.api";
 import { DIRECTOR_PAYMENT_LABELS, todayIso } from "src/modules/director/director.consts";
 import type { DirectorPaymentMethod, DirectorRepair } from "src/modules/director/director.types";
-import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
+import {
+  directorAmd,
+  directorDate,
+  directorOptionalComment,
+  directorOptionalId,
+  directorPayment,
+  directorText,
+} from "src/modules/director/directorFormValues";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useState } from "react";
@@ -36,6 +45,7 @@ export default function DirectorRepairPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorRepair[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
     carId: "",
@@ -64,28 +74,57 @@ export default function DirectorRepairPage() {
 
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({
+      date: todayIso(),
+      carId: "",
+      licensePlate: "",
+      workDone: "",
+      amount: "",
+      paymentMethod: "card" as DirectorPaymentMethod,
+      comment: "",
+    });
+  };
+
+  const buildBody = () => ({
+    date: directorDate(form.date),
+    carId: directorOptionalId(form.carId),
+    licensePlate: directorOptionalComment(form.licensePlate),
+    workDone: directorText(form.workDone),
+    amount: directorAmd(form.amount),
+    paymentMethod: directorPayment(form.paymentMethod),
+    comment: directorOptionalComment(form.comment),
+  });
+
   const submit = async () => {
-    const amount = parseAmdInput(form.amount);
-    if (!amount || !form.workDone.trim()) {
-      showToast("Լրացրեք պարտադիր դաշտերը", "error");
-      return;
-    }
     try {
-      await createDirectorRepair({
-        date: form.date,
-        carId: form.carId ? Number(form.carId) : null,
-        licensePlate: form.licensePlate.trim() || null,
-        workDone: form.workDone.trim(),
-        amount,
-        paymentMethod: form.paymentMethod,
-        comment: form.comment.trim() || null,
-      });
-      setForm((f) => ({ ...f, workDone: "", amount: "", comment: "" }));
+      const body = buildBody();
+      if (editingId != null) {
+        await updateDirectorRepair(editingId, body);
+        showToast("Թարմացված է", "success");
+      } else {
+        await createDirectorRepair(body);
+        showToast("Գրանցված է", "success");
+      }
+      resetForm();
       reload();
-      showToast("Գրանցված է", "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
+  };
+
+  const startEdit = (row: DirectorRepair) => {
+    setEditingId(row.id);
+    setForm({
+      date: row.date,
+      carId: row.carId != null ? String(row.carId) : "",
+      licensePlate: row.licensePlate ?? "",
+      workDone: row.workDone,
+      amount: String(row.amount),
+      paymentMethod: row.paymentMethod,
+      comment: row.comment ?? "",
+    });
   };
 
   const carLabel = (id: number | null, plate: string | null) => {
@@ -126,7 +165,12 @@ export default function DirectorRepairPage() {
           <DirectorField label="Մեկնաբանություն">
             <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
           </DirectorField>
-          <DirectorButton className="self-start" onClick={() => void submit()}>Գրանցել վերանորոգում</DirectorButton>
+          <DirectorFormActions
+            editing={editingId != null}
+            createLabel="Գրանցել վերանորոգում"
+            onSubmit={() => void submit()}
+            onCancel={resetForm}
+          />
         </DirectorFormRow>
       </DirectorCard>
       <DirectorTableWrap>
@@ -147,9 +191,10 @@ export default function DirectorRepairPage() {
               <DirectorTableTd>{formatAmd(r.amount)}</DirectorTableTd>
               <DirectorTableTd>{DIRECTOR_PAYMENT_LABELS[r.paymentMethod]}</DirectorTableTd>
               <DirectorTableTd>
-                <DirectorButton variant="ghost" size="sm" onClick={() => void deleteDirectorRepair(r.id).then(reload)}>
-                  Ջնջել
-                </DirectorButton>
+                <DirectorRecordActions
+                  onEdit={() => startEdit(r)}
+                  onDelete={() => void deleteDirectorRepair(r.id).then(reload)}
+                />
               </DirectorTableTd>
             </DirectorTableRow>
           ))}

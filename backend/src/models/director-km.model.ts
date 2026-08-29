@@ -8,7 +8,7 @@ export class DirectorKm extends Model<
 > {
   declare id: CreationOptional<number>;
   declare date: string;
-  declare instructorUserId: number;
+  declare instructorUserId: number | null;
   declare km: number;
   declare comment: CreationOptional<string | null>;
   declare createdByUserId: CreationOptional<number | null>;
@@ -18,7 +18,7 @@ DirectorKm.init(
   {
     id: autoIncrementPk(),
     date: { type: DataTypes.DATEONLY, allowNull: false },
-    instructorUserId: fkUnsignedInt(),
+    instructorUserId: fkUnsignedIntNullable(),
     km: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
     comment: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
     createdByUserId: fkUnsignedIntNullable(),

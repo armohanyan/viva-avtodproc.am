@@ -2620,6 +2620,41 @@ async function ensureStudentProfilesPackageIdOnDeleteSetNull(): Promise<void> {
   );
 }
 
+async function ensureDirectorTablesNullableFkColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+
+  const nullableColumns: { table: string; column: string }[] = [
+    { table: 'director_cash_entries', column: 'branch_id' },
+    { table: 'director_expenses', column: 'branch_id' },
+    { table: 'director_fuel', column: 'instructor_user_id' },
+    { table: 'director_km', column: 'instructor_user_id' },
+    { table: 'director_instructor_hours', column: 'instructor_user_id' },
+  ];
+
+  for (const { table, column } of nullableColumns) {
+    const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      { type: QueryTypes.SELECT, replacements: [table] },
+    );
+    if (tableRows.length === 0) continue;
+
+    const colRows = await sequelize.query<{ IS_NULLABLE: string }>(
+      `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      { type: QueryTypes.SELECT, replacements: [table, column] },
+    );
+    if (colRows.length === 0 || colRows[0]!.IS_NULLABLE === 'YES') continue;
+
+    // eslint-disable-next-line no-console
+    console.info(`[migrate] Making ${table}.${column} nullable …`);
+    await sequelize.query(`
+      ALTER TABLE \`${table}\`
+        MODIFY COLUMN \`${column}\` INT UNSIGNED NULL
+    `);
+  }
+}
+
 export async function syncModels(): Promise<void> {
   await assertMysqlCoreIdsAreInteger();
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
@@ -2631,6 +2666,7 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceTransactionsRefundColumns();
   await ensureFinanceTransactionsBookingRefundExpenseKind();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await ensureDirectorTablesNullableFkColumns();
   await ensureBookingsInstructorUserIdOnDeleteSetNull();
   await ensureBookingSlotsInstructorUserIdNullable();
   await ensureInstructorProfilesDropScheduleColumn();

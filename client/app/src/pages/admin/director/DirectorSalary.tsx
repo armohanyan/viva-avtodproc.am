@@ -4,9 +4,10 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
+import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorButton,
   DirectorCard,
   DirectorField,
   DirectorFormRow,
@@ -19,10 +20,17 @@ import {
   DirectorTableTh,
   DirectorTableWrap,
 } from "src/modules/director/components/DirectorUi";
-import { createDirectorSalary, deleteDirectorSalary, fetchDirectorSalaries } from "src/modules/director/director.api";
+import { createDirectorSalary, deleteDirectorSalary, fetchDirectorSalaries, updateDirectorSalary } from "src/modules/director/director.api";
 import { DIRECTOR_OPTION_CATEGORY, todayIso } from "src/modules/director/director.consts";
 import type { DirectorSalary } from "src/modules/director/director.types";
 import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import {
+  directorAmd,
+  directorDate,
+  directorDecimal,
+  directorOptionalComment,
+  directorText,
+} from "src/modules/director/directorFormValues";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useMemo, useState } from "react";
@@ -36,6 +44,7 @@ export default function DirectorSalaryPage() {
   const { showToast } = useToast();
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorSalary[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
     name: "",
@@ -64,28 +73,58 @@ export default function DirectorSalaryPage() {
     return 0;
   }, [form.hours, form.hourlyRate]);
 
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({
+      date: todayIso(),
+      name: "",
+      role: "Հրահանգիչ",
+      hours: "",
+      hourlyRate: "",
+      comment: "",
+    });
+  };
+
+  const buildBody = () => {
+    const totalAmd = computedTotal || directorAmd(form.hourlyRate);
+    return {
+      date: directorDate(form.date),
+      name: directorText(form.name),
+      role: directorText(form.role),
+      hours: form.hours.trim() ? directorDecimal(form.hours) : null,
+      hourlyRate: form.hourlyRate.trim() ? directorAmd(form.hourlyRate) : null,
+      totalAmd,
+      comment: directorOptionalComment(form.comment),
+    };
+  };
+
   const submit = async () => {
-    const totalAmd = computedTotal || parseAmdInput(form.hourlyRate);
-    if (!form.name.trim() || !totalAmd) {
-      showToast("Լրացրեք անուն և գումար", "error");
-      return;
-    }
     try {
-      await createDirectorSalary({
-        date: form.date,
-        name: form.name.trim(),
-        role: form.role,
-        hours: form.hours ? Number(form.hours) : null,
-        hourlyRate: form.hourlyRate ? parseAmdInput(form.hourlyRate) : null,
-        totalAmd,
-        comment: form.comment.trim() || null,
-      });
-      setForm((f) => ({ ...f, name: "", hours: "", hourlyRate: "", comment: "" }));
+      const body = buildBody();
+      if (editingId != null) {
+        await updateDirectorSalary(editingId, body);
+        showToast("Թարմացված է", "success");
+      } else {
+        await createDirectorSalary(body);
+        showToast("Գրանցված է", "success");
+      }
+      resetForm();
       reload();
-      showToast("Գրանցված է", "success");
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     }
+  };
+
+  const startEdit = (row: DirectorSalary) => {
+    setEditingId(row.id);
+    setForm({
+      date: row.date,
+      name: row.name,
+      role: row.role,
+      hours: row.hours != null ? String(row.hours) : "",
+      hourlyRate: row.hourlyRate != null ? String(row.hourlyRate) : "",
+      comment: row.comment ?? "",
+    });
   };
 
   const byRole = useMemo(() => {
@@ -125,7 +164,12 @@ export default function DirectorSalaryPage() {
           <DirectorField label="Մեկնաբանություն">
             <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
           </DirectorField>
-          <DirectorButton className="self-start" onClick={() => void submit()}>Գրանցել աշխատավարձ</DirectorButton>
+          <DirectorFormActions
+            editing={editingId != null}
+            createLabel="Գրանցել աշխատավարձ"
+            onSubmit={() => void submit()}
+            onCancel={resetForm}
+          />
         </DirectorFormRow>
         {byRole.length > 0 ? (
           <div className="mt-6 h-48">
@@ -161,7 +205,10 @@ export default function DirectorSalaryPage() {
               <DirectorTableTd>{r.hours ?? "—"}</DirectorTableTd>
               <DirectorTableTd>{formatAmd(r.totalAmd)}</DirectorTableTd>
               <DirectorTableTd>
-                <DirectorButton variant="ghost" size="sm" onClick={() => void deleteDirectorSalary(r.id).then(reload)}>Ջնջել</DirectorButton>
+                <DirectorRecordActions
+                  onEdit={() => startEdit(r)}
+                  onDelete={() => void deleteDirectorSalary(r.id).then(reload)}
+                />
               </DirectorTableTd>
             </DirectorTableRow>
           ))}
