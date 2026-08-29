@@ -42,6 +42,15 @@ import { PetrolConsumption } from './petrol-consumption.model';
 import { PetrolExpense } from './petrol-expense.model';
 import { PetrolExpenseRequest } from './petrol-expense-request.model';
 import { SalaryPayment } from './salary-payment.model';
+import { DirectorOption } from './director-option.model';
+import { DirectorCashEntry } from './director-cash-entry.model';
+import { DirectorExpense } from './director-expense.model';
+import { DirectorRepair } from './director-repair.model';
+import { DirectorFuel } from './director-fuel.model';
+import { DirectorKm } from './director-km.model';
+import { DirectorInstructorHours } from './director-instructor-hours.model';
+import { DirectorSalary } from './director-salary.model';
+import { DirectorRevenue } from './director-revenue.model';
 import { StudentExtraPractical } from './student-extra-practical.model';
 import { StudentProfile } from './student-profile.model';
 import { TheoryCohort } from './theory-cohort.model';
@@ -271,6 +280,15 @@ export {
   PetrolExpense,
   PetrolExpenseRequest,
   SalaryPayment,
+  DirectorOption,
+  DirectorCashEntry,
+  DirectorExpense,
+  DirectorRepair,
+  DirectorFuel,
+  DirectorKm,
+  DirectorInstructorHours,
+  DirectorSalary,
+  DirectorRevenue,
   AdminMfaChallenge,
   OAuthAccount,
   Package,

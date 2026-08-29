@@ -6,9 +6,7 @@ export { default as AdminBookingsPage } from "./AdminBookings";
 export { default as AdminArchivePage } from "./AdminArchive";
 export { default as AdminDrivingPage } from "./AdminDriving";
 export { default as AdminSettingsPage } from "./AdminSettings";
-export { default as AdminImportPracticalXlsxPage } from "./AdminImportPracticalXlsx";
 export { default as AdminClassSchedulePage } from "./AdminClassSchedule";
-export { default as AdminReportPage } from "./AdminReport";
 export { default as AdminBookedCallsPage } from "./AdminBookedCalls";
 export { default as AdminTheoryPersonalRequestsPage } from "./AdminTheoryPersonalRequests";
 export { default as AdminContactRequestsPage } from "./AdminContactRequests";
@@ -26,13 +24,6 @@ export { default as AdminBlogsPage } from "./AdminBlogs";
 export { default as AdminAccountsPage } from "./AdminAccounts";
 export { default as AdminMarketingPage } from "./AdminMarketing";
 export { default as AdminNotificationsPage } from "./AdminNotifications";
-export { default as AdminFinanceOverviewPage } from "./finance/AdminFinanceOverview";
-export { default as AdminFinanceIncomePage } from "./finance/AdminFinanceIncome";
-export { default as AdminFinanceOutcomesPage } from "./finance/AdminFinanceOutcomes";
-export { default as AdminFinanceTransactionsPage } from "./finance/AdminFinanceTransactions";
-export { default as AdminPetrolPage } from "./AdminPetrol";
-export { default as AdminPetrolRequestsPage } from "./AdminPetrolRequests";
-export { default as AdminSalaryPage } from "./AdminSalary";
 export { default as AdminProfilePage } from "./AdminProfile";
 export { default as AdminLearnHubPage } from "./AdminLearnHub";
 export { default as AdminExamQuestionsPage } from "./AdminExamQuestions";
@@ -44,3 +35,13 @@ export {
   AdminRedirectLearnPracticalToStudents,
   AdminRedirectLearnTheoryToStudents,
 } from "./AdminStudentsLegacyRedirects";
+export {
+  DirectorDashboardPage,
+  DirectorCashPage,
+  DirectorExpensesPage,
+  DirectorRepairPage,
+  DirectorFuelKmPage,
+  DirectorInstructorHoursPage,
+  DirectorDriverProfilePage,
+  DirectorSalaryPage,
+} from "./director";

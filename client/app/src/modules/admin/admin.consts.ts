@@ -24,7 +24,6 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/notifications", translationKey: "notifications" },
   { href: "/admin/inbox", translationKey: "adminInbox" },
   { href: "/admin/students", translationKey: "adminSidebarStudents" },
-  { href: "/admin/reports", translationKey: "adminReportNav" },
   {
     href: "/admin/learn",
     translationKey: "adminSidebarLearn",
@@ -35,21 +34,6 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
       { href: "/admin/learn/exam-questions", translationKey: "adminLearnNavQuestionnaire" },
     ],
   },
-  {
-    href: "/admin/finance",
-    translationKey: "adminFinance",
-    allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES,
-    collapsible: true,
-    children: [
-      { href: "/admin/finance", translationKey: "adminFinanceOverviewNav" },
-      { href: "/admin/finance/transactions", translationKey: "adminFinanceTransactionsNav" },
-      { href: "/admin/finance/income", translationKey: "adminFinanceIncomeNav" },
-      { href: "/admin/finance/outcomes", translationKey: "adminFinanceOutcomesNav" },
-      { href: "/admin/finance/petrol", translationKey: "adminPetrolNav" },
-      { href: "/admin/finance/petrol-requests", translationKey: "adminPetrolRequestsNav" },
-    ],
-  },
-  { href: "/admin/salary", translationKey: "adminSalaryNav", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/instructors", translationKey: "adminSidebarInstructors" },
   { href: "/admin/cars", translationKey: "adminSidebarCars", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/branches", translationKey: "adminSidebarBranches" },
@@ -61,5 +45,4 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/blogs", translationKey: "blogsAdmin", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/accounts", translationKey: "adminAccounts", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/settings", translationKey: "adminSidebarSettings" },
-  { href: "/admin/import-practical-xlsx", translationKey: "adminImportPracticalXlsxNav" },
 ];

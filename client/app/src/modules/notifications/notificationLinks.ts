@@ -5,7 +5,7 @@ export type NotificationPanel = "admin" | "student" | "instructor";
 export function notificationTargetHref(panel: NotificationPanel, n: NotificationItem): string {
   if (panel === "admin") {
     if (n.type === "BOOKING_GIFT_REQUEST_CREATED") return "/admin/inbox/gift-bookings";
-    if (n.type === "PETROL_EXPENSE_REQUEST_CREATED") return "/admin/finance/petrol-requests";
+    if (n.type === "PETROL_EXPENSE_REQUEST_CREATED") return "/admin/director/fuel-km";
     if (n.entityType === "booking") return "/admin/bookings";
     if (n.entityType === "contact_request") return "/admin/inbox/contact-requests";
     if (n.entityType === "booked_call") return "/admin/inbox/booked-calls";

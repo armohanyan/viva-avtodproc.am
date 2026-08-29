@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { BookingController } from '../controllers';
 import { requireStaff, requireSuperAdmin } from '../middleware/staff-auth.middleware';
-import { practicalXlsxUploadSingle } from '../middleware/practical-xlsx-upload.middleware';
 
 const router = Router();
 
@@ -13,12 +12,6 @@ router.post('/archives/purge-all', requireStaff, BookingController.purgeAllArchi
 router.delete('/archives/:archiveId', requireStaff, BookingController.purgeArchive);
 router.get('/:id', requireStaff, BookingController.getByIdForAdmin);
 router.post('/bulk-import', requireStaff, BookingController.bulkImport);
-router.post(
-  '/import-practical-xlsx',
-  requireStaff,
-  practicalXlsxUploadSingle,
-  BookingController.importPracticalXlsx,
-);
 router.post('/package-atomic', requireStaff, BookingController.createAdminPackageAtomic);
 router.post('/', BookingController.create);
 router.post('/theory-groups/:cohortId/book', BookingController.createTheoryGroupStudentBooking);

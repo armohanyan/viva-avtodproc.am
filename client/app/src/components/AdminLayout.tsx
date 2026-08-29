@@ -9,7 +9,6 @@ import {
 	Car,
 	Calendar,
 	CalendarDays,
-	FileBarChart,
 	Newspaper,
 	LogOut,
 	GraduationCap,
@@ -17,7 +16,6 @@ import {
 	Settings,
 	MapPin,
 	CarFront,
-	Landmark,
 	School,
 	Sparkles,
 	ChevronDown,
@@ -25,8 +23,18 @@ import {
 	PhoneCall,
   Mail,
   Bell,
+  Crown,
+  ArrowLeft,
+  LayoutGrid,
   Wallet,
+  Receipt,
+  Wrench,
+  Fuel,
+  Clock,
+  User,
+  Banknote,
 } from "lucide-react";
+import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
 import {
 	DropdownMenu,
@@ -44,6 +52,7 @@ import { initialsFromName } from "src/components/panel/initialsFromName";
 import NotificationBell from "src/components/NotificationBell";
 import AdminBranchFilterSelect from "src/components/admin/AdminBranchFilterSelect";
 import { AdminBranchFilterProvider } from "src/modules/admin/AdminBranchFilterProvider";
+import { DIRECTOR_NAV_LINKS, isDirectorRoute } from "src/modules/director/director.consts";
 
 interface Props {
 	children: ReactNode;
@@ -66,7 +75,6 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
 		"/admin/bookings": Calendar,
-		"/admin/reports": FileBarChart,
 		"/admin/driving": Car,
 		"/admin/settings": Settings,
 		"/admin/class-schedule": CalendarDays,
@@ -76,8 +84,6 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/learn/groups": Users,
 		"/admin/instructors": Car,
 		"/admin/students": GraduationCap,
-		"/admin/finance": Landmark,
-		"/admin/salary": Wallet,
 		"/admin/blogs": Newspaper,
 		"/admin/accounts": UserCog,
 		"/admin/marketing-content": Sparkles,
@@ -260,19 +266,32 @@ export default function AdminLayout({ children }: Props) {
 		signOut();
 	};
 
+	const isDirectorMode = isDirectorRoute(location);
+
+	const directorIconByPath: Record<string, typeof LayoutDashboard> = {
+		"/admin/director": LayoutGrid,
+		"/admin/director/cash": Wallet,
+		"/admin/director/expenses": Receipt,
+		"/admin/director/repair": Wrench,
+		"/admin/director/fuel-km": Fuel,
+		"/admin/director/instructor-hours": Clock,
+		"/admin/director/driver-profile": User,
+		"/admin/director/salary": Banknote,
+	};
+
 	const headerTitle = useMemo(() => {
+		if (isDirectorRoute(location)) {
+			return DIRECTOR_NAV_LINKS.find((n) => n.href === location)?.label ?? "Տնօրենը միջավայր";
+		}
 		if (location === "/admin/profile") return t("adminProfileTitle");
 		if (location === "/admin/learn/exam-questions") return t("adminExamQuestionsTitle");
 		if (location === "/admin/learn/groups") return t("adminSidebarGroups");
 		if (location === "/admin/learn/packages") return t("packages");
-		if (location === "/admin/finance/income") return t("adminFinanceIncomeTitle");
-		if (location === "/admin/finance/outcomes") return t("adminFinanceOutcomesTitle");
-		if (location === "/admin/finance/transactions") return t("adminFinanceTransactionsTitle");
-		if (location === "/admin/finance/petrol-requests") return t("adminPetrolRequestsTitle");
-		if (location === "/admin/finance") return t("adminFinanceOverviewTitle");
 		if (location.startsWith("/admin/bookings")) return t("bookings");
 		return adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard");
 	}, [location, t, adminNavLabels]);
+
+	const isSuperAdmin = user?.accountType === "super_admin";
 
 	return (
 		<AdminBranchFilterProvider>
@@ -281,6 +300,22 @@ export default function AdminLayout({ children }: Props) {
 			headerTitle={headerTitle}
 			headerTrailing={({ closeMobileNav }) => (
 				<>
+					{isSuperAdmin && isDirectorMode ? (
+						<Button variant="outline" size="sm" asChild className="shrink-0">
+							<Link href="/admin/dashboard" onClick={() => closeMobileNav()}>
+								<ArrowLeft className="w-3.5 h-3.5" />
+								<span className="hidden sm:inline">Ադմին վահանակ</span>
+							</Link>
+						</Button>
+					) : null}
+					{isSuperAdmin && !isDirectorMode ? (
+						<Button size="sm" asChild className="shrink-0">
+							<Link href="/admin/director" onClick={() => closeMobileNav()}>
+								<Crown className="w-3.5 h-3.5" />
+								<span className="hidden sm:inline">Տնօրենը միջավայր</span>
+							</Link>
+						</Button>
+					) : null}
 					<AdminBranchFilterSelect />
 					<ThemeToggle />
 					<NotificationBell listHref="/admin/notifications" panel="admin" onNavigate={closeMobileNav} />
@@ -319,16 +354,39 @@ export default function AdminLayout({ children }: Props) {
 				<div className="flex flex-col h-full min-h-0 bg-hero">
 					<div className="px-3 pt-4 pb-2 shrink-0">
 						<Link
-							href="/admin/dashboard"
+							href={isDirectorMode ? "/admin/director" : "/admin/dashboard"}
 							onClick={() => closeMobileNav()}
 							className="flex items-center gap-2 min-w-0"
 						>
 							<img src="/logo.svg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
-							<span className="font-bold text-hero-foreground text-sm truncate">{t("brandName")}</span>
+							<span className="font-bold text-hero-foreground text-sm truncate">
+								{isDirectorMode ? "Տնօրենը միջավայր" : t("brandName")}
+							</span>
 						</Link>
 					</div>
 					<nav className="px-3 pb-4 flex-1 min-h-0 overflow-y-auto space-y-1">
-						{ADMIN_NAV_LINKS.map((link) => renderAdminNavItem(link, closeMobileNav))}
+						{isDirectorMode
+							? DIRECTOR_NAV_LINKS.map((link) => {
+									const active = location === link.href;
+									const Icon = directorIconByPath[link.href] ?? LayoutGrid;
+									return (
+										<Link
+											key={link.href}
+											href={link.href}
+											onClick={() => closeMobileNav()}
+											className={cn(
+												"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+												active
+													? "bg-primary text-primary-foreground"
+													: "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
+											)}
+										>
+											<Icon className="w-4 h-4 shrink-0" />
+											{link.label}
+										</Link>
+									);
+								})
+							: ADMIN_NAV_LINKS.map((link) => renderAdminNavItem(link, closeMobileNav))}
 					</nav>
 				</div>
 			)}
