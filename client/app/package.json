@@ -63,12 +63,12 @@
     "@rollup/rollup-darwin-arm64": "^4.52.5"
   },
   "scripts": {
-    "build": "vite build",
-    "build:panel": "vite build",
+    "build": "npx vite build",
+    "build:panel": "npx vite build",
     "build:all": "npm run build:panel",
-    "check": "tsgo && vite build",
-    "dev": "vite",
-    "dev:panel": "vite",
+    "check": "npx tsgo && npx vite build",
+    "dev": "npx vite",
+    "dev:panel": "npx vite",
     "lint": "eslint .",
     "preview": "bun run build && vite preview"
   },
