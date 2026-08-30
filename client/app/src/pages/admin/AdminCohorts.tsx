@@ -141,10 +141,6 @@ export default function AdminCohorts() {
     void refreshCohorts();
   }, [refreshCohorts, branchFilterRevision]);
 
-  useEffect(() => {
-    if (branches.length === 0) return;
-    setNewCohort((n) => (n.branchId ? n : { ...n, branchId: branches[0]!.id }));
-  }, [branches]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -165,6 +161,11 @@ export default function AdminCohorts() {
     lessonWeekdays: [0, 2, 4] as number[],
     totalLessons: 10,
   });
+
+  useEffect(() => {
+    if (branches.length === 0) return;
+    setNewCohort((n) => (n.branchId ? n : { ...n, branchId: branches[0]!.id }));
+  }, [branches]);
 
   const addCohortInstructors = useMemo(
     () =>

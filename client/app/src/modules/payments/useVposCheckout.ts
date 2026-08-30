@@ -29,8 +29,11 @@ export function useVposCheckout() {
   const [configError, setConfigError] = useState<string | null>(null);
   const configRef = useRef(config);
   const configLoadingRef = useRef(configLoading);
-  configRef.current = config;
-  configLoadingRef.current = configLoading;
+
+  useEffect(() => {
+    configRef.current = config;
+    configLoadingRef.current = configLoading;
+  }, [config, configLoading]);
 
   useEffect(() => {
     let cancelled = false;
