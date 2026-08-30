@@ -29,7 +29,7 @@ import {
   fetchDirectorExpenses,
   updateDirectorExpense,
 } from "src/modules/director/director.api";
-import { DIRECTOR_OPTION_CATEGORY, DIRECTOR_PAYMENT_LABELS, todayIso } from "src/modules/director/director.consts";
+import { DIRECTOR_OPTION_CATEGORY, isLegacyDirectorRecord, todayIso } from "src/modules/director/director.consts";
 import type { DirectorExpense, DirectorPaymentMethod } from "src/modules/director/director.types";
 import { useBranches } from "src/modules/branches/useBranches";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
@@ -43,21 +43,18 @@ import {
 } from "src/modules/director/directorFormValues";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useState } from "react";
-import { Doughnut } from "react-chartjs-2";
+import { useCallback, useMemo, useState } from "react";
 import { Receipt } from "lucide-react";
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
-
-ChartJS.register(ArcElement, Tooltip, Legend);
-
-const CHART_COLORS = [
-  "hsl(var(--primary))",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-  "var(--chart-1)",
-];
+import {
+  DirectorChartPanel,
+  DirectorDoughnutChart,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+} from "src/modules/director/components/DirectorCharts";
+import { sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
+import { DIRECTOR_PAYMENT_LABELS } from "src/modules/director/director.consts";
 
 export default function DirectorExpensesPage() {
   const { showToast } = useToast();
@@ -91,6 +88,20 @@ export default function DirectorExpensesPage() {
   }, [query, showToast]);
 
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
+
+  const byType = useMemo(() => topN(chart, 8), [chart]);
+  const byMonth = useMemo(
+    () => sumByMonth(rows, (r) => r.date, (r) => r.amount),
+    [rows],
+  );
+  const byPayment = useMemo(
+    () =>
+      sumBy(rows, (r) => DIRECTOR_PAYMENT_LABELS[r.paymentMethod], (r) => r.amount).filter(
+        (p) => p.value > 0,
+      ),
+    [rows],
+  );
+  const totalAmount = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -151,8 +162,26 @@ export default function DirectorExpensesPage() {
   return (
     <DirectorLayout>
       <PanelPageHeader icon={Receipt} title="Ծախսեր" />
-      <DirectorCard>
-        <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+      <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+
+      <DirectorReportSection title={`Հաշվետվություն · ${formatAmd(totalAmount)}`}>
+        <DirectorReportGrid>
+          <DirectorChartPanel title="Ծախսեր ըստ ամիսների" subtitle="Ընդհանուր դինամիկա">
+            <DirectorTrendChart points={byMonth} label="Ծախս" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Ծախսի տեսակներ" subtitle="Լրացուցիչ բաժին">
+            <DirectorDoughnutChart points={byType} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Գլխավոր ծախսեր" subtitle="Top 8">
+            <DirectorRankChart points={byType} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Վճարման եղանակ" subtitle="Քարտ vs կանխիկ">
+            <DirectorDoughnutChart points={byPayment} />
+          </DirectorChartPanel>
+        </DirectorReportGrid>
+      </DirectorReportSection>
+
+      <DirectorCard className="mt-6">
         <DirectorFormRow>
           <DirectorField label="Ամսաթիվ">
             <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
@@ -188,20 +217,6 @@ export default function DirectorExpensesPage() {
             onCancel={resetForm}
           />
         </DirectorFormRow>
-        {chart.length > 0 ? (
-          <div className="mt-6 h-52 max-w-xs mx-auto">
-            <Doughnut
-              data={{
-                labels: chart.map((c) => c.label),
-                datasets: [{
-                  data: chart.map((c) => c.value),
-                  backgroundColor: chart.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
-                }],
-              }}
-              options={{ plugins: { legend: { display: true } } }}
-            />
-          </div>
-        ) : null}
       </DirectorCard>
       <DirectorTableWrap>
         <DirectorTableHead>
@@ -222,6 +237,7 @@ export default function DirectorExpensesPage() {
               <DirectorTableTd>{branchName(r.branchId)}</DirectorTableTd>
               <DirectorTableTd>
                 <DirectorRecordActions
+                  readOnly={isLegacyDirectorRecord(r.id)}
                   onEdit={() => startEdit(r)}
                   onDelete={() => void deleteDirectorExpense(r.id).then(reload)}
                 />

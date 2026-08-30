@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAdminBranchFilterSnapshot } from "src/modules/admin/AdminBranchFilterProvider";
 import { useBranches } from "src/modules/branches/useBranches";
-import { directorDateQuery, todayIso } from "src/modules/director/director.consts";
+import { defaultDirectorStartDate, directorDateQuery, todayIso } from "src/modules/director/director.consts";
 import { DirectorButton, DirectorField, DirectorInput, DirectorSelect } from "./DirectorUi";
 
 type Props = {
@@ -17,11 +17,14 @@ type Props = {
 
 export function useDirectorDateRange(initialStart?: string, initialEnd?: string) {
   const today = todayIso();
-  const [start, setStart] = useState(initialStart ?? today);
+  const [start, setStart] = useState(initialStart ?? defaultDirectorStartDate());
   const [end, setEnd] = useState(initialEnd ?? today);
-  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
-  const query = directorDateQuery(start, end);
-  return { start, end, setStart, setEnd, query, branchFilterRevision };
+  const { branchId, revision: branchFilterRevision } = useAdminBranchFilterSnapshot();
+  const query = useMemo(
+    () => directorDateQuery(start, end, branchId),
+    [start, end, branchId],
+  );
+  return { start, end, setStart, setEnd, query, branchFilterRevision, branchId };
 }
 
 export default function DirectorDateFilters({

@@ -1,5 +1,5 @@
 import DirectorLayout from "src/modules/director/DirectorLayout";
-import { useDirectorDateRange } from "src/modules/director/components/DirectorDateFilters";
+import { useDirectorDateRange, useDirectorReload } from "src/modules/director/components/DirectorDateFilters";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
   DirectorButton,
@@ -22,8 +22,15 @@ import type { Instructor } from "src/data/instructors";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { User } from "lucide-react";
+import {
+  DirectorChartPanel,
+  DirectorLineChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+} from "src/modules/director/components/DirectorCharts";
 
 const EMPTY: DirectorDriverProfile = {
   instructorName: "",
@@ -33,7 +40,7 @@ const EMPTY: DirectorDriverProfile = {
 
 export default function DirectorDriverProfilePage() {
   const { showToast } = useToast();
-  const { start, end, setStart, setEnd, query } = useDirectorDateRange();
+  const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [instructorUserId, setInstructorUserId] = useState("");
   const [data, setData] = useState<DirectorDriverProfile>(EMPTY);
@@ -59,6 +66,38 @@ export default function DirectorDriverProfilePage() {
       showToast(getApiErrorMessage(e), "error");
     }
   }, [query, instructorUserId, showToast]);
+
+  useDirectorReload(load, [query, instructorUserId, branchFilterRevision]);
+
+  const hoursTrend = useMemo(
+    () => data.rows.map((r) => ({ label: r.date.slice(5), value: r.hours })),
+    [data.rows],
+  );
+  const kmTrend = useMemo(
+    () => data.rows.map((r) => ({ label: r.date.slice(5), value: r.km })),
+    [data.rows],
+  );
+  const fuelTrend = useMemo(
+    () => data.rows.map((r) => ({ label: r.date.slice(5), value: r.amount })),
+    [data.rows],
+  );
+  const efficiencySeries = useMemo(
+    () => [
+      {
+        label: "լ/100կմ",
+        points: data.rows.map((r) => ({ label: r.date.slice(5), value: r.lPer100 })),
+        colorIndex: 3,
+      },
+      {
+        label: "դր/կմ",
+        points: data.rows.map((r) => ({ label: r.date.slice(5), value: r.amdPerKm })),
+        colorIndex: 4,
+      },
+    ],
+    [data.rows],
+  );
+
+  const instructorTitle = data.instructorName || instructors.find((i) => String(i.id) === instructorUserId)?.name || "—";
 
   return (
     <DirectorLayout>
@@ -92,7 +131,28 @@ export default function DirectorDriverProfilePage() {
           <DirectorStatCard label="Գումար" value={formatAmd(data.summary.amount)} />
         </DirectorStatGrid>
       </DirectorCard>
-      <DirectorTableWrap>
+
+      <div className="mt-6">
+        <DirectorReportSection title={`${instructorTitle} · հաշվետվություն`}>
+          <DirectorReportGrid>
+            <DirectorChartPanel title="Ժամեր" subtitle="Ըստ օրերի">
+              <DirectorTrendChart points={hoursTrend} label="Ժամ" />
+            </DirectorChartPanel>
+            <DirectorChartPanel title="Կիլոմետրեր" subtitle="Ըստ օրերի">
+              <DirectorTrendChart points={kmTrend} label="ԿՄ" />
+            </DirectorChartPanel>
+            <DirectorChartPanel title="Վառելիք (AMD)" subtitle="Ըստ օրերի">
+              <DirectorTrendChart points={fuelTrend} label="Գումար" />
+            </DirectorChartPanel>
+            <DirectorChartPanel title="Արդյունավետություն" subtitle="լ/100կմ և դր/կմ">
+              <DirectorLineChart series={efficiencySeries} />
+            </DirectorChartPanel>
+          </DirectorReportGrid>
+        </DirectorReportSection>
+      </div>
+
+      <div className="mt-6">
+        <DirectorTableWrap>
         <DirectorTableHead>
           <DirectorTableTh>Ամսաթիվ</DirectorTableTh>
           <DirectorTableTh>Ժամ</DirectorTableTh>
@@ -126,6 +186,7 @@ export default function DirectorDriverProfilePage() {
           ))}
         </DirectorTableBody>
       </DirectorTableWrap>
+      </div>
     </DirectorLayout>
   );
 }

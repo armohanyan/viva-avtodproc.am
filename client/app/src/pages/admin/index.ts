@@ -1,4 +1,5 @@
 export { default as AdminDashboardPage } from "./AdminDashboard";
+export { default as AdminReportsPage } from "./AdminReports";
 export { default as AdminUsersPage } from "./AdminUsers";
 export { default as AdminStudentDetailsPage } from "./AdminStudentDetails";
 export { default as AdminInstructorsPage } from "./AdminInstructors";

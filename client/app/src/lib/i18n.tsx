@@ -706,6 +706,7 @@ const en = {
 
   // Admin
   adminDashboard: "Admin Dashboard",
+  adminReports: "Reports",
   totalUsers: "Total Users",
   totalBookings: "Total Bookings",
   revenue: "Revenue",
@@ -3025,6 +3026,7 @@ const ru: typeof en = {
   bookingDurationLabel: "Длительность",
   
     adminDashboard: "Панель администратора",
+    adminReports: "Отчёты",
   totalUsers: "Всего пользователей",
   totalBookings: "Всего записей",
   revenue: "Выручка",
@@ -5359,6 +5361,7 @@ const am: typeof en = {
   bookingDurationLabel: "Տևողություն",
 
   adminDashboard: "Գլխավոր",
+  adminReports: "Հաշվետվություններ",
   totalUsers: "Ընդհանուր օգտատերեր",
   totalBookings: "Ընդհանուր ամրագրումներ",
   revenue: "Եկամուտ",

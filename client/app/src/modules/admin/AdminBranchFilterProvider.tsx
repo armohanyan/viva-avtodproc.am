@@ -14,6 +14,7 @@ import {
 	initAdminBranchFilterFromStorage,
 	setAdminBranchFilterId as persistBranchFilterId,
 	setAdminPanelActive,
+	subscribeAdminBranchFilter,
 } from "./adminBranchFilter";
 
 type AdminBranchFilterContextValue = {
@@ -24,17 +25,36 @@ type AdminBranchFilterContextValue = {
 
 const AdminBranchFilterContext = createContext<AdminBranchFilterContextValue | null>(null);
 
+/** Tracks header branch filter; works even outside AdminBranchFilterProvider (e.g. director page shells). */
+export function useAdminBranchFilterSnapshot(): {
+	branchId: string | null;
+	revision: number;
+} {
+	const [snapshot, setSnapshot] = useState(() => ({
+		branchId: getAdminBranchFilterId(),
+		revision: getAdminBranchFilterRevision(),
+	}));
+
+	useEffect(
+		() =>
+			subscribeAdminBranchFilter(() => {
+				setSnapshot({
+					branchId: getAdminBranchFilterId(),
+					revision: getAdminBranchFilterRevision(),
+				});
+			}),
+		[],
+	);
+
+	return snapshot;
+}
+
 export function AdminBranchFilterProvider({ children }: PropsWithChildren) {
-	initAdminBranchFilterFromStorage();
-	const [branchId, setBranchIdState] = useState<string | null>(() => getAdminBranchFilterId());
-	const [revision, setRevision] = useState(() => getAdminBranchFilterRevision());
+	const { branchId, revision } = useAdminBranchFilterSnapshot();
 
 	useEffect(() => {
 		setAdminPanelActive(true);
 		initAdminBranchFilterFromStorage();
-		const id = getAdminBranchFilterId();
-		setBranchIdState(id);
-		setRevision(getAdminBranchFilterRevision());
 		return () => {
 			setAdminPanelActive(false);
 		};
@@ -42,9 +62,8 @@ export function AdminBranchFilterProvider({ children }: PropsWithChildren) {
 
 	const setBranchId = useCallback((id: string | null) => {
 		const normalized = !id || id === ADMIN_BRANCH_FILTER_ALL ? null : String(id);
-		if (normalized === branchId) return;
 		persistBranchFilterId(normalized);
-	}, [branchId]);
+	}, []);
 
 	const value = useMemo(
 		() => ({ branchId, setBranchId, revision }),
@@ -64,7 +83,9 @@ export function useAdminBranchFilter(): AdminBranchFilterContextValue {
 	return ctx;
 }
 
-/** Returns `0` outside the admin layout (e.g. student dashboard). */
+/** Works inside and outside the admin layout provider tree. */
 export function useOptionalAdminBranchFilterRevision(): number {
-	return useContext(AdminBranchFilterContext)?.revision ?? 0;
+	const ctxRevision = useContext(AdminBranchFilterContext)?.revision;
+	const { revision } = useAdminBranchFilterSnapshot();
+	return ctxRevision ?? revision;
 }

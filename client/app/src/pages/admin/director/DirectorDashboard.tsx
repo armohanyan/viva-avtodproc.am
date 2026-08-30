@@ -5,24 +5,21 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
-import { fetchDirectorDashboard } from "src/modules/director/director.api";
+import {
+  DirectorChartPanel,
+  DirectorDoughnutChart,
+  DirectorLineChart,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+} from "src/modules/director/components/DirectorCharts";
+import { fetchDirectorDashboard, fetchDirectorMonthlyReport } from "src/modules/director/director.api";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
-import { useCallback, useState } from "react";
-import type { DirectorDashboard } from "src/modules/director/director.types";
+import { useCallback, useMemo, useState } from "react";
+import type { DirectorDashboard, DirectorMonthlyReport } from "src/modules/director/director.types";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { Bar } from "react-chartjs-2";
 import { LayoutGrid } from "lucide-react";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip,
-  Legend,
-} from "chart.js";
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
 const EMPTY: DirectorDashboard = {
   totalRevenue: 0,
@@ -39,33 +36,73 @@ const EMPTY: DirectorDashboard = {
   fuelLiters: 0,
 };
 
+const EMPTY_REPORT: DirectorMonthlyReport = {
+  labels: [],
+  revenue: [],
+  expenses: [],
+  fuel: [],
+  salary: [],
+  netProfit: [],
+};
+
 export default function DirectorDashboardPage() {
   const { showToast } = useToast();
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [data, setData] = useState<DirectorDashboard>(EMPTY);
+  const [report, setReport] = useState<DirectorMonthlyReport>(EMPTY_REPORT);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetchDirectorDashboard(query);
-      setData(res);
+      const [dash, monthly] = await Promise.all([
+        fetchDirectorDashboard(query),
+        fetchDirectorMonthlyReport(query),
+      ]);
+      setData(dash);
+      setReport(monthly);
     } catch (e) {
       setData(EMPTY);
+      setReport(EMPTY_REPORT);
       showToast(getApiErrorMessage(e), "error");
     }
   }, [query, showToast]);
 
-  const reload = useDirectorReload(load, [query, branchFilterRevision]);
+  useDirectorReload(load, [query, branchFilterRevision]);
 
-  const chartData = {
-    labels: ["Քարտ/POS", "Կանխիկ", "Ծախս", "Վառելիք", "Աշխատավարձ"],
-    datasets: [
-      {
-        label: "AMD",
-        data: [data.cardPos, data.cash, data.totalExpense, data.fuel, data.salaryTotal],
-        backgroundColor: "hsl(var(--primary))",
-      },
+  const incomeSplit = useMemo(
+    () =>
+      [
+        { label: "Քարտ / POS", value: data.cardPos },
+        { label: "Կանխիկ", value: data.cash },
+      ].filter((p) => p.value > 0),
+    [data.cardPos, data.cash],
+  );
+
+  const costBreakdown = useMemo(
+    () =>
+      [
+        { label: "Ծախսեր", value: data.totalExpense },
+        { label: "Վառելիք", value: data.fuel },
+        { label: "Աշխատավարձ", value: data.salaryTotal },
+      ].filter((p) => p.value > 0),
+    [data.totalExpense, data.fuel, data.salaryTotal],
+  );
+
+  const trendSeries = useMemo(
+    () => [
+      { label: "Հասույթ", points: report.labels.map((label, i) => ({ label, value: report.revenue[i] ?? 0 })), colorIndex: 0 },
+      { label: "Ծախսեր", points: report.labels.map((label, i) => ({ label, value: report.expenses[i] ?? 0 })), colorIndex: 1 },
+      { label: "Մաքուր շահույթ", points: report.labels.map((label, i) => ({ label, value: report.netProfit[i] ?? 0 })), colorIndex: 2 },
     ],
-  };
+    [report],
+  );
+
+  const opsSeries = useMemo(
+    () => [
+      { label: "Վառելիք", points: report.labels.map((label, i) => ({ label, value: report.fuel[i] ?? 0 })), colorIndex: 3 },
+      { label: "Աշխատավարձ", points: report.labels.map((label, i) => ({ label, value: report.salary[i] ?? 0 })), colorIndex: 4 },
+    ],
+    [report],
+  );
 
   return (
     <DirectorLayout>
@@ -75,7 +112,7 @@ export default function DirectorDashboardPage() {
         end={end}
         onStartChange={setStart}
         onEndChange={setEnd}
-        onRefresh={reload}
+        onRefresh={() => void load()}
       />
       <DirectorStatGrid>
         <DirectorStatCard label="Ընդհանուր հասույթ" value={formatAmd(data.totalRevenue)} />
@@ -91,15 +128,29 @@ export default function DirectorDashboardPage() {
         <DirectorStatCard label="Ինկասացիա" value={formatAmd(data.incashment)} />
         <DirectorStatCard label="Վառելիք լիտր" value={data.fuelLiters.toFixed(1)} />
       </DirectorStatGrid>
-      <div className="mt-6 h-64">
-        <Bar
-          data={chartData}
-          options={{
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-          }}
-        />
+
+      <div className="mt-8">
+        <DirectorReportSection title="Ֆինանսական հաշվետվություն">
+          <DirectorReportGrid>
+            <DirectorChartPanel
+              title="Եկամուտ vs Ծախս vs Շահույթ"
+              subtitle="Ըստ ամիսների"
+              tall
+              className="md:col-span-2"
+            >
+              <DirectorLineChart series={trendSeries} />
+            </DirectorChartPanel>
+            <DirectorChartPanel title="Վառելիք և աշխատավարձ" subtitle="Ըստ ամիսների">
+              <DirectorLineChart series={opsSeries} />
+            </DirectorChartPanel>
+            <DirectorChartPanel title="Հասույթի բաժանում" subtitle="Քարտ vs կանխիկ">
+              <DirectorDoughnutChart points={incomeSplit} />
+            </DirectorChartPanel>
+            <DirectorChartPanel title="Ծախսերի կառուցվածք" subtitle="Ընտրված ժամանակահատված">
+              <DirectorRankChart points={costBreakdown} />
+            </DirectorChartPanel>
+          </DirectorReportGrid>
+        </DirectorReportSection>
       </div>
     </DirectorLayout>
   );

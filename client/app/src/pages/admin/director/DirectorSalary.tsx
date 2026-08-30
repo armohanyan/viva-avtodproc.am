@@ -21,7 +21,7 @@ import {
   DirectorTableWrap,
 } from "src/modules/director/components/DirectorUi";
 import { createDirectorSalary, deleteDirectorSalary, fetchDirectorSalaries, updateDirectorSalary } from "src/modules/director/director.api";
-import { DIRECTOR_OPTION_CATEGORY, todayIso } from "src/modules/director/director.consts";
+import { DIRECTOR_OPTION_CATEGORY, isLegacyDirectorRecord, todayIso } from "src/modules/director/director.consts";
 import type { DirectorSalary } from "src/modules/director/director.types";
 import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 import {
@@ -34,11 +34,16 @@ import {
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useMemo, useState } from "react";
-import { Bar } from "react-chartjs-2";
 import { Banknote } from "lucide-react";
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from "chart.js";
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
+import {
+  DirectorChartPanel,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+  DirectorDoughnutChart,
+} from "src/modules/director/components/DirectorCharts";
+import { sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
 
 export default function DirectorSalaryPage() {
   const { showToast } = useToast();
@@ -133,11 +138,36 @@ export default function DirectorSalaryPage() {
     return [...map.entries()].map(([label, value]) => ({ label, value }));
   }, [rows]);
 
+  const byEmployee = useMemo(
+    () => topN(sumBy(rows, (r) => r.name, (r) => r.totalAmd), 8),
+    [rows],
+  );
+  const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.totalAmd), [rows]);
+  const totalPaid = useMemo(() => rows.reduce((s, r) => s + r.totalAmd, 0), [rows]);
+
   return (
     <DirectorLayout>
       <PanelPageHeader icon={Banknote} title="Աշխատավարձ" />
-      <DirectorCard>
-        <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+      <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+
+      <DirectorReportSection title={`Հաշվետվություն · ${formatAmd(totalPaid)}`}>
+        <DirectorReportGrid>
+          <DirectorChartPanel title="Աշխատավարձ ըստ ամիսների">
+            <DirectorTrendChart points={byMonth} label="Աշխատավարձ" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Ըստ դերի">
+            <DirectorDoughnutChart points={byRole.filter((p) => p.value > 0)} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Ըստ դերի (գումար)">
+            <DirectorRankChart points={byRole.filter((p) => p.value > 0)} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Աշխատողներ Top 8">
+            <DirectorRankChart points={byEmployee} />
+          </DirectorChartPanel>
+        </DirectorReportGrid>
+      </DirectorReportSection>
+
+      <DirectorCard className="mt-6">
         <DirectorFormRow>
           <DirectorField label="Ամսաթիվ">
             <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
@@ -171,21 +201,6 @@ export default function DirectorSalaryPage() {
             onCancel={resetForm}
           />
         </DirectorFormRow>
-        {byRole.length > 0 ? (
-          <div className="mt-6 h-48">
-            <Bar
-              data={{
-                labels: byRole.map((r) => r.label),
-                datasets: [{ data: byRole.map((r) => r.value), backgroundColor: "hsl(var(--primary))" }],
-              }}
-              options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-              }}
-            />
-          </div>
-        ) : null}
       </DirectorCard>
       <DirectorTableWrap>
         <DirectorTableHead>
@@ -206,6 +221,7 @@ export default function DirectorSalaryPage() {
               <DirectorTableTd>{formatAmd(r.totalAmd)}</DirectorTableTd>
               <DirectorTableTd>
                 <DirectorRecordActions
+                  readOnly={isLegacyDirectorRecord(r.id)}
                   onEdit={() => startEdit(r)}
                   onDelete={() => void deleteDirectorSalary(r.id).then(reload)}
                 />

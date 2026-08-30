@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, type WhereOptions } from 'sequelize';
 import type { DirectorOptionCategory } from '../constants/director-option-category';
 import {
   DIRECTOR_OPTION_CATEGORIES,
@@ -19,17 +19,60 @@ import { FleetCar } from '../models/fleet-car.model';
 import { User } from '../models/user.model';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+import {
+  fetchLegacyExpenses,
+  fetchLegacyFuel,
+  fetchLegacyInstructorHours,
+  fetchLegacyKm,
+  fetchLegacyRepairs,
+  fetchLegacySalaries,
+  mergeDirectorRows,
+} from '../helpers/director-legacy.helper';
 
 const { ResourceNotFoundError } = ErrorsUtil;
 
 type DateRange = { startDate: string; endDate: string; branchId?: number | null };
 
-function dateWhere(range: DateRange) {
-  const where: Record<string, unknown> = {
+function dateWhere(range: DateRange): WhereOptions {
+  const base: WhereOptions = {
     date: { [Op.between]: [range.startDate, range.endDate] },
   };
-  if (range.branchId != null) where.branchId = range.branchId;
-  return where;
+  if (range.branchId != null) {
+    return {
+      ...base,
+      [Op.or]: [{ branchId: range.branchId }, { branchId: null }],
+    };
+  }
+  return base;
+}
+
+function monthsBetween(startDate: string, endDate: string): string[] {
+  const out: string[] = [];
+  let y = Number(startDate.slice(0, 4));
+  let m = Number(startDate.slice(5, 7));
+  const endY = Number(endDate.slice(0, 4));
+  const endM = Number(endDate.slice(5, 7));
+  while (y < endY || (y === endY && m <= endM)) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+function monthLabelAm(key: string): string {
+  const labels = ['Հնվ', 'Փտվ', 'Մար', 'Ապր', 'Մայ', 'Հուն', 'Հուլ', 'Օգս', 'Սեպ', 'Հոկ', 'Նոյ', 'Դեկ'];
+  const m = Number(key.slice(5, 7));
+  return `${labels[m - 1] ?? key.slice(5, 7)} ${key.slice(2, 4)}`;
+}
+
+function rowJson<T extends { date: string; id: number }>(
+  rows: readonly { toJSON: () => T }[],
+): T[] {
+  return rows.map((r) => r.toJSON());
 }
 
 function sumField(rows: readonly { amount?: number; totalAmd?: number }[], key: 'amount' | 'totalAmd'): number {
@@ -72,10 +115,11 @@ export default class DirectorService {
   }
 
   static async listCash(range: DateRange) {
-    return DirectorCashEntry.findAll({
+    const rows = await DirectorCashEntry.findAll({
       where: dateWhere(range),
       order: [['date', 'DESC'], ['id', 'DESC']],
     });
+    return rowJson(rows);
   }
 
   static async createCash(
@@ -114,10 +158,14 @@ export default class DirectorService {
   }
 
   static async listExpenses(range: DateRange) {
-    return DirectorExpense.findAll({
-      where: dateWhere(range),
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
+    const [directorRows, legacyRows] = await Promise.all([
+      DirectorExpense.findAll({
+        where: dateWhere(range),
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      fetchLegacyExpenses(range),
+    ]);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows);
   }
 
   static async createExpense(
@@ -158,10 +206,14 @@ export default class DirectorService {
   }
 
   static async listRepairs(range: Omit<DateRange, 'branchId'>) {
-    return DirectorRepair.findAll({
-      where: { date: { [Op.between]: [range.startDate, range.endDate] } },
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
+    const [directorRows, legacyRows] = await Promise.all([
+      DirectorRepair.findAll({
+        where: { date: { [Op.between]: [range.startDate, range.endDate] } },
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      fetchLegacyRepairs(range),
+    ]);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows);
   }
 
   static async createRepair(
@@ -203,11 +255,15 @@ export default class DirectorService {
     return row;
   }
 
-  static async listFuel(range: Omit<DateRange, 'branchId'>) {
-    return DirectorFuel.findAll({
-      where: { date: { [Op.between]: [range.startDate, range.endDate] } },
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
+  static async listFuel(range: Omit<DateRange, 'branchId'> & { branchId?: number | null }) {
+    const [directorRows, legacyRows] = await Promise.all([
+      DirectorFuel.findAll({
+        where: { date: { [Op.between]: [range.startDate, range.endDate] } },
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      fetchLegacyFuel(range),
+    ]);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows);
   }
 
   static async createFuel(
@@ -249,11 +305,15 @@ export default class DirectorService {
     return row;
   }
 
-  static async listKm(range: Omit<DateRange, 'branchId'>) {
-    return DirectorKm.findAll({
-      where: { date: { [Op.between]: [range.startDate, range.endDate] } },
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
+  static async listKm(range: Omit<DateRange, 'branchId'> & { branchId?: number | null }) {
+    const [directorRows, legacyRows] = await Promise.all([
+      DirectorKm.findAll({
+        where: { date: { [Op.between]: [range.startDate, range.endDate] } },
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      fetchLegacyKm(range),
+    ]);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows);
   }
 
   static async createKm(
@@ -279,11 +339,15 @@ export default class DirectorService {
     return row;
   }
 
-  static async listInstructorHours(range: Omit<DateRange, 'branchId'>) {
-    return DirectorInstructorHours.findAll({
-      where: { date: { [Op.between]: [range.startDate, range.endDate] } },
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
+  static async listInstructorHours(range: Omit<DateRange, 'branchId'> & { branchId?: number | null }) {
+    const [directorRows, legacyRows] = await Promise.all([
+      DirectorInstructorHours.findAll({
+        where: { date: { [Op.between]: [range.startDate, range.endDate] } },
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      fetchLegacyInstructorHours(range),
+    ]);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows);
   }
 
   static async createInstructorHours(
@@ -310,10 +374,14 @@ export default class DirectorService {
   }
 
   static async listSalaries(range: Omit<DateRange, 'branchId'>) {
-    return DirectorSalary.findAll({
-      where: { date: { [Op.between]: [range.startDate, range.endDate] } },
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
+    const [directorRows, legacyRows] = await Promise.all([
+      DirectorSalary.findAll({
+        where: { date: { [Op.between]: [range.startDate, range.endDate] } },
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      fetchLegacySalaries(range),
+    ]);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows);
   }
 
   static async createSalary(
@@ -356,8 +424,8 @@ export default class DirectorService {
   }
 
   static async listRevenues(range: DateRange & { isLegacy?: boolean }) {
-    const where: Record<string, unknown> = dateWhere(range);
-    if (range.isLegacy != null) where.isLegacy = range.isLegacy;
+    const where: WhereOptions = { ...dateWhere(range) };
+    if (range.isLegacy != null) Object.assign(where, { isLegacy: range.isLegacy });
     return DirectorRevenue.findAll({
       where,
       order: [['date', 'DESC'], ['id', 'DESC']],
@@ -389,8 +457,9 @@ export default class DirectorService {
   }
 
   static async dashboard(range: DateRange) {
-    const branchFilter = range.branchId != null ? { branchId: range.branchId } : {};
     const dateFilter = { date: { [Op.between]: [range.startDate, range.endDate] } };
+    const cashExpenseWhere = dateWhere(range);
+    const revenueBranchFilter = range.branchId != null ? { branchId: range.branchId } : {};
 
     const [
       revenues,
@@ -401,14 +470,18 @@ export default class DirectorService {
       instructorHours,
       cashEntries,
       financeTxs,
+      legacyExpenses,
+      legacyFuel,
+      legacySalaries,
+      legacyInstructorHours,
     ] = await Promise.all([
-      DirectorRevenue.findAll({ where: { ...dateFilter, isLegacy: false, ...branchFilter } }),
-      DirectorRevenue.findAll({ where: { ...dateFilter, isLegacy: true, ...branchFilter } }),
-      DirectorExpense.findAll({ where: { ...dateFilter, ...branchFilter } }),
+      DirectorRevenue.findAll({ where: { ...dateFilter, isLegacy: false, ...revenueBranchFilter } }),
+      DirectorRevenue.findAll({ where: { ...dateFilter, isLegacy: true, ...revenueBranchFilter } }),
+      DirectorExpense.findAll({ where: cashExpenseWhere }),
       DirectorFuel.findAll({ where: dateFilter }),
       DirectorSalary.findAll({ where: dateFilter }),
       DirectorInstructorHours.findAll({ where: dateFilter }),
-      DirectorCashEntry.findAll({ where: { ...dateFilter, ...branchFilter } }),
+      DirectorCashEntry.findAll({ where: cashExpenseWhere }),
       FinanceTransaction.findAll({
         where: {
           entryType: 'income',
@@ -416,6 +489,10 @@ export default class DirectorService {
           ...(range.branchId != null ? { branchId: range.branchId } : {}),
         },
       }),
+      fetchLegacyExpenses(range),
+      fetchLegacyFuel(range),
+      fetchLegacySalaries(range),
+      fetchLegacyInstructorHours(range),
     ]);
 
     const rangeStart = new Date(`${range.startDate}T00:00:00`);
@@ -444,17 +521,25 @@ export default class DirectorService {
       .filter((r) => r.paymentMethod === 'cash')
       .reduce((s, r) => s + r.amount, 0);
 
-    const totalExpense = sumField(expenses, 'amount');
-    const fuelTotal = sumField(fuel, 'amount');
-    const salaryTotal = sumField(salaries, 'totalAmd');
-    const instructorHoursTotal = instructorHours.reduce((s, h) => s + Number(h.hours), 0);
-    const instructorSalaryTotal = salaries
-      .filter((s) => s.role === 'Հրահանգիչ')
-      .reduce((acc, s) => acc + s.totalAmd, 0);
+    const totalExpense =
+      sumField(expenses, 'amount') + legacyExpenses.reduce((s, e) => s + e.amount, 0);
+    const fuelTotal = sumField(fuel, 'amount') + legacyFuel.reduce((s, f) => s + f.amount, 0);
+    const salaryTotal =
+      sumField(salaries, 'totalAmd') + legacySalaries.reduce((s, r) => s + r.totalAmd, 0);
+    const instructorHoursTotal =
+      instructorHours.reduce((s, h) => s + Number(h.hours), 0) +
+      legacyInstructorHours.reduce((s, h) => s + Number(h.hours), 0);
+    const instructorSalaryTotal =
+      salaries.filter((s) => s.role === 'Հրահանգիչ').reduce((acc, s) => acc + s.totalAmd, 0) +
+      legacySalaries
+        .filter((s) => s.role === 'Հրահանգիչ')
+        .reduce((acc, s) => acc + s.totalAmd, 0);
     const incashmentTotal = cashEntries
       .filter((c) => c.entryType.includes('Ինկասացի'))
       .reduce((s, c) => s + Math.abs(c.amount), 0);
-    const fuelLiters = fuel.reduce((s, f) => s + Number(f.liters), 0);
+    const fuelLiters =
+      fuel.reduce((s, f) => s + Number(f.liters), 0) +
+      legacyFuel.reduce((s, f) => s + Number(f.liters), 0);
     const cashBalance = cashEntries.reduce((s, c) => s + c.amount, 0);
 
     const netProfit = totalRevenue - totalExpense - fuelTotal - salaryTotal;
@@ -479,11 +564,27 @@ export default class DirectorService {
     const dateFilter = { date: { [Op.between]: [range.startDate, range.endDate] } };
     const instructorId = range.instructorUserId;
 
-    const [hours, kmRows, fuelRows] = await Promise.all([
+    const [hours, kmRows, fuelRows, legacyHours, legacyKm, legacyFuel] = await Promise.all([
       DirectorInstructorHours.findAll({ where: { ...dateFilter, instructorUserId: instructorId } }),
       DirectorKm.findAll({ where: { ...dateFilter, instructorUserId: instructorId } }),
       DirectorFuel.findAll({ where: { ...dateFilter, instructorUserId: instructorId } }),
+      fetchLegacyInstructorHours(range),
+      fetchLegacyKm(range),
+      fetchLegacyFuel(range),
     ]);
+
+    const mergedHours = [
+      ...hours.map((h) => h.toJSON()),
+      ...legacyHours.filter((h) => h.instructorUserId === instructorId),
+    ];
+    const mergedKm = [
+      ...kmRows.map((k) => k.toJSON()),
+      ...legacyKm.filter((k) => k.instructorUserId === instructorId),
+    ];
+    const mergedFuel = [
+      ...fuelRows.map((f) => f.toJSON()),
+      ...legacyFuel.filter((f) => f.instructorUserId === instructorId),
+    ];
 
     const days = new Map<
       string,
@@ -517,15 +618,15 @@ export default class DirectorService {
       return days.get(date)!;
     };
 
-    for (const h of hours) {
+    for (const h of mergedHours) {
       const d = ensureDay(h.date);
       d.hours += Number(h.hours);
     }
-    for (const k of kmRows) {
+    for (const k of mergedKm) {
       const d = ensureDay(k.date);
       d.km += Number(k.km);
     }
-    for (const f of fuelRows) {
+    for (const f of mergedFuel) {
       const d = ensureDay(f.date);
       const liters = Number(f.liters);
       d.totalLiters += liters;
@@ -557,12 +658,80 @@ export default class DirectorService {
     return { instructorName: instructor?.name ?? '', summary, rows };
   }
 
+  static async monthlyReport(range: DateRange) {
+    const months = monthsBetween(range.startDate, range.endDate);
+    const revenueByMonth = new Map<string, number>(months.map((m) => [m, 0]));
+    const expensesByMonth = new Map<string, number>(months.map((m) => [m, 0]));
+    const fuelByMonth = new Map<string, number>(months.map((m) => [m, 0]));
+    const salaryByMonth = new Map<string, number>(months.map((m) => [m, 0]));
+
+    const bump = (map: Map<string, number>, dateIso: string, amount: number) => {
+      const key = dateIso.slice(0, 7);
+      if (!map.has(key)) return;
+      map.set(key, (map.get(key) ?? 0) + amount);
+    };
+
+    const dateFilter = { date: { [Op.between]: [range.startDate, range.endDate] } };
+    const cashExpenseWhere = dateWhere(range);
+    const revenueBranchFilter = range.branchId != null ? { branchId: range.branchId } : {};
+    const rangeStart = new Date(`${range.startDate}T00:00:00`);
+    const rangeEnd = new Date(`${range.endDate}T23:59:59`);
+
+    const [revenues, expenses, fuel, salaries, financeTxs, legacyExpenses, legacyFuel, legacySalaries] =
+      await Promise.all([
+        DirectorRevenue.findAll({ where: { ...dateFilter, ...revenueBranchFilter } }),
+        DirectorExpense.findAll({ where: cashExpenseWhere }),
+        DirectorFuel.findAll({ where: dateFilter }),
+        DirectorSalary.findAll({ where: dateFilter }),
+        FinanceTransaction.findAll({
+          where: {
+            entryType: 'income',
+            status: 'completed',
+            ...(range.branchId != null ? { branchId: range.branchId } : {}),
+          },
+        }),
+        fetchLegacyExpenses(range),
+        fetchLegacyFuel(range),
+        fetchLegacySalaries(range),
+      ]);
+
+    for (const r of revenues) bump(revenueByMonth, r.date, r.amount);
+    for (const e of expenses) bump(expensesByMonth, e.date, e.amount);
+    for (const e of legacyExpenses) bump(expensesByMonth, e.date, e.amount);
+    for (const f of fuel) bump(fuelByMonth, f.date, f.amount);
+    for (const f of legacyFuel) bump(fuelByMonth, f.date, f.amount);
+    for (const s of salaries) bump(salaryByMonth, s.date, s.totalAmd);
+    for (const s of legacySalaries) bump(salaryByMonth, s.date, s.totalAmd);
+
+    for (const tx of financeTxs) {
+      const raw = (tx as unknown as { createdAt?: Date | string }).createdAt;
+      const d = raw instanceof Date ? raw : raw ? new Date(raw) : null;
+      if (d == null || d < rangeStart || d > rangeEnd) continue;
+      bump(revenueByMonth, d.toISOString().slice(0, 10), tx.grossAmd);
+    }
+
+    const labels = months.map(monthLabelAm);
+    const revenue = months.map((m) => revenueByMonth.get(m) ?? 0);
+    const expenseTotals = months.map((m) => expensesByMonth.get(m) ?? 0);
+    const fuelTotals = months.map((m) => fuelByMonth.get(m) ?? 0);
+    const salaryTotals = months.map((m) => salaryByMonth.get(m) ?? 0);
+    const netProfit = months.map(
+      (_, i) => (revenue[i] ?? 0) - (expenseTotals[i] ?? 0) - (fuelTotals[i] ?? 0) - (salaryTotals[i] ?? 0),
+    );
+
+    return { labels, revenue, expenses: expenseTotals, fuel: fuelTotals, salary: salaryTotals, netProfit };
+  }
+
   static async expenseChart(range: DateRange) {
-    const expenses = await DirectorExpense.findAll({
-      where: dateWhere(range),
-    });
+    const [expenses, legacyExpenses] = await Promise.all([
+      DirectorExpense.findAll({ where: dateWhere(range) }),
+      fetchLegacyExpenses(range),
+    ]);
     const byType = new Map<string, number>();
     for (const e of expenses) {
+      byType.set(e.expType, (byType.get(e.expType) ?? 0) + e.amount);
+    }
+    for (const e of legacyExpenses) {
       byType.set(e.expType, (byType.get(e.expType) ?? 0) + e.amount);
     }
     return [...byType.entries()]

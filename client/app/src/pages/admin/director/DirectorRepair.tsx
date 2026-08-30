@@ -22,7 +22,7 @@ import {
   DirectorTableWrap,
 } from "src/modules/director/components/DirectorUi";
 import { createDirectorRepair, deleteDirectorRepair, fetchDirectorRepairs, updateDirectorRepair } from "src/modules/director/director.api";
-import { DIRECTOR_PAYMENT_LABELS, todayIso } from "src/modules/director/director.consts";
+import { DIRECTOR_PAYMENT_LABELS, isLegacyDirectorRecord, todayIso } from "src/modules/director/director.consts";
 import type { DirectorPaymentMethod, DirectorRepair } from "src/modules/director/director.types";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
 import {
@@ -35,8 +35,17 @@ import {
 } from "src/modules/director/directorFormValues";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Wrench } from "lucide-react";
+import {
+  DirectorChartPanel,
+  DirectorDoughnutChart,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+} from "src/modules/director/components/DirectorCharts";
+import { sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
 
 type CarOption = { id: number; label: string };
 
@@ -133,11 +142,37 @@ export default function DirectorRepairPage() {
     return "—";
   };
 
+  const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.amount), [rows]);
+  const byCar = useMemo(
+    () => topN(sumBy(rows, (r) => carLabel(r.carId, r.licensePlate), (r) => r.amount), 8),
+    [rows, cars],
+  );
+  const byPayment = useMemo(
+    () => sumBy(rows, (r) => DIRECTOR_PAYMENT_LABELS[r.paymentMethod], (r) => r.amount).filter((p) => p.value > 0),
+    [rows],
+  );
+  const totalRepair = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows]);
+
   return (
     <DirectorLayout>
       <PanelPageHeader icon={Wrench} title="Մեքենայի վերանորոգում" />
-      <DirectorCard>
-        <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+      <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+
+      <DirectorReportSection title={`Հաշվետվություն · ${formatAmd(totalRepair)} · ${rows.length} գրառում`}>
+        <DirectorReportGrid>
+          <DirectorChartPanel title="Ծախսեր ըստ ամիսների">
+            <DirectorTrendChart points={byMonth} label="Վերանորոգում" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Ըստ մեքենայի Top 8">
+            <DirectorRankChart points={byCar} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Վճարման եղանակ">
+            <DirectorDoughnutChart points={byPayment} />
+          </DirectorChartPanel>
+        </DirectorReportGrid>
+      </DirectorReportSection>
+
+      <DirectorCard className="mt-6">
         <DirectorFormRow>
           <DirectorField label="Ամսաթիվ">
             <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
@@ -192,6 +227,7 @@ export default function DirectorRepairPage() {
               <DirectorTableTd>{DIRECTOR_PAYMENT_LABELS[r.paymentMethod]}</DirectorTableTd>
               <DirectorTableTd>
                 <DirectorRecordActions
+                  readOnly={isLegacyDirectorRecord(r.id)}
                   onEdit={() => startEdit(r)}
                   onDelete={() => void deleteDirectorRepair(r.id).then(reload)}
                 />

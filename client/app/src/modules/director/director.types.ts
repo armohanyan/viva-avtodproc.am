@@ -17,6 +17,15 @@ export type DirectorDashboard = {
   fuelLiters: number;
 };
 
+export type DirectorMonthlyReport = {
+  labels: string[];
+  revenue: number[];
+  expenses: number[];
+  fuel: number[];
+  salary: number[];
+  netProfit: number[];
+};
+
 export type DirectorChartPoint = { label: string; value: number };
 
 export type DirectorCashEntry = {

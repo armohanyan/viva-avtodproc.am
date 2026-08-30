@@ -30,8 +30,23 @@ export function todayIso(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-export function directorDateQuery(start: string, end: string): string {
-  return `startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`;
+/** Default director list range: Jan 1 of current year through today. */
+export function defaultDirectorStartDate(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-01-01`;
+}
+
+export function isLegacyDirectorRecord(id: number): boolean {
+  return id < 0;
+}
+
+export function directorDateQuery(start: string, end: string, branchId?: string | null): string {
+  const params = new URLSearchParams({
+    startDate: start,
+    endDate: end,
+  });
+  if (branchId) params.set("branchId", branchId);
+  return params.toString();
 }
 
 export function isDirectorRoute(path: string): boolean {

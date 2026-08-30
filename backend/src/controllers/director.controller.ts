@@ -75,6 +75,16 @@ export default class DirectorController {
     }
   }
 
+  static async monthlyReport(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const range = await resolveRange(req);
+      const data = await DirectorService.monthlyReport(range);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async listCash(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const data = await DirectorService.listCash(await resolveRange(req));

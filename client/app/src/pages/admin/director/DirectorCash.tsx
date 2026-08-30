@@ -40,8 +40,17 @@ import {
 } from "src/modules/director/directorFormValues";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Wallet } from "lucide-react";
+import {
+  DirectorChartPanel,
+  DirectorDoughnutChart,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+} from "src/modules/director/components/DirectorCharts";
+import { cumulativeBalance, sumBy, sumByMonth } from "src/modules/director/directorChartUtils";
 
 type CashForm = {
   date: string;
@@ -130,11 +139,39 @@ export default function DirectorCashPage() {
     return b?.label || b?.name || `#${id}`;
   };
 
+  const byType = useMemo(
+    () => sumBy(rows, (r) => r.entryType, (r) => Math.abs(r.amount)).filter((p) => p.value > 0),
+    [rows],
+  );
+  const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.amount), [rows]);
+  const balanceTrend = useMemo(() => cumulativeBalance(rows), [rows]);
+  const netBalance = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows]);
+
   return (
     <DirectorLayout>
       <PanelPageHeader icon={Wallet} title="Կասսա / Ինկասացիա" />
-      <DirectorCard>
-        <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+      <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+
+      <div className="mt-6">
+      <DirectorReportSection title={`Հաշվետվություն · ${formatAmd(netBalance)}`}>
+        <DirectorReportGrid>
+          <DirectorChartPanel title="Կուտակային մնացորդ" subtitle="Ըստ ամսաթվերի">
+            <DirectorTrendChart points={balanceTrend} label="Մնացորդ" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Շարժ ըստ ամիսների">
+            <DirectorTrendChart points={byMonth} label="Գումար" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Ըստ տեսակի">
+            <DirectorDoughnutChart points={byType} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Տեսակներ">
+            <DirectorRankChart points={byType} />
+          </DirectorChartPanel>
+        </DirectorReportGrid>
+      </DirectorReportSection>
+      </div>
+
+      <DirectorCard className="mt-6">
         <DirectorFormRow>
           <DirectorField label="Ամսաթիվ">
             <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />

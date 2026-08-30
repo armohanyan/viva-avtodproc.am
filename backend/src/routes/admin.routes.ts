@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import AdminFinancialReportController from '../controllers/admin-financial-report.controller';
 import AdminInviteController from '../controllers/admin-invite.controller';
 import AdminJobsController from '../controllers/admin-jobs.controller';
 import AuditLogController from '../controllers/audit-log.controller';
@@ -11,6 +12,8 @@ const router = Router();
 
 router.use('/director', directorRoutes);
 router.use('/petrol-expense-requests', adminPetrolExpenseRequestRoutes);
+
+router.get('/reports/financial', requireStaff, AdminFinancialReportController.financial);
 
 router.post('/invite-student', requireStaff, AdminInviteController.inviteStudent);
 router.post('/invite-instructor', requireStaff, AdminInviteController.inviteInstructor);

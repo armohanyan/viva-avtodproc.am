@@ -14,6 +14,8 @@ import {
   DirectorFormRow,
   DirectorInput,
   DirectorSelect,
+  DirectorStatCard,
+  DirectorStatGrid,
   DirectorTableBody,
   DirectorTableHead,
   DirectorTableRow,
@@ -31,7 +33,7 @@ import {
   updateDirectorFuel,
   updateDirectorKm,
 } from "src/modules/director/director.api";
-import { DIRECTOR_OPTION_CATEGORY, DIRECTOR_PAYMENT_LABELS, todayIso } from "src/modules/director/director.consts";
+import { DIRECTOR_OPTION_CATEGORY, DIRECTOR_PAYMENT_LABELS, isLegacyDirectorRecord, todayIso } from "src/modules/director/director.consts";
 import type { DirectorFuel, DirectorKm, DirectorPaymentMethod } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
@@ -45,8 +47,17 @@ import {
 } from "src/modules/director/directorFormValues";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Fuel } from "lucide-react";
+import {
+  DirectorChartPanel,
+  DirectorMultiBarChart,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+} from "src/modules/director/components/DirectorCharts";
+import { formatMonthLabel, monthKey, sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
 
 type CarOption = { id: number; plate?: string; model?: string };
 
@@ -185,13 +196,83 @@ export default function DirectorFuelKmPage() {
     });
   };
 
+  const fuelByMonth = useMemo(() => sumByMonth(fuelRows, (r) => r.date, (r) => r.amount), [fuelRows]);
+  const litersByMonth = useMemo(() => sumByMonth(fuelRows, (r) => r.date, (r) => r.liters), [fuelRows]);
+  const kmByMonth = useMemo(() => sumByMonth(kmRows, (r) => r.date, (r) => r.km), [kmRows]);
+  const fuelByInstructor = useMemo(
+    () => topN(sumBy(fuelRows, (r) => instructorName(r.instructorUserId), (r) => r.amount), 8),
+    [fuelRows, instructors],
+  );
+  const kmByInstructor = useMemo(
+    () => topN(sumBy(kmRows, (r) => instructorName(r.instructorUserId), (r) => r.km), 8),
+    [kmRows, instructors],
+  );
+  const totalFuel = useMemo(() => fuelRows.reduce((s, r) => s + r.amount, 0), [fuelRows]);
+  const totalLiters = useMemo(() => fuelRows.reduce((s, r) => s + r.liters, 0), [fuelRows]);
+  const totalKm = useMemo(() => kmRows.reduce((s, r) => s + r.km, 0), [kmRows]);
+
+  const fuelVsLitersMonthly = useMemo(() => {
+    const months = new Set([
+      ...fuelRows.map((r) => monthKey(r.date)),
+      ...kmRows.map((r) => monthKey(r.date)),
+    ]);
+    const sorted = [...months].sort();
+    return {
+      labels: sorted.map(formatMonthLabel),
+      amount: sorted.map((m) =>
+        fuelRows.filter((r) => monthKey(r.date) === m).reduce((s, r) => s + r.amount, 0),
+      ),
+      liters: sorted.map((m) =>
+        fuelRows.filter((r) => monthKey(r.date) === m).reduce((s, r) => s + r.liters, 0),
+      ),
+    };
+  }, [fuelRows, kmRows]);
+
   return (
     <DirectorLayout>
       <PanelPageHeader icon={Fuel} title="Վառելիք / Կիլոմետրեր" />
-      <div className="space-y-6">
+      <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+
+      <DirectorReportSection title={`Հաշվետվություն · ${formatAmd(totalFuel)} · ${totalLiters.toFixed(0)} լ · ${totalKm.toFixed(0)} կմ`}>
+        <div className="mb-4">
+          <DirectorStatGrid>
+            <DirectorStatCard label="Վառելիք (AMD)" value={formatAmd(totalFuel)} />
+            <DirectorStatCard label="Լիտր" value={totalLiters.toFixed(1)} />
+            <DirectorStatCard label="Կիլոմետր" value={totalKm.toFixed(0)} />
+            <DirectorStatCard label="լ/100կմ (միջ.)" value={totalKm > 0 ? ((totalLiters / totalKm) * 100).toFixed(1) : "—"} />
+          </DirectorStatGrid>
+        </div>
+        <DirectorReportGrid>
+          <DirectorChartPanel title="Վառելիք ըստ ամիսների" subtitle="Գումար (AMD)">
+            <DirectorTrendChart points={fuelByMonth} label="Վառելիք" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Կիլոմետրեր ըստ ամիսների">
+            <DirectorTrendChart points={kmByMonth} label="ԿՄ" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Լիտր vs Գումար" subtitle="Ըստ ամիսների" className="md:col-span-2">
+            <DirectorMultiBarChart
+              labels={fuelVsLitersMonthly.labels}
+              series={[
+                { label: "Գումար (AMD)", data: fuelVsLitersMonthly.amount, colorIndex: 0 },
+                { label: "Լիտր", data: fuelVsLitersMonthly.liters, colorIndex: 3 },
+              ]}
+            />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Հրահանգիչներ Top 8 · վառելիք">
+            <DirectorRankChart points={fuelByInstructor} />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Հրահանգիչներ Top 8 · կմ">
+            <DirectorRankChart points={kmByInstructor} label="ԿՄ" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Լիտր ըստ ամիսների">
+            <DirectorTrendChart points={litersByMonth} label="Լիտր" />
+          </DirectorChartPanel>
+        </DirectorReportGrid>
+      </DirectorReportSection>
+
+      <div className="space-y-6 mt-6">
         <DirectorCard>
           <h2 className="text-base font-semibold text-foreground mb-4">Վառելիք</h2>
-          <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
           <DirectorFormRow>
             <DirectorField label="Ամսաթիվ">
               <DirectorInput type="date" value={fuelForm.date} onChange={(e) => setFuelForm((f) => ({ ...f, date: e.target.value }))} />
@@ -255,6 +336,7 @@ export default function DirectorFuelKmPage() {
                 <DirectorTableTd>{formatAmd(r.amount)} ({DIRECTOR_PAYMENT_LABELS[r.paymentMethod]})</DirectorTableTd>
                 <DirectorTableTd>
                   <DirectorRecordActions
+                    readOnly={isLegacyDirectorRecord(r.id)}
                     onEdit={() => startEditFuel(r)}
                     onDelete={() => void deleteDirectorFuel(r.id).then(reload)}
                   />
@@ -304,6 +386,7 @@ export default function DirectorFuelKmPage() {
                 <DirectorTableTd>{r.km}</DirectorTableTd>
                 <DirectorTableTd>
                   <DirectorRecordActions
+                    readOnly={isLegacyDirectorRecord(r.id)}
                     onEdit={() => startEditKm(r)}
                     onDelete={() => void deleteDirectorKm(r.id).then(reload)}
                   />

@@ -2,6 +2,7 @@ import { vivaApiJson } from "src/lib/vivaApi";
 import type {
   DirectorCashEntry,
   DirectorDashboard,
+  DirectorMonthlyReport,
   DirectorDriverProfile,
   DirectorExpense,
   DirectorFuel,
@@ -26,6 +27,10 @@ export async function addDirectorOption(category: DirectorOptionCategory, value:
 
 export async function fetchDirectorDashboard(q: string): Promise<DirectorDashboard> {
   return vivaApiJson<DirectorDashboard>(`${BASE}/dashboard?${q}`);
+}
+
+export async function fetchDirectorMonthlyReport(q: string): Promise<DirectorMonthlyReport> {
+  return vivaApiJson<DirectorMonthlyReport>(`${BASE}/reports/monthly?${q}`);
 }
 
 export async function fetchDirectorCash(q: string): Promise<DirectorCashEntry[]> {

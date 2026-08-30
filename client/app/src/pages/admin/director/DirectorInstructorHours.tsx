@@ -12,6 +12,8 @@ import {
   DirectorFormRow,
   DirectorInput,
   DirectorSelect,
+  DirectorStatCard,
+  DirectorStatGrid,
   DirectorTextarea,
   DirectorTableBody,
   DirectorTableHead,
@@ -32,13 +34,21 @@ import {
   directorOptionalComment,
   directorOptionalId,
 } from "src/modules/director/directorFormValues";
-import { todayIso } from "src/modules/director/director.consts";
+import { isLegacyDirectorRecord, todayIso } from "src/modules/director/director.consts";
 import type { DirectorInstructorHours } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
+import {
+  DirectorChartPanel,
+  DirectorRankChart,
+  DirectorReportGrid,
+  DirectorReportSection,
+  DirectorTrendChart,
+} from "src/modules/director/components/DirectorCharts";
+import { sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
 
 export default function DirectorInstructorHoursPage() {
   const { showToast } = useToast();
@@ -111,11 +121,40 @@ export default function DirectorInstructorHoursPage() {
   const instructorName = (id: number | null) =>
     id == null ? "—" : instructors.find((i) => String(i.id) === String(id))?.name ?? `#${id}`;
 
+  const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.hours), [rows]);
+  const byInstructor = useMemo(
+    () => topN(sumBy(rows, (r) => instructorName(r.instructorUserId), (r) => r.hours), 8),
+    [rows, instructors],
+  );
+  const totalHours = useMemo(() => rows.reduce((s, r) => s + r.hours, 0), [rows]);
+  const avgDaily = useMemo(() => {
+    const days = new Set(rows.map((r) => r.date)).size;
+    return days > 0 ? totalHours / days : 0;
+  }, [rows, totalHours]);
+
   return (
     <DirectorLayout>
       <PanelPageHeader icon={Clock} title="Հրահանգիչների ժամեր" />
-      <DirectorCard>
-        <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+      <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
+
+      <DirectorReportSection title={`Հաշվետվություն · ${totalHours.toFixed(1)} ժամ · ${rows.length} գրառում`}>
+        <DirectorStatGrid>
+          <DirectorStatCard label="Ընդամենը ժամ" value={totalHours.toFixed(1)} />
+          <DirectorStatCard label="Միջ. ժամ/օր" value={avgDaily.toFixed(1)} />
+          <DirectorStatCard label="Հրահանգիչներ" value={new Set(rows.map((r) => r.instructorUserId).filter(Boolean)).size} />
+          <DirectorStatCard label="Գրառումներ" value={rows.length} />
+        </DirectorStatGrid>
+        <DirectorReportGrid className="mt-4">
+          <DirectorChartPanel title="Ժամեր ըստ ամիսների">
+            <DirectorTrendChart points={byMonth} label="Ժամ" />
+          </DirectorChartPanel>
+          <DirectorChartPanel title="Հրահանգիչներ Top 8">
+            <DirectorRankChart points={byInstructor} label="Ժամ" />
+          </DirectorChartPanel>
+        </DirectorReportGrid>
+      </DirectorReportSection>
+
+      <DirectorCard className="mt-6">
         <DirectorFormRow>
           <DirectorField label="Ամսաթիվ">
             <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
@@ -159,6 +198,7 @@ export default function DirectorInstructorHoursPage() {
               <DirectorTableTd>{r.comment ?? "—"}</DirectorTableTd>
               <DirectorTableTd>
                 <DirectorRecordActions
+                  readOnly={isLegacyDirectorRecord(r.id)}
                   onEdit={() => startEdit(r)}
                   onDelete={() => void deleteDirectorInstructorHours(r.id).then(reload)}
                 />

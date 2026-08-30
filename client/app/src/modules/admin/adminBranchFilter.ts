@@ -1,5 +1,6 @@
 import { loadAccountSession } from "src/modules/accounts/account.session";
 
+/** @deprecated Legacy key — cleared on init so old persisted filters are not restored. */
 export const ADMIN_BRANCH_FILTER_STORAGE_KEY = "viva-admin-branch-filter-v1";
 export const ADMIN_BRANCH_FILTER_ALL = "all";
 
@@ -8,6 +9,7 @@ const BRANCH_FILTER_PATH_PREFIXES = [
 	"/students",
 	"/finance/transactions",
 	"/admin/class-schedule",
+	"/admin/reports",
 	"/admin/director",
 	"/admin/petrol-expenses",
 	"/admin/instructor-km-logs",
@@ -21,25 +23,39 @@ const BRANCH_FILTER_PATH_PREFIXES = [
 
 let adminPanelActive = false;
 let selectedBranchId: string | null = null;
+let filterRevision = 0;
+
+type BranchFilterListener = () => void;
+const branchFilterListeners = new Set<BranchFilterListener>();
+
+function notifyBranchFilterListeners(): void {
+	for (const listener of branchFilterListeners) {
+		listener();
+	}
+}
+
+/** Subscribe to header branch filter changes (works outside AdminBranchFilterProvider). */
+export function subscribeAdminBranchFilter(listener: BranchFilterListener): () => void {
+	branchFilterListeners.add(listener);
+	return () => {
+		branchFilterListeners.delete(listener);
+	};
+}
 
 function isStaffAccount(): boolean {
 	const accountType = loadAccountSession()?.accountType;
 	return accountType === "admin" || accountType === "super_admin";
 }
 
-function readStoredBranchId(): string | null {
-	if (typeof window === "undefined") return null;
-	try {
-		const raw = localStorage.getItem(ADMIN_BRANCH_FILTER_STORAGE_KEY);
-		if (!raw || raw === ADMIN_BRANCH_FILTER_ALL) return null;
-		return raw;
-	} catch {
-		return null;
-	}
-}
-
+/** Clears legacy persisted filter once; does not reset an in-session choice. */
 export function initAdminBranchFilterFromStorage(): void {
-	selectedBranchId = readStoredBranchId();
+	if (typeof window !== "undefined") {
+		try {
+			localStorage.removeItem(ADMIN_BRANCH_FILTER_STORAGE_KEY);
+		} catch {
+			/* ignore */
+		}
+	}
 }
 
 export function setAdminPanelActive(active: boolean): void {
@@ -54,7 +70,7 @@ export function getAdminBranchFilterId(): string | null {
 }
 
 export function getAdminBranchFilterRevision(): number {
-	return selectedBranchId ? Number(selectedBranchId) : 0;
+	return filterRevision;
 }
 
 export function setAdminBranchFilterId(id: string | null): void {
@@ -62,17 +78,8 @@ export function setAdminBranchFilterId(id: string | null): void {
 		!id || id === ADMIN_BRANCH_FILTER_ALL ? null : String(id).trim() || null;
 	if (normalized === selectedBranchId) return;
 	selectedBranchId = normalized;
-	if (typeof window !== "undefined") {
-		try {
-			localStorage.setItem(
-				ADMIN_BRANCH_FILTER_STORAGE_KEY,
-				normalized ?? ADMIN_BRANCH_FILTER_ALL,
-			);
-		} catch {
-			/* ignore */
-		}
-		window.location.reload();
-	}
+	filterRevision += 1;
+	notifyBranchFilterListeners();
 }
 
 function pathWithoutQuery(suffix: string): string {
@@ -117,8 +124,4 @@ export function appendAdminBranchQuery(suffix: string): string {
 	if (!shouldAppendAdminBranchFilter(suffix)) return suffix;
 	const sep = suffix.includes("?") ? "&" : "?";
 	return `${suffix}${sep}branchId=${encodeURIComponent(selectedBranchId!)}`;
-}
-
-if (typeof window !== "undefined") {
-	initAdminBranchFilterFromStorage();
 }
