@@ -34,6 +34,7 @@ import {
   User,
   Gauge,
   Banknote,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
@@ -88,6 +89,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/blogs": Newspaper,
 		"/admin/accounts": UserCog,
 		"/admin/marketing-content": Sparkles,
+		"/admin/reports": BarChart3,
 	} as const;
 
 	const adminNavLabels = useMemo(() => {

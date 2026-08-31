@@ -17,7 +17,6 @@ export function adminNavAllowedForUser(
 /** Sidebar order: overview → day-to-day ops → people & programs → catalog → locations → money → content → access control */
 export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
   { href: "/admin/dashboard", translationKey: "adminDashboard" },
-  { href: "/admin/reports", translationKey: "adminReports" },
   { href: "/admin/driving", translationKey: "adminSidebarDriving" },
   { href: "/admin/bookings", translationKey: "bookings" },
   { href: "/admin/class-schedule", translationKey: "adminClassSchedule" },
@@ -43,6 +42,7 @@ export const ADMIN_NAV_LINKS: readonly AdminNavigationLink[] = [
     allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES,
   },
   { href: "/admin/blogs", translationKey: "blogsAdmin", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { href: "/admin/reports", translationKey: "adminReports", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/accounts", translationKey: "adminAccounts", allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { href: "/admin/archive", translationKey: "adminArchiveNav" },
   { href: "/admin/settings", translationKey: "adminSidebarSettings" },

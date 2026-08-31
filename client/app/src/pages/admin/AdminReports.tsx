@@ -25,7 +25,6 @@ import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { yerevanMonthRangeContaining, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 import { useLang } from "src/lib/i18n";
-import { useAccount } from "src/modules/accounts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileDown, RefreshCw, BarChart3 } from "lucide-react";
 
@@ -63,8 +62,6 @@ export default function AdminReportsPage() {
   const { showToast } = useToast();
   const { branches } = useBranches();
   const { branchId, revision: branchFilterRevision } = useAdminBranchFilterSnapshot();
-  const { user } = useAccount();
-  const isSuperAdmin = user?.accountType === "super_admin";
 
   const monthDefault = useMemo(() => yerevanMonthRangeContaining(yerevanTodayIso()), []);
   const [start, setStart] = useState(monthDefault.start);
@@ -82,7 +79,7 @@ export default function AdminReportsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchAdminReportsBundle(query, start, end, isSuperAdmin);
+      const res = await fetchAdminReportsBundle(query, start, end, true);
       setData(res);
     } catch (e) {
       setData(EMPTY);
@@ -90,7 +87,7 @@ export default function AdminReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, start, end, isSuperAdmin, showToast]);
+  }, [query, start, end, showToast]);
 
   useEffect(() => {
     void load();
@@ -186,7 +183,7 @@ export default function AdminReportsPage() {
         </DirectorButton>
         <DirectorButton
           variant="outline"
-          onClick={() => downloadAdminReportsPdf(data, branchLabel)}
+          onClick={() => void downloadAdminReportsPdf(data, branchLabel)}
           disabled={loading || !financial.meta.startDate}
         >
           <FileDown className="w-4 h-4 mr-2" />
@@ -269,7 +266,7 @@ export default function AdminReportsPage() {
           </DirectorStatGrid>
         </DirectorReportSection>
 
-        {isSuperAdmin && data.director && data.monthlyTrend ? (
+        {data.director && data.monthlyTrend ? (
           <DirectorReportSection title={`Տնօրենի ամփոփ · ${formatAmd(data.director.netProfit)}`}>
             <DirectorReportGrid>
               <DirectorChartPanel title="Հասույթ և շահույթ" subtitle="Ըստ ամիսների" className="md:col-span-2" tall>

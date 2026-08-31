@@ -3,17 +3,18 @@ import autoTable from "jspdf-autotable";
 import type { AdminReportsBundle } from "./adminReports.types";
 import { bookingTypeLabel } from "./adminReports.types";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
+import { applyArmenianPdfFont, ARMENIAN_PDF_FONT } from "./adminReportsPdfFont";
 
 function addSectionTitle(doc: jsPDF, y: number, title: string): number {
   doc.setFontSize(13);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(ARMENIAN_PDF_FONT, "bold");
   doc.text(title, 14, y);
   return y + 6;
 }
 
 function addKeyValues(doc: jsPDF, y: number, rows: [string, string][]): number {
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(ARMENIAN_PDF_FONT, "normal");
   for (const [label, value] of rows) {
     doc.text(`${label}: ${value}`, 14, y);
     y += 5;
@@ -33,24 +34,26 @@ function addTable(
     head: [head],
     body,
     theme: "grid",
-    styles: { fontSize: 9, cellPadding: 2 },
-    headStyles: { fillColor: [244, 134, 51] },
+    styles: { font: ARMENIAN_PDF_FONT, fontSize: 9, cellPadding: 2 },
+    headStyles: { font: ARMENIAN_PDF_FONT, fontStyle: "bold", fillColor: [244, 134, 51] },
     margin: { left: 14, right: 14 },
   });
   return (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
 }
 
-export function downloadAdminReportsPdf(data: AdminReportsBundle, branchLabel: string): void {
+export async function downloadAdminReportsPdf(data: AdminReportsBundle, branchLabel: string): Promise<void> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  await applyArmenianPdfFont(doc);
+
   const { financial, leads, director } = data;
   const { meta, summary, optional, instructorLessons, newStudents, refunds } = financial;
 
   doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(ARMENIAN_PDF_FONT, "bold");
   doc.text("Viva Avtodproc — Հաշվետվություն", 14, 18);
 
   doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(ARMENIAN_PDF_FONT, "normal");
   doc.text(`ժամանակահատված: ${meta.startDate} — ${meta.endDate}`, 14, 26);
   doc.text(`Մասնաճյուղ: ${branchLabel}`, 14, 31);
   doc.text(`Ստեղծվել է: ${new Date().toLocaleString("hy-AM")}`, 14, 36);
