@@ -17,6 +17,19 @@ import type {
 
 const BASE = "/admin/director";
 
+function apiNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeDirectorFuel(row: DirectorFuel): DirectorFuel {
+  return { ...row, liters: apiNumber(row.liters), amount: apiNumber(row.amount) };
+}
+
+function normalizeDirectorKm(row: DirectorKm): DirectorKm {
+  return { ...row, km: apiNumber(row.km) };
+}
+
 export async function fetchDirectorOptions(category: DirectorOptionCategory): Promise<string[]> {
   return vivaApiJson<string[]>(`${BASE}/options/${category}`);
 }
@@ -86,15 +99,18 @@ export async function deleteDirectorRepair(id: number): Promise<void> {
 }
 
 export async function fetchDirectorFuel(q: string): Promise<DirectorFuel[]> {
-  return vivaApiJson<DirectorFuel[]>(`${BASE}/fuel?${q}`);
+  const rows = await vivaApiJson<DirectorFuel[]>(`${BASE}/fuel?${q}`);
+  return Array.isArray(rows) ? rows.map(normalizeDirectorFuel) : [];
 }
 
 export async function createDirectorFuel(body: Omit<DirectorFuel, "id">): Promise<DirectorFuel> {
-  return vivaApiJson<DirectorFuel>(`${BASE}/fuel`, { method: "POST", body });
+  const row = await vivaApiJson<DirectorFuel>(`${BASE}/fuel`, { method: "POST", body });
+  return normalizeDirectorFuel(row);
 }
 
 export async function updateDirectorFuel(id: number, body: Omit<DirectorFuel, "id">): Promise<DirectorFuel> {
-  return vivaApiJson<DirectorFuel>(`${BASE}/fuel/${id}`, { method: "PATCH", body });
+  const row = await vivaApiJson<DirectorFuel>(`${BASE}/fuel/${id}`, { method: "PATCH", body });
+  return normalizeDirectorFuel(row);
 }
 
 export async function deleteDirectorFuel(id: number): Promise<void> {
@@ -102,15 +118,18 @@ export async function deleteDirectorFuel(id: number): Promise<void> {
 }
 
 export async function fetchDirectorKm(q: string): Promise<DirectorKm[]> {
-  return vivaApiJson<DirectorKm[]>(`${BASE}/km?${q}`);
+  const rows = await vivaApiJson<DirectorKm[]>(`${BASE}/km?${q}`);
+  return Array.isArray(rows) ? rows.map(normalizeDirectorKm) : [];
 }
 
 export async function createDirectorKm(body: Omit<DirectorKm, "id">): Promise<DirectorKm> {
-  return vivaApiJson<DirectorKm>(`${BASE}/km`, { method: "POST", body });
+  const row = await vivaApiJson<DirectorKm>(`${BASE}/km`, { method: "POST", body });
+  return normalizeDirectorKm(row);
 }
 
 export async function updateDirectorKm(id: number, body: Omit<DirectorKm, "id">): Promise<DirectorKm> {
-  return vivaApiJson<DirectorKm>(`${BASE}/km/${id}`, { method: "PATCH", body });
+  const row = await vivaApiJson<DirectorKm>(`${BASE}/km/${id}`, { method: "PATCH", body });
+  return normalizeDirectorKm(row);
 }
 
 export async function deleteDirectorKm(id: number): Promise<void> {

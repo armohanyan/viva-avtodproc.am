@@ -75,6 +75,11 @@ function rowJson<T extends { date: string; id: number }>(
   return rows.map((r) => r.toJSON());
 }
 
+function num(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function sumField(rows: readonly { amount?: number; totalAmd?: number }[], key: 'amount' | 'totalAmd'): number {
   return rows.reduce((acc, r) => acc + (r[key] ?? 0), 0);
 }
@@ -263,7 +268,10 @@ export default class DirectorService {
       }),
       fetchLegacyFuel(range),
     ]);
-    return mergeDirectorRows(rowJson(directorRows), legacyRows);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows).map((row) => ({
+      ...row,
+      liters: num(row.liters),
+    }));
   }
 
   static async createFuel(
@@ -313,7 +321,10 @@ export default class DirectorService {
       }),
       fetchLegacyKm(range),
     ]);
-    return mergeDirectorRows(rowJson(directorRows), legacyRows);
+    return mergeDirectorRows(rowJson(directorRows), legacyRows).map((row) => ({
+      ...row,
+      km: num(row.km),
+    }));
   }
 
   static async createKm(
