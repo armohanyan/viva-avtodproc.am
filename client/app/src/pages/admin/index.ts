@@ -41,8 +41,10 @@ export {
   DirectorCashPage,
   DirectorExpensesPage,
   DirectorRepairPage,
-  DirectorFuelKmPage,
+  DirectorFuelPage,
+  DirectorKmPage,
   DirectorInstructorHoursPage,
   DirectorDriverProfilePage,
   DirectorSalaryPage,
+  DirectorRedirectFuelKmToFuel,
 } from "./director";

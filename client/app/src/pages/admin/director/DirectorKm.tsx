@@ -16,22 +16,15 @@ import {
   DirectorSelect,
   DirectorStatCard,
   DirectorStatGrid,
-  DirectorTextarea,
 } from "src/modules/director/components/DirectorUi";
 import {
-  createDirectorInstructorHours,
-  deleteDirectorInstructorHours,
-  fetchDirectorInstructorHours,
-  updateDirectorInstructorHours,
+  createDirectorKm,
+  deleteDirectorKm,
+  fetchDirectorKm,
+  updateDirectorKm,
 } from "src/modules/director/director.api";
-import {
-  directorDate,
-  directorDecimal,
-  directorOptionalComment,
-  directorOptionalId,
-} from "src/modules/director/directorFormValues";
 import { isLegacyDirectorRecord, todayIso } from "src/modules/director/director.consts";
-import type { DirectorInstructorHours } from "src/modules/director/director.types";
+import type { DirectorKm } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
 import { useBranches } from "src/modules/branches";
 import { useCities } from "src/modules/cities";
@@ -39,11 +32,16 @@ import {
   directorInstructorLabelById,
   formatDirectorInstructorLabel,
 } from "src/modules/director/directorInstructorLabels";
+import {
+  directorDate,
+  directorDecimal,
+  directorOptionalId,
+} from "src/modules/director/directorFormValues";
 import { useDirectorTable } from "src/modules/director/useDirectorTable";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock } from "lucide-react";
+import { Gauge } from "lucide-react";
 import {
   DirectorChartPanel,
   DirectorRankChart,
@@ -53,13 +51,13 @@ import {
 } from "src/modules/director/components/DirectorCharts";
 import { sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
 
-const BASE_PATH = "/admin/director/instructor-hours";
+const BASE_PATH = "/admin/director/km";
 
-export default function DirectorInstructorHoursPage() {
+export default function DirectorKmPage() {
   const { showToast } = useToast();
   const view = useDirectorSectionView(BASE_PATH);
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
-  const [rows, setRows] = useState<DirectorInstructorHours[]>([]);
+  const [rows, setRows] = useState<DirectorKm[]>([]);
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
@@ -67,8 +65,7 @@ export default function DirectorInstructorHoursPage() {
   const [form, setForm] = useState({
     date: todayIso(),
     instructorUserId: "",
-    hours: "",
-    comment: "",
+    km: "",
   });
 
   useEffect(() => {
@@ -77,8 +74,8 @@ export default function DirectorInstructorHoursPage() {
 
   const load = useCallback(async () => {
     try {
-      const list = await fetchDirectorInstructorHours(query);
-      setRows(Array.isArray(list) ? list : []);
+      const km = await fetchDirectorKm(query);
+      setRows(Array.isArray(km) ? km : []);
     } catch (e) {
       setRows([]);
       showToast(getApiErrorMessage(e), "error");
@@ -92,7 +89,7 @@ export default function DirectorInstructorHoursPage() {
 
   const resetForm = () => {
     setEditingId(null);
-    setForm({ date: todayIso(), instructorUserId: "", hours: "", comment: "" });
+    setForm({ date: todayIso(), instructorUserId: "", km: "" });
   };
 
   const submit = async () => {
@@ -100,14 +97,14 @@ export default function DirectorInstructorHoursPage() {
       const body = {
         date: directorDate(form.date),
         instructorUserId: directorOptionalId(form.instructorUserId),
-        hours: directorDecimal(form.hours),
-        comment: directorOptionalComment(form.comment),
+        km: directorDecimal(form.km),
+        comment: null,
       };
       if (editingId != null) {
-        await updateDirectorInstructorHours(editingId, body);
+        await updateDirectorKm(editingId, body);
         showToast("Թարմացված է", "success");
       } else {
-        await createDirectorInstructorHours(body);
+        await createDirectorKm(body);
         showToast("Գրանցված է", "success");
       }
       resetForm();
@@ -117,26 +114,21 @@ export default function DirectorInstructorHoursPage() {
     }
   };
 
-  const startEdit = (row: DirectorInstructorHours) => {
+  const startEdit = (row: DirectorKm) => {
     setEditingId(row.id);
     setForm({
       date: row.date,
       instructorUserId: row.instructorUserId != null ? String(row.instructorUserId) : "",
-      hours: String(row.hours),
-      comment: row.comment ?? "",
+      km: String(row.km),
     });
   };
 
-  const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.hours), [rows]);
-  const byInstructor = useMemo(
-    () => topN(sumBy(rows, (r) => instructorName(r.instructorUserId), (r) => r.hours), 8),
+  const kmByMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.km), [rows]);
+  const kmByInstructor = useMemo(
+    () => topN(sumBy(rows, (r) => instructorName(r.instructorUserId), (r) => r.km), 8),
     [rows, instructors, branches, cities],
   );
-  const totalHours = useMemo(() => rows.reduce((s, r) => s + r.hours, 0), [rows]);
-  const avgDaily = useMemo(() => {
-    const days = new Set(rows.map((r) => r.date)).size;
-    return days > 0 ? totalHours / days : 0;
-  }, [rows, totalHours]);
+  const totalKm = useMemo(() => rows.reduce((s, r) => s + r.km, 0), [rows]);
 
   const tableColumns = useMemo(
     () => [
@@ -144,43 +136,37 @@ export default function DirectorInstructorHoursPage() {
         id: "date",
         header: "Ամսաթիվ",
         sortable: true,
-        sortValue: (r: DirectorInstructorHours) => r.date,
-        searchValue: (r: DirectorInstructorHours) => r.date,
-        render: (r: DirectorInstructorHours) => r.date,
+        sortValue: (r: DirectorKm) => r.date,
+        searchValue: (r: DirectorKm) => r.date,
+        render: (r: DirectorKm) => r.date,
       },
       {
         id: "instructor",
         header: "Հրահանգիչ",
         sortable: true,
         filterable: true,
-        sortValue: (r: DirectorInstructorHours) => instructorName(r.instructorUserId),
-        filterValue: (r: DirectorInstructorHours) => instructorName(r.instructorUserId),
-        searchValue: (r: DirectorInstructorHours) => instructorName(r.instructorUserId),
-        render: (r: DirectorInstructorHours) => instructorName(r.instructorUserId),
+        sortValue: (r: DirectorKm) => instructorName(r.instructorUserId),
+        filterValue: (r: DirectorKm) => instructorName(r.instructorUserId),
+        searchValue: (r: DirectorKm) => instructorName(r.instructorUserId),
+        render: (r: DirectorKm) => instructorName(r.instructorUserId),
       },
       {
-        id: "hours",
-        header: "Ժամ",
+        id: "km",
+        header: "ԿՄ",
         sortable: true,
-        sortValue: (r: DirectorInstructorHours) => r.hours,
-        searchValue: (r: DirectorInstructorHours) => String(r.hours),
-        render: (r: DirectorInstructorHours) => r.hours,
-      },
-      {
-        id: "comment",
-        header: "Մեկնաբանություն",
-        searchValue: (r: DirectorInstructorHours) => r.comment ?? "",
-        render: (r: DirectorInstructorHours) => r.comment ?? "—",
+        sortValue: (r: DirectorKm) => r.km,
+        searchValue: (r: DirectorKm) => String(r.km),
+        render: (r: DirectorKm) => r.km,
       },
       {
         id: "actions",
         header: "",
         align: "end" as const,
-        render: (r: DirectorInstructorHours) => (
+        render: (r: DirectorKm) => (
           <DirectorRecordActions
             readOnly={isLegacyDirectorRecord(r.id)}
             onEdit={() => startEdit(r)}
-            onDelete={() => void deleteDirectorInstructorHours(r.id).then(reload)}
+            onDelete={() => void deleteDirectorKm(r.id).then(reload)}
           />
         ),
       },
@@ -192,24 +178,23 @@ export default function DirectorInstructorHoursPage() {
 
   return (
     <DirectorLayout>
-      <PanelPageHeader icon={Clock} title="Հրահանգիչների ժամեր" />
+      <PanelPageHeader icon={Gauge} title="Կիլոմետրեր" />
       <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
       <DirectorSectionNav basePath={BASE_PATH} />
 
       {view === "report" ? (
-        <DirectorReportSection title={`Հաշվետվություն · ${totalHours.toFixed(1)} ժամ · ${rows.length} գրառում`}>
+        <DirectorReportSection title={`Հաշվետվություն · ${totalKm.toFixed(0)} կմ`}>
           <DirectorStatGrid>
-            <DirectorStatCard label="Ընդամենը ժամ" value={totalHours.toFixed(1)} />
-            <DirectorStatCard label="Միջ. ժամ/օր" value={avgDaily.toFixed(1)} />
-            <DirectorStatCard label="Հրահանգիչներ" value={new Set(rows.map((r) => r.instructorUserId).filter(Boolean)).size} />
+            <DirectorStatCard label="Կիլոմետր" value={totalKm.toFixed(0)} />
             <DirectorStatCard label="Գրառումներ" value={rows.length} />
+            <DirectorStatCard label="Հրահանգիչներ" value={new Set(rows.map((r) => r.instructorUserId).filter(Boolean)).size} />
           </DirectorStatGrid>
           <DirectorReportGrid className="mt-4">
-            <DirectorChartPanel title="Ժամեր ըստ ամիսների">
-              <DirectorTrendChart points={byMonth} label="Ժամ" />
+            <DirectorChartPanel title="Կիլոմետրեր ըստ ամիսների">
+              <DirectorTrendChart points={kmByMonth} label="ԿՄ" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Հրահանգիչներ Top 8">
-              <DirectorRankChart points={byInstructor} label="Ժամ" />
+              <DirectorRankChart points={kmByInstructor} label="ԿՄ" />
             </DirectorChartPanel>
           </DirectorReportGrid>
         </DirectorReportSection>
@@ -228,15 +213,12 @@ export default function DirectorInstructorHoursPage() {
                   ))}
                 </DirectorSelect>
               </DirectorField>
-              <DirectorField label="Ժամ">
-                <DirectorInput value={form.hours} onChange={(e) => setForm((f) => ({ ...f, hours: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Մեկնաբանություն">
-                <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
+              <DirectorField label="ԿՄ">
+                <DirectorInput value={form.km} onChange={(e) => setForm((f) => ({ ...f, km: e.target.value }))} />
               </DirectorField>
               <DirectorFormActions
                 editing={editingId != null}
-                createLabel="Գրանցել ժամերը"
+                createLabel="Գրանցել ԿՄ"
                 onSubmit={() => void submit()}
                 onCancel={resetForm}
               />

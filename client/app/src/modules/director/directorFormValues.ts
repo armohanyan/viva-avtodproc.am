@@ -1,4 +1,5 @@
 import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
+import { parseDecimalInput } from "src/utils/number.utils";
 import { todayIso } from "./director.consts";
 import type { DirectorPaymentMethod } from "./director.types";
 
@@ -8,7 +9,7 @@ export function directorAmd(raw: string): number {
 }
 
 export function directorDecimal(raw: string): number {
-  const n = Number(raw);
+  const n = parseDecimalInput(raw);
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 

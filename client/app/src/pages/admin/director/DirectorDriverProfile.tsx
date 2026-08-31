@@ -1,5 +1,7 @@
 import DirectorLayout from "src/modules/director/DirectorLayout";
 import { useDirectorDateRange, useDirectorReload } from "src/modules/director/components/DirectorDateFilters";
+import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director/components/DirectorSectionNav";
+import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
   DirectorButton,
@@ -9,17 +11,15 @@ import {
   DirectorSelect,
   DirectorStatCard,
   DirectorStatGrid,
-  DirectorTableBody,
-  DirectorTableHead,
-  DirectorTableRow,
-  DirectorTableTd,
-  DirectorTableTh,
-  DirectorTableWrap,
 } from "src/modules/director/components/DirectorUi";
 import { fetchDirectorDriverProfile } from "src/modules/director/director.api";
 import type { DirectorDriverProfile } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
+import { useBranches } from "src/modules/branches";
+import { useCities } from "src/modules/cities";
+import { formatDirectorInstructorLabel } from "src/modules/director/directorInstructorLabels";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
+import { useDirectorTable } from "src/modules/director/useDirectorTable";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -32,6 +32,8 @@ import {
   DirectorTrendChart,
 } from "src/modules/director/components/DirectorCharts";
 
+const BASE_PATH = "/admin/director/driver-profile";
+
 const EMPTY: DirectorDriverProfile = {
   instructorName: "",
   summary: { hours: 0, km: 0, liters: 0, amount: 0 },
@@ -40,7 +42,10 @@ const EMPTY: DirectorDriverProfile = {
 
 export default function DirectorDriverProfilePage() {
   const { showToast } = useToast();
+  const view = useDirectorSectionView(BASE_PATH);
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
+  const { branches } = useBranches();
+  const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [instructorUserId, setInstructorUserId] = useState("");
   const [data, setData] = useState<DirectorDriverProfile>(EMPTY);
@@ -97,42 +102,143 @@ export default function DirectorDriverProfilePage() {
     [data.rows],
   );
 
-  const instructorTitle = data.instructorName || instructors.find((i) => String(i.id) === instructorUserId)?.name || "—";
+  const selectedInstructor = instructors.find((i) => String(i.id) === instructorUserId);
+  const instructorTitle =
+    data.instructorName ||
+    (selectedInstructor ? formatDirectorInstructorLabel(selectedInstructor, branches, cities) : "—");
+
+  const tableColumns = useMemo(
+    () => [
+      {
+        id: "date",
+        header: "Ամսաթիվ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.date,
+        searchValue: (r: (typeof data.rows)[number]) => r.date,
+        render: (r: (typeof data.rows)[number]) => r.date,
+      },
+      {
+        id: "hours",
+        header: "Ժամ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.hours,
+        render: (r: (typeof data.rows)[number]) => r.hours.toFixed(1),
+      },
+      {
+        id: "km",
+        header: "ԿՄ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.km,
+        render: (r: (typeof data.rows)[number]) => r.km.toFixed(0),
+      },
+      {
+        id: "gas",
+        header: "Գազ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.gasLiters,
+        render: (r: (typeof data.rows)[number]) => r.gasLiters.toFixed(1),
+      },
+      {
+        id: "petrol",
+        header: "Բենզին",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.petrolLiters,
+        render: (r: (typeof data.rows)[number]) => r.petrolLiters.toFixed(1),
+      },
+      {
+        id: "liters",
+        header: "Լիտր",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.totalLiters,
+        render: (r: (typeof data.rows)[number]) => r.totalLiters.toFixed(1),
+      },
+      {
+        id: "amount",
+        header: "Գումար",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.amount,
+        render: (r: (typeof data.rows)[number]) => formatAmd(r.amount),
+      },
+      {
+        id: "card",
+        header: "Քարտ/POS",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.card,
+        render: (r: (typeof data.rows)[number]) => formatAmd(r.card),
+      },
+      {
+        id: "cash",
+        header: "Կանխիկ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.cash,
+        render: (r: (typeof data.rows)[number]) => formatAmd(r.cash),
+      },
+      {
+        id: "lPer100",
+        header: "լ/100կմ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.lPer100,
+        render: (r: (typeof data.rows)[number]) => r.lPer100.toFixed(1),
+      },
+      {
+        id: "amdPerKm",
+        header: "դր/կմ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.amdPerKm,
+        render: (r: (typeof data.rows)[number]) => r.amdPerKm.toFixed(0),
+      },
+      {
+        id: "kmPerHour",
+        header: "կմ/ժ",
+        sortable: true,
+        sortValue: (r: (typeof data.rows)[number]) => r.kmPerHour,
+        render: (r: (typeof data.rows)[number]) => r.kmPerHour.toFixed(1),
+      },
+    ],
+    [],
+  );
+
+  const table = useDirectorTable({ rows: data.rows, columns: tableColumns });
+
+  const filters = (
+    <DirectorCard>
+      <div className="flex flex-wrap gap-4 items-end mb-5">
+        <DirectorField label="Սկիզբ" className="w-auto">
+          <DirectorInput type="date" className="w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
+        </DirectorField>
+        <DirectorField label="Վերջ" className="w-auto">
+          <DirectorInput type="date" className="w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
+        </DirectorField>
+        <DirectorField label="Հրահանգիչ">
+          <DirectorSelect
+            value={instructorUserId}
+            onChange={(e) => setInstructorUserId(e.target.value)}
+            className="min-w-[180px]"
+          >
+            {instructors.map((i) => (
+              <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches, cities)}</option>
+            ))}
+          </DirectorSelect>
+        </DirectorField>
+        <DirectorButton onClick={() => void load()}>Ցույց տալ</DirectorButton>
+      </div>
+
+      <DirectorStatGrid>
+        <DirectorStatCard label="Ժամ" value={data.summary.hours.toFixed(1)} />
+        <DirectorStatCard label="ԿՄ" value={data.summary.km.toFixed(0)} />
+        <DirectorStatCard label="Լիտր" value={data.summary.liters.toFixed(1)} />
+        <DirectorStatCard label="Գումար" value={formatAmd(data.summary.amount)} />
+      </DirectorStatGrid>
+    </DirectorCard>
+  );
 
   return (
     <DirectorLayout>
       <PanelPageHeader icon={User} title="Վարորդի պրոֆիլ" />
-      <DirectorCard>
-        <div className="flex flex-wrap gap-4 items-end mb-5">
-          <DirectorField label="Սկիզբ" className="w-auto">
-            <DirectorInput type="date" className="w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
-          </DirectorField>
-          <DirectorField label="Վերջ" className="w-auto">
-            <DirectorInput type="date" className="w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </DirectorField>
-          <DirectorField label="Հրահանգիչ">
-            <DirectorSelect
-              value={instructorUserId}
-              onChange={(e) => setInstructorUserId(e.target.value)}
-              className="min-w-[180px]"
-            >
-              {instructors.map((i) => (
-                <option key={i.id} value={String(i.id)}>{i.name}</option>
-              ))}
-            </DirectorSelect>
-          </DirectorField>
-          <DirectorButton onClick={() => void load()}>Ցույց տալ</DirectorButton>
-        </div>
+      {filters}
+      <DirectorSectionNav basePath={BASE_PATH} />
 
-        <DirectorStatGrid>
-          <DirectorStatCard label="Ժամ" value={data.summary.hours.toFixed(1)} />
-          <DirectorStatCard label="ԿՄ" value={data.summary.km.toFixed(0)} />
-          <DirectorStatCard label="Լիտր" value={data.summary.liters.toFixed(1)} />
-          <DirectorStatCard label="Գումար" value={formatAmd(data.summary.amount)} />
-        </DirectorStatGrid>
-      </DirectorCard>
-
-      <div className="mt-6">
+      {view === "report" ? (
         <DirectorReportSection title={`${instructorTitle} · հաշվետվություն`}>
           <DirectorReportGrid>
             <DirectorChartPanel title="Ժամեր" subtitle="Ըստ օրերի">
@@ -149,44 +255,14 @@ export default function DirectorDriverProfilePage() {
             </DirectorChartPanel>
           </DirectorReportGrid>
         </DirectorReportSection>
-      </div>
-
-      <div className="mt-6">
-        <DirectorTableWrap>
-        <DirectorTableHead>
-          <DirectorTableTh>Ամսաթիվ</DirectorTableTh>
-          <DirectorTableTh>Ժամ</DirectorTableTh>
-          <DirectorTableTh>ԿՄ</DirectorTableTh>
-          <DirectorTableTh>Գազ</DirectorTableTh>
-          <DirectorTableTh>Բենզին</DirectorTableTh>
-          <DirectorTableTh>Լիտր</DirectorTableTh>
-          <DirectorTableTh>Գումար</DirectorTableTh>
-          <DirectorTableTh>Քարտ/POS</DirectorTableTh>
-          <DirectorTableTh>Կանխիկ</DirectorTableTh>
-          <DirectorTableTh>լ/100կմ</DirectorTableTh>
-          <DirectorTableTh>դր/կմ</DirectorTableTh>
-          <DirectorTableTh>կմ/ժ</DirectorTableTh>
-        </DirectorTableHead>
-        <DirectorTableBody>
-          {data.rows.map((r) => (
-            <DirectorTableRow key={r.date}>
-              <DirectorTableTd>{r.date}</DirectorTableTd>
-              <DirectorTableTd>{r.hours.toFixed(1)}</DirectorTableTd>
-              <DirectorTableTd>{r.km.toFixed(0)}</DirectorTableTd>
-              <DirectorTableTd>{r.gasLiters.toFixed(1)}</DirectorTableTd>
-              <DirectorTableTd>{r.petrolLiters.toFixed(1)}</DirectorTableTd>
-              <DirectorTableTd>{r.totalLiters.toFixed(1)}</DirectorTableTd>
-              <DirectorTableTd>{formatAmd(r.amount)}</DirectorTableTd>
-              <DirectorTableTd>{formatAmd(r.card)}</DirectorTableTd>
-              <DirectorTableTd>{formatAmd(r.cash)}</DirectorTableTd>
-              <DirectorTableTd>{r.lPer100.toFixed(1)}</DirectorTableTd>
-              <DirectorTableTd>{r.amdPerKm.toFixed(0)}</DirectorTableTd>
-              <DirectorTableTd>{r.kmPerHour.toFixed(1)}</DirectorTableTd>
-            </DirectorTableRow>
-          ))}
-        </DirectorTableBody>
-      </DirectorTableWrap>
-      </div>
+      ) : (
+        <DirectorDataTable
+          table={table}
+          columns={tableColumns}
+          rowKey={(r) => r.date}
+          searchPlaceholder="Որոնել ամսաթվով…"
+        />
+      )}
     </DirectorLayout>
   );
 }

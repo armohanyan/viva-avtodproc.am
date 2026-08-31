@@ -49,6 +49,7 @@
 }
 
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   /* Brand palette (logo-derived): warm orange + neutral grey */
   --hero: #0d0b0b;
@@ -96,6 +97,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --hero: #0d0b0b;
   --hero-foreground: #f9f8f5;
 
@@ -147,6 +149,13 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', system-ui, sans-serif;
+  }
+  select {
+    @apply text-foreground;
+  }
+  select option {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
   }
 }
 

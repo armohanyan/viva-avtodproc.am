@@ -63,7 +63,7 @@ export function DirectorTextarea(props: React.ComponentProps<typeof Textarea>) {
 }
 
 const selectClass =
-  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30";
+  "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30";
 
 export const directorSelectTriggerClass = selectClass;
 
@@ -97,9 +97,15 @@ export function DirectorButton({
   );
 }
 
-export function DirectorTableWrap({ children }: { children: ReactNode }) {
+export function DirectorTableWrap({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="mt-6 overflow-x-auto rounded-lg border border-border">
+    <div className={cn("mt-6 overflow-x-auto rounded-lg border border-border", className)}>
       <table className="w-full text-sm">{children}</table>
     </div>
   );
@@ -125,6 +131,18 @@ export function DirectorTableRow({ children }: { children: ReactNode }) {
   return <tr className="hover:bg-muted/30">{children}</tr>;
 }
 
-export function DirectorTableTd({ children }: { children: ReactNode }) {
-  return <td className="py-2.5 px-3 text-foreground">{children}</td>;
+export function DirectorTableTd({
+  children,
+  className,
+  colSpan,
+}: {
+  children: ReactNode;
+  className?: string;
+  colSpan?: number;
+}) {
+  return (
+    <td colSpan={colSpan} className={cn("py-2.5 px-3 text-foreground", className)}>
+      {children}
+    </td>
+  );
 }

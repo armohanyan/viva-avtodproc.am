@@ -32,6 +32,7 @@ import {
   Fuel,
   Clock,
   User,
+  Gauge,
   Banknote,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -52,7 +53,7 @@ import { initialsFromName } from "src/components/panel/initialsFromName";
 import NotificationBell from "src/components/NotificationBell";
 import AdminBranchFilterSelect from "src/components/admin/AdminBranchFilterSelect";
 import { AdminBranchFilterProvider } from "src/modules/admin/AdminBranchFilterProvider";
-import { DIRECTOR_NAV_LINKS, isDirectorRoute } from "src/modules/director/director.consts";
+import { DIRECTOR_NAV_LINKS, directorNavLabel, isDirectorRoute } from "src/modules/director/director.consts";
 
 interface Props {
 	children: ReactNode;
@@ -273,15 +274,113 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/director/cash": Wallet,
 		"/admin/director/expenses": Receipt,
 		"/admin/director/repair": Wrench,
-		"/admin/director/fuel-km": Fuel,
+		"/admin/director/fuel": Fuel,
+		"/admin/director/km": Gauge,
 		"/admin/director/instructor-hours": Clock,
 		"/admin/director/driver-profile": User,
 		"/admin/director/salary": Banknote,
 	};
 
+	const renderDirectorNavItem = (link: (typeof DIRECTOR_NAV_LINKS)[number], closeMobileNav: () => void) => {
+		const Icon = directorIconByPath[link.href] ?? LayoutGrid;
+		const children = link.children ?? [];
+		const hasChildren = children.length > 0;
+		const onParent = location === link.href;
+		const underParent = hasChildren && children.some((c) => location === c.href);
+		const parentActive = onParent || underParent;
+
+		if (!hasChildren) {
+			const active = location === link.href;
+			return (
+				<Link
+					key={link.href}
+					href={link.href}
+					onClick={() => closeMobileNav()}
+					className={cn(
+						"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+						active
+							? "bg-primary text-primary-foreground"
+							: "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
+					)}
+				>
+					<Icon className="w-4 h-4 shrink-0" />
+					{link.label}
+				</Link>
+			);
+		}
+
+		const override = collapsibleOverrides[link.href];
+		const isOpen = override ?? parentActive;
+
+		return (
+			<div key={link.href} className="space-y-0.5">
+				<div
+					className={cn(
+						"w-full flex items-center gap-2 px-1 py-1 rounded-lg text-sm font-medium transition-colors",
+						parentActive
+							? "bg-white/10 text-hero-foreground"
+							: "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
+					)}
+				>
+					<Link
+						href={link.href}
+						onClick={(e) => {
+							if (parentActive) {
+								e.preventDefault();
+								setCollapsibleOverrides((prev) => ({ ...prev, [link.href]: !isOpen }));
+								return;
+							}
+							closeMobileNav();
+						}}
+						className="flex-1 flex items-center gap-3 px-2 py-1.5 rounded-md"
+					>
+						<Icon className="w-4 h-4 shrink-0" />
+						<span className="flex-1 text-left">{link.label}</span>
+					</Link>
+					<button
+						type="button"
+						aria-expanded={isOpen}
+						aria-label={link.label}
+						onClick={() => {
+							setCollapsibleOverrides((prev) => ({ ...prev, [link.href]: !isOpen }));
+						}}
+						className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-white/10"
+					>
+						<ChevronDown
+							className={cn("w-4 h-4 shrink-0 transition-transform opacity-80", isOpen && "rotate-180")}
+							aria-hidden
+						/>
+					</button>
+				</div>
+				{isOpen ? (
+					<div className="ml-3 pl-3 border-l border-white/15 space-y-0.5">
+						{children.map((child) => {
+							const childActive = location === child.href;
+							return (
+								<Link
+									key={child.href}
+									href={child.href}
+									onClick={() => closeMobileNav()}
+									className={cn(
+										"flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+										childActive
+											? "bg-primary text-primary-foreground"
+											: "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
+									)}
+								>
+									{child.label}
+								</Link>
+							);
+						})}
+					</div>
+				) : null}
+			</div>
+		);
+	};
+
 	const headerTitle = useMemo(() => {
 		if (isDirectorRoute(location)) {
-			return DIRECTOR_NAV_LINKS.find((n) => n.href === location)?.label ?? "Տնօրենի միջավայր";
+			return directorNavLabel(location);
 		}
 		if (location === "/admin/profile") return t("adminProfileTitle");
 		if (location === "/admin/learn/exam-questions") return t("adminExamQuestionsTitle");
@@ -366,26 +465,7 @@ export default function AdminLayout({ children }: Props) {
 					</div>
 					<nav className="px-3 pb-4 flex-1 min-h-0 overflow-y-auto space-y-1">
 						{isDirectorMode
-							? DIRECTOR_NAV_LINKS.map((link) => {
-									const active = location === link.href;
-									const Icon = directorIconByPath[link.href] ?? LayoutGrid;
-									return (
-										<Link
-											key={link.href}
-											href={link.href}
-											onClick={() => closeMobileNav()}
-											className={cn(
-												"flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-												active
-													? "bg-primary text-primary-foreground"
-													: "text-hero-foreground/80 hover:bg-white/10 hover:text-hero-foreground",
-											)}
-										>
-											<Icon className="w-4 h-4 shrink-0" />
-											{link.label}
-										</Link>
-									);
-								})
+							? DIRECTOR_NAV_LINKS.map((link) => renderDirectorNavItem(link, closeMobileNav))
 							: ADMIN_NAV_LINKS.map((link) => renderAdminNavItem(link, closeMobileNav))}
 					</nav>
 				</div>
