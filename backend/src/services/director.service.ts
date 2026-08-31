@@ -27,6 +27,8 @@ import {
   fetchLegacyRepairs,
   fetchLegacySalaries,
   mergeDirectorRows,
+  type LegacyDirectorFuelRow,
+  type LegacyDirectorKmRow,
 } from '../helpers/director-legacy.helper';
 
 const { ResourceNotFoundError } = ErrorsUtil;
@@ -268,7 +270,10 @@ export default class DirectorService {
       }),
       fetchLegacyFuel(range),
     ]);
-    return mergeDirectorRows(rowJson(directorRows), legacyRows).map((row) => ({
+    return mergeDirectorRows<LegacyDirectorFuelRow>(
+      rowJson(directorRows) as LegacyDirectorFuelRow[],
+      legacyRows,
+    ).map((row) => ({
       ...row,
       liters: num(row.liters),
     }));
@@ -321,7 +326,10 @@ export default class DirectorService {
       }),
       fetchLegacyKm(range),
     ]);
-    return mergeDirectorRows(rowJson(directorRows), legacyRows).map((row) => ({
+    return mergeDirectorRows<LegacyDirectorKmRow>(
+      rowJson(directorRows) as LegacyDirectorKmRow[],
+      legacyRows,
+    ).map((row) => ({
       ...row,
       km: num(row.km),
     }));
