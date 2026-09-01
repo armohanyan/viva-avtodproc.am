@@ -120,6 +120,8 @@ export function defaultDirectorStartDate(): string {
   return `${d.getFullYear()}-${m}-01`;
 }
 
+export { halfMonthPeriod as defaultDirectorSalaryPeriod } from "src/utils/halfMonthPeriod.utils";
+
 export function isLegacyDirectorRecord(id: number): boolean {
   return id < 0;
 }

@@ -12,6 +12,10 @@ import type {
   DirectorRepair,
   DirectorRevenue,
   DirectorSalary,
+  DirectorSalaryEmployeeKind,
+  DirectorSalaryLessons,
+  DirectorSalaryPayment,
+  DirectorSalaryReport,
   DirectorChartPoint,
 } from "./director.types";
 import { directorHoursNumber } from "./directorFormat";
@@ -206,6 +210,40 @@ export async function updateDirectorSalary(id: number, body: Omit<DirectorSalary
 
 export async function deleteDirectorSalary(id: number): Promise<void> {
   await vivaApiJson(`${BASE}/salaries/${id}`, { method: "DELETE" });
+}
+
+export async function fetchDirectorSalaryReport(q: string): Promise<DirectorSalaryReport> {
+  return vivaApiJson<DirectorSalaryReport>(`${BASE}/salary-report?${q}`);
+}
+
+export async function fetchDirectorSalaryLessons(
+  kind: DirectorSalaryEmployeeKind,
+  employeeUserId: number,
+  q: string,
+): Promise<DirectorSalaryLessons> {
+  const params = new URLSearchParams(q);
+  params.set("kind", kind);
+  params.set("employeeUserId", String(employeeUserId));
+  return vivaApiJson<DirectorSalaryLessons>(`${BASE}/salary-lessons?${params.toString()}`);
+}
+
+export async function fetchDirectorSalaryPayments(q: string): Promise<{ items: DirectorSalaryPayment[] }> {
+  return vivaApiJson<{ items: DirectorSalaryPayment[] }>(`${BASE}/salary-payments?${q}`);
+}
+
+export async function createDirectorSalaryPayment(body: {
+  kind: DirectorSalaryEmployeeKind;
+  employeeUserId: number;
+  title: string;
+  periodStart: string;
+  periodEnd: string;
+  notes?: string | null;
+}): Promise<DirectorSalaryPayment> {
+  return vivaApiJson<DirectorSalaryPayment>(`${BASE}/salary-payments`, { method: "POST", body });
+}
+
+export async function deleteDirectorSalaryPayment(id: number): Promise<void> {
+  await vivaApiJson(`${BASE}/salary-payments/${id}`, { method: "DELETE" });
 }
 
 export async function fetchDirectorRevenues(q: string, isLegacy: boolean): Promise<DirectorRevenue[]> {

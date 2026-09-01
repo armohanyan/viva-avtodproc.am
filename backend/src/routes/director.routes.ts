@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import AdminSalaryController from '../controllers/admin-salary.controller';
 import DirectorController from '../controllers/director.controller';
 import { requireSuperAdmin } from '../middleware/staff-auth.middleware';
 
@@ -46,6 +47,12 @@ router.get('/salaries', DirectorController.listSalaries);
 router.post('/salaries', DirectorController.createSalary);
 router.patch('/salaries/:id', DirectorController.updateSalary);
 router.delete('/salaries/:id', DirectorController.deleteSalary);
+
+router.get('/salary-report', AdminSalaryController.report);
+router.get('/salary-lessons', AdminSalaryController.lessons);
+router.get('/salary-payments', AdminSalaryController.listPayments);
+router.post('/salary-payments', AdminSalaryController.createPayment);
+router.delete('/salary-payments/:id', AdminSalaryController.removePayment);
 
 router.get('/revenues', DirectorController.listRevenues);
 router.get('/revenues/chart', DirectorController.revenueChart);
