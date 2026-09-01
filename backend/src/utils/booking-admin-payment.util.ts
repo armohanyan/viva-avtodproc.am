@@ -253,6 +253,81 @@ export function buildStudentPaymentSummary(
   };
 }
 
+export type LessonSlotPaymentRow = {
+  dateIso: string;
+  slotTime: string;
+  paymentCovered?: boolean;
+};
+
+/** Income attributed to one booked hour (paid / partial-covered slots only). */
+export function slotRevenueAmd(
+  booking: BookingPaymentRow,
+  slot: LessonSlotPaymentRow,
+  allSlots: readonly LessonSlotPaymentRow[],
+): number {
+  if (!bookingCountsTowardStudentDebt(booking)) return 0;
+  if (booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object') return 0;
+
+  const resolved = resolveBookingPayment(booking);
+  const ps = resolved.paymentStatus;
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 0;
+  if (resolved.totalPriceAmd <= 0) return 0;
+
+  const slotCount = allSlots.length > 0 ? allSlots.length : 1;
+  if (ps === 'paid') {
+    return Math.round(resolved.totalPriceAmd / slotCount);
+  }
+  if (ps === 'partial') {
+    if (!slot.paymentCovered) return 0;
+    const coveredCount = allSlots.filter((s) => s.paymentCovered).length;
+    return coveredCount > 0 ? Math.round(resolved.paidAmountAmd / coveredCount) : 0;
+  }
+  return 0;
+}
+
+/** Full recognized income for a legacy booking row without per-slot records. */
+export function legacyBookingRevenueAmd(row: BookingPaymentRow): number {
+  return recognizedIncomeAmd(row);
+}
+
+export type LessonDateBookingIncomeInput = {
+  slotsInRange: ReadonlyArray<
+    LessonSlotPaymentRow & {
+      bookingId: number;
+      booking: BookingPaymentRow & { id: number };
+    }
+  >;
+  legacyBookingsInRange: ReadonlyArray<
+    BookingPaymentRow & { id: number; dateIso: string; time: string; endTime?: string | null }
+  >;
+  slotsByBookingId: ReadonlyMap<number, readonly LessonSlotPaymentRow[]>;
+};
+
+/** Booking income attributed to lesson dates in the selected period (not payment date). */
+export function computeLessonDateBookingIncome(
+  input: LessonDateBookingIncomeInput,
+): BookingIncomeInPeriodResult {
+  const bookingIncomeAmd = new Map<number, number>();
+  let totalIncomeAmd = 0;
+
+  for (const slot of input.slotsInRange) {
+    const allSlots = input.slotsByBookingId.get(slot.bookingId) ?? [];
+    const amt = slotRevenueAmd(slot.booking, slot, allSlots);
+    if (amt <= 0) continue;
+    totalIncomeAmd += amt;
+    bookingIncomeAmd.set(slot.bookingId, (bookingIncomeAmd.get(slot.bookingId) ?? 0) + amt);
+  }
+
+  for (const row of input.legacyBookingsInRange) {
+    const amt = legacyBookingRevenueAmd(row);
+    if (amt <= 0) continue;
+    totalIncomeAmd += amt;
+    bookingIncomeAmd.set(row.id, (bookingIncomeAmd.get(row.id) ?? 0) + amt);
+  }
+
+  return { totalIncomeAmd, bookingIncomeAmd, bookingPaymentDateMs: new Map() };
+}
+
 /** Cash-like income recognized from payment fields (not booking lifecycle status). */
 export function recognizedIncomeAmd(row: BookingPaymentRow): number {
   if (!bookingCountsTowardStudentDebt(row)) return 0;

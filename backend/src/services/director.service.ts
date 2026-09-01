@@ -25,6 +25,7 @@ import {
   fetchLegacyInstructorHours,
   fetchLegacyKm,
   fetchLegacyRepairs,
+  fetchLegacyRevenues,
   fetchLegacySalaries,
   mergeDirectorRows,
   mergeDirectorRowsPreferManual,
@@ -35,7 +36,26 @@ import {
 
 const { ResourceNotFoundError } = ErrorsUtil;
 
+const YEREVAN_OFFSET = '+04:00';
+
 type DateRange = { startDate: string; endDate: string; branchId?: number | null };
+
+function yerevanRangeBounds(startDate: string, endDate: string): { startAt: Date; endAt: Date } {
+  return {
+    startAt: new Date(`${startDate}T00:00:00${YEREVAN_OFFSET}`),
+    endAt: new Date(`${endDate}T23:59:59.999${YEREVAN_OFFSET}`),
+  };
+}
+
+function financeTxInYerevanRange(
+  tx: FinanceTransaction,
+  startAt: Date,
+  endAt: Date,
+): boolean {
+  const raw = (tx as unknown as { createdAt?: Date | string }).createdAt;
+  const d = raw instanceof Date ? raw : raw ? new Date(raw) : null;
+  return d != null && d >= startAt && d <= endAt;
+}
 
 function dateWhere(range: DateRange): WhereOptions {
   const base: WhereOptions = {
@@ -488,10 +508,12 @@ export default class DirectorService {
     const dateFilter = { date: { [Op.between]: [range.startDate, range.endDate] } };
     const cashExpenseWhere = dateWhere(range);
     const revenueBranchFilter = range.branchId != null ? { branchId: range.branchId } : {};
+    const { startAt, endAt } = yerevanRangeBounds(range.startDate, range.endDate);
 
     const [
       revenues,
-      legacyRevenues,
+      legacyManualRevenues,
+      legacyBookingRevenues,
       expenses,
       fuel,
       salaries,
@@ -505,6 +527,7 @@ export default class DirectorService {
     ] = await Promise.all([
       DirectorRevenue.findAll({ where: { ...dateFilter, isLegacy: false, ...revenueBranchFilter } }),
       DirectorRevenue.findAll({ where: { ...dateFilter, isLegacy: true, ...revenueBranchFilter } }),
+      fetchLegacyRevenues(range),
       DirectorExpense.findAll({ where: cashExpenseWhere }),
       DirectorFuel.findAll({ where: dateFilter }),
       DirectorSalary.findAll({ where: dateFilter }),
@@ -523,29 +546,28 @@ export default class DirectorService {
       fetchLegacyInstructorHours(range),
     ]);
 
-    const rangeStart = new Date(`${range.startDate}T00:00:00`);
-    const rangeEnd = new Date(`${range.endDate}T23:59:59`);
+    const financeTxsInRange = financeTxs.filter((tx) => financeTxInYerevanRange(tx, startAt, endAt));
+    const nonBookingFinanceTxs = financeTxsInRange.filter(
+      (tx) => tx.bookingId == null || tx.bookingId <= 0,
+    );
 
-    const financeTxsInRange = financeTxs.filter((tx) => {
-      const raw = (tx as unknown as { createdAt?: Date | string }).createdAt;
-      const d = raw instanceof Date ? raw : raw ? new Date(raw) : null;
-      return d != null && d >= rangeStart && d <= rangeEnd;
-    });
+    const directorRevenueTotal =
+      sumField(revenues, 'amount') +
+      sumField(legacyManualRevenues, 'amount') +
+      legacyBookingRevenues.reduce((s, r) => s + r.amount, 0);
+    const nonBookingFinanceTotal = nonBookingFinanceTxs.reduce((s, tx) => s + num(tx.grossAmd), 0);
+    const totalRevenue = directorRevenueTotal + nonBookingFinanceTotal;
 
-    const directorRevenueTotal = sumField(revenues, 'amount') + sumField(legacyRevenues, 'amount');
-    const systemRevenueTotal = financeTxsInRange.reduce((s, tx) => s + tx.grossAmd, 0);
-    const totalRevenue = directorRevenueTotal + systemRevenueTotal;
-
-    const cardFromTx = financeTxsInRange
+    const cardFromTx = nonBookingFinanceTxs
       .filter((tx) => tx.method === 'card' || tx.method === 'idram')
-      .reduce((s, tx) => s + tx.grossAmd, 0);
-    const cashFromTx = financeTxsInRange
+      .reduce((s, tx) => s + num(tx.grossAmd), 0);
+    const cashFromTx = nonBookingFinanceTxs
       .filter((tx) => tx.method === 'cash')
-      .reduce((s, tx) => s + tx.grossAmd, 0);
-    const cardFromDirector = [...revenues, ...legacyRevenues]
+      .reduce((s, tx) => s + num(tx.grossAmd), 0);
+    const cardFromDirector = [...revenues, ...legacyManualRevenues, ...legacyBookingRevenues]
       .filter((r) => r.paymentMethod === 'card')
       .reduce((s, r) => s + r.amount, 0);
-    const cashFromDirector = [...revenues, ...legacyRevenues]
+    const cashFromDirector = [...revenues, ...legacyManualRevenues, ...legacyBookingRevenues]
       .filter((r) => r.paymentMethod === 'cash')
       .reduce((s, r) => s + r.amount, 0);
 
@@ -706,12 +728,12 @@ export default class DirectorService {
     const dateFilter = { date: { [Op.between]: [range.startDate, range.endDate] } };
     const cashExpenseWhere = dateWhere(range);
     const revenueBranchFilter = range.branchId != null ? { branchId: range.branchId } : {};
-    const rangeStart = new Date(`${range.startDate}T00:00:00`);
-    const rangeEnd = new Date(`${range.endDate}T23:59:59`);
+    const { startAt, endAt } = yerevanRangeBounds(range.startDate, range.endDate);
 
-    const [revenues, expenses, fuel, salaries, financeTxs, legacyExpenses, legacyFuel, legacySalaries] =
+    const [revenues, legacyBookingRevenues, expenses, fuel, salaries, financeTxs, legacyExpenses, legacyFuel, legacySalaries] =
       await Promise.all([
         DirectorRevenue.findAll({ where: { ...dateFilter, ...revenueBranchFilter } }),
+        fetchLegacyRevenues(range),
         DirectorExpense.findAll({ where: cashExpenseWhere }),
         DirectorFuel.findAll({ where: dateFilter }),
         DirectorSalary.findAll({ where: dateFilter }),
@@ -728,6 +750,7 @@ export default class DirectorService {
       ]);
 
     for (const r of revenues) bump(revenueByMonth, r.date, r.amount);
+    for (const r of legacyBookingRevenues) bump(revenueByMonth, r.date, r.amount);
     for (const e of expenses) bump(expensesByMonth, e.date, e.amount);
     for (const e of legacyExpenses) bump(expensesByMonth, e.date, e.amount);
     for (const f of fuel) bump(fuelByMonth, f.date, f.amount);
@@ -736,10 +759,12 @@ export default class DirectorService {
     for (const s of legacySalaries) bump(salaryByMonth, s.date, s.totalAmd);
 
     for (const tx of financeTxs) {
+      if (tx.bookingId != null && tx.bookingId > 0) continue;
+      if (!financeTxInYerevanRange(tx, startAt, endAt)) continue;
       const raw = (tx as unknown as { createdAt?: Date | string }).createdAt;
       const d = raw instanceof Date ? raw : raw ? new Date(raw) : null;
-      if (d == null || d < rangeStart || d > rangeEnd) continue;
-      bump(revenueByMonth, d.toISOString().slice(0, 10), tx.grossAmd);
+      if (d == null) continue;
+      bump(revenueByMonth, d.toISOString().slice(0, 10), num(tx.grossAmd));
     }
 
     const labels = months.map(monthLabelAm);

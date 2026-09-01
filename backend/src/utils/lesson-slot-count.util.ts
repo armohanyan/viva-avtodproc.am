@@ -43,6 +43,7 @@ export type SlotWithBooking = {
 };
 
 type SlotRow = Pick<BookingSlot, 'dateIso'>;
+export type BookingSlotDetail = Pick<BookingSlot, 'dateIso' | 'slotTime' | 'paymentCovered'>;
 
 function dateBetween(range: Pick<SlotInRangeQuery, 'startDate' | 'endDate'>) {
   return { [Op.between]: [range.startDate, range.endDate] };
@@ -310,6 +311,31 @@ export async function loadBookingSlotsByBookingId(
   for (const s of rows) {
     const list = map.get(s.bookingId) ?? [];
     list.push(s);
+    map.set(s.bookingId, list);
+  }
+  return map;
+}
+
+export async function loadBookingSlotDetailsByBookingId(
+  bookingIds: readonly number[],
+): Promise<Map<number, BookingSlotDetail[]>> {
+  const map = new Map<number, BookingSlotDetail[]>();
+  if (bookingIds.length === 0) return map;
+  const rows = await BookingSlotModel.findAll({
+    where: { bookingId: { [Op.in]: [...bookingIds] } },
+    attributes: ['bookingId', 'dateIso', 'slotTime', 'paymentCovered'],
+    order: [
+      ['dateIso', 'ASC'],
+      ['slotTime', 'ASC'],
+    ],
+  });
+  for (const s of rows) {
+    const list = map.get(s.bookingId) ?? [];
+    list.push({
+      dateIso: String(s.dateIso).slice(0, 10),
+      slotTime: s.slotTime,
+      paymentCovered: Boolean(s.paymentCovered),
+    });
     map.set(s.bookingId, list);
   }
   return map;

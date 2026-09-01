@@ -11,7 +11,7 @@ import {
 import { branchIdWhere } from '../helpers';
 import {
   bookingCountsTowardStudentDebt,
-  computeBookingIncomeInPeriod,
+  computeLessonDateBookingIncome,
   isCountableAdminPaymentStatus,
   resolveBookingPayment,
 } from '../utils/booking-admin-payment.util';
@@ -21,6 +21,7 @@ import {
   findSlotsInDateRange,
   legacyBookingCountsAsCompleted,
   legacyBookingCountsAsUpcoming,
+  loadBookingSlotDetailsByBookingId,
   slotCountFromTimeRange,
   slotCountsAsCancelled,
   slotCountsAsCompleted,
@@ -272,40 +273,43 @@ export default class AdminFinancialReportService {
 
     const bookingsCreatedCount = await Booking.count({ where: bookingWhere });
 
-    const bookingIncomeTxs = await FinanceTransaction.findAll({
+    const bookingIdsForIncome = [
+      ...new Set([
+        ...lessonSlots.map((s) => s.bookingId),
+        ...legacyLessonBookings.map((b) => b.id),
+      ]),
+    ];
+    const slotsByBookingId = await loadBookingSlotDetailsByBookingId(bookingIdsForIncome);
+
+    const { totalIncomeAmd: lessonBookingIncomeAmd, bookingIncomeAmd } = computeLessonDateBookingIncome({
+      slotsInRange: lessonSlots.map((slot) => ({
+        bookingId: slot.bookingId,
+        dateIso: slot.dateIso,
+        slotTime: slot.slotTime,
+        paymentCovered: slotsByBookingId
+          .get(slot.bookingId)
+          ?.find((s) => s.dateIso === slot.dateIso && s.slotTime === slot.slotTime)?.paymentCovered,
+        booking: slot.booking,
+      })),
+      legacyBookingsInRange: legacyLessonBookings,
+      slotsByBookingId,
+    });
+
+    const nonBookingIncomeTxs = await FinanceTransaction.findAll({
       where: {
         ...(branchWhere ?? {}),
         entryType: 'income',
         status: 'completed',
-        bookingId: { [Op.ne]: null },
+        bookingId: null,
         createdAt: { [Op.between]: [startAt, endAt] },
       } as WhereOptions,
-      attributes: ['id', 'bookingId', 'grossAmd', 'createdAt'],
-      order: [['createdAt', 'DESC']],
+      attributes: ['grossAmd'],
     });
-
-    const fallbackPaidBookings = await Booking.findAll({
-      where: {
-        ...(branchWhere ?? {}),
-        paidAt: { [Op.between]: [startAt, endAt] },
-      },
-      attributes: [
-        'id',
-        'status',
-        'totalPriceAmd',
-        'paidAmountAmd',
-        'paymentStatus',
-        'paidAt',
-        'prepaidMeta',
-      ],
-    });
-
-    const { totalIncomeAmd, bookingIncomeAmd, bookingPaymentDateMs } = computeBookingIncomeInPeriod({
-      incomeTxs: bookingIncomeTxs,
-      fallbackBookings: fallbackPaidBookings,
-      startAtMs: startAt.getTime(),
-      endAtMs: endAt.getTime(),
-    });
+    const nonBookingIncomeAmd = nonBookingIncomeTxs.reduce(
+      (s, tx) => s + Math.max(0, Math.round(Number(tx.grossAmd) || 0)),
+      0,
+    );
+    const totalIncomeAmd = lessonBookingIncomeAmd + nonBookingIncomeAmd;
 
     const paidBookingIds = [...bookingIncomeAmd.keys()];
     const paymentBookings =
@@ -320,7 +324,7 @@ export default class AdminFinancialReportService {
               { model: User, as: 'instructor', attributes: ['id', 'name'], required: false },
               { model: Branch, attributes: ['id', 'name'] },
             ],
-            order: [['paidAt', 'DESC']],
+            order: [['dateIso', 'DESC'], ['time', 'DESC']],
           })
         : [];
 
@@ -395,8 +399,7 @@ export default class AdminFinancialReportService {
       const student = row.student as User | undefined;
       const instructor = row.instructor as User | null | undefined;
       const branch = row.Branch as Branch | undefined;
-      const paymentMs = bookingPaymentDateMs.get(row.id);
-      const paymentDate = paymentMs != null ? new Date(paymentMs) : rowCreatedAt(row as Booking & { createdAt?: Date });
+      const paymentDate = rowCreatedAt(row as Booking & { createdAt?: Date });
       const bid = branch?.id ?? row.branchId;
 
       if (branchId == null) {

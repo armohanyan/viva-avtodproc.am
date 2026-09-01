@@ -5,6 +5,7 @@ import type { DirectorPaymentMethod } from '../constants/director-payment-method
 import {
   CarExpense,
   FleetCar,
+  FinanceTransaction,
   InstructorBranch,
   InstructorKmLog,
   PetrolExpense,
@@ -13,9 +14,14 @@ import {
 } from '../models';
 import AdminFinanceExpenseService from '../services/admin-finance-expense.service';
 import {
+  legacyBookingRevenueAmd,
+  slotRevenueAmd,
+} from '../utils/booking-admin-payment.util';
+import {
   bookingCountsForDirectorHours,
   findLegacyBookingsWithoutSlots,
   findSlotsInDateRange,
+  loadBookingSlotDetailsByBookingId,
   slotCountFromTimeRange,
 } from '../utils/lesson-slot-count.util';
 
@@ -77,6 +83,15 @@ export type LegacyDirectorInstructorHoursRow = {
   date: string;
   instructorUserId: number;
   hours: number;
+  comment: string | null;
+};
+
+export type LegacyDirectorRevenueRow = {
+  id: number;
+  date: string;
+  branchId: number;
+  amount: number;
+  paymentMethod: DirectorPaymentMethod;
   comment: string | null;
 };
 
@@ -283,6 +298,101 @@ export async function fetchLegacyInstructorHours(range: DateRange): Promise<Lega
       date: row.date,
       instructorUserId: row.instructorUserId,
       hours: Math.round(row.hours),
+      comment: null as string | null,
+    }));
+}
+
+function paymentMethodForBooking(
+  bookingId: number,
+  txs: ReadonlyArray<{ bookingId: number | null; method: string }>,
+): DirectorPaymentMethod {
+  const bookingTxs = txs.filter((t) => t.bookingId === bookingId);
+  if (bookingTxs.some((t) => t.method === 'card' || t.method === 'idram')) return 'card';
+  return 'cash';
+}
+
+/** Auto revenue from paid lesson slots on their calendar dates (matches instructor-hours date axis). */
+export async function fetchLegacyRevenues(range: DateRange): Promise<LegacyDirectorRevenueRow[]> {
+  const revenueByKey = new Map<
+    string,
+    { date: string; branchId: number; paymentMethod: DirectorPaymentMethod; amount: number }
+  >();
+
+  const bump = (
+    date: string,
+    branchId: number,
+    paymentMethod: DirectorPaymentMethod,
+    amount: number,
+  ) => {
+    if (amount <= 0 || branchId <= 0) return;
+    const d = date.slice(0, 10);
+    if (d < range.startDate || d > range.endDate) return;
+    const key = `${d}:${branchId}:${paymentMethod}`;
+    const prev = revenueByKey.get(key) ?? { date: d, branchId, paymentMethod, amount: 0 };
+    prev.amount += amount;
+    revenueByKey.set(key, prev);
+  };
+
+  const slotQuery = {
+    startDate: range.startDate,
+    endDate: range.endDate,
+    branchId: range.branchId,
+  };
+
+  const [slotRows, legacyBookings] = await Promise.all([
+    findSlotsInDateRange(slotQuery),
+    findLegacyBookingsWithoutSlots(slotQuery),
+  ]);
+
+  const bookingIds = [
+    ...new Set([...slotRows.map((s) => s.bookingId), ...legacyBookings.map((b) => b.id)]),
+  ];
+
+  const [slotsByBookingId, financeTxs] = await Promise.all([
+    loadBookingSlotDetailsByBookingId(bookingIds),
+    bookingIds.length > 0
+      ? FinanceTransaction.findAll({
+          where: {
+            bookingId: { [Op.in]: bookingIds },
+            entryType: 'income',
+            status: 'completed',
+          },
+          attributes: ['bookingId', 'method'],
+        })
+      : Promise.resolve([]),
+  ]);
+
+  for (const slot of slotRows) {
+    const booking = slot.booking;
+    if (!bookingCountsForDirectorHours(booking)) continue;
+    const allSlots = slotsByBookingId.get(slot.bookingId) ?? [];
+    const amt = slotRevenueAmd(booking, slot, allSlots);
+    if (amt <= 0) continue;
+    bump(
+      slot.dateIso,
+      booking.branchId,
+      paymentMethodForBooking(slot.bookingId, financeTxs),
+      amt,
+    );
+  }
+
+  for (const row of legacyBookings) {
+    if (!bookingCountsForDirectorHours(row)) continue;
+    const amt = legacyBookingRevenueAmd(row);
+    if (amt <= 0) continue;
+    const d = String(row.dateIso).slice(0, 10);
+    bump(d, row.branchId, paymentMethodForBooking(row.id, financeTxs), amt);
+  }
+
+  let seq = 1;
+  return [...revenueByKey.values()]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.branchId - a.branchId)
+    .map((row) => ({
+      id: legacyDirectorId(seq++),
+      date: row.date,
+      branchId: row.branchId,
+      amount: Math.round(row.amount),
+      paymentMethod: row.paymentMethod,
       comment: null as string | null,
     }));
 }
