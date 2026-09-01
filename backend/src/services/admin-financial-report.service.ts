@@ -1,9 +1,5 @@
 import { Op, type WhereOptions } from 'sequelize';
 import {
-  BOOKING_STATUSES_COUNTED_FOR_PROGRESS,
-  type LessonCompletionStatus,
-} from '../constants/lesson-completion';
-import {
   Booking,
   Branch,
   FinanceTransaction,
@@ -19,10 +15,16 @@ import {
   isCountableAdminPaymentStatus,
   resolveBookingPayment,
 } from '../utils/booking-admin-payment.util';
-import { bookingEndUtcMs, lessonEndUtcMs } from '../utils/lesson-datetime.util';
+import { lessonEndUtcMs } from '../utils/lesson-datetime.util';
 import {
-  completedLessonSlotCountFromBooking,
-  loadBookingSlotsByBookingId,
+  findLegacyBookingsWithoutSlots,
+  findSlotsInDateRange,
+  legacyBookingCountsAsCompleted,
+  legacyBookingCountsAsUpcoming,
+  slotCountFromTimeRange,
+  slotCountsAsCancelled,
+  slotCountsAsCompleted,
+  slotCountsAsUpcoming,
 } from '../utils/lesson-slot-count.util';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import AdminFinanceExpenseService from './admin-finance-expense.service';
@@ -85,48 +87,6 @@ function inferBookingTypeLabel(
   const packageOrderId = Math.floor(Number(prepaid?.packageOrderId) || 0);
   if (packageOrderId > 0) return 'package';
   return 'single';
-}
-
-function isBookingActiveForProgress(row: Booking): boolean {
-  const st = normalizeLifecycleStatus(String(row.status ?? ''));
-  if (!BOOKING_STATUSES_COUNTED_FOR_PROGRESS.has(st)) return false;
-  if (st === 'pending_payment') {
-    const paid = row.paidAt != null || row.paymentStatus === 'paid';
-    if (!paid) return false;
-  }
-  return true;
-}
-
-function bookingCountsAsCompleted(row: Booking, now: Date): boolean {
-  const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  if (cs === 'completed') return true;
-  if (cs === 'missed' || cs === 'cancelled' || cs === 'refunded' || cs === 'cancelled_no_refund') {
-    return false;
-  }
-  if (row.lessonPassedSuccessfully === false) return false;
-  return (
-    isBookingActiveForProgress(row) &&
-    bookingEndUtcMs(String(row.dateIso), String(row.time), row.endTime) <= now.getTime()
-  );
-}
-
-function bookingCountsAsCancelled(row: Booking): boolean {
-  const st = normalizeLifecycleStatus(String(row.status ?? ''));
-  if (st === 'cancelled' || st === 'refunded') return true;
-  const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  return (
-    cs === 'cancelled' ||
-    cs === 'cancelled_no_refund' ||
-    cs === 'refunded' ||
-    cs === 'missed'
-  );
-}
-
-function bookingCountsAsUpcoming(row: Booking, now: Date): boolean {
-  if (!isBookingActiveForProgress(row)) return false;
-  const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  if (cs === 'completed' || cs === 'missed') return false;
-  return bookingEndUtcMs(String(row.dateIso), String(row.time), row.endTime) > now.getTime();
 }
 
 function sessionCountsAsCompleted(session: TheoryCohortSession, now: Date): boolean {
@@ -274,10 +234,41 @@ export default class AdminFinancialReportService {
       createdAt: { [Op.between]: [startAt, endAt] },
     } as WhereOptions;
 
-    const lessonBookingWhere = {
-      ...(branchWhere ?? {}),
-      dateIso: { [Op.between]: [startDate, endDate] },
+    const lessonSlotQuery = {
+      startDate,
+      endDate,
+      branchId: branchId ?? null,
     };
+
+    const [lessonSlots, legacyLessonBookings] = await Promise.all([
+      findSlotsInDateRange(lessonSlotQuery),
+      findLegacyBookingsWithoutSlots(lessonSlotQuery),
+    ]);
+
+    const lessonInstructorIds = [
+      ...new Set([
+        ...lessonSlots.map((s) => s.instructorUserId),
+        ...legacyLessonBookings.map((b) => b.instructorUserId).filter((id): id is number => typeof id === 'number' && id > 0),
+      ]),
+    ];
+    const lessonBranchIds = [
+      ...new Set([
+        ...lessonSlots.map((s) => s.booking.branchId),
+        ...legacyLessonBookings.map((b) => b.branchId),
+      ]),
+    ];
+    const [lessonInstructors, lessonBranches] = await Promise.all([
+      lessonInstructorIds.length > 0
+        ? User.findAll({ where: { id: { [Op.in]: lessonInstructorIds } }, attributes: ['id', 'name'] })
+        : Promise.resolve([]),
+      lessonBranchIds.length > 0
+        ? Branch.findAll({ where: { id: { [Op.in]: lessonBranchIds } }, attributes: ['id', 'name'] })
+        : Promise.resolve([]),
+    ]);
+    const lessonInstructorNameById = new Map(
+      lessonInstructors.map((u) => [u.id, u.name?.trim() || `Instructor #${u.id}`]),
+    );
+    const lessonBranchById = new Map(lessonBranches.map((b) => [b.id, b]));
 
     const bookingsCreatedCount = await Booking.count({ where: bookingWhere });
 
@@ -345,15 +336,6 @@ export default class AdminFinancialReportService {
         'prepaidMeta',
       ],
     });
-
-    const lessonBookings = await Booking.findAll({
-      where: lessonBookingWhere,
-      include: [
-        { model: User, as: 'instructor', attributes: ['id', 'name'], required: false },
-        { model: Branch, attributes: ['id', 'name'] },
-      ],
-    });
-    const lessonSlotsByBookingId = await loadBookingSlotsByBookingId(lessonBookings.map((b) => b.id));
 
     const cohortSessions = await TheoryCohortSession.findAll({
       where: {
@@ -579,44 +561,90 @@ export default class AdminFinancialReportService {
         totalHours: 0,
         _slots: 0,
       };
-      if (kind === 'practical') prev.practicalCount += 1;
-      else if (kind === 'theory_group') prev.theoryGroupCount += 1;
-      else prev.theoryPersonalCount += 1;
-      if (completed) prev.completedCount += 1;
-      if (cancelled) prev.cancelledCount += 1;
+      if (kind === 'practical') prev.practicalCount += slots;
+      else if (kind === 'theory_group') prev.theoryGroupCount += slots;
+      else prev.theoryPersonalCount += slots;
+      if (completed) prev.completedCount += slots;
+      if (cancelled) prev.cancelledCount += slots;
       if (completed) prev._slots += slots;
       instructorMap.set(key, prev);
-      if (upcoming) pendingUpcomingBookingsCount += 1;
+      if (upcoming) pendingUpcomingBookingsCount += slots;
     };
 
-    for (const rawRow of lessonBookings) {
-      const row = rawRow as BookingWithIncludes;
-      const completed = bookingCountsAsCompleted(row, now);
-      const cancelled = bookingCountsAsCancelled(row);
-      const upcoming = bookingCountsAsUpcoming(row, now);
-      if (completed) completedLessonsCount += 1;
-      if (cancelled) cancelledLessonsCount += 1;
-      if (upcoming) pendingUpcomingBookingsCount += 1;
+    const bumpLessonSlot = (
+      instructorUserId: number,
+      branchIdNum: number,
+      lessonType: 'practical' | 'theory' | 'theory_personal',
+      dateIso: string,
+      slotTime: string,
+      booking: Booking,
+      units: number,
+    ) => {
+      const completed = slotCountsAsCompleted(dateIso, slotTime, booking, now);
+      const cancelled = slotCountsAsCancelled(booking);
+      const upcoming = slotCountsAsUpcoming(dateIso, slotTime, booking, now);
+      if (completed) completedLessonsCount += units;
+      if (cancelled) cancelledLessonsCount += units;
+      const kind =
+        lessonType === 'practical'
+          ? 'practical'
+          : lessonType === 'theory'
+            ? 'theory_group'
+            : 'theory_personal';
+      const branch = lessonBranchById.get(branchIdNum);
+      bumpInstructor(
+        instructorUserId,
+        lessonInstructorNameById.get(instructorUserId) ?? '—',
+        branchIdNum,
+        branch?.name?.trim() || `Branch #${branchIdNum}`,
+        kind,
+        completed,
+        cancelled,
+        upcoming,
+        units,
+      );
+    };
 
-      const instructor = row.instructor as User | null | undefined;
-      const branch = row.Branch as Branch | undefined;
+    for (const slot of lessonSlots) {
+      const booking = slot.booking;
+      bumpLessonSlot(
+        slot.instructorUserId,
+        booking.branchId,
+        booking.lessonType,
+        slot.dateIso,
+        slot.slotTime,
+        booking,
+        1,
+      );
+    }
+
+    for (const row of legacyLessonBookings) {
       const iid = row.instructorUserId ?? 0;
+      if (iid <= 0) continue;
+      const d = String(row.dateIso).slice(0, 10);
+      const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
+      const cancelled = slotCountsAsCancelled(row);
+      const completed = legacyBookingCountsAsCompleted(row, now);
+      const upcoming = legacyBookingCountsAsUpcoming(row, now);
+      if (completed) completedLessonsCount += units;
+      if (cancelled) cancelledLessonsCount += units;
       const kind =
         row.lessonType === 'practical'
           ? 'practical'
           : row.lessonType === 'theory'
             ? 'theory_group'
             : 'theory_personal';
+      const branch = lessonBranchById.get(row.branchId);
       bumpInstructor(
         iid,
-        instructor?.name?.trim() || '—',
-        branch?.id ?? row.branchId,
+        lessonInstructorNameById.get(iid) ?? '—',
+        row.branchId,
         branch?.name?.trim() || `Branch #${row.branchId}`,
         kind,
         completed,
         cancelled,
         upcoming,
-        completedLessonSlotCountFromBooking(row, lessonSlotsByBookingId.get(row.id)),
+        units,
       );
     }
 

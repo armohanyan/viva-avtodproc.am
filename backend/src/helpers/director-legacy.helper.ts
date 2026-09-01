@@ -1,13 +1,8 @@
 import { Op } from 'sequelize';
-import {
-  BOOKING_STATUSES_COUNTED_FOR_PROGRESS,
-  type LessonCompletionStatus,
-} from '../constants/lesson-completion';
 import { normalizePetrolPaymentType } from '../constants/petrol-payment-type';
 import { petrolTypeLabelAm } from '../constants/petrol-type';
 import type { DirectorPaymentMethod } from '../constants/director-payment-method';
 import {
-  Booking,
   CarExpense,
   FleetCar,
   InstructorBranch,
@@ -17,10 +12,11 @@ import {
   TheoryCohortSession,
 } from '../models';
 import AdminFinanceExpenseService from '../services/admin-finance-expense.service';
-import { bookingEndUtcMs, lessonEndUtcMs } from '../utils/lesson-datetime.util';
 import {
-  completedLessonSlotsByDateFromBooking,
-  loadBookingSlotsByBookingId,
+  bookingCountsForDirectorHours,
+  findLegacyBookingsWithoutSlots,
+  findSlotsInDateRange,
+  slotCountFromTimeRange,
 } from '../utils/lesson-slot-count.util';
 
 type DateRange = { startDate: string; endDate: string; branchId?: number | null };
@@ -102,42 +98,6 @@ async function branchInstructorUserIds(branchId: number): Promise<number[]> {
     attributes: ['instructorUserId'],
   });
   return [...new Set(links.map((l) => l.instructorUserId))];
-}
-
-function normalizeLifecycleStatus(raw: string): string {
-  const s = String(raw ?? '').trim().toLowerCase();
-  if (s === 'pending_prebook') return 'pending';
-  if (s === 'completed') return 'confirmed';
-  return s;
-}
-
-function isBookingActiveForProgress(row: Booking): boolean {
-  const st = normalizeLifecycleStatus(String(row.status ?? ''));
-  if (!BOOKING_STATUSES_COUNTED_FOR_PROGRESS.has(st)) return false;
-  if (st === 'pending_payment') {
-    const paid = row.paidAt != null || row.paymentStatus === 'paid';
-    if (!paid) return false;
-  }
-  return true;
-}
-
-function bookingCountsAsCompleted(row: Booking, now: Date): boolean {
-  const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  if (cs === 'completed') return true;
-  if (cs === 'missed' || cs === 'cancelled' || cs === 'refunded' || cs === 'cancelled_no_refund') {
-    return false;
-  }
-  if (row.lessonPassedSuccessfully === false) return false;
-  return (
-    isBookingActiveForProgress(row) &&
-    bookingEndUtcMs(String(row.dateIso), String(row.time), row.endTime) <= now.getTime()
-  );
-}
-
-function sessionCountsAsCompleted(session: TheoryCohortSession, now: Date): boolean {
-  if (session.status === 'cancelled') return false;
-  if (session.status === 'completed') return true;
-  return lessonEndUtcMs(String(session.dateIso), String(session.endTime)) <= now.getTime();
 }
 
 function salaryKindToRole(kind: string): string {
@@ -266,48 +226,53 @@ export async function fetchLegacyRepairs(range: Omit<DateRange, 'branchId'>): Pr
 }
 
 export async function fetchLegacyInstructorHours(range: DateRange): Promise<LegacyDirectorInstructorHoursRow[]> {
-  const now = new Date();
   const slotsByKey = new Map<string, { date: string; instructorUserId: number; hours: number }>();
 
   const bump = (date: string, instructorUserId: number, slots: number) => {
     if (instructorUserId <= 0 || slots <= 0) return;
-    const key = `${date}:${instructorUserId}`;
-    const prev = slotsByKey.get(key) ?? { date, instructorUserId, hours: 0 };
+    const d = date.slice(0, 10);
+    if (d < range.startDate || d > range.endDate) return;
+    const key = `${d}:${instructorUserId}`;
+    const prev = slotsByKey.get(key) ?? { date: d, instructorUserId, hours: 0 };
     prev.hours += slots;
     slotsByKey.set(key, prev);
   };
 
-  const bookings = await Booking.findAll({
-    where: {
-      dateIso: dateBetween(range),
-      instructorUserId: { [Op.ne]: null },
-      ...(range.branchId != null ? { branchId: range.branchId } : {}),
-    },
-  });
+  const slotQuery = {
+    startDate: range.startDate,
+    endDate: range.endDate,
+    branchId: range.branchId,
+    bookingStatuses: undefined as undefined,
+  };
 
-  const slotsByBookingId = await loadBookingSlotsByBookingId(bookings.map((b) => b.id));
+  const [slotRows, legacyBookings] = await Promise.all([
+    findSlotsInDateRange(slotQuery),
+    findLegacyBookingsWithoutSlots(slotQuery),
+  ]);
 
-  for (const row of bookings) {
-    if (!bookingCountsAsCompleted(row, now)) continue;
-    const slotRows = slotsByBookingId.get(row.id);
-    const byDate = completedLessonSlotsByDateFromBooking(row, slotRows);
-    for (const [date, count] of byDate) {
-      if (date >= range.startDate && date <= range.endDate) {
-        bump(date, row.instructorUserId!, count);
-      }
-    }
+  for (const slot of slotRows) {
+    if (!bookingCountsForDirectorHours(slot.booking)) continue;
+    bump(slot.dateIso, slot.instructorUserId, 1);
+  }
+
+  for (const row of legacyBookings) {
+    if (!bookingCountsForDirectorHours(row)) continue;
+    const d = String(row.dateIso).slice(0, 10);
+    bump(d, row.instructorUserId!, slotCountFromTimeRange(d, String(row.time), row.endTime));
   }
 
   const sessions = await TheoryCohortSession.findAll({
     where: {
       dateIso: dateBetween(range),
+      status: { [Op.ne]: 'cancelled' },
       ...(range.branchId != null ? { branchId: range.branchId } : {}),
     },
   });
 
   for (const session of sessions) {
-    if (!sessionCountsAsCompleted(session, now)) continue;
-    bump(String(session.dateIso).slice(0, 10), session.instructorUserId ?? 0, 1);
+    const iid = session.instructorUserId ?? 0;
+    if (iid <= 0) continue;
+    bump(String(session.dateIso).slice(0, 10), iid, 1);
   }
 
   let seq = 1;

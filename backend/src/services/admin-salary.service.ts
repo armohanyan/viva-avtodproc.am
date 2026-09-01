@@ -1,7 +1,5 @@
 import { Op } from 'sequelize';
-import type { LessonCompletionStatus } from '../constants/lesson-completion';
 import {
-  Booking,
   InstructorProfile,
   SalaryPayment,
   TheoryCohort,
@@ -10,10 +8,15 @@ import {
 } from '../models';
 import type { SalaryPaymentKind } from '../models/salary-payment.model';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
-import { bookingEndUtcMs, lessonEndUtcMs, lessonInstantUtcMs } from '../utils/lesson-datetime.util';
+import { lessonEndUtcMs } from '../utils/lesson-datetime.util';
+import {
+  bookingCountsForSalary,
+  findLegacyBookingsWithoutSlots,
+  findSlotsInDateRange,
+  slotCountFromTimeRange,
+} from '../utils/lesson-slot-count.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
-import { normalizeBookingStatus } from './booking.service';
 
 const { InputValidationError, ResourceNotFoundError } = ErrorsUtil;
 
@@ -150,29 +153,6 @@ function parseDateRange(startDate?: string, endDate?: string): { start: string; 
   return { start, end };
 }
 
-/** Lesson delivery statuses that mean the instructor did not teach — excluded from pay. */
-const EXCLUDED_COMPLETION_STATUSES = new Set<LessonCompletionStatus>([
-  'cancelled',
-  'cancelled_no_refund',
-  'refunded',
-]);
-
-function bookingCountsForSalary(row: Booking): boolean {
-  if (row.instructorUserId == null || row.instructorUserId <= 0) return false;
-  if (normalizeBookingStatus(String(row.status ?? '')) !== 'confirmed') return false;
-  const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  if (cs && EXCLUDED_COMPLETION_STATUSES.has(cs)) return false;
-  return true;
-}
-
-/** 1 lesson per hour slot; legacy rows with null endTime are single-hour lessons. */
-function bookingLessonUnits(row: Booking): number {
-  const startMs = lessonInstantUtcMs(String(row.dateIso), String(row.time));
-  const endMs = bookingEndUtcMs(String(row.dateIso), String(row.time), row.endTime);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 1;
-  return Math.max(1, Math.round((endMs - startMs) / 3_600_000));
-}
-
 function sessionCountsForSalary(session: TheoryCohortSession, now: Date): boolean {
   if (session.instructorUserId == null || session.instructorUserId <= 0) return false;
   if (session.status === 'cancelled') return false;
@@ -199,29 +179,28 @@ function paymentRowToDto(row: SalaryPayment, createdBy?: User | null): SalaryPay
   };
 }
 
-/** Confirmed practical lesson units per instructor in the date range. */
+/** Confirmed practical lesson slots per instructor in the date range. */
 async function practicalLessonCounts(start: string, end: string): Promise<Map<number, number>> {
-  const rows = await Booking.findAll({
-    where: {
-      lessonType: 'practical',
-      dateIso: { [Op.between]: [start, end] },
-      instructorUserId: { [Op.ne]: null },
-    },
-    attributes: [
-      'id',
-      'instructorUserId',
-      'dateIso',
-      'time',
-      'endTime',
-      'status',
-      'lessonCompletionStatus',
-    ],
-  });
+  const query = {
+    startDate: start,
+    endDate: end,
+    lessonTypes: ['practical'] as const,
+    bookingStatuses: ['confirmed'] as const,
+  };
+  const [slots, legacyBookings] = await Promise.all([
+    findSlotsInDateRange(query),
+    findLegacyBookingsWithoutSlots(query),
+  ]);
   const counts = new Map<number, number>();
-  for (const row of rows) {
+  for (const slot of slots) {
+    if (!bookingCountsForSalary(slot.booking)) continue;
+    counts.set(slot.instructorUserId, (counts.get(slot.instructorUserId) ?? 0) + 1);
+  }
+  for (const row of legacyBookings) {
     if (!bookingCountsForSalary(row)) continue;
     const iid = row.instructorUserId as number;
-    counts.set(iid, (counts.get(iid) ?? 0) + bookingLessonUnits(row));
+    const d = String(row.dateIso).slice(0, 10);
+    counts.set(iid, (counts.get(iid) ?? 0) + slotCountFromTimeRange(d, String(row.time), row.endTime));
   }
   return counts;
 }
@@ -269,32 +248,59 @@ async function practicalLessonRows(
   start: string,
   end: string,
 ): Promise<SalaryLessonRowDto[]> {
-  const rows = await Booking.findAll({
-    where: {
-      lessonType: 'practical',
-      dateIso: { [Op.between]: [start, end] },
-      instructorUserId: employeeUserId,
-    },
-    include: [{ model: User, as: 'student', required: false, attributes: ['id', 'name'] }],
-    order: [
-      ['dateIso', 'ASC'],
-      ['time', 'ASC'],
-    ],
-  });
+  const query = {
+    startDate: start,
+    endDate: end,
+    instructorUserId: employeeUserId,
+    lessonTypes: ['practical'] as const,
+    bookingStatuses: ['confirmed'] as const,
+  };
+  const [slots, legacyBookings] = await Promise.all([
+    findSlotsInDateRange(query),
+    findLegacyBookingsWithoutSlots(query),
+  ]);
+
+  const studentIds = [
+    ...new Set([
+      ...slots.map((s) => s.booking.studentUserId),
+      ...legacyBookings.map((b) => b.studentUserId),
+    ]),
+  ];
+  const students =
+    studentIds.length > 0
+      ? await User.findAll({ where: { id: { [Op.in]: studentIds } }, attributes: ['id', 'name'] })
+      : [];
+  const studentNameById = new Map(students.map((u) => [u.id, u.name?.trim() || `Student #${u.id}`]));
+
   const items: SalaryLessonRowDto[] = [];
-  for (const row of rows) {
-    if (!bookingCountsForSalary(row)) continue;
-    const student = row.get('student') as User | null | undefined;
+
+  for (const slot of slots) {
+    if (!bookingCountsForSalary(slot.booking)) continue;
     items.push({
-      id: row.id,
-      dateIso: String(row.dateIso).slice(0, 10),
-      startTime: String(row.time),
-      endTime: row.endTime ?? null,
-      units: bookingLessonUnits(row),
-      label: student?.name?.trim() || `Student #${row.studentUserId}`,
+      id: slot.slotId,
+      dateIso: slot.dateIso,
+      startTime: slot.slotTime,
+      endTime: null,
+      units: 1,
+      label: studentNameById.get(slot.booking.studentUserId) ?? `Student #${slot.booking.studentUserId}`,
     });
   }
-  return items;
+
+  for (const row of legacyBookings) {
+    if (!bookingCountsForSalary(row)) continue;
+    const d = String(row.dateIso).slice(0, 10);
+    const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
+    items.push({
+      id: row.id,
+      dateIso: d,
+      startTime: String(row.time),
+      endTime: row.endTime ?? null,
+      units,
+      label: studentNameById.get(row.studentUserId) ?? `Student #${row.studentUserId}`,
+    });
+  }
+
+  return items.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.startTime.localeCompare(b.startTime));
 }
 
 async function theoryLessonRows(
