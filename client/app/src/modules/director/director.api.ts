@@ -14,6 +14,7 @@ import type {
   DirectorSalary,
   DirectorChartPoint,
 } from "./director.types";
+import { directorHoursNumber } from "./directorFormat";
 
 const BASE = "/admin/director";
 
@@ -30,6 +31,38 @@ function normalizeDirectorKm(row: DirectorKm): DirectorKm {
   return { ...row, km: apiNumber(row.km) };
 }
 
+function normalizeDirectorInstructorHours(row: DirectorInstructorHours): DirectorInstructorHours {
+  return { ...row, hours: directorHoursNumber(row.hours) };
+}
+
+function normalizeDirectorDriverProfile(data: DirectorDriverProfile): DirectorDriverProfile {
+  return {
+    ...data,
+    summary: {
+      hours: directorHoursNumber(data.summary.hours),
+      km: apiNumber(data.summary.km),
+      liters: apiNumber(data.summary.liters),
+      amount: apiNumber(data.summary.amount),
+    },
+    rows: Array.isArray(data.rows)
+      ? data.rows.map((r) => ({
+          ...r,
+          hours: directorHoursNumber(r.hours),
+          km: apiNumber(r.km),
+          gasLiters: apiNumber(r.gasLiters),
+          petrolLiters: apiNumber(r.petrolLiters),
+          totalLiters: apiNumber(r.totalLiters),
+          amount: apiNumber(r.amount),
+          card: apiNumber(r.card),
+          cash: apiNumber(r.cash),
+          lPer100: apiNumber(r.lPer100),
+          amdPerKm: apiNumber(r.amdPerKm),
+          kmPerHour: apiNumber(r.kmPerHour),
+        }))
+      : [],
+  };
+}
+
 export async function fetchDirectorOptions(category: DirectorOptionCategory): Promise<string[]> {
   return vivaApiJson<string[]>(`${BASE}/options/${category}`);
 }
@@ -39,7 +72,8 @@ export async function addDirectorOption(category: DirectorOptionCategory, value:
 }
 
 export async function fetchDirectorDashboard(q: string): Promise<DirectorDashboard> {
-  return vivaApiJson<DirectorDashboard>(`${BASE}/dashboard?${q}`);
+  const data = await vivaApiJson<DirectorDashboard>(`${BASE}/dashboard?${q}`);
+  return { ...data, instructorHours: directorHoursNumber(data.instructorHours), fuelLiters: apiNumber(data.fuelLiters) };
 }
 
 export async function fetchDirectorMonthlyReport(q: string): Promise<DirectorMonthlyReport> {
@@ -137,7 +171,8 @@ export async function deleteDirectorKm(id: number): Promise<void> {
 }
 
 export async function fetchDirectorInstructorHours(q: string): Promise<DirectorInstructorHours[]> {
-  return vivaApiJson<DirectorInstructorHours[]>(`${BASE}/instructor-hours?${q}`);
+  const rows = await vivaApiJson<DirectorInstructorHours[]>(`${BASE}/instructor-hours?${q}`);
+  return Array.isArray(rows) ? rows.map(normalizeDirectorInstructorHours) : [];
 }
 
 export async function createDirectorInstructorHours(
@@ -190,7 +225,8 @@ export async function deleteDirectorRevenue(id: number): Promise<void> {
 }
 
 export async function fetchDirectorDriverProfile(q: string, instructorUserId: number): Promise<DirectorDriverProfile> {
-  return vivaApiJson<DirectorDriverProfile>(
+  const data = await vivaApiJson<DirectorDriverProfile>(
     `${BASE}/driver-profile?${q}&instructorUserId=${encodeURIComponent(String(instructorUserId))}`,
   );
+  return normalizeDirectorDriverProfile(data);
 }

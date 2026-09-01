@@ -197,7 +197,7 @@ export default function DirectorFuelPage() {
         sortable: true,
         sortValue: (r: DirectorFuel) => r.liters,
         searchValue: (r: DirectorFuel) => String(r.liters),
-        render: (r: DirectorFuel) => r.liters,
+        render: (r: DirectorFuel) => r.liters.toFixed(1),
       },
       {
         id: "amount",

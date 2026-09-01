@@ -15,11 +15,15 @@ import {
 import { branchIdWhere } from '../helpers';
 import {
   bookingCountsTowardStudentDebt,
+  computeBookingIncomeInPeriod,
   isCountableAdminPaymentStatus,
-  recognizedIncomeAmd,
   resolveBookingPayment,
 } from '../utils/booking-admin-payment.util';
-import { bookingEndUtcMs, lessonEndUtcMs, lessonInstantUtcMs } from '../utils/lesson-datetime.util';
+import { bookingEndUtcMs, lessonEndUtcMs } from '../utils/lesson-datetime.util';
+import {
+  completedLessonSlotCountFromBooking,
+  loadBookingSlotsByBookingId,
+} from '../utils/lesson-slot-count.util';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import AdminFinanceExpenseService from './admin-finance-expense.service';
 
@@ -138,20 +142,6 @@ function sessionCountsAsCancelled(session: TheoryCohortSession): boolean {
 function sessionCountsAsUpcoming(session: TheoryCohortSession, now: Date): boolean {
   if (session.status === 'cancelled' || session.status === 'completed') return false;
   return lessonEndUtcMs(String(session.dateIso), String(session.endTime)) > now.getTime();
-}
-
-function lessonHoursFromBooking(row: Booking): number {
-  const startMs = lessonInstantUtcMs(String(row.dateIso), String(row.time));
-  const endMs = bookingEndUtcMs(String(row.dateIso), String(row.time), row.endTime);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 1;
-  return Math.max(0.5, Math.round(((endMs - startMs) / 3_600_000) * 10) / 10);
-}
-
-function lessonHoursFromSession(session: TheoryCohortSession): number {
-  const startMs = lessonInstantUtcMs(String(session.dateIso), String(session.startTime));
-  const endMs = lessonEndUtcMs(String(session.dateIso), String(session.endTime));
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 1;
-  return Math.max(0.5, Math.round(((endMs - startMs) / 3_600_000) * 10) / 10);
 }
 
 function rowCreatedAt(row: { createdAt?: Date | string | null }): Date | null {
@@ -289,14 +279,71 @@ export default class AdminFinancialReportService {
       dateIso: { [Op.between]: [startDate, endDate] },
     };
 
-    const bookingsCreated = await Booking.findAll({
-      where: bookingWhere,
-      include: [
-        { model: User, as: 'student', attributes: ['id', 'name', 'phone'] },
-        { model: User, as: 'instructor', attributes: ['id', 'name'], required: false },
-        { model: Branch, attributes: ['id', 'name'] },
-      ],
+    const bookingsCreatedCount = await Booking.count({ where: bookingWhere });
+
+    const bookingIncomeTxs = await FinanceTransaction.findAll({
+      where: {
+        ...(branchWhere ?? {}),
+        entryType: 'income',
+        status: 'completed',
+        bookingId: { [Op.ne]: null },
+        createdAt: { [Op.between]: [startAt, endAt] },
+      } as WhereOptions,
+      attributes: ['id', 'bookingId', 'grossAmd', 'createdAt'],
       order: [['createdAt', 'DESC']],
+    });
+
+    const fallbackPaidBookings = await Booking.findAll({
+      where: {
+        ...(branchWhere ?? {}),
+        paidAt: { [Op.between]: [startAt, endAt] },
+      },
+      attributes: [
+        'id',
+        'status',
+        'totalPriceAmd',
+        'paidAmountAmd',
+        'paymentStatus',
+        'paidAt',
+        'prepaidMeta',
+      ],
+    });
+
+    const { totalIncomeAmd, bookingIncomeAmd, bookingPaymentDateMs } = computeBookingIncomeInPeriod({
+      incomeTxs: bookingIncomeTxs,
+      fallbackBookings: fallbackPaidBookings,
+      startAtMs: startAt.getTime(),
+      endAtMs: endAt.getTime(),
+    });
+
+    const paidBookingIds = [...bookingIncomeAmd.keys()];
+    const paymentBookings =
+      paidBookingIds.length > 0
+        ? await Booking.findAll({
+            where: {
+              ...(branchWhere ?? {}),
+              id: { [Op.in]: paidBookingIds },
+            },
+            include: [
+              { model: User, as: 'student', attributes: ['id', 'name', 'phone'] },
+              { model: User, as: 'instructor', attributes: ['id', 'name'], required: false },
+              { model: Branch, attributes: ['id', 'name'] },
+            ],
+            order: [['paidAt', 'DESC']],
+          })
+        : [];
+
+    const bookingsCreatedForDebt = await Booking.findAll({
+      where: bookingWhere,
+      attributes: [
+        'id',
+        'status',
+        'totalPriceAmd',
+        'paidAmountAmd',
+        'paymentStatus',
+        'paidAt',
+        'prepaidMeta',
+      ],
     });
 
     const lessonBookings = await Booking.findAll({
@@ -306,6 +353,7 @@ export default class AdminFinancialReportService {
         { model: Branch, attributes: ['id', 'name'] },
       ],
     });
+    const lessonSlotsByBookingId = await loadBookingSlotsByBookingId(lessonBookings.map((b) => b.id));
 
     const cohortSessions = await TheoryCohortSession.findAll({
       where: {
@@ -330,7 +378,6 @@ export default class AdminFinancialReportService {
         : [];
     const cohortInstructorNameById = new Map(cohortInstructors.map((u) => [u.id, u.name?.trim() || `Instructor #${u.id}`]));
 
-    let totalIncomeAmd = 0;
     let totalPaidAmountAmd = 0;
     let totalPartialPaymentsAmd = 0;
     let totalUnpaidDebtAmd = 0;
@@ -342,43 +389,42 @@ export default class AdminFinancialReportService {
     const bookingTypeCounts = new Map<string, number>();
     const branchIncome = new Map<number, { income: number; bookings: number }>();
 
-    for (const rawRow of bookingsCreated) {
+    for (const rawRow of paymentBookings) {
       const row = rawRow as BookingWithIncludes;
       const prepaid = (row.prepaidMeta as Record<string, unknown> | null) ?? null;
       const bookingType = inferBookingTypeLabel(row.lessonType, prepaid);
       bookingTypeCounts.set(bookingType, (bookingTypeCounts.get(bookingType) ?? 0) + 1);
 
       const resolved = resolveBookingPayment(row);
-      const income = recognizedIncomeAmd(row);
-      totalIncomeAmd += income;
-      totalPaidAmountAmd += resolved.paidAmountAmd;
+      const incomeInPeriod = bookingIncomeAmd.get(row.id) ?? 0;
+      totalPaidAmountAmd += incomeInPeriod;
 
-      if (isCountableAdminPaymentStatus(resolved.paymentStatus)) {
-        if (resolved.paymentStatus === 'paid') paidBookingsCount += 1;
-        else if (resolved.paymentStatus === 'partial') {
+      if (incomeInPeriod > 0) {
+        if (resolved.totalPriceAmd > 0 && incomeInPeriod >= resolved.totalPriceAmd) {
+          paidBookingsCount += 1;
+        } else {
           partialBookingsCount += 1;
-          totalPartialPaymentsAmd += resolved.paidAmountAmd;
-        } else unpaidBookingsCount += 1;
-      }
-
-      if (bookingCountsTowardStudentDebt(row)) {
-        totalUnpaidDebtAmd += resolved.remainingAmd;
+          totalPartialPaymentsAmd += incomeInPeriod;
+        }
+      } else if (isCountableAdminPaymentStatus(resolved.paymentStatus)) {
+        if (resolved.paymentStatus === 'unpaid') unpaidBookingsCount += 1;
       }
 
       const student = row.student as User | undefined;
       const instructor = row.instructor as User | null | undefined;
       const branch = row.Branch as Branch | undefined;
-      const created = rowCreatedAt(row as Booking & { createdAt?: Date });
+      const paymentMs = bookingPaymentDateMs.get(row.id);
+      const paymentDate = paymentMs != null ? new Date(paymentMs) : rowCreatedAt(row as Booking & { createdAt?: Date });
       const bid = branch?.id ?? row.branchId;
 
       if (branchId == null) {
         const prev = branchIncome.get(bid) ?? { income: 0, bookings: 0 };
-        branchIncome.set(bid, { income: prev.income + income, bookings: prev.bookings + 1 });
+        branchIncome.set(bid, { income: prev.income + incomeInPeriod, bookings: prev.bookings + 1 });
       }
 
       bookingRows.push({
         id: row.id,
-        createdAtIso: created?.toISOString() ?? now.toISOString(),
+        createdAtIso: paymentDate?.toISOString() ?? now.toISOString(),
         lessonDateIso: String(row.dateIso).slice(0, 10),
         studentName: student?.name?.trim() || `Student #${row.studentUserId}`,
         bookingType,
@@ -386,13 +432,29 @@ export default class AdminFinancialReportService {
         branchId: bid,
         branchName: branch?.name?.trim() || `Branch #${bid}`,
         totalPriceAmd: resolved.totalPriceAmd,
-        paidAmountAmd: resolved.paidAmountAmd,
+        paidAmountAmd: incomeInPeriod,
         remainingAmd: resolved.remainingAmd,
         paymentStatus: resolved.paymentStatus,
         bookingStatus: normalizeLifecycleStatus(String(row.status)),
         createdByLabel: null,
       });
     }
+
+    for (const rawRow of bookingsCreatedForDebt) {
+      if (bookingCountsTowardStudentDebt(rawRow)) {
+        totalUnpaidDebtAmd += resolveBookingPayment(rawRow).remainingAmd;
+      }
+    }
+
+    for (const rawRow of bookingsCreatedForDebt) {
+      const resolved = resolveBookingPayment(rawRow);
+      if (!isCountableAdminPaymentStatus(resolved.paymentStatus)) continue;
+      if (resolved.paymentStatus !== 'unpaid') continue;
+      if ((bookingIncomeAmd.get(rawRow.id) ?? 0) > 0) continue;
+      unpaidBookingsCount += 1;
+    }
+
+    bookingRows.sort((a, b) => b.createdAtIso.localeCompare(a.createdAtIso));
 
     const refundTxs = await FinanceTransaction.findAll({
       where: {
@@ -488,7 +550,7 @@ export default class AdminFinancialReportService {
     type InstKey = string;
     const instructorMap = new Map<
       InstKey,
-      FinancialReportInstructorRowDto & { _hours: number }
+      FinancialReportInstructorRowDto & { _slots: number }
     >();
 
     const bumpInstructor = (
@@ -500,7 +562,7 @@ export default class AdminFinancialReportService {
       completed: boolean,
       cancelled: boolean,
       upcoming: boolean,
-      hours: number,
+      slots: number,
     ) => {
       if (instructorUserId <= 0) return;
       const key = `${instructorUserId}:${branchIdNum}`;
@@ -515,14 +577,14 @@ export default class AdminFinancialReportService {
         completedCount: 0,
         cancelledCount: 0,
         totalHours: 0,
-        _hours: 0,
+        _slots: 0,
       };
       if (kind === 'practical') prev.practicalCount += 1;
       else if (kind === 'theory_group') prev.theoryGroupCount += 1;
       else prev.theoryPersonalCount += 1;
       if (completed) prev.completedCount += 1;
       if (cancelled) prev.cancelledCount += 1;
-      if (completed) prev._hours += hours;
+      if (completed) prev._slots += slots;
       instructorMap.set(key, prev);
       if (upcoming) pendingUpcomingBookingsCount += 1;
     };
@@ -554,7 +616,7 @@ export default class AdminFinancialReportService {
         completed,
         cancelled,
         upcoming,
-        lessonHoursFromBooking(row),
+        completedLessonSlotCountFromBooking(row, lessonSlotsByBookingId.get(row.id)),
       );
     }
 
@@ -577,12 +639,12 @@ export default class AdminFinancialReportService {
         completed,
         cancelled,
         upcoming,
-        lessonHoursFromSession(session),
+        1,
       );
     }
 
     const instructorLessons = [...instructorMap.values()]
-      .map(({ _hours, ...rest }) => ({ ...rest, totalHours: Math.round(_hours * 10) / 10 }))
+      .map(({ _slots, ...rest }) => ({ ...rest, totalHours: Math.round(_slots) }))
       .sort((a, b) => a.instructorName.localeCompare(b.instructorName, 'hy'));
 
     const netRevenueAmd = totalIncomeAmd - totalRefundAmountAmd;
@@ -628,7 +690,6 @@ export default class AdminFinancialReportService {
       } as WhereOptions,
       attributes: ['grossAmd', 'channel', 'method'],
     });
-
     let paymentsOnlineAmd = 0;
     let paymentsManualAmd = 0;
     for (const tx of incomeTxs) {
@@ -687,7 +748,7 @@ export default class AdminFinancialReportService {
         totalPartialPaymentsAmd,
         totalUnpaidDebtAmd,
         newStudentsCount: newStudentRows.length,
-        bookingsCreatedCount: bookingsCreated.length,
+        bookingsCreatedCount,
         paidBookingsCount,
         partialBookingsCount,
         unpaidBookingsCount,

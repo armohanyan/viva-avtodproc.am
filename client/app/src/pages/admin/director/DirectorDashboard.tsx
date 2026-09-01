@@ -19,6 +19,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { DirectorDashboard, DirectorMonthlyReport } from "src/modules/director/director.types";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
+import { formatDirectorLessonSlots } from "src/modules/director/directorFormat";
 import { LayoutGrid } from "lucide-react";
 
 const EMPTY: DirectorDashboard = {
@@ -123,7 +124,7 @@ export default function DirectorDashboardPage() {
         <DirectorStatCard label="Վառելիք" value={formatAmd(data.fuel)} />
         <DirectorStatCard label="Աշխատավարձ ընդհանուր" value={formatAmd(data.salaryTotal)} />
         <DirectorStatCard label="Կասսայի մնացորդ" value={formatAmd(data.cashBalance)} />
-        <DirectorStatCard label="Հրահանգիչների ժամ" value={data.instructorHours.toFixed(1)} />
+        <DirectorStatCard label="Հրահանգիչների դաս" value={formatDirectorLessonSlots(data.instructorHours)} />
         <DirectorStatCard label="Հրահանգիչների աշխատավարձ" value={formatAmd(data.instructorSalary)} />
         <DirectorStatCard label="Ինկասացիա" value={formatAmd(data.incashment)} />
         <DirectorStatCard label="Վառելիք լիտր" value={data.fuelLiters.toFixed(1)} />

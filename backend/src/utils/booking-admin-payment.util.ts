@@ -262,6 +262,92 @@ export function recognizedIncomeAmd(row: BookingPaymentRow): number {
   return resolved.paidAmountAmd;
 }
 
+function instantUtcMs(raw: Date | string | null | undefined): number | null {
+  if (raw instanceof Date) {
+    const t = raw.getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    const t = new Date(raw).getTime();
+    return Number.isFinite(t) ? t : null;
+  }
+  return null;
+}
+
+function instantInUtcMsRange(
+  raw: Date | string | null | undefined,
+  fromMs: number,
+  toMs: number,
+): boolean {
+  const ts = instantUtcMs(raw);
+  return ts != null && ts >= fromMs && ts <= toMs;
+}
+
+export type BookingIncomeInPeriodInput = {
+  incomeTxs: ReadonlyArray<{
+    bookingId: number | null;
+    grossAmd: number;
+    createdAt?: Date | string | null;
+  }>;
+  fallbackBookings: ReadonlyArray<
+    BookingPaymentRow & { id: number; paidAt?: Date | null }
+  >;
+  startAtMs: number;
+  endAtMs: number;
+};
+
+export type BookingIncomeInPeriodResult = {
+  totalIncomeAmd: number;
+  bookingIncomeAmd: Map<number, number>;
+  bookingPaymentDateMs: Map<number, number>;
+};
+
+/**
+ * Cash collected for bookings in a period (payment date), not booking creation or lesson date.
+ * Primary source: completed income finance rows linked to a booking (`createdAt`).
+ * Fallback: booking `paidAt` when no ledger row exists for that booking in the period.
+ */
+export function computeBookingIncomeInPeriod(
+  input: BookingIncomeInPeriodInput,
+): BookingIncomeInPeriodResult {
+  const bookingIncomeAmd = new Map<number, number>();
+  const bookingPaymentDateMs = new Map<number, number>();
+  const bookingIdsWithLedgerInPeriod = new Set<number>();
+  let totalIncomeAmd = 0;
+
+  for (const tx of input.incomeTxs) {
+    const bid = tx.bookingId;
+    if (bid == null || !Number.isFinite(bid) || bid <= 0) continue;
+    if (!instantInUtcMsRange(tx.createdAt, input.startAtMs, input.endAtMs)) continue;
+    const amt = Math.max(0, Math.round(Number(tx.grossAmd) || 0));
+    if (amt <= 0) continue;
+    totalIncomeAmd += amt;
+    bookingIdsWithLedgerInPeriod.add(bid);
+    bookingIncomeAmd.set(bid, (bookingIncomeAmd.get(bid) ?? 0) + amt);
+    const txMs = instantUtcMs(tx.createdAt);
+    if (txMs != null) {
+      const prev = bookingPaymentDateMs.get(bid) ?? 0;
+      if (txMs > prev) bookingPaymentDateMs.set(bid, txMs);
+    }
+  }
+
+  for (const row of input.fallbackBookings) {
+    const bid = row.id;
+    if (!Number.isFinite(bid) || bid <= 0) continue;
+    if (bookingIdsWithLedgerInPeriod.has(bid)) continue;
+    if (!bookingCountsTowardStudentDebt(row)) continue;
+    if (!instantInUtcMsRange(row.paidAt, input.startAtMs, input.endAtMs)) continue;
+    const income = recognizedIncomeAmd(row);
+    if (income <= 0) continue;
+    totalIncomeAmd += income;
+    bookingIncomeAmd.set(bid, (bookingIncomeAmd.get(bid) ?? 0) + income);
+    const paidMs = instantUtcMs(row.paidAt);
+    if (paidMs != null) bookingPaymentDateMs.set(bid, paidMs);
+  }
+
+  return { totalIncomeAmd, bookingIncomeAmd, bookingPaymentDateMs };
+}
+
 export function isCountableAdminPaymentStatus(
   ps: ResolvedBookingPayment['paymentStatus'],
 ): ps is AdminBookingPaymentStatus {

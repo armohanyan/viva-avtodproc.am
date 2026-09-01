@@ -51,6 +51,7 @@ import {
   DirectorReportSection,
   DirectorTrendChart,
 } from "src/modules/director/components/DirectorCharts";
+import { formatDirectorLessonSlots } from "src/modules/director/directorFormat";
 import { sumBy, sumByMonth, topN } from "src/modules/director/directorChartUtils";
 
 const BASE_PATH = "/admin/director/instructor-hours";
@@ -160,11 +161,11 @@ export default function DirectorInstructorHoursPage() {
       },
       {
         id: "hours",
-        header: "Ժամ",
+        header: "Դասեր",
         sortable: true,
         sortValue: (r: DirectorInstructorHours) => r.hours,
         searchValue: (r: DirectorInstructorHours) => String(r.hours),
-        render: (r: DirectorInstructorHours) => r.hours,
+        render: (r: DirectorInstructorHours) => formatDirectorLessonSlots(r.hours),
       },
       {
         id: "comment",
@@ -192,24 +193,24 @@ export default function DirectorInstructorHoursPage() {
 
   return (
     <DirectorLayout>
-      <PanelPageHeader icon={Clock} title="Հրահանգիչների ժամեր" />
+      <PanelPageHeader icon={Clock} title="Հրահանգիչների դասեր" />
       <DirectorDateFilters start={start} end={end} onStartChange={setStart} onEndChange={setEnd} onRefresh={reload} />
       <DirectorSectionNav basePath={BASE_PATH} />
 
       {view === "report" ? (
-        <DirectorReportSection title={`Հաշվետվություն · ${totalHours.toFixed(1)} ժամ · ${rows.length} գրառում`}>
+        <DirectorReportSection title={`Հաշվետվություն · ${formatDirectorLessonSlots(totalHours)} դաս · ${rows.length} գրառում`}>
           <DirectorStatGrid>
-            <DirectorStatCard label="Ընդամենը ժամ" value={totalHours.toFixed(1)} />
-            <DirectorStatCard label="Միջ. ժամ/օր" value={avgDaily.toFixed(1)} />
+            <DirectorStatCard label="Ընդամենը դաս" value={formatDirectorLessonSlots(totalHours)} />
+            <DirectorStatCard label="Միջ. դաս/օր" value={formatDirectorLessonSlots(avgDaily, { average: true })} />
             <DirectorStatCard label="Հրահանգիչներ" value={new Set(rows.map((r) => r.instructorUserId).filter(Boolean)).size} />
             <DirectorStatCard label="Գրառումներ" value={rows.length} />
           </DirectorStatGrid>
           <DirectorReportGrid className="mt-4">
-            <DirectorChartPanel title="Ժամեր ըստ ամիսների">
-              <DirectorTrendChart points={byMonth} label="Ժամ" />
+            <DirectorChartPanel title="Դասեր ըստ ամիսների">
+              <DirectorTrendChart points={byMonth} label="Դաս" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Հրահանգիչներ Top 8">
-              <DirectorRankChart points={byInstructor} label="Ժամ" />
+              <DirectorRankChart points={byInstructor} label="Դաս" />
             </DirectorChartPanel>
           </DirectorReportGrid>
         </DirectorReportSection>
@@ -228,7 +229,7 @@ export default function DirectorInstructorHoursPage() {
                   ))}
                 </DirectorSelect>
               </DirectorField>
-              <DirectorField label="Ժամ">
+              <DirectorField label="Դաս">
                 <DirectorInput value={form.hours} onChange={(e) => setForm((f) => ({ ...f, hours: e.target.value }))} />
               </DirectorField>
               <DirectorField label="Մեկնաբանություն">
@@ -236,7 +237,7 @@ export default function DirectorInstructorHoursPage() {
               </DirectorField>
               <DirectorFormActions
                 editing={editingId != null}
-                createLabel="Գրանցել ժամերը"
+                createLabel="Գրանցել դասերը"
                 onSubmit={() => void submit()}
                 onCancel={resetForm}
               />

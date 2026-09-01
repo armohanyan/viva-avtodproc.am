@@ -156,7 +156,7 @@ export default function DirectorKmPage() {
         sortable: true,
         sortValue: (r: DirectorKm) => r.km,
         searchValue: (r: DirectorKm) => String(r.km),
-        render: (r: DirectorKm) => r.km,
+        render: (r: DirectorKm) => Math.round(r.km).toLocaleString("hy-AM"),
       },
       {
         id: "actions",

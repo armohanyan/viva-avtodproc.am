@@ -251,7 +251,7 @@ export default function AdminReportsPage() {
             <DirectorChartPanel title="Գրանցման տեսակներ">
               <DirectorDoughnutChart points={bookingTypes} />
             </DirectorChartPanel>
-            <DirectorChartPanel title="Հրահանգիչներ (ժամ)" className="md:col-span-2">
+            <DirectorChartPanel title="Հրահանգիչներ (դաս)" className="md:col-span-2">
               <DirectorRankChart points={instructorRank} label="Ժամ" />
             </DirectorChartPanel>
           </DirectorReportGrid>

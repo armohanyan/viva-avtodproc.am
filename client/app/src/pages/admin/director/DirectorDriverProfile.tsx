@@ -18,6 +18,7 @@ import type { Instructor } from "src/data/instructors";
 import { useBranches } from "src/modules/branches";
 import { useCities } from "src/modules/cities";
 import { formatDirectorInstructorLabel } from "src/modules/director/directorInstructorLabels";
+import { formatDirectorLessonSlots } from "src/modules/director/directorFormat";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
 import { useDirectorTable } from "src/modules/director/useDirectorTable";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
@@ -119,10 +120,10 @@ export default function DirectorDriverProfilePage() {
       },
       {
         id: "hours",
-        header: "Ժամ",
+        header: "Դասեր",
         sortable: true,
         sortValue: (r: (typeof data.rows)[number]) => r.hours,
-        render: (r: (typeof data.rows)[number]) => r.hours.toFixed(1),
+        render: (r: (typeof data.rows)[number]) => formatDirectorLessonSlots(r.hours),
       },
       {
         id: "km",
@@ -189,7 +190,7 @@ export default function DirectorDriverProfilePage() {
       },
       {
         id: "kmPerHour",
-        header: "կմ/ժ",
+        header: "կմ/դաս",
         sortable: true,
         sortValue: (r: (typeof data.rows)[number]) => r.kmPerHour,
         render: (r: (typeof data.rows)[number]) => r.kmPerHour.toFixed(1),
@@ -224,7 +225,7 @@ export default function DirectorDriverProfilePage() {
       </div>
 
       <DirectorStatGrid>
-        <DirectorStatCard label="Ժամ" value={data.summary.hours.toFixed(1)} />
+        <DirectorStatCard label="Դասեր" value={formatDirectorLessonSlots(data.summary.hours)} />
         <DirectorStatCard label="ԿՄ" value={data.summary.km.toFixed(0)} />
         <DirectorStatCard label="Լիտր" value={data.summary.liters.toFixed(1)} />
         <DirectorStatCard label="Գումար" value={formatAmd(data.summary.amount)} />
@@ -241,8 +242,8 @@ export default function DirectorDriverProfilePage() {
       {view === "report" ? (
         <DirectorReportSection title={`${instructorTitle} · հաշվետվություն`}>
           <DirectorReportGrid>
-            <DirectorChartPanel title="Ժամեր" subtitle="Ըստ օրերի">
-              <DirectorTrendChart points={hoursTrend} label="Ժամ" />
+            <DirectorChartPanel title="Դասեր" subtitle="Ըստ օրերի">
+              <DirectorTrendChart points={hoursTrend} label="Դաս" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Կիլոմետրեր" subtitle="Ըստ օրերի">
               <DirectorTrendChart points={kmTrend} label="ԿՄ" />

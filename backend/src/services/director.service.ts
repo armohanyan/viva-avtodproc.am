@@ -27,7 +27,9 @@ import {
   fetchLegacyRepairs,
   fetchLegacySalaries,
   mergeDirectorRows,
+  mergeDirectorRowsPreferManual,
   type LegacyDirectorFuelRow,
+  type LegacyDirectorInstructorHoursRow,
   type LegacyDirectorKmRow,
 } from '../helpers/director-legacy.helper';
 
@@ -276,6 +278,7 @@ export default class DirectorService {
     ).map((row) => ({
       ...row,
       liters: num(row.liters),
+      amount: num(row.amount),
     }));
   }
 
@@ -326,7 +329,7 @@ export default class DirectorService {
       }),
       fetchLegacyKm(range),
     ]);
-    return mergeDirectorRows<LegacyDirectorKmRow>(
+    return mergeDirectorRowsPreferManual<LegacyDirectorKmRow>(
       rowJson(directorRows) as LegacyDirectorKmRow[],
       legacyRows,
     ).map((row) => ({
@@ -366,7 +369,13 @@ export default class DirectorService {
       }),
       fetchLegacyInstructorHours(range),
     ]);
-    return mergeDirectorRows(rowJson(directorRows), legacyRows);
+    return mergeDirectorRowsPreferManual<LegacyDirectorInstructorHoursRow>(
+      rowJson(directorRows) as LegacyDirectorInstructorHoursRow[],
+      legacyRows,
+    ).map((row) => ({
+      ...row,
+      hours: Math.round(num(row.hours)),
+    }));
   }
 
   static async createInstructorHours(
@@ -545,9 +554,11 @@ export default class DirectorService {
     const fuelTotal = sumField(fuel, 'amount') + legacyFuel.reduce((s, f) => s + f.amount, 0);
     const salaryTotal =
       sumField(salaries, 'totalAmd') + legacySalaries.reduce((s, r) => s + r.totalAmd, 0);
-    const instructorHoursTotal =
-      instructorHours.reduce((s, h) => s + Number(h.hours), 0) +
-      legacyInstructorHours.reduce((s, h) => s + Number(h.hours), 0);
+    const mergedInstructorHours = mergeDirectorRowsPreferManual(
+      rowJson(instructorHours) as LegacyDirectorInstructorHoursRow[],
+      legacyInstructorHours,
+    );
+    const instructorHoursTotal = mergedInstructorHours.reduce((s, h) => s + num(h.hours), 0);
     const instructorSalaryTotal =
       salaries.filter((s) => s.role === 'Հրահանգիչ').reduce((acc, s) => acc + s.totalAmd, 0) +
       legacySalaries
@@ -592,14 +603,14 @@ export default class DirectorService {
       fetchLegacyFuel(range),
     ]);
 
-    const mergedHours = [
-      ...hours.map((h) => h.toJSON()),
-      ...legacyHours.filter((h) => h.instructorUserId === instructorId),
-    ];
-    const mergedKm = [
-      ...kmRows.map((k) => k.toJSON()),
-      ...legacyKm.filter((k) => k.instructorUserId === instructorId),
-    ];
+    const mergedHours = mergeDirectorRowsPreferManual(
+      rowJson(hours) as LegacyDirectorInstructorHoursRow[],
+      legacyHours.filter((h) => h.instructorUserId === instructorId),
+    );
+    const mergedKm = mergeDirectorRowsPreferManual(
+      rowJson(kmRows) as LegacyDirectorKmRow[],
+      legacyKm.filter((k) => k.instructorUserId === instructorId),
+    );
     const mergedFuel = [
       ...fuelRows.map((f) => f.toJSON()),
       ...legacyFuel.filter((f) => f.instructorUserId === instructorId),
@@ -639,30 +650,32 @@ export default class DirectorService {
 
     for (const h of mergedHours) {
       const d = ensureDay(h.date);
-      d.hours += Number(h.hours);
+      d.hours += num(h.hours);
     }
     for (const k of mergedKm) {
       const d = ensureDay(k.date);
-      d.km += Number(k.km);
+      d.km += num(k.km);
     }
     for (const f of mergedFuel) {
       const d = ensureDay(f.date);
-      const liters = Number(f.liters);
+      const liters = num(f.liters);
+      const amount = num(f.amount);
       d.totalLiters += liters;
-      d.amount += f.amount;
+      d.amount += amount;
       if (f.fuelType.includes('Գազ')) d.gasLiters += liters;
       else d.petrolLiters += liters;
-      if (f.paymentMethod === 'card') d.card += f.amount;
-      else d.cash += f.amount;
+      if (f.paymentMethod === 'card') d.card += amount;
+      else d.cash += amount;
     }
 
     const rows = [...days.values()]
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((d) => {
+        const hours = Math.round(d.hours);
         const lPer100 = d.km > 0 ? (d.totalLiters / d.km) * 100 : 0;
         const amdPerKm = d.km > 0 ? d.amount / d.km : 0;
-        const kmPerHour = d.hours > 0 ? d.km / d.hours : 0;
-        return { ...d, lPer100, amdPerKm, kmPerHour };
+        const kmPerHour = hours > 0 ? d.km / hours : 0;
+        return { ...d, hours, lPer100, amdPerKm, kmPerHour };
       });
 
     const summary = {

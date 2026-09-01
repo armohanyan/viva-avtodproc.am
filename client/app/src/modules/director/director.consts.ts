@@ -53,7 +53,7 @@ export const DIRECTOR_NAV_LINKS: DirectorNavLink[] = [
   },
   {
     href: "/admin/director/instructor-hours",
-    label: "Հրահանգիչների ժամեր",
+    label: "Հրահանգիչների դասեր",
     children: [
       { href: "/admin/director/instructor-hours", label: "Հաշվետվություն" },
       { href: "/admin/director/instructor-hours/records", label: "Տվյալներ" },

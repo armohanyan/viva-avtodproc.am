@@ -17,7 +17,11 @@ import {
   TheoryCohortSession,
 } from '../models';
 import AdminFinanceExpenseService from '../services/admin-finance-expense.service';
-import { bookingEndUtcMs, lessonEndUtcMs, lessonInstantUtcMs } from '../utils/lesson-datetime.util';
+import { bookingEndUtcMs, lessonEndUtcMs } from '../utils/lesson-datetime.util';
+import {
+  completedLessonSlotsByDateFromBooking,
+  loadBookingSlotsByBookingId,
+} from '../utils/lesson-slot-count.util';
 
 type DateRange = { startDate: string; endDate: string; branchId?: number | null };
 
@@ -134,20 +138,6 @@ function sessionCountsAsCompleted(session: TheoryCohortSession, now: Date): bool
   if (session.status === 'cancelled') return false;
   if (session.status === 'completed') return true;
   return lessonEndUtcMs(String(session.dateIso), String(session.endTime)) <= now.getTime();
-}
-
-function lessonHoursFromBooking(row: Booking): number {
-  const startMs = lessonInstantUtcMs(String(row.dateIso), String(row.time));
-  const endMs = bookingEndUtcMs(String(row.dateIso), String(row.time), row.endTime);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 1;
-  return Math.max(0.5, Math.round(((endMs - startMs) / 3_600_000) * 10) / 10);
-}
-
-function lessonHoursFromSession(session: TheoryCohortSession): number {
-  const startMs = lessonInstantUtcMs(String(session.dateIso), String(session.startTime));
-  const endMs = lessonEndUtcMs(String(session.dateIso), String(session.endTime));
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 1;
-  return Math.max(0.5, Math.round(((endMs - startMs) / 3_600_000) * 10) / 10);
 }
 
 function salaryKindToRole(kind: string): string {
@@ -277,14 +267,14 @@ export async function fetchLegacyRepairs(range: Omit<DateRange, 'branchId'>): Pr
 
 export async function fetchLegacyInstructorHours(range: DateRange): Promise<LegacyDirectorInstructorHoursRow[]> {
   const now = new Date();
-  const hoursByKey = new Map<string, { date: string; instructorUserId: number; hours: number }>();
+  const slotsByKey = new Map<string, { date: string; instructorUserId: number; hours: number }>();
 
-  const bump = (date: string, instructorUserId: number, hours: number) => {
-    if (instructorUserId <= 0 || hours <= 0) return;
+  const bump = (date: string, instructorUserId: number, slots: number) => {
+    if (instructorUserId <= 0 || slots <= 0) return;
     const key = `${date}:${instructorUserId}`;
-    const prev = hoursByKey.get(key) ?? { date, instructorUserId, hours: 0 };
-    prev.hours += hours;
-    hoursByKey.set(key, prev);
+    const prev = slotsByKey.get(key) ?? { date, instructorUserId, hours: 0 };
+    prev.hours += slots;
+    slotsByKey.set(key, prev);
   };
 
   const bookings = await Booking.findAll({
@@ -295,9 +285,17 @@ export async function fetchLegacyInstructorHours(range: DateRange): Promise<Lega
     },
   });
 
+  const slotsByBookingId = await loadBookingSlotsByBookingId(bookings.map((b) => b.id));
+
   for (const row of bookings) {
     if (!bookingCountsAsCompleted(row, now)) continue;
-    bump(String(row.dateIso).slice(0, 10), row.instructorUserId!, lessonHoursFromBooking(row));
+    const slotRows = slotsByBookingId.get(row.id);
+    const byDate = completedLessonSlotsByDateFromBooking(row, slotRows);
+    for (const [date, count] of byDate) {
+      if (date >= range.startDate && date <= range.endDate) {
+        bump(date, row.instructorUserId!, count);
+      }
+    }
   }
 
   const sessions = await TheoryCohortSession.findAll({
@@ -309,21 +307,17 @@ export async function fetchLegacyInstructorHours(range: DateRange): Promise<Lega
 
   for (const session of sessions) {
     if (!sessionCountsAsCompleted(session, now)) continue;
-    bump(
-      String(session.dateIso).slice(0, 10),
-      session.instructorUserId ?? 0,
-      lessonHoursFromSession(session),
-    );
+    bump(String(session.dateIso).slice(0, 10), session.instructorUserId ?? 0, 1);
   }
 
   let seq = 1;
-  return [...hoursByKey.values()]
+  return [...slotsByKey.values()]
     .sort((a, b) => b.date.localeCompare(a.date) || b.instructorUserId - a.instructorUserId)
     .map((row) => ({
       id: legacyDirectorId(seq++),
       date: row.date,
       instructorUserId: row.instructorUserId,
-      hours: Math.round(row.hours * 10) / 10,
+      hours: Math.round(row.hours),
       comment: null as string | null,
     }));
 }
@@ -338,5 +332,22 @@ export function mergeDirectorRows<T extends { date: string; id: number }>(
 ): T[] {
   const directorIds = new Set(directorRows.map((r) => r.id));
   const legacyOnly = legacyRows.filter((r) => !directorIds.has(r.id));
+  return sortByDateDesc([...directorRows, ...legacyOnly]);
+}
+
+function instructorDayKey(date: string, instructorUserId: number | null | undefined): string {
+  return `${date}:${instructorUserId ?? 0}`;
+}
+
+/** When manual director rows exist for an instructor+day, skip legacy auto-rows for that key. */
+export function mergeDirectorRowsPreferManual<
+  T extends { id: number; date: string; instructorUserId: number | null },
+>(directorRows: T[], legacyRows: T[]): T[] {
+  const directorKeys = new Set(
+    directorRows.map((r) => instructorDayKey(r.date, r.instructorUserId)),
+  );
+  const legacyOnly = legacyRows.filter(
+    (r) => !directorKeys.has(instructorDayKey(r.date, r.instructorUserId)),
+  );
   return sortByDateDesc([...directorRows, ...legacyOnly]);
 }
