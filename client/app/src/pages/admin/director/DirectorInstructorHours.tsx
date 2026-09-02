@@ -34,7 +34,6 @@ import { isLegacyDirectorRecord, todayIso } from "src/modules/director/director.
 import type { DirectorInstructorHours } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
 import { useBranches } from "src/modules/branches";
-import { useCities } from "src/modules/cities";
 import {
   directorInstructorLabelById,
   formatDirectorInstructorLabel,
@@ -62,7 +61,6 @@ export default function DirectorInstructorHoursPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorInstructorHours[]>([]);
   const { branches } = useBranches();
-  const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -89,7 +87,7 @@ export default function DirectorInstructorHoursPage() {
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
 
   const instructorName = (id: number | null) =>
-    directorInstructorLabelById(id, instructors, branches, cities);
+    directorInstructorLabelById(id, instructors, branches);
 
   const resetForm = () => {
     setEditingId(null);
@@ -131,7 +129,7 @@ export default function DirectorInstructorHoursPage() {
   const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.hours), [rows]);
   const byInstructor = useMemo(
     () => topN(sumBy(rows, (r) => instructorName(r.instructorUserId), (r) => r.hours), 8),
-    [rows, instructors, branches, cities],
+    [rows, instructors, branches],
   );
   const totalHours = useMemo(() => rows.reduce((s, r) => s + r.hours, 0), [rows]);
   const avgDaily = useMemo(() => {
@@ -186,7 +184,7 @@ export default function DirectorInstructorHoursPage() {
         ),
       },
     ],
-    [instructors, branches, cities, reload],
+    [instructors, branches, reload],
   );
 
   const table = useDirectorTable({ rows, columns: tableColumns });
@@ -225,7 +223,7 @@ export default function DirectorInstructorHoursPage() {
                 <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
                   <option value="">—</option>
                   {instructors.map((i) => (
-                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches, cities)}</option>
+                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
                   ))}
                 </DirectorSelect>
               </DirectorField>

@@ -30,7 +30,7 @@ export type StudentPaymentSummaryDto = {
   }>;
 };
 
-type BookingPaymentRow = {
+export type BookingPaymentRow = {
   status: string;
   totalPriceAmd?: number | null;
   paidAmountAmd?: number | null;
@@ -51,8 +51,25 @@ export function bookingTotalPriceAmd(row: { totalPriceAmd?: number | null }): nu
 function normalizeLifecycleStatus(raw: string): string {
   const s = String(raw ?? '').trim().toLowerCase();
   if (s === 'pending_prebook') return 'pending';
+  if (s === 'pending_payment') return 'pending';
   if (s === 'completed') return 'confirmed';
   return s;
+}
+
+const TERMINAL_BOOKING_LIFECYCLE_STATUSES = new Set(['cancelled', 'refunded']);
+
+/** Booking lifecycle `status` follows payment: paid → confirmed, otherwise → pending. */
+export function bookingLifecycleStatusFromPayment(
+  paymentStatus: AdminBookingPaymentStatus | 'pending' | 'failed',
+  opts?: { explicitStatus?: string; currentStatus?: string },
+): 'confirmed' | 'pending' | 'cancelled' | 'refunded' {
+  const explicit = opts?.explicitStatus ? normalizeLifecycleStatus(opts.explicitStatus) : undefined;
+  if (explicit === 'cancelled' || explicit === 'refunded') return explicit;
+  const current = normalizeLifecycleStatus(opts?.currentStatus ?? '');
+  if (!explicit && TERMINAL_BOOKING_LIFECYCLE_STATUSES.has(current)) {
+    return current as 'cancelled' | 'refunded';
+  }
+  return paymentStatus === 'paid' ? 'confirmed' : 'pending';
 }
 
 /** Whether this booking row can contribute to student debt (has a billable total). */

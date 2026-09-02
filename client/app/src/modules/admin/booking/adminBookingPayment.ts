@@ -4,6 +4,16 @@ import type { TranslationKey } from "src/lib/i18n";
 /** Admin booking payment status (maps to API `adminPaymentStatus`). */
 export type AdminBookingPaymentStatus = "paid" | "partial" | "unpaid";
 
+/** Booking lifecycle status follows payment: paid → confirmed, otherwise → pending. */
+export function bookingStatusFromAdminPayment(
+  paymentStatus: AdminBookingPaymentStatus,
+  currentStatus?: string,
+): "confirmed" | "pending" | "cancelled" | "refunded" {
+  const explicit = String(currentStatus ?? "").trim().toLowerCase();
+  if (explicit === "cancelled" || explicit === "refunded") return explicit;
+  return paymentStatus === "paid" ? "confirmed" : "pending";
+}
+
 export type AdminBookingPaymentState = {
   status: AdminBookingPaymentStatus;
   paidStr: string;

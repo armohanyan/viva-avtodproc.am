@@ -30,7 +30,6 @@ import type { DirectorFuel, DirectorPaymentMethod } from "src/modules/director/d
 import type { Instructor } from "src/data/instructors";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
 import { useBranches } from "src/modules/branches";
-import { useCities } from "src/modules/cities";
 import {
   directorInstructorLabelById,
   formatDirectorInstructorLabel,
@@ -67,7 +66,6 @@ export default function DirectorFuelPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorFuel[]>([]);
   const { branches } = useBranches();
-  const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -99,7 +97,7 @@ export default function DirectorFuelPage() {
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
 
   const instructorName = (id: number | null) =>
-    directorInstructorLabelById(id, instructors, branches, cities);
+    directorInstructorLabelById(id, instructors, branches);
 
   const resetForm = () => {
     setEditingId(null);
@@ -156,7 +154,7 @@ export default function DirectorFuelPage() {
   const litersByMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.liters), [rows]);
   const fuelByInstructor = useMemo(
     () => topN(sumBy(rows, (r) => instructorName(r.instructorUserId), (r) => r.amount), 8),
-    [rows, instructors, branches, cities],
+    [rows, instructors, branches],
   );
   const totalFuel = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows]);
   const totalLiters = useMemo(() => rows.reduce((s, r) => s + r.liters, 0), [rows]);
@@ -222,7 +220,7 @@ export default function DirectorFuelPage() {
         ),
       },
     ],
-    [instructors, branches, cities, reload],
+    [instructors, branches, reload],
   );
 
   const table = useDirectorTable({ rows, columns: tableColumns });
@@ -263,7 +261,7 @@ export default function DirectorFuelPage() {
                 <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
                   <option value="">—</option>
                   {instructors.map((i) => (
-                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches, cities)}</option>
+                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
                   ))}
                 </DirectorSelect>
               </DirectorField>

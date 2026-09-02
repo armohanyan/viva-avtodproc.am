@@ -18,11 +18,13 @@ import {
   slotRevenueAmd,
 } from '../utils/booking-admin-payment.util';
 import {
-  bookingCountsForDirectorHours,
   findLegacyBookingsWithoutSlots,
   findSlotsInDateRange,
+  legacyBookingCountsForPayableLesson,
+  lessonSlotExcludedFromReports,
   loadBookingSlotDetailsByBookingId,
   slotCountFromTimeRange,
+  slotCountsForPayableLesson,
 } from '../utils/lesson-slot-count.util';
 
 type DateRange = { startDate: string; endDate: string; branchId?: number | null };
@@ -266,12 +268,12 @@ export async function fetchLegacyInstructorHours(range: DateRange): Promise<Lega
   ]);
 
   for (const slot of slotRows) {
-    if (!bookingCountsForDirectorHours(slot.booking)) continue;
+    if (!slotCountsForPayableLesson(slot.booking, slot)) continue;
     bump(slot.dateIso, slot.instructorUserId, 1);
   }
 
   for (const row of legacyBookings) {
-    if (!bookingCountsForDirectorHours(row)) continue;
+    if (!legacyBookingCountsForPayableLesson(row)) continue;
     const d = String(row.dateIso).slice(0, 10);
     bump(d, row.instructorUserId!, slotCountFromTimeRange(d, String(row.time), row.endTime));
   }
@@ -364,7 +366,7 @@ export async function fetchLegacyRevenues(range: DateRange): Promise<LegacyDirec
 
   for (const slot of slotRows) {
     const booking = slot.booking;
-    if (!bookingCountsForDirectorHours(booking)) continue;
+    if (lessonSlotExcludedFromReports(booking)) continue;
     const allSlots = slotsByBookingId.get(slot.bookingId) ?? [];
     const amt = slotRevenueAmd(booking, slot, allSlots);
     if (amt <= 0) continue;
@@ -377,7 +379,7 @@ export async function fetchLegacyRevenues(range: DateRange): Promise<LegacyDirec
   }
 
   for (const row of legacyBookings) {
-    if (!bookingCountsForDirectorHours(row)) continue;
+    if (lessonSlotExcludedFromReports(row)) continue;
     const amt = legacyBookingRevenueAmd(row);
     if (amt <= 0) continue;
     const d = String(row.dateIso).slice(0, 10);

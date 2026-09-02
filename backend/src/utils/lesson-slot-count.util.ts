@@ -6,6 +6,11 @@ import {
 import { Booking, BookingSlot as BookingSlotModel } from '../models';
 import type { Booking as BookingType } from '../models/booking.model';
 import type { BookingSlot } from '../models/booking-slot.model';
+import {
+  bookingCountsTowardStudentDebt,
+  resolveBookingPayment,
+  type BookingPaymentRow,
+} from './booking-admin-payment.util';
 import { bookingEndUtcMs, lessonInstantUtcMs } from './lesson-datetime.util';
 
 export const SLOT_RESERVING_BOOKING_STATUSES = [
@@ -39,7 +44,20 @@ export type SlotWithBooking = {
   dateIso: string;
   slotTime: string;
   instructorUserId: number;
+  paymentCovered: boolean;
   booking: BookingType;
+};
+
+export type PayableLessonBookingRow = BookingPaymentRow & {
+  lessonCompletionStatus?: string | null;
+  lessonPassedSuccessfully?: boolean | null;
+  isGift?: boolean;
+  giftStatus?: string | null;
+  instructorUserId?: number | null;
+};
+
+export type PayableLessonSlotRow = {
+  paymentCovered?: boolean;
 };
 
 type SlotRow = Pick<BookingSlot, 'dateIso'>;
@@ -97,6 +115,7 @@ export async function findSlotsInDateRange(query: SlotInRangeQuery): Promise<Slo
       dateIso: String(slot.dateIso).slice(0, 10),
       slotTime: slot.slotTime,
       instructorUserId: slot.instructorUserId!,
+      paymentCovered: Boolean(slot.paymentCovered),
       booking: (slot as unknown as { booking: BookingType }).booking,
     }));
 }
@@ -154,30 +173,57 @@ export function slotEndUtcMs(dateIso: string, slotTime: string): number {
   return startMs + 3_600_000;
 }
 
-/** Active calendar slot that should count toward director instructor-hours (matches day graphic). */
-export function bookingCountsForDirectorHours(
-  row: Pick<BookingType, 'status' | 'lessonCompletionStatus' | 'lessonPassedSuccessfully'>,
-): boolean {
-  if (!bookingStatusReservesSlot(row.status)) return false;
-  const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  if (cs && EXCLUDED_LESSON_COMPLETION.has(cs)) return false;
-  if (row.lessonPassedSuccessfully === false) return false;
-  return true;
+function isApprovedGiftBooking(row: Pick<PayableLessonBookingRow, 'isGift' | 'giftStatus'>): boolean {
+  if (!row.isGift) return false;
+  return String(row.giftStatus ?? '').trim().toLowerCase() === 'approved';
 }
 
-/** Confirmed practical slot eligible for instructor salary. */
-export function bookingCountsForSalary(
-  row: Pick<
-    BookingType,
-    'instructorUserId' | 'status' | 'lessonCompletionStatus' | 'lessonPassedSuccessfully'
-  >,
+/** Cancelled / missed / refunded slots are excluded from all director slot-based reports. */
+export function lessonSlotExcludedFromReports(
+  row: Pick<PayableLessonBookingRow, 'lessonCompletionStatus' | 'lessonPassedSuccessfully'>,
 ): boolean {
-  if (row.instructorUserId == null || row.instructorUserId <= 0) return false;
-  if (normalizeLifecycleStatus(String(row.status ?? '')) !== 'confirmed') return false;
   const cs = row.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
-  if (cs && EXCLUDED_LESSON_COMPLETION.has(cs)) return false;
-  if (row.lessonPassedSuccessfully === false) return false;
-  return true;
+  if (cs && EXCLUDED_LESSON_COMPLETION.has(cs)) return true;
+  if (row.lessonPassedSuccessfully === false) return true;
+  return false;
+}
+
+/**
+ * Slot counts toward director reports (salary, instructor-hours): payment-covered slots,
+ * approved gifts, and prepaid/package lessons. Booking lifecycle `status` is ignored.
+ */
+export function slotCountsForPayableLesson(
+  booking: PayableLessonBookingRow,
+  slot: PayableLessonSlotRow,
+): boolean {
+  if (lessonSlotExcludedFromReports(booking)) return false;
+  if (isApprovedGiftBooking(booking)) return true;
+  if (booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object') return true;
+
+  if (!bookingCountsTowardStudentDebt(booking)) return false;
+
+  const resolved = resolveBookingPayment(booking);
+  const ps = resolved.paymentStatus;
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return false;
+  if (ps === 'paid') return true;
+  if (ps === 'partial') return Boolean(slot.paymentCovered);
+  return false;
+}
+
+/**
+ * Legacy booking without per-slot rows: all hour-slots in range count when the booking is payable.
+ */
+export function legacyBookingCountsForPayableLesson(booking: PayableLessonBookingRow): boolean {
+  if (lessonSlotExcludedFromReports(booking)) return false;
+  if (isApprovedGiftBooking(booking)) return true;
+  if (booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object') return true;
+
+  const resolved = resolveBookingPayment(booking);
+  const ps = resolved.paymentStatus;
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return false;
+  if (ps === 'paid') return true;
+  if (ps === 'partial') return resolved.paidAmountAmd > 0;
+  return false;
 }
 
 export function slotCountsAsCompleted(

@@ -25,6 +25,7 @@ import {
 import {
   adminPaymentApiPayload,
   adminPaymentFromBooking,
+  bookingStatusFromAdminPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
   type AdminBookingPaymentState,
@@ -235,6 +236,7 @@ export default function PracticalBookingDetailModal({
     }
 
     const paymentBody = adminPaymentApiPayload(bookingPayment, totalPriceAmd);
+    const lifecycleStatus = bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, status);
     const paid =
       paymentBody.adminPaymentStatus === "paid"
         ? totalPriceAmd
@@ -268,7 +270,7 @@ export default function PracticalBookingDetailModal({
         body: {
           studentId: Number(booking.studentId),
           branchId: Number(branchId),
-          status,
+          status: lifecycleStatus,
           totalPriceAmd,
           ...paymentBody,
           ...(paidSlotEntries ? { paidSlotEntries } : {}),
@@ -583,7 +585,10 @@ export default function PracticalBookingDetailModal({
               onTotalPriceStrChange={setTotalPriceStr}
               totalPriceEditable
               value={bookingPayment}
-              onChange={setBookingPayment}
+              onChange={(next) => {
+                setBookingPayment(next);
+                setStatus(bookingStatusFromAdminPayment(next.status, status));
+              }}
               errorKey={paymentErrorKey}
             />
           </form>

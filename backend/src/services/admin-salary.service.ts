@@ -10,10 +10,11 @@ import type { SalaryPaymentKind } from '../models/salary-payment.model';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import { lessonEndUtcMs } from '../utils/lesson-datetime.util';
 import {
-  bookingCountsForSalary,
   findLegacyBookingsWithoutSlots,
   findSlotsInDateRange,
+  legacyBookingCountsForPayableLesson,
   slotCountFromTimeRange,
+  slotCountsForPayableLesson,
 } from '../utils/lesson-slot-count.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -179,13 +180,12 @@ function paymentRowToDto(row: SalaryPayment, createdBy?: User | null): SalaryPay
   };
 }
 
-/** Confirmed practical lesson slots per instructor in the date range. */
+/** Paid practical lesson slots per instructor in the date range (payment status, not booking lifecycle). */
 async function practicalLessonCounts(start: string, end: string): Promise<Map<number, number>> {
   const query = {
     startDate: start,
     endDate: end,
     lessonTypes: ['practical'] as const,
-    bookingStatuses: ['confirmed'] as const,
   };
   const [slots, legacyBookings] = await Promise.all([
     findSlotsInDateRange(query),
@@ -193,11 +193,11 @@ async function practicalLessonCounts(start: string, end: string): Promise<Map<nu
   ]);
   const counts = new Map<number, number>();
   for (const slot of slots) {
-    if (!bookingCountsForSalary(slot.booking)) continue;
+    if (!slotCountsForPayableLesson(slot.booking, slot)) continue;
     counts.set(slot.instructorUserId, (counts.get(slot.instructorUserId) ?? 0) + 1);
   }
   for (const row of legacyBookings) {
-    if (!bookingCountsForSalary(row)) continue;
+    if (!legacyBookingCountsForPayableLesson(row)) continue;
     const iid = row.instructorUserId as number;
     const d = String(row.dateIso).slice(0, 10);
     counts.set(iid, (counts.get(iid) ?? 0) + slotCountFromTimeRange(d, String(row.time), row.endTime));
@@ -253,7 +253,6 @@ async function practicalLessonRows(
     endDate: end,
     instructorUserId: employeeUserId,
     lessonTypes: ['practical'] as const,
-    bookingStatuses: ['confirmed'] as const,
   };
   const [slots, legacyBookings] = await Promise.all([
     findSlotsInDateRange(query),
@@ -275,7 +274,7 @@ async function practicalLessonRows(
   const items: SalaryLessonRowDto[] = [];
 
   for (const slot of slots) {
-    if (!bookingCountsForSalary(slot.booking)) continue;
+    if (!slotCountsForPayableLesson(slot.booking, slot)) continue;
     items.push({
       id: slot.slotId,
       dateIso: slot.dateIso,
@@ -287,7 +286,7 @@ async function practicalLessonRows(
   }
 
   for (const row of legacyBookings) {
-    if (!bookingCountsForSalary(row)) continue;
+    if (!legacyBookingCountsForPayableLesson(row)) continue;
     const d = String(row.dateIso).slice(0, 10);
     const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
     items.push({

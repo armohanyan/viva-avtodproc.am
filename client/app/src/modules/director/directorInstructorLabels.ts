@@ -1,15 +1,27 @@
 import type { Instructor } from "src/data/instructors";
 import type { Branch } from "src/modules/branches";
-import type { City } from "src/modules/cities";
-import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
+import { branchDisplayLabel } from "src/modules/branches";
+
+function formatDirectorInstructorBranchCodes(
+  instructor: Instructor,
+  allBranches: readonly Branch[],
+): string {
+  if (instructor.availableBranchIds.length === 0) return "";
+  return instructor.availableBranchIds
+    .map((id) => {
+      const b = allBranches.find((x) => String(x.id) === String(id));
+      return b ? branchDisplayLabel(b) : "";
+    })
+    .filter(Boolean)
+    .join(", ");
+}
 
 export function formatDirectorInstructorLabel(
   instructor: Instructor,
   branches: readonly Branch[],
-  cities: readonly City[],
 ): string {
-  const branchesLabel = formatInstructorBranches(instructor, branches, cities);
-  if (!branchesLabel || branchesLabel === "—") return instructor.name;
+  const branchesLabel = formatDirectorInstructorBranchCodes(instructor, branches);
+  if (!branchesLabel) return instructor.name;
   return `${instructor.name} · ${branchesLabel}`;
 }
 
@@ -17,10 +29,9 @@ export function directorInstructorLabelById(
   id: number | null | undefined,
   instructors: readonly Instructor[],
   branches: readonly Branch[],
-  cities: readonly City[],
 ): string {
   if (id == null) return "—";
   const instructor = instructors.find((i) => String(i.id) === String(id));
   if (!instructor) return `#${id}`;
-  return formatDirectorInstructorLabel(instructor, branches, cities);
+  return formatDirectorInstructorLabel(instructor, branches);
 }

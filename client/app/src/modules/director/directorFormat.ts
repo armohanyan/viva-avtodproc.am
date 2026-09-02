@@ -1,4 +1,4 @@
-/** Lesson slot count for director reports and salary (whole numbers). */
+/** Paid lesson slot count for director reports and salary (whole numbers). */
 export function formatDirectorLessonSlots(slots: number, opts?: { average?: boolean }): string {
   const n = Math.max(0, Number(slots) || 0);
   if (opts?.average) return (Math.round(n * 10) / 10).toFixed(1);

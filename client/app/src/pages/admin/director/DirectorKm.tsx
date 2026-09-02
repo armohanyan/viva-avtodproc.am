@@ -27,7 +27,6 @@ import { isLegacyDirectorRecord, todayIso } from "src/modules/director/director.
 import type { DirectorKm } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
 import { useBranches } from "src/modules/branches";
-import { useCities } from "src/modules/cities";
 import {
   directorInstructorLabelById,
   formatDirectorInstructorLabel,
@@ -59,7 +58,6 @@ export default function DirectorKmPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorKm[]>([]);
   const { branches } = useBranches();
-  const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -85,7 +83,7 @@ export default function DirectorKmPage() {
   const reload = useDirectorReload(load, [query, branchFilterRevision]);
 
   const instructorName = (id: number | null) =>
-    directorInstructorLabelById(id, instructors, branches, cities);
+    directorInstructorLabelById(id, instructors, branches);
 
   const resetForm = () => {
     setEditingId(null);
@@ -126,7 +124,7 @@ export default function DirectorKmPage() {
   const kmByMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.km), [rows]);
   const kmByInstructor = useMemo(
     () => topN(sumBy(rows, (r) => instructorName(r.instructorUserId), (r) => r.km), 8),
-    [rows, instructors, branches, cities],
+    [rows, instructors, branches],
   );
   const totalKm = useMemo(() => rows.reduce((s, r) => s + r.km, 0), [rows]);
 
@@ -171,7 +169,7 @@ export default function DirectorKmPage() {
         ),
       },
     ],
-    [instructors, branches, cities, reload],
+    [instructors, branches, reload],
   );
 
   const table = useDirectorTable({ rows, columns: tableColumns });
@@ -209,7 +207,7 @@ export default function DirectorKmPage() {
                 <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
                   <option value="">—</option>
                   {instructors.map((i) => (
-                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches, cities)}</option>
+                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
                   ))}
                 </DirectorSelect>
               </DirectorField>

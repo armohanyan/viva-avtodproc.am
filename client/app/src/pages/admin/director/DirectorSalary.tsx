@@ -68,12 +68,15 @@ import {
   directorText,
 } from "src/modules/director/directorFormValues";
 import { useDirectorTable } from "src/modules/director/useDirectorTable";
-import { getApiErrorMessage } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { halfMonthPeriod, previousHalfMonthPeriod } from "src/utils/halfMonthPeriod.utils";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Banknote } from "lucide-react";
 import { cn } from "src/lib/utils";
+import type { Instructor } from "src/data/instructors";
+import { useBranches, type Branch } from "src/modules/branches";
+import { directorInstructorLabelById } from "src/modules/director/directorInstructorLabels";
 
 const BASE_PATH = "/admin/director/salary";
 
@@ -84,6 +87,17 @@ const KIND_LABEL: Record<DirectorSalaryEmployeeKind, string> = {
 
 function kindLabel(kind: DirectorSalaryEmployeeKind): string {
   return KIND_LABEL[kind];
+}
+
+function employeeDisplayName(
+  employeeUserId: number | null | undefined,
+  fallback: string,
+  instructors: readonly Instructor[],
+  branches: readonly Branch[],
+): string {
+  if (employeeUserId == null) return fallback;
+  const label = directorInstructorLabelById(employeeUserId, instructors, branches);
+  return label.startsWith("#") ? fallback : label;
 }
 
 function SalaryPeriodFilters({
@@ -140,11 +154,15 @@ function SalaryReportView({
   end,
   query,
   reloadKey,
+  instructors,
+  branches,
 }: {
   start: string;
   end: string;
   query: string;
   reloadKey: number;
+  instructors: readonly Instructor[];
+  branches: readonly Branch[];
 }) {
   const { showToast } = useToast();
   const [report, setReport] = useState<DirectorSalaryReport | null>(null);
@@ -201,7 +219,7 @@ function SalaryReportView({
       await createDirectorSalaryPayment({
         kind: payRow.kind,
         employeeUserId: payRow.employeeUserId,
-        title: `${payRow.employeeName} · ${kindLabel(payRow.kind)} · ${start}—${end}`,
+        title: `${employeeDisplayName(payRow.employeeUserId, payRow.employeeName, instructors, branches)} · ${kindLabel(payRow.kind)} · ${start}—${end}`,
         periodStart: start,
         periodEnd: end,
         notes: payNotes.trim() || null,
@@ -227,8 +245,9 @@ function SalaryReportView({
       </DirectorStatGrid>
 
       <p className="text-xs text-muted-foreground mt-4 mb-2">
-        Հաշվարկը հիմնված է հրահանգչի ժամավճարի վրա (1 դաս = 1 ժամ). Լռելյայն դրույքներ՝ գործնական{" "}
-        {formatAmd(report?.instructorRateAmd ?? 1500)}, տեսություն {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}.
+        Հաշվարկը հիմնված է վճարված դասերի (սլոթերի) քանակի վրա՝ ներառյալ հաստատված նվեր-ամրագրումները.
+        Գործնական դասի լռելյայն դրույք՝ {formatAmd(report?.instructorRateAmd ?? 1500)}, տեսություն{" "}
+        {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}.
       </p>
 
       <DirectorTableWrap className="mt-4">
@@ -251,7 +270,9 @@ function SalaryReportView({
           ) : (
             report?.rows.map((row) => (
               <DirectorTableRow key={`${row.kind}:${row.employeeUserId}`}>
-                <DirectorTableTd>{row.employeeName}</DirectorTableTd>
+                <DirectorTableTd>
+                  {employeeDisplayName(row.employeeUserId, row.employeeName, instructors, branches)}
+                </DirectorTableTd>
                 <DirectorTableTd>{kindLabel(row.kind)}</DirectorTableTd>
                 <DirectorTableTd>
                   <button
@@ -341,7 +362,7 @@ function SalaryReportView({
             <DialogTitle>Հաստատել վճարումը</DialogTitle>
             <DialogDescription>
               {payRow
-                ? `${payRow.employeeName} · ${kindLabel(payRow.kind)} · ${payRow.lessonsCount} դաս × ${formatAmd(payRow.ratePerLessonAmd)} = ${formatAmd(payRow.totalAmd)}`
+                ? `${employeeDisplayName(payRow.employeeUserId, payRow.employeeName, instructors, branches)} · ${kindLabel(payRow.kind)} · ${payRow.lessonsCount} դաս × ${formatAmd(payRow.ratePerLessonAmd)} = ${formatAmd(payRow.totalAmd)}`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -367,11 +388,15 @@ function SalaryRecordsView({
   end,
   query,
   reloadKey,
+  instructors,
+  branches,
 }: {
   start: string;
   end: string;
   query: string;
   reloadKey: number;
+  instructors: readonly Instructor[];
+  branches: readonly Branch[];
 }) {
   const { showToast } = useToast();
   const [payments, setPayments] = useState<DirectorSalaryPayment[]>([]);
@@ -561,7 +586,9 @@ function SalaryRecordsView({
             payments.map((p) => (
               <DirectorTableRow key={p.id}>
                 <DirectorTableTd className="tabular-nums whitespace-nowrap">{p.createdAtIso.slice(0, 10)}</DirectorTableTd>
-                <DirectorTableTd>{p.employeeName}</DirectorTableTd>
+                <DirectorTableTd>
+                  {employeeDisplayName(p.employeeUserId, p.employeeName, instructors, branches)}
+                </DirectorTableTd>
                 <DirectorTableTd>
                   {p.kind === "instructor"
                     ? "Հրահանգիչ"
@@ -632,12 +659,20 @@ function SalaryRecordsView({
 
 export default function DirectorSalaryPage() {
   const view = useDirectorSectionView(BASE_PATH);
+  const { branches } = useBranches();
+  const [instructors, setInstructors] = useState<Instructor[]>([]);
   const initialPeriod = defaultDirectorSalaryPeriod(new Date());
   const { start, end, setStart, setEnd, query } = useDirectorDateRange(
     initialPeriod.start,
     initialPeriod.end,
   );
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    void vivaApiJson<Instructor[]>("/instructors")
+      .then((d) => setInstructors(Array.isArray(d) ? d : []))
+      .catch(() => setInstructors([]));
+  }, []);
 
   const handleRefresh = () => setReloadKey((k) => k + 1);
 
@@ -654,9 +689,23 @@ export default function DirectorSalaryPage() {
       <DirectorSectionNav basePath={BASE_PATH} />
 
       {view === "report" ? (
-        <SalaryReportView start={start} end={end} query={query} reloadKey={reloadKey} />
+        <SalaryReportView
+          start={start}
+          end={end}
+          query={query}
+          reloadKey={reloadKey}
+          instructors={instructors}
+          branches={branches}
+        />
       ) : (
-        <SalaryRecordsView start={start} end={end} query={query} reloadKey={reloadKey} />
+        <SalaryRecordsView
+          start={start}
+          end={end}
+          query={query}
+          reloadKey={reloadKey}
+          instructors={instructors}
+          branches={branches}
+        />
       )}
     </DirectorLayout>
   );

@@ -16,7 +16,6 @@ import { fetchDirectorDriverProfile } from "src/modules/director/director.api";
 import type { DirectorDriverProfile } from "src/modules/director/director.types";
 import type { Instructor } from "src/data/instructors";
 import { useBranches } from "src/modules/branches";
-import { useCities } from "src/modules/cities";
 import { formatDirectorInstructorLabel } from "src/modules/director/directorInstructorLabels";
 import { formatDirectorLessonSlots } from "src/modules/director/directorFormat";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
@@ -46,7 +45,6 @@ export default function DirectorDriverProfilePage() {
   const view = useDirectorSectionView(BASE_PATH);
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const { branches } = useBranches();
-  const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [instructorUserId, setInstructorUserId] = useState("");
   const [data, setData] = useState<DirectorDriverProfile>(EMPTY);
@@ -106,7 +104,7 @@ export default function DirectorDriverProfilePage() {
   const selectedInstructor = instructors.find((i) => String(i.id) === instructorUserId);
   const instructorTitle =
     data.instructorName ||
-    (selectedInstructor ? formatDirectorInstructorLabel(selectedInstructor, branches, cities) : "—");
+    (selectedInstructor ? formatDirectorInstructorLabel(selectedInstructor, branches) : "—");
 
   const tableColumns = useMemo(
     () => [
@@ -217,7 +215,7 @@ export default function DirectorDriverProfilePage() {
             className="min-w-[180px]"
           >
             {instructors.map((i) => (
-              <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches, cities)}</option>
+              <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
             ))}
           </DirectorSelect>
         </DirectorField>

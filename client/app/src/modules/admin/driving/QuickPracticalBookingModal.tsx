@@ -27,6 +27,7 @@ import {
 } from "src/modules/admin/booking/adminAvailabilityGrid";
 import {
   adminPaymentApiPayload,
+  bookingStatusFromAdminPayment,
   defaultAdminBookingPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
@@ -296,6 +297,10 @@ export default function QuickPracticalBookingModal({
     const paymentBody = isGift
       ? { isGift: true, ...(giftNote.trim() ? { giftNote: giftNote.trim() } : {}) }
       : adminPaymentApiPayload(bookingPayment, totalPriceAmd);
+    const lifecycleStatus =
+      isGift || !("adminPaymentStatus" in paymentBody)
+        ? status
+        : bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, status);
     const paid = isGift
       ? 0
       : "adminPaymentStatus" in paymentBody && paymentBody.adminPaymentStatus === "paid"
@@ -310,7 +315,7 @@ export default function QuickPracticalBookingModal({
       const body = {
         studentId: Number(studentId),
         branchId: Number(branchId),
-        status,
+        status: lifecycleStatus,
         type: "practical" as const,
         dateIso: firstEntry.dateIso,
         slots: times,
@@ -613,7 +618,10 @@ export default function QuickPracticalBookingModal({
           onTotalPriceStrChange={setTotalPriceStr}
           totalPriceEditable
           value={bookingPayment}
-          onChange={setBookingPayment}
+          onChange={(next) => {
+            setBookingPayment(next);
+            setStatus(bookingStatusFromAdminPayment(next.status, status));
+          }}
           errorKey={paymentErrorKey}
           giftEnabled
           giftAutoApproved={isSuperAdminUser}

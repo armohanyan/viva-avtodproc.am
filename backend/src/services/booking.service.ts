@@ -38,6 +38,7 @@ import {
 } from '../utils/booking-payment-schedule.util';
 import {
   adminPaymentFieldsForDb,
+  bookingLifecycleStatusFromPayment,
   bookingTotalPriceAmd,
   buildStudentPaymentSummary,
   resolveBookingPayment,
@@ -1053,11 +1054,40 @@ async function syncSlotPaymentCoverage(
 function effectivePaymentStatusAfterPatch(
   row: Booking,
   payUpdate: Partial<{ paymentStatus: string | null }>,
-): string {
+): AdminBookingPaymentStatus | 'pending' | 'failed' {
   if (payUpdate.paymentStatus != null && String(payUpdate.paymentStatus).trim()) {
-    return String(payUpdate.paymentStatus).trim().toLowerCase();
+    const ps = String(payUpdate.paymentStatus).trim().toLowerCase();
+    if (ps === 'paid' || ps === 'partial' || ps === 'unpaid' || ps === 'pending' || ps === 'failed') {
+      return ps;
+    }
   }
-  return String(row.paymentStatus ?? '').trim().toLowerCase();
+  const resolved = resolveBookingPayment(row);
+  return resolved.paymentStatus;
+}
+
+function adminCreateLifecycleStatus(
+  paymentStatus: AdminBookingPaymentStatus | 'pending' | 'failed',
+  explicitStatus?: string,
+): string {
+  return bookingLifecycleStatusFromPayment(paymentStatus, { explicitStatus });
+}
+
+function resolveAdminBookingLifecycleStatusForPatch(
+  row: Booking,
+  patch: AdminPaymentPatchInput & { status?: string },
+  payUpdate: Partial<{ paymentStatus: string | null }>,
+): string | undefined {
+  const paymentTouched =
+    patch.adminPaymentStatus !== undefined ||
+    patch.paidAmountAmd !== undefined ||
+    payUpdate.paymentStatus !== undefined;
+  const statusTouched = patch.status !== undefined;
+  if (!paymentTouched && !statusTouched) return undefined;
+  const paymentStatus = effectivePaymentStatusAfterPatch(row, payUpdate);
+  return bookingLifecycleStatusFromPayment(paymentStatus, {
+    explicitStatus: patch.status,
+    currentStatus: String(row.status),
+  });
 }
 
 async function replaceBookingSlotRows(
@@ -2968,6 +2998,7 @@ export default class BookingService {
           : endTimeExclusiveForSlotEntries(entries);
 
     let newId = 0;
+    let createdLifecycleStatus = adminCreateLifecycleStatus('unpaid', input.status);
     try {
       await sequelize.transaction(async (transaction) => {
         const prepaidMeta =
@@ -2986,6 +3017,7 @@ export default class BookingService {
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
           prepaidMeta,
         );
+        createdLifecycleStatus = adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatus =
           payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
             ? payPatch.paymentStatus
@@ -3004,7 +3036,7 @@ export default class BookingService {
             endTime,
             totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
-            status: input.status,
+            status: adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             holdExpiresAt: null,
             prepaidMeta,
             paymentStatus: payPatch.paymentStatus,
@@ -3039,7 +3071,7 @@ export default class BookingService {
       throw e;
     }
 
-    if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
+    if (createdLifecycleStatus === 'confirmed' && input.allowHistoricalSlots !== true) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
     if (gift.isGift && gift.giftStatus === 'pending') {
@@ -3286,7 +3318,7 @@ export default class BookingService {
             endTime: exclusiveEnd,
             totalPriceAmd,
             lessonType: input.type,
-            status: input.status,
+            status: adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             paymentStatus: payPatch.paymentStatus,
             paidAmountAmd: payPatch.paidAmountAmd,
             paidAt: payPatch.paidAt,
@@ -3319,7 +3351,10 @@ export default class BookingService {
       throw e;
     }
 
-    if (normalizeBookingStatus(String(input.status)) === 'confirmed' && input.allowHistoricalSlots !== true) {
+    if (
+      adminCreateLifecycleStatus(payPatch.paymentStatus, input.status) === 'confirmed' &&
+      input.allowHistoricalSlots !== true
+    ) {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
     if (gift.isGift && gift.giftStatus === 'pending') {
@@ -3466,7 +3501,7 @@ export default class BookingService {
                   : endTimeExclusiveForSlotEntries(opts.entries),
               totalPriceAmd: 0,
               lessonType: opts.lessonType,
-              status: input.status,
+              status: adminCreateLifecycleStatus('paid', input.status),
               paidAt: null,
               holdExpiresAt: null,
               prepaidMeta,
@@ -3625,6 +3660,7 @@ export default class BookingService {
     }
 
     let newId = 0;
+    let createdLifecycleStatus = adminCreateLifecycleStatus('unpaid', input.status);
     try {
       await sequelize.transaction(async (transaction) => {
         let prepaidMeta: Record<string, unknown> | null =
@@ -3650,6 +3686,7 @@ export default class BookingService {
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
           prepaidMeta,
         );
+        createdLifecycleStatus = adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatusMulti =
           payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
             ? payPatch.paymentStatus
@@ -3668,7 +3705,7 @@ export default class BookingService {
             endTime: exclusiveEnd,
             totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
-            status: input.status,
+            status: adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             holdExpiresAt: null,
             prepaidMeta,
             paymentStatus: payPatch.paymentStatus,
@@ -3714,7 +3751,7 @@ export default class BookingService {
       throw e;
     }
 
-    if (normalizeBookingStatus(String(input.status)) === 'confirmed') {
+    if (createdLifecycleStatus === 'confirmed') {
       void BookingNotificationService.onBookingConfirmed(newId).catch(() => {});
     }
     if (gift.isGift && gift.giftStatus === 'pending') {
@@ -3843,9 +3880,10 @@ export default class BookingService {
       });
     }
 
-    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
-    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
+    const lifecycleStatus = resolveAdminBookingLifecycleStatusForPatch(row, patch, payUpdate);
+    const mergedStatusBeforeTx = lifecycleStatus ?? (patch.status !== undefined ? patch.status : row.status);
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const theoryPrepaidMetaPatch =
       lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)
         ? {
@@ -3866,7 +3904,7 @@ export default class BookingService {
             endTime: exclusiveEnd,
             totalPriceAmd,
             ...(patch.type !== undefined ? { lessonType: patch.type } : { lessonType }),
-            ...(patch.status !== undefined ? { status: patch.status } : {}),
+            ...(lifecycleStatus !== undefined ? { status: lifecycleStatus } : {}),
             branchId,
             ...(theoryPrepaidMetaPatch !== undefined ? { prepaidMeta: theoryPrepaidMetaPatch } : {}),
             ...payUpdate,
@@ -3893,7 +3931,7 @@ export default class BookingService {
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: id,
           prevStatusNorm: prevBookingStatusNorm,
-          nextStatusRaw: patch.status,
+          nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
         if (lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)) {
@@ -3907,8 +3945,8 @@ export default class BookingService {
       throw e;
     }
 
-    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
-    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -4025,9 +4063,10 @@ export default class BookingService {
               (reuseCustomWindow ? normalizeTimeHHMM(String(row.endTime ?? '')) : null) ??
               endTimeExclusiveForSlotEntries(entries)
             : endTimeExclusiveForSlotEntries(entries);
-    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
-    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, totalPriceAmd);
+    const lifecycleStatus = resolveAdminBookingLifecycleStatusForPatch(row, patch, payUpdate);
+    const mergedStatusBeforeTx = lifecycleStatus ?? (patch.status !== undefined ? patch.status : row.status);
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -4041,7 +4080,7 @@ export default class BookingService {
             endTime,
             totalPriceAmd,
             ...(patch.type !== undefined ? { lessonType: patch.type } : {}),
-            ...(patch.status !== undefined ? { status: patch.status } : {}),
+            ...(lifecycleStatus !== undefined ? { status: lifecycleStatus } : {}),
             branchId,
             ...meetLinkPatchForLessonType(lessonType, patch.meetLink),
             ...payUpdate,
@@ -4067,7 +4106,7 @@ export default class BookingService {
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: id,
           prevStatusNorm: prevBookingStatusNorm,
-          nextStatusRaw: patch.status,
+          nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
       });
@@ -4078,8 +4117,8 @@ export default class BookingService {
       throw e;
     }
 
-    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
-    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -4100,13 +4139,14 @@ export default class BookingService {
       paidSlotEntries?: readonly { dateIso: string; time: string }[];
     }>,
   ): Promise<BookingAdminDto | null> {
-    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
-    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const nextTotalAmd =
       patch.totalPriceAmd !== undefined
         ? resolveAdminTotalPriceAmd(patch.totalPriceAmd, bookingTotalPriceAmd(row))
         : row.totalPriceAmd ?? null;
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalAmd);
+    const lifecycleStatus = resolveAdminBookingLifecycleStatusForPatch(row, patch, payUpdate);
+    const mergedStatusBeforeTx = lifecycleStatus ?? (patch.status !== undefined ? patch.status : row.status);
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
 
     // Group theory: instructor may teach at a cohort branch they are not linked to for practical.
     if (
@@ -4150,7 +4190,7 @@ export default class BookingService {
       await row.update(
         {
           ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
-          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(lifecycleStatus !== undefined ? { status: lifecycleStatus } : {}),
           ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
           ...(patch.totalPriceAmd !== undefined ? { totalPriceAmd: nextTotalAmd } : {}),
           ...payUpdate,
@@ -4176,13 +4216,13 @@ export default class BookingService {
       await recordRefundLedgerWhenAdminMarksRefundedInTx({
         bookingId: id,
         prevStatusNorm: prevBookingStatusNorm,
-        nextStatusRaw: patch.status,
+        nextStatusRaw: lifecycleStatus ?? patch.status,
         transaction,
       });
     });
 
-    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
-    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }
@@ -4382,13 +4422,14 @@ export default class BookingService {
     const totalPriceAmd =
       touchesSchedule && Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
 
-    const mergedStatusBeforeTx = patch.status !== undefined ? patch.status : row.status;
-    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
     const nextTotalForPayment =
       patch.time !== undefined || patch.dateIso !== undefined || patch.instructorName !== undefined
         ? totalPriceAmd
         : row.totalPriceAmd ?? null;
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalForPayment);
+    const lifecycleStatus = resolveAdminBookingLifecycleStatusForPatch(row, patch, payUpdate);
+    const mergedStatusBeforeTx = lifecycleStatus ?? (patch.status !== undefined ? patch.status : row.status);
+    const prevBookingStatusNorm = normalizeBookingStatus(String(row.status));
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -4403,7 +4444,7 @@ export default class BookingService {
               ? { endTime: exclusiveEnd, totalPriceAmd }
               : {}),
             ...(patch.type !== undefined ? { lessonType: patch.type } : {}),
-            ...(patch.status !== undefined ? { status: patch.status } : {}),
+            ...(lifecycleStatus !== undefined ? { status: lifecycleStatus } : {}),
             ...(patch.branchId !== undefined ? { branchId: patch.branchId } : {}),
             ...meetLinkPatchForLessonType(effectiveType, patch.meetLink),
             ...payUpdate,
@@ -4433,7 +4474,7 @@ export default class BookingService {
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: row.id,
           prevStatusNorm: prevBookingStatusNorm,
-          nextStatusRaw: patch.status,
+          nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
       });
@@ -4444,8 +4485,8 @@ export default class BookingService {
       throw e;
     }
 
-    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
-    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, patch.status);
+    BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
+    BookingService.maybeEmitBookingClosedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
 
     return (await this.listAdmin()).find((x) => x.id === id) ?? null;
   }

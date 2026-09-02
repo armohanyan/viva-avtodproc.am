@@ -41,6 +41,7 @@ import {
   BOOKING_LIST_PAYMENT_BADGE_CLASS,
   bookingListPaymentLabelKey,
   bookingListPaymentRow,
+  bookingStatusFromAdminPayment,
   defaultAdminBookingPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
@@ -1672,10 +1673,14 @@ export default function AdminBookings() {
         (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
         (pick.slotEntries?.length ?? 0) > 0;
       const paymentBody = adminPaymentApiPayload(editBookingPayment, editTotal);
+      const bookingLifecycleStatus = bookingStatusFromAdminPayment(
+        paymentBody.adminPaymentStatus,
+        editBooking.status,
+      );
       const body = paymentOnlySave
         ? {
             studentId: editBooking.studentId,
-            status: editBooking.status,
+            status: bookingLifecycleStatus,
             branchId: Number(editBooking.branchId),
             totalPriceAmd: editTotal,
             ...paymentBody,
@@ -1685,7 +1690,7 @@ export default function AdminBookings() {
           ? {
               studentId: editBooking.studentId,
               branchId: Number(editBooking.branchId),
-              status: editBooking.status,
+              status: bookingLifecycleStatus,
               type: editBooking.type,
               dateIso: pick.dateIso,
               slots: pick.times,
@@ -1705,7 +1710,7 @@ export default function AdminBookings() {
               dateIso: editBooking.dateIso,
               time: editBooking.time,
               type: editBooking.type,
-              status: editBooking.status,
+              status: bookingLifecycleStatus,
               branchId: Number(editBooking.branchId),
               ...paymentBody,
               ...(paidSlotEntries ? { paidSlotEntries } : {}),
@@ -1727,7 +1732,7 @@ export default function AdminBookings() {
               studentId: editBooking.studentId,
               branchId: editBooking.branchId,
               bookingIdNum,
-              bookingStatus: editBooking.status,
+              bookingStatus: bookingLifecycleStatus,
               financeDescription: paymentDescriptionLine({
                 type: editBooking.type,
                 dateIso: financeDateIso,
@@ -1739,7 +1744,7 @@ export default function AdminBookings() {
               studentId: editBooking.studentId,
               branchId: editBooking.branchId,
               bookingIdNum,
-              bookingStatus: editBooking.status,
+              bookingStatus: bookingLifecycleStatus,
             });
           }
         }
@@ -1780,6 +1785,10 @@ export default function AdminBookings() {
     const paymentBody = addGiftActive
       ? { isGift: true, ...(addGiftNote.trim() ? { giftNote: addGiftNote.trim() } : {}) }
       : adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd);
+    const addBookingLifecycleStatus =
+      addGiftActive || !("adminPaymentStatus" in paymentBody)
+        ? draft.status
+        : bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, draft.status);
     try {
       setAddInlineErrors({
         general: null,
@@ -1810,7 +1819,7 @@ export default function AdminBookings() {
               studentId: studentNum,
               packageId: Number(pkg.id),
               branchId: Number(draft.branchId),
-              status: draft.status,
+              status: addBookingLifecycleStatus,
               ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
               ...(pkg.lessons > 0 && practicalCount > 0 && addPackagePracticalSlotPick
                 ? {
@@ -1855,7 +1864,7 @@ export default function AdminBookings() {
             studentId: draft.studentId,
             branchId: draft.branchId,
             bookingIdNum: anchorBookingId,
-            bookingStatus: draft.status,
+            bookingStatus: addBookingLifecycleStatus,
             financeDescription: packagePaymentDescriptionLine(pkg.name, draft.studentId, studentsMini),
           });
         }
@@ -1880,7 +1889,7 @@ export default function AdminBookings() {
                 instructorName: pick.instructor || draft.instructorName,
                 dateIso: pick.dateIso,
                 type: "theory_personal" as const,
-                status: draft.status,
+                status: addBookingLifecycleStatus,
                 branchId: Number(draft.branchId),
                 slots: pick.times,
                 meetLink: draft.meetLink?.trim() || null,
@@ -1890,7 +1899,7 @@ export default function AdminBookings() {
             : {
                 studentId: Number(draft.studentId),
                 branchId: Number(draft.branchId),
-                status: draft.status,
+                status: addBookingLifecycleStatus,
                 type: draft.type,
                 dateIso: theoryPlan ? theoryPlan.dateIso : pick.dateIso,
                 slots: theoryPlan ? theoryPlan.times : pick.times,
@@ -1915,7 +1924,7 @@ export default function AdminBookings() {
             studentId: draft.studentId,
             branchId: draft.branchId,
             bookingIdNum,
-            bookingStatus: draft.status,
+            bookingStatus: addBookingLifecycleStatus,
           });
         }
         const theoryRequestId = pendingTheoryRequestIdRef.current;
@@ -2793,7 +2802,12 @@ export default function AdminBookings() {
                     <AdminBookingPaymentSection
                       totalPriceAmd={editBooking.totalPriceAmd ?? 0}
                       value={editBookingPayment}
-                      onChange={setEditBookingPayment}
+                      onChange={(next) => {
+                        setEditBookingPayment(next);
+                        setEditBooking((eb) =>
+                          eb ? { ...eb, status: bookingStatusFromAdminPayment(next.status, eb.status) } : eb,
+                        );
+                      }}
                       errorKey={editPaymentErrorKey}
                     />
                     {editBookingPayment.status === "partial" &&
@@ -3311,7 +3325,12 @@ export default function AdminBookings() {
                 <AdminBookingPaymentSection
                   totalPriceAmd={addEffectiveTotalAmd}
                   value={addBookingPayment}
-                  onChange={setAddBookingPayment}
+                  onChange={(next) => {
+                    setAddBookingPayment(next);
+                    setDraft((d) =>
+                      d ? { ...d, status: bookingStatusFromAdminPayment(next.status, d.status) } : d,
+                    );
+                  }}
                   errorKey={addPaymentErrorKey}
                   giftEnabled={addFlowKind === "practical"}
                   giftAutoApproved={isSuperAdminUser}
