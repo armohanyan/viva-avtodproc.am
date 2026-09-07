@@ -42,7 +42,6 @@ import {
   isSlotBlockedByAvailabilityRules,
   isSlotOutsideInstructorWorkHours,
   normalizeAvailabilityBlocksFromApi,
-  slotRangeOverlapsLunch,
   type AvailabilityBlock,
 } from "src/modules/instructors/instructorAvailability";
 
@@ -113,7 +112,9 @@ type Props = {
 };
 
 type InstructorPlanGate = {
-  /** Present only when the instructor saved a custom slot list; otherwise branch grid applies. */
+  /** Instructor's own saved slot starts (when customized). */
+  instructorTimes: Set<string>;
+  /** Branch grid ∩ instructor slots (when customized). */
   allowedTimes: Set<string> | null;
   workWindow: PracticalWorkWindow | null;
 };
@@ -125,6 +126,7 @@ function isTimeOnInstructorSavedPlan(
 ): boolean {
   if (!planTimeSet.has(time)) return false;
   if (!gate) return true;
+  if (gate.instructorTimes.size > 0 && !gate.instructorTimes.has(time)) return false;
   if (
     gate.workWindow &&
     isSlotStartOutsideWorkWindow(time, gate.workWindow.start, gate.workWindow.end)
@@ -464,24 +466,26 @@ export default function AdminDrivingDayModal({
             }>(
               `/instructors/${encodeURIComponent(id)}/practical-slot-plan`,
             );
+            const customized = Boolean(data?.customized);
             const workWindow =
               data.workWindow?.start && data.workWindow?.end
                 ? { start: data.workWindow.start, end: data.workWindow.end }
                 : null;
+            if (!customized && !workWindow) return null;
+            const instructorRows = normalizePracticalSlotPlan(data.rows);
+            const instructorTimes = customized
+              ? new Set(bookableTimesFromPlan(instructorRows).map(padSlotTime))
+              : new Set<string>();
             const branchPlan = planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN;
-            const allowedTimes = data?.customized
+            const allowedTimes = customized
               ? new Set(
-                  resolveEffectiveBookableTimes(
-                    branchPlan,
-                    normalizePracticalSlotPlan(data.rows),
-                    true,
-                  ).map(padSlotTime),
+                  resolveEffectiveBookableTimes(branchPlan, instructorRows, true).map(padSlotTime),
                 )
               : null;
-            if (!workWindow && !allowedTimes) return null;
             return [
               id,
               {
+                instructorTimes,
                 allowedTimes,
                 workWindow,
               },
@@ -590,14 +594,16 @@ export default function AdminDrivingDayModal({
       }
       const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
       const blocks = blocksByInstructor.get(String(instructorId)) ?? [];
-      const inLunch = slotRangeOverlapsLunch(blocks, slotRange);
 
       const planGate = planTimesByInstructor.get(String(instructorId));
       const slot = padSlotTime(time);
+      if (planGate?.instructorTimes.size > 0 && !planGate.instructorTimes.has(slot)) {
+        return "adminDrivingDayModalReasonOutsideWorkSlots";
+      }
       if (planGate?.workWindow && isSlotStartOutsideWorkWindow(slot, planGate.workWindow.start, planGate.workWindow.end)) {
         return "adminDrivingDayModalReasonOutsideWorkSlots";
       }
-      if (planGate?.allowedTimes && !inLunch && !planGate.allowedTimes.has(slot)) {
+      if (planGate?.allowedTimes && !planGate.allowedTimes.has(slot)) {
         return "adminDrivingDayModalReasonOutsideWorkSlots";
       }
       if (isSlotOutsideInstructorWorkHours(day, time, blocks, slotRange)) {
