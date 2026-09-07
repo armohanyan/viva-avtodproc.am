@@ -2,6 +2,9 @@ import { normalizeTimeHHMM, parseTimeToMinutes } from "./booking-slot.util";
 
 export type PracticalSlotPlanRow = { time: string | null };
 
+/** Daily work window — slot start must fall inside [start, end] inclusive. */
+export type PracticalWorkWindow = { start: string; end: string };
+
 export const DEFAULT_PRACTICAL_SLOT_PLAN: readonly PracticalSlotPlanRow[] = [
   { time: "07:00" },
   { time: "08:00" },
@@ -156,4 +159,17 @@ export function areConsecutiveInBookableTimes(sorted: readonly string[], bookabl
     if (indices[i] !== indices[i - 1]! + 1) return false;
   }
   return true;
+}
+
+/** True when the slot start time is outside [workStart, workEnd] (inclusive). */
+export function isSlotStartOutsideWorkWindow(
+  timeSlot: string,
+  workStart: string,
+  workEnd: string,
+): boolean {
+  const startM = parseTimeToMinutes(normalizeTimeHHMM(timeSlot) ?? timeSlot);
+  const wStart = parseTimeToMinutes(normalizeTimeHHMM(workStart) ?? workStart);
+  const wEnd = parseTimeToMinutes(normalizeTimeHHMM(workEnd) ?? workEnd);
+  if (!Number.isFinite(startM) || !Number.isFinite(wStart) || !Number.isFinite(wEnd)) return false;
+  return startM < wStart || startM > wEnd;
 }

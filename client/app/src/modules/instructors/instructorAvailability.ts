@@ -161,13 +161,23 @@ export function slotRangeOverlapsLunch(
   return lunchRangesFromBlocks(blocks).some((lunch) => rangesOverlapHalfOpen(slotRange, lunch));
 }
 
-function slotFullyInsideWorkWindow(
+function slotStartInsideWorkWindow(
   slot: { start: number; end: number },
   workStart: string,
   workEnd: string,
 ): boolean {
   const w = blockRangeMinutes(workStart, workEnd);
-  return slot.start >= w.start && slot.end <= w.end;
+  return slot.start >= w.start && slot.start <= w.end;
+}
+
+/** True when the slot start time is outside [workStart, workEnd] (inclusive). */
+export function isSlotStartOutsideWorkWindow(
+  timeSlot: string,
+  workStart: string,
+  workEnd: string,
+): boolean {
+  const slotRange = slotRangeMinutes(timeSlot);
+  return !slotStartInsideWorkWindow(slotRange, workStart, workEnd);
 }
 
 /** True when instructor `work_hours` rules exist and this slot is outside every window for that weekday. */
@@ -185,7 +195,7 @@ export function isSlotOutsideInstructorWorkHours(
     (b) => b.ruleKind === "work_hours" && b.weekday === weekday && b.timeStart && b.timeEnd,
   );
   if (workRows.length === 0) return true;
-  return !workRows.some((b) => slotFullyInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
+  return !workRows.some((b) => slotStartInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
 }
 
 /**

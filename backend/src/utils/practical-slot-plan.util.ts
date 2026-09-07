@@ -3,6 +3,14 @@ import { normalizeTimeHHMM, parseTimeToMinutes, minutesToHHMM } from './booking-
 /** One row in the daily practical schedule (empty time = break / not bookable). */
 export type PracticalSlotPlanRow = { time: string | null };
 
+/** Daily work window for an instructor (slot start must fall inside, inclusive). */
+export type PracticalWorkWindow = { start: string; end: string };
+
+export type InstructorPracticalPlanStored = {
+  rows: PracticalSlotPlanRow[];
+  workWindow: PracticalWorkWindow | null;
+};
+
 export const PRACTICAL_SLOT_PLAN_SETTING_KEY = 'practical_slot_plan';
 
 /** Default schedule: 13:20 is a bookable slot; gap until 15:00 is lunch (no empty row). */
@@ -213,4 +221,56 @@ export function areConsecutiveInBookableTimes(sorted: readonly string[], bookabl
     if (indices[i] !== indices[i - 1]! + 1) return false;
   }
   return true;
+}
+
+function normalizeWorkWindow(raw: unknown): PracticalWorkWindow | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const startRaw = String((raw as { start?: unknown }).start ?? '').trim();
+  const endRaw = String((raw as { end?: unknown }).end ?? '').trim();
+  if (!startRaw || !endRaw) return null;
+  const ws = normalizeTimeHHMM(startRaw);
+  const we = normalizeTimeHHMM(endRaw);
+  if (!ws || !we || parseTimeToMinutes(ws) >= parseTimeToMinutes(we)) return null;
+  return { start: ws, end: we };
+}
+
+/** Parse instructor plan JSON (legacy array or `{ rows, workWindow }`). */
+export function parseInstructorPracticalPlanJson(raw: string): InstructorPracticalPlanStored {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return { rows: normalizePracticalSlotPlan(parsed), workWindow: null };
+    }
+    if (parsed != null && typeof parsed === 'object' && Array.isArray((parsed as { rows?: unknown }).rows)) {
+      return {
+        rows: normalizePracticalSlotPlan((parsed as { rows: unknown }).rows),
+        workWindow: normalizeWorkWindow((parsed as { workWindow?: unknown }).workWindow),
+      };
+    }
+  } catch {
+    /* fall through */
+  }
+  return { rows: DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })), workWindow: null };
+}
+
+export function serializeInstructorPracticalPlanJson(
+  rows: readonly PracticalSlotPlanRow[],
+  workWindow: PracticalWorkWindow | null,
+): string {
+  const normalized = normalizePracticalSlotPlan(rows);
+  if (!workWindow) return JSON.stringify(normalized);
+  return JSON.stringify({ rows: normalized, workWindow });
+}
+
+/** True when the slot start time is outside [workStart, workEnd] (inclusive). */
+export function isSlotStartOutsideWorkWindow(
+  timeSlot: string,
+  workStart: string,
+  workEnd: string,
+): boolean {
+  const startM = parseTimeToMinutes(normalizeTimeHHMM(timeSlot) ?? timeSlot);
+  const wStart = parseTimeToMinutes(normalizeTimeHHMM(workStart) ?? workStart);
+  const wEnd = parseTimeToMinutes(normalizeTimeHHMM(workEnd) ?? workEnd);
+  if (!Number.isFinite(startM) || !Number.isFinite(wStart) || !Number.isFinite(wEnd)) return false;
+  return startM < wStart || startM > wEnd;
 }

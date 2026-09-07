@@ -95,13 +95,13 @@ function rangesOverlapHalfOpen(a: { start: number; end: number }, b: { start: nu
   return a.start < b.end && a.end > b.start;
 }
 
-function slotFullyInsideWorkWindow(
+function slotStartInsideWorkWindow(
   slot: { start: number; end: number },
   workStart: string,
   workEnd: string,
 ): boolean {
   const w = blockRangeMinutes(workStart, workEnd);
-  return slot.start >= w.start && slot.end <= w.end;
+  return slot.start >= w.start && slot.start <= w.end;
 }
 
 /** True when instructor `work_hours` rules exist and this slot is outside every window for that weekday. */
@@ -119,7 +119,7 @@ export function isSlotOutsideInstructorWorkHours(
     (b) => b.ruleKind === 'work_hours' && b.weekday === weekday && b.timeStart && b.timeEnd,
   );
   if (workRows.length === 0) return true;
-  return !workRows.some((b) => slotFullyInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
+  return !workRows.some((b) => slotStartInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
 }
 
 /**
@@ -356,6 +356,51 @@ export default class InstructorAvailabilityService {
       where: { id: instructorUserId, accountType: 'instructor' },
     });
     return n > 0;
+  }
+
+  static normalizeWorkWindow(start: string, end: string): { start: string; end: string } {
+    const timeStart = requireValidTime('timeStart', start);
+    const timeEnd = requireValidTime('timeEnd', end);
+    if (parseTimeToMinutes(timeStart) >= parseTimeToMinutes(timeEnd)) {
+      throw new Error('timeStart must be before timeEnd');
+    }
+    return { start: timeStart, end: timeEnd };
+  }
+
+  /** Replace all weekly `work_hours` rows with the same window Mon–Sun. */
+  static async replaceWeeklyWorkHours(
+    instructorUserId: number,
+    timeStart: string,
+    timeEnd: string,
+  ): Promise<void> {
+    const window = this.normalizeWorkWindow(timeStart, timeEnd);
+    const sequelize = InstructorScheduleRule.sequelize!;
+    await sequelize.transaction(async (transaction) => {
+      await InstructorScheduleRule.destroy({
+        where: { instructorUserId, ruleKind: 'work_hours' },
+        transaction,
+      });
+      for (let weekday = 1; weekday <= 7; weekday++) {
+        await InstructorScheduleRule.create(
+          {
+            instructorUserId,
+            ruleKind: 'work_hours',
+            weekday,
+            dateIso: null,
+            timeStart: window.start,
+            timeEnd: window.end,
+            allDay: false,
+          },
+          { transaction },
+        );
+      }
+    });
+  }
+
+  static async clearWorkHours(instructorUserId: number): Promise<void> {
+    await InstructorScheduleRule.destroy({
+      where: { instructorUserId, ruleKind: 'work_hours' },
+    });
   }
 
   static async isSlotUnavailableForInstructor(

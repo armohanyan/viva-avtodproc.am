@@ -1,12 +1,17 @@
 import { useCallback, useImperativeHandle, useState, type Ref } from "react";
 import { Button } from "src/components/ui/button";
+import { Input } from "src/components/ui/input";
+import { Label } from "src/components/ui/label";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import PracticalSlotPlanEditor from "src/modules/booking/PracticalSlotPlanEditor";
 import type { PracticalSlotPlanRow } from "src/modules/booking/practical-slot-plan";
-import { normalizeTimeHHMM } from "src/modules/booking/booking-slot.util";
-import { useInstructorPracticalSlotPlan } from "src/modules/booking/useInstructorPracticalSlotPlan";
+import { normalizeTimeHHMM, parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
+import {
+  normalizeWorkWindowInput,
+  useInstructorPracticalSlotPlan,
+} from "src/modules/booking/useInstructorPracticalSlotPlan";
 
 export type InstructorPracticalSlotsSaveHandle = {
   /** Persists unsaved slot edits (no-op when nothing changed). Returns false when the save failed. */
@@ -22,10 +27,16 @@ type Props = {
 export default function InstructorPracticalSlotsSection({ instructorId, saveRef }: Props) {
   const { t } = useLang();
   const { showToast } = useToast();
-  const { rows, dirty, loading, refresh, setRows, setCustomized } = useInstructorPracticalSlotPlan(
-    instructorId,
-    Boolean(instructorId.trim()),
-  );
+  const {
+    rows,
+    workWindow,
+    dirty,
+    loading,
+    refresh,
+    setRows,
+    setWorkWindow,
+    setCustomized,
+  } = useInstructorPracticalSlotPlan(instructorId, Boolean(instructorId.trim()));
   const [saving, setSaving] = useState(false);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
@@ -36,6 +47,21 @@ export default function InstructorPracticalSlotsSection({ instructorId, saveRef 
       showToast(t("adminSettingsSlotTimeInvalid"), "error");
       return false;
     }
+    const hasPartialWindow =
+      Boolean(workWindow.start.trim()) !== Boolean(workWindow.end.trim());
+    if (hasPartialWindow) {
+      showToast(t("instructorPracticalWorkWindowBothRequired"), "error");
+      return false;
+    }
+    const normalizedWindow = normalizeWorkWindowInput(workWindow);
+    if (normalizedWindow) {
+      const ws = normalizeTimeHHMM(normalizedWindow.start);
+      const we = normalizeTimeHHMM(normalizedWindow.end);
+      if (!ws || !we || parseTimeToMinutes(ws) >= parseTimeToMinutes(we)) {
+        showToast(t("instructorAvailabilityTimeOrderHint"), "error");
+        return false;
+      }
+    }
     setSaving(true);
     try {
       const payload: PracticalSlotPlanRow[] = rows.map((r) => ({
@@ -43,7 +69,10 @@ export default function InstructorPracticalSlotsSection({ instructorId, saveRef 
       }));
       await vivaApiJson(`/instructors/${encodeURIComponent(iid)}/practical-slot-plan`, {
         method: "PUT",
-        body: { rows: payload },
+        body: {
+          rows: payload,
+          workWindow: normalizedWindow,
+        },
       });
       setCustomized(true);
       showToast(t("instructorPracticalSlotsSaved"), "success");
@@ -55,7 +84,7 @@ export default function InstructorPracticalSlotsSection({ instructorId, saveRef 
     } finally {
       setSaving(false);
     }
-  }, [instructorId, rows, refresh, setCustomized, showToast, t]);
+  }, [instructorId, rows, workWindow, refresh, setCustomized, showToast, t]);
 
   useImperativeHandle(
     saveRef,
@@ -66,10 +95,41 @@ export default function InstructorPracticalSlotsSection({ instructorId, saveRef 
   );
 
   return (
-    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
       <div>
         <p className="text-sm font-medium text-foreground">{t("instructorPracticalSlotsTitle")}</p>
         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{t("instructorPracticalSlotsHint")}</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md border border-border/70 bg-card/60 p-3">
+        <p className="sm:col-span-2 text-xs text-muted-foreground leading-relaxed">
+          {t("instructorPracticalWorkWindowHint")}
+        </p>
+        <div>
+          <Label className="text-xs text-muted-foreground">{t("instructorAvailabilityFrom")}</Label>
+          <Input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            className="mt-1 tabular-nums font-mono"
+            value={workWindow.start}
+            onChange={(e) => setWorkWindow((prev) => ({ ...prev, start: e.target.value }))}
+            placeholder="09:00"
+            disabled={loading}
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">{t("instructorAvailabilityTo")}</Label>
+          <Input
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            className="mt-1 tabular-nums font-mono"
+            value={workWindow.end}
+            onChange={(e) => setWorkWindow((prev) => ({ ...prev, end: e.target.value }))}
+            placeholder="17:20"
+            disabled={loading}
+          />
+        </div>
       </div>
       <PracticalSlotPlanEditor
         rows={rows}

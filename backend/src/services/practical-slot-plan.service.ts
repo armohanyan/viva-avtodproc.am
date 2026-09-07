@@ -1,10 +1,14 @@
 import { AppSetting, BranchPracticalSlotPlan, InstructorPracticalSlotPlan } from '../models';
+import InstructorAvailabilityService from './instructor-availability.service';
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
   normalizePracticalSlotPlan,
+  parseInstructorPracticalPlanJson,
   PRACTICAL_SLOT_PLAN_SETTING_KEY,
   resolveEffectiveBookableTimes,
+  serializeInstructorPracticalPlanJson,
   type PracticalSlotPlanRow,
+  type PracticalWorkWindow,
 } from '../utils/practical-slot-plan.util';
 
 async function loadLegacyGlobalPlan(): Promise<PracticalSlotPlanRow[] | null> {
@@ -69,22 +73,24 @@ export default class PracticalSlotPlanService {
 
   static async getInstructorPlanMeta(
     instructorUserId: number,
-  ): Promise<{ rows: PracticalSlotPlanRow[]; customized: boolean }> {
+  ): Promise<{ rows: PracticalSlotPlanRow[]; customized: boolean; workWindow: PracticalWorkWindow | null }> {
     if (!Number.isFinite(instructorUserId) || instructorUserId <= 0) {
-      return { rows: DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })), customized: false };
+      return { rows: DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })), customized: false, workWindow: null };
     }
     const row = await InstructorPracticalSlotPlan.findOne({ where: { instructorUserId } });
     if (row?.planJson) {
       try {
+        const parsed = parseInstructorPracticalPlanJson(row.planJson);
         return {
-          rows: normalizePracticalSlotPlan(JSON.parse(row.planJson)),
+          rows: parsed.rows,
           customized: true,
+          workWindow: parsed.workWindow,
         };
       } catch {
         /* fall through */
       }
     }
-    return { rows: DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })), customized: false };
+    return { rows: DEFAULT_PRACTICAL_SLOT_PLAN.map((r) => ({ ...r })), customized: false, workWindow: null };
   }
 
   static async getInstructorPlan(instructorUserId: number): Promise<PracticalSlotPlanRow[]> {
@@ -95,19 +101,40 @@ export default class PracticalSlotPlanService {
   static async saveInstructorPlan(
     instructorUserId: number,
     plan: readonly PracticalSlotPlanRow[],
-  ): Promise<PracticalSlotPlanRow[]> {
+    workWindow?: PracticalWorkWindow | null,
+  ): Promise<{ rows: PracticalSlotPlanRow[]; workWindow: PracticalWorkWindow | null }> {
     if (!Number.isFinite(instructorUserId) || instructorUserId <= 0) {
       throw new Error('instructorUserId is required');
     }
     const normalized = normalizePracticalSlotPlan(plan);
-    const json = JSON.stringify(normalized);
     const existing = await InstructorPracticalSlotPlan.findOne({ where: { instructorUserId } });
+    let normalizedWindow: PracticalWorkWindow | null = null;
+    if (workWindow !== undefined) {
+      normalizedWindow =
+        workWindow == null
+          ? null
+          : InstructorAvailabilityService.normalizeWorkWindow(workWindow.start, workWindow.end);
+    } else if (existing?.planJson) {
+      normalizedWindow = parseInstructorPracticalPlanJson(existing.planJson).workWindow;
+    }
+    const json = serializeInstructorPracticalPlanJson(normalized, normalizedWindow);
     if (existing) {
       await existing.update({ planJson: json });
     } else {
       await InstructorPracticalSlotPlan.create({ instructorUserId, planJson: json });
     }
-    return normalized;
+    if (workWindow !== undefined) {
+      if (normalizedWindow) {
+        await InstructorAvailabilityService.replaceWeeklyWorkHours(
+          instructorUserId,
+          normalizedWindow.start,
+          normalizedWindow.end,
+        );
+      } else {
+        await InstructorAvailabilityService.clearWorkHours(instructorUserId);
+      }
+    }
+    return { rows: normalized, workWindow: normalizedWindow };
   }
 
   /** Bookable practical starts (branch grid; ∩ instructor plan only when instructor saved custom slots). */

@@ -54,6 +54,13 @@ const slotPlanRowSchema = z.object({
 
 const replaceInstructorPracticalSlotPlanSchema = z.object({
   rows: z.array(slotPlanRowSchema).min(1).max(32),
+  workWindow: z
+    .object({
+      start: z.string().trim().min(1),
+      end: z.string().trim().min(1),
+    })
+    .nullable()
+    .optional(),
 });
 
 /** `users.id` for an instructor — path segments are strings; reject slugs like "acc-instructor" with a clear message. */
@@ -282,6 +289,7 @@ export default class InstructorController {
         instructorUserId,
         rows: meta.rows,
         customized: meta.customized,
+        workWindow: meta.workWindow,
       });
     } catch (e) {
       next(e);
@@ -299,8 +307,17 @@ export default class InstructorController {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
       }
       const body = parseBody(replaceInstructorPracticalSlotPlanSchema, req.body);
-      const rows = await PracticalSlotPlanService.saveInstructorPlan(instructorUserId, body.rows);
-      SuccessHandlerUtil.handleUpdate(res, next, { instructorUserId, rows, customized: true });
+      const saved = await PracticalSlotPlanService.saveInstructorPlan(
+        instructorUserId,
+        body.rows,
+        body.workWindow,
+      );
+      SuccessHandlerUtil.handleUpdate(res, next, {
+        instructorUserId,
+        rows: saved.rows,
+        workWindow: saved.workWindow,
+        customized: true,
+      });
     } catch (e) {
       next(e);
     }
