@@ -113,9 +113,27 @@ type Props = {
 };
 
 type InstructorPlanGate = {
-  allowedTimes: Set<string>;
+  /** Present only when the instructor saved a custom slot list; otherwise branch grid applies. */
+  allowedTimes: Set<string> | null;
   workWindow: PracticalWorkWindow | null;
 };
+
+function isTimeOnInstructorSavedPlan(
+  time: string,
+  gate: InstructorPlanGate | undefined,
+  planTimeSet: Set<string>,
+): boolean {
+  if (!planTimeSet.has(time)) return false;
+  if (!gate) return true;
+  if (
+    gate.workWindow &&
+    isSlotStartOutsideWorkWindow(time, gate.workWindow.start, gate.workWindow.end)
+  ) {
+    return false;
+  }
+  if (gate.allowedTimes && !gate.allowedTimes.has(time)) return false;
+  return true;
+}
 
 type MultiSlotSelection = {
   instructor: Instructor;
@@ -446,21 +464,25 @@ export default function AdminDrivingDayModal({
             }>(
               `/instructors/${encodeURIComponent(id)}/practical-slot-plan`,
             );
-            if (!data?.customized) return null;
-            const branchPlan = planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN;
-            const times = resolveEffectiveBookableTimes(
-              branchPlan,
-              normalizePracticalSlotPlan(data.rows),
-              true,
-            );
             const workWindow =
               data.workWindow?.start && data.workWindow?.end
                 ? { start: data.workWindow.start, end: data.workWindow.end }
                 : null;
+            const branchPlan = planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN;
+            const allowedTimes = data?.customized
+              ? new Set(
+                  resolveEffectiveBookableTimes(
+                    branchPlan,
+                    normalizePracticalSlotPlan(data.rows),
+                    true,
+                  ).map(padSlotTime),
+                )
+              : null;
+            if (!workWindow && !allowedTimes) return null;
             return [
               id,
               {
-                allowedTimes: new Set(times.map(padSlotTime)),
+                allowedTimes,
                 workWindow,
               },
             ] as const;
@@ -572,17 +594,11 @@ export default function AdminDrivingDayModal({
 
       const planGate = planTimesByInstructor.get(String(instructorId));
       const slot = padSlotTime(time);
-      if (planGate) {
-        if (
-          !inLunch &&
-          planGate.workWindow &&
-          isSlotStartOutsideWorkWindow(slot, planGate.workWindow.start, planGate.workWindow.end)
-        ) {
-          return "adminDrivingDayModalReasonOutsideWorkSlots";
-        }
-        if (!inLunch && !planGate.allowedTimes.has(slot)) {
-          return "adminDrivingDayModalReasonOutsideWorkSlots";
-        }
+      if (planGate?.workWindow && isSlotStartOutsideWorkWindow(slot, planGate.workWindow.start, planGate.workWindow.end)) {
+        return "adminDrivingDayModalReasonOutsideWorkSlots";
+      }
+      if (planGate?.allowedTimes && !inLunch && !planGate.allowedTimes.has(slot)) {
+        return "adminDrivingDayModalReasonOutsideWorkSlots";
       }
       if (isSlotOutsideInstructorWorkHours(day, time, blocks, slotRange)) {
         return "adminDrivingDayModalReasonOutsideWorkSlots";
@@ -938,15 +954,11 @@ export default function AdminDrivingDayModal({
                           const blocked = blockReason != null;
                           const openEmpty = () => {
                             const instructorGate = planTimesByInstructor.get(String(ins.id));
-                            const inSavedPlan = instructorGate
-                              ? instructorGate.allowedTimes.has(time) &&
-                                (!instructorGate.workWindow ||
-                                  !isSlotStartOutsideWorkWindow(
-                                    time,
-                                    instructorGate.workWindow.start,
-                                    instructorGate.workWindow.end,
-                                  ))
-                              : planTimeSet.has(time);
+                            const inSavedPlan = isTimeOnInstructorSavedPlan(
+                              time,
+                              instructorGate,
+                              planTimeSet,
+                            );
                             onEmptyCellClick({
                               instructor: ins,
                               branchId: col.bookingBranchId,
@@ -959,15 +971,11 @@ export default function AdminDrivingDayModal({
                             });
                           };
                           const instructorGate = planTimesByInstructor.get(String(ins.id));
-                          const inSavedPlan = instructorGate
-                            ? instructorGate.allowedTimes.has(time) &&
-                              (!instructorGate.workWindow ||
-                                !isSlotStartOutsideWorkWindow(
-                                  time,
-                                  instructorGate.workWindow.start,
-                                  instructorGate.workWindow.end,
-                                ))
-                            : planTimeSet.has(time);
+                          const inSavedPlan = isTimeOnInstructorSavedPlan(
+                            time,
+                            instructorGate,
+                            planTimeSet,
+                          );
                           const selected = isCellSelected(ins.id, col.bookingBranchId, time);
                           const scheduleEmptyClick = () => {
                             clearEmptyClickTimer();

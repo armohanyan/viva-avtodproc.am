@@ -104,6 +104,7 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
   return {
     rows,
     workWindow,
+    savedState,
     customized,
     dirty,
     loading,

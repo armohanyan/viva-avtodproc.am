@@ -1500,13 +1500,10 @@ adminPackagesPageSubtitle: "Configure lesson packages, pricing, and included fea
   adminSettingsSlotPlanAddRow: "Add row",
   adminSettingsSlotPlanReset: "Reload from server",
   adminSettingsSlotPlanSaved: "Practical schedule saved.",
-  instructorPracticalSlotsTitle: "Working slots (practical)",
-  instructorPracticalSlotsHint:
-    "Times this instructor can teach practical lessons. Bookable slots are the intersection with the branch school schedule. Empty row = break.",
-  instructorPracticalSlotsSave: "Save working slots",
-  instructorPracticalSlotsSaved: "Instructor working slots saved.",
+  instructorPracticalWorkWindowTitle: "Daily work window (practical)",
   instructorPracticalWorkWindowHint:
     "Daily work window (optional): slots before “From” or after “To” show as unavailable in the day graphic. Example: 09:00–17:20.",
+  instructorPracticalWorkWindowSaved: "Instructor work window saved.",
   instructorPracticalWorkWindowBothRequired: "Enter both work window start and end, or leave both empty.",
   adminStudentPickerLabel: "Student",
   adminStudentPickerAddNew: "+ Add new student",
@@ -3825,13 +3822,10 @@ const ru: typeof en = {
   adminSettingsSlotPlanAddRow: "Добавить строку",
   adminSettingsSlotPlanReset: "Загрузить с сервера",
   adminSettingsSlotPlanSaved: "Расписание практики сохранено.",
-  instructorPracticalSlotsTitle: "Рабочие слоты (практика)",
-  instructorPracticalSlotsHint:
-    "Время, когда инструктор ведёт практику. Доступны только пересечения с расписанием филиала. Пустая строка — перерыв.",
-  instructorPracticalSlotsSave: "Сохранить слоты",
-  instructorPracticalSlotsSaved: "Рабочие слоты инструктора сохранены.",
+  instructorPracticalWorkWindowTitle: "Рабочее окно дня (практика)",
   instructorPracticalWorkWindowHint:
     "Рабочее окно (необязательно): слоты до «С» и после «По» в дневном графике будут недоступны. Например: 09:00–17:20.",
+  instructorPracticalWorkWindowSaved: "Рабочее окно инструктора сохранено.",
   instructorPracticalWorkWindowBothRequired: "Укажите начало и конец рабочего окна или оставьте оба поля пустыми.",
   adminStudentPickerLabel: "Студент",
   adminStudentPickerAddNew: "+ Добавить нового студента",
@@ -6164,13 +6158,10 @@ const am: typeof en = {
   adminSettingsSlotPlanAddRow: "Ավելացնել տող",
   adminSettingsSlotPlanReset: "Բեռնել սերվերից",
   adminSettingsSlotPlanSaved: "Գործնական ժամանակացույցը պահպանվեց։",
-  instructorPracticalSlotsTitle: "Աշխատանքային սլոտեր (գործնական)",
-  instructorPracticalSlotsHint:
-    "Ժամեր, երբ հրապարակը կարող է գործնական դաս տալ։ Ամրագրվող սլոտերը մասնաճյուղի ցանցի և այս ցանկի հատումն են։ Դատարկ տողը՝ ընդմիջում։",
-  instructorPracticalSlotsSave: "Պահպանել աշխատանքային սլոտերը",
-  instructorPracticalSlotsSaved: "Հրապարակի աշխատանքային սլոտերը պահպանվեցին։",
+  instructorPracticalWorkWindowTitle: "Օրվա աշխատանքային պատուհան (գործնական)",
   instructorPracticalWorkWindowHint:
     "Օրվա աշխատանքային պատուհան (ընտրովի)․ «Սկսած»-ից առաջ և «Մինչև»-ից հետո սլոտերը օրվա գրաֆիկում կլինեն անհասանելի։ Օրինակ՝ 09:00–17:20։",
+  instructorPracticalWorkWindowSaved: "Հրապարակի աշխատանքային պատուհանը պահպանվեց։",
   instructorPracticalWorkWindowBothRequired: "Լրացրեք աշխատանքային պատուհանի սկիզբը և ավարտը, կամ թողեք երկուսն էլ դատարկ։",
   adminStudentPickerLabel: "Ուսանող",
   adminStudentPickerAddNew: "+ Ավելացնել նոր ուսանող",
