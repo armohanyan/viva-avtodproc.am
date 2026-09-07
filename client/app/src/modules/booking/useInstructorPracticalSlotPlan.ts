@@ -84,14 +84,8 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
   }, [instructorId]);
 
   const dirty = useMemo(() => {
-    const nextWindow = normalizeWorkWindowInput(workWindow);
-    if (JSON.stringify(rows) !== JSON.stringify(savedState.rows)) return true;
-    const savedStart = savedState.workWindow?.start ?? "";
-    const savedEnd = savedState.workWindow?.end ?? "";
-    const nextStart = nextWindow?.start ?? "";
-    const nextEnd = nextWindow?.end ?? "";
-    return savedStart !== nextStart || savedEnd !== nextEnd;
-  }, [rows, workWindow, savedState]);
+    return JSON.stringify(rows) !== JSON.stringify(savedState.rows);
+  }, [rows, savedState]);
 
   useEffect(() => {
     if (!enabled) {
@@ -104,7 +98,6 @@ export function useInstructorPracticalSlotPlan(instructorId: string, enabled = t
   return {
     rows,
     workWindow,
-    savedState,
     customized,
     dirty,
     loading,
