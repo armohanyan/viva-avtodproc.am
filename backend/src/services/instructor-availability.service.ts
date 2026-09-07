@@ -104,6 +104,24 @@ function slotFullyInsideWorkWindow(
   return slot.start >= w.start && slot.end <= w.end;
 }
 
+/** True when instructor `work_hours` rules exist and this slot is outside every window for that weekday. */
+export function isSlotOutsideInstructorWorkHours(
+  dateIso: string,
+  timeSlot: string,
+  rules: readonly InstructorScheduleRuleDto[],
+  slotRangeOverride?: { start: number; end: number },
+): boolean {
+  const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
+  const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
+  const hasAnyWorkHours = rules.some((b) => b.ruleKind === 'work_hours');
+  if (!hasAnyWorkHours) return false;
+  const workRows = rules.filter(
+    (b) => b.ruleKind === 'work_hours' && b.weekday === weekday && b.timeStart && b.timeEnd,
+  );
+  if (workRows.length === 0) return true;
+  return !workRows.some((b) => slotFullyInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
+}
+
 /**
  * True if this hour slot cannot be booked (lunch, day off, busy windows, or outside `work_hours` when any exist).
  * Mirrors `client/src/modules/instructors/instructorAvailability.ts`.
@@ -169,16 +187,8 @@ export function isSlotBlockedByScheduleRules(
     }
   }
 
-  if (!forPracticalPlan) {
-    const hasAnyWorkHours = rules.some((b) => b.ruleKind === 'work_hours');
-    if (hasAnyWorkHours) {
-      const workRows = rules.filter((b) => b.ruleKind === 'work_hours' && b.weekday === weekday && b.timeStart && b.timeEnd);
-      if (workRows.length === 0) {
-        return true;
-      }
-      const insideSome = workRows.some((b) => slotFullyInsideWorkWindow(slotRange, b.timeStart!, b.timeEnd!));
-      if (!insideSome) return true;
-    }
+  if (isSlotOutsideInstructorWorkHours(dateIso, timeSlot, rules, slotRange)) {
+    return true;
   }
 
   return false;

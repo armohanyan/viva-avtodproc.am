@@ -32,11 +32,13 @@ import {
   bookableTimesFromPlan,
   normalizePracticalSlotPlan,
   practicalSlotRangeMinutesFromBookable,
+  resolveEffectiveBookableTimes,
   type PracticalSlotPlanRow,
 } from "src/modules/booking/practical-slot-plan";
 import { parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
 import {
   isSlotBlockedByAvailabilityRules,
+  isSlotOutsideInstructorWorkHours,
   normalizeAvailabilityBlocksFromApi,
   slotRangeOverlapsLunch,
   type AvailabilityBlock,
@@ -434,7 +436,12 @@ export default function AdminDrivingDayModal({
               `/instructors/${encodeURIComponent(id)}/practical-slot-plan`,
             );
             if (!data?.customized) return null;
-            const times = bookableTimesFromPlan(normalizePracticalSlotPlan(data.rows));
+            const branchPlan = planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN;
+            const times = resolveEffectiveBookableTimes(
+              branchPlan,
+              normalizePracticalSlotPlan(data.rows),
+              true,
+            );
             return [id, new Set(times.map(padSlotTime))] as const;
           } catch {
             return null;
@@ -448,7 +455,7 @@ export default function AdminDrivingDayModal({
     return () => {
       cancelled = true;
     };
-  }, [open, gridInstructorIds]);
+  }, [open, gridInstructorIds, reloadKey, planRows]);
 
   const load = useCallback(async () => {
     if (!day) return;
@@ -544,6 +551,9 @@ export default function AdminDrivingDayModal({
 
       const planTimes = planTimesByInstructor.get(String(instructorId));
       if (planTimes && !planTimes.has(padSlotTime(time)) && !inLunch) {
+        return "adminDrivingDayModalReasonOutsideWorkSlots";
+      }
+      if (isSlotOutsideInstructorWorkHours(day, time, blocks, slotRange)) {
         return "adminDrivingDayModalReasonOutsideWorkSlots";
       }
       if (!blocks.length) return null;
