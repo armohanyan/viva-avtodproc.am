@@ -5,13 +5,14 @@ import { Label } from "src/components/ui/label";
 import { Input } from "src/components/ui/input";
 import { Button } from "src/components/ui/button";
 import { Textarea } from "src/components/ui/textarea";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 export function DirectorCard({ children, className }: { children: ReactNode; className?: string }) {
   return <Card className={cn("p-5 md:p-6 border-border", className)}>{children}</Card>;
 }
 
 export function DirectorStatGrid({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">{children}</div>;
+  return <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">{children}</div>;
 }
 
 export function DirectorStatCard({ label, value }: { label: string; value: string | number }) {
@@ -105,8 +106,10 @@ export function DirectorTableWrap({
   className?: string;
 }) {
   return (
-    <div className={cn("mt-6 overflow-x-auto rounded-lg border border-border", className)}>
-      <table className="w-full text-sm">{children}</table>
+    <div className={cn("mt-6 rounded-lg border border-border min-w-0", className)}>
+      <AdminTableScroll>
+        <table className="w-full text-sm min-w-[40rem]">{children}</table>
+      </AdminTableScroll>
     </div>
   );
 }

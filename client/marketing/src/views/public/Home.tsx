@@ -288,7 +288,7 @@ export default function Home() {
       </section>
 
       {(packagesLoading || displayPackages.length > 0) && (
-        <section className="py-20 bg-accent">
+        <section className="py-14 sm:py-20 bg-accent">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
@@ -307,15 +307,15 @@ export default function Home() {
                   return (
                     <div
                       key={pkg.id}
-                      className={`relative bg-card rounded-2xl border-2 ${borderClass} overflow-hidden p-0 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
+                      className={`relative bg-card rounded-2xl border-2 ${borderClass} overflow-visible p-0 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
                     >
                       {popular && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+                        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
                           <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                         </div>
                       )}
                       {pkg.imageUrl ? (
-                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0">
+                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0 rounded-t-2xl">
                           <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
                         </div>
                       ) : null}
@@ -363,7 +363,7 @@ export default function Home() {
       )}
 
       {visibleInstructors.length > 0 ? (
-        <section className="py-20 bg-background">
+        <section className="py-14 sm:py-20 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
@@ -393,7 +393,7 @@ export default function Home() {
       ) : null}
 
       {testimonials.length > 0 ? (
-        <section className="py-20 bg-hero text-hero-foreground">
+        <section className="py-14 sm:py-20 bg-hero text-hero-foreground">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
               <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
@@ -430,17 +430,21 @@ export default function Home() {
                 >
                   <ChevronLeft className="w-4 h-4 text-foreground" />
                 </Button>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   {testimonials.map((_, i) => (
                     <button
                       key={i}
                       type="button"
                       onClick={() => setActiveTestimonial(i)}
-                      className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                        i === activeTestimonial ? "bg-primary" : "bg-border"
-                      }`}
+                      className="min-h-11 min-w-11 inline-flex items-center justify-center"
                       aria-label={`Go to testimonial ${i + 1}`}
-                    />
+                    >
+                      <span
+                        className={`h-2.5 w-2.5 rounded-full transition-colors ${
+                          i === activeTestimonial ? "bg-primary" : "bg-border"
+                        }`}
+                      />
+                    </button>
                   ))}
                 </div>
                 <Button
@@ -460,7 +464,7 @@ export default function Home() {
       ) : null}
 
       {contactTabs.length > 0 ? (
-        <section className="py-20 bg-accent/40">
+        <section className="py-14 sm:py-20 bg-accent/40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {(() => {
               const activeContact =
@@ -635,7 +639,7 @@ export default function Home() {
         </AppModal>
       ) : null}
 
-      <section className="py-20 bg-primary">
+      <section className="py-14 sm:py-20 bg-primary">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <Trophy className="w-12 h-12 text-primary-foreground/80 mx-auto mb-6" />
           <h2 className="text-3xl sm:text-4xl font-bold text-primary-foreground mb-4">

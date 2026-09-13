@@ -32,7 +32,7 @@ export default function NotificationBell({ listHref, panel, onNavigate }: Props)
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background hover:bg-muted"
+          className="relative inline-flex h-10 w-10 min-h-10 min-w-10 items-center justify-center rounded-md border border-border bg-background hover:bg-muted"
           aria-label={t("notifications")}
         >
           <Bell className="h-4 w-4" />
@@ -43,7 +43,7 @@ export default function NotificationBell({ listHref, panel, onNavigate }: Props)
           ) : null}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[22rem]">
+      <DropdownMenuContent align="end" className="w-[min(22rem,calc(100vw-1.5rem))]">
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>{t("notifications")}</span>
           <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => void markAllRead()}>

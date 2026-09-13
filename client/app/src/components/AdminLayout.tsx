@@ -55,6 +55,7 @@ import NotificationBell from "src/components/NotificationBell";
 import AdminBranchFilterSelect from "src/components/admin/AdminBranchFilterSelect";
 import { AdminBranchFilterProvider } from "src/modules/admin/AdminBranchFilterProvider";
 import { DIRECTOR_NAV_LINKS, directorNavLabel, isDirectorRoute } from "src/modules/director/director.consts";
+import { PanelHeaderExtras } from "src/components/panel/PanelHeaderExtras";
 
 interface Props {
 	children: ReactNode;
@@ -400,56 +401,65 @@ export default function AdminLayout({ children }: Props) {
 			sidebarSurface="hero"
 			headerTitle={headerTitle}
 			headerTrailing={({ closeMobileNav }) => (
-				<>
-					{isSuperAdmin && isDirectorMode ? (
-						<Button variant="outline" size="sm" asChild className="shrink-0">
-							<Link href="/admin/dashboard" onClick={() => closeMobileNav()}>
-								<ArrowLeft className="w-3.5 h-3.5" />
-								<span className="hidden sm:inline">Ադմին վահանակ</span>
-							</Link>
-						</Button>
-					) : null}
-					{isSuperAdmin && !isDirectorMode ? (
-						<Button size="sm" asChild className="shrink-0">
-							<Link href="/admin/director" onClick={() => closeMobileNav()}>
-								<Crown className="w-3.5 h-3.5" />
-								<span className="hidden sm:inline">Տնօրենի միջավայր</span>
-							</Link>
-						</Button>
-					) : null}
-					<AdminBranchFilterSelect />
-					<ThemeToggle />
-					<NotificationBell listHref="/admin/notifications" panel="admin" onNavigate={closeMobileNav} />
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<button
-								type="button"
-								className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm shrink-0 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-								aria-label={t("profile")}
-							>
-								{user ? initialsFromName(user.name) : "?"}
-							</button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-56">
-							<DropdownMenuLabel className="font-normal">
-								<p className="text-sm font-medium text-foreground truncate">{user?.name ?? "—"}</p>
-								<p className="text-xs text-muted-foreground truncate">{user?.email ?? ""}</p>
-							</DropdownMenuLabel>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem asChild>
-								<Link href="/admin/profile" className="cursor-pointer" onClick={() => closeMobileNav()}>
-									<Settings className="w-4 h-4" />
-									{t("profileSettings")}
-								</Link>
-							</DropdownMenuItem>
-							<DropdownMenuSeparator />
-							<DropdownMenuItem variant="destructive" onClick={handleLogout}>
-								<LogOut className="w-4 h-4" />
-								{t("logout")}
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</>
+				<PanelHeaderExtras
+					moreLabel={t("actions")}
+					secondary={
+						<>
+							{isSuperAdmin && isDirectorMode ? (
+								<Button variant="outline" size="sm" asChild className="shrink-0 max-sm:w-full">
+									<Link href="/admin/dashboard" onClick={() => closeMobileNav()}>
+										<ArrowLeft className="w-3.5 h-3.5" />
+										<span>Ադմին վահանակ</span>
+									</Link>
+								</Button>
+							) : null}
+							{isSuperAdmin && !isDirectorMode ? (
+								<Button size="sm" asChild className="shrink-0 max-sm:w-full">
+									<Link href="/admin/director" onClick={() => closeMobileNav()}>
+										<Crown className="w-3.5 h-3.5" />
+										<span>Տնօրենի միջավայր</span>
+									</Link>
+								</Button>
+							) : null}
+							<AdminBranchFilterSelect />
+							<ThemeToggle />
+						</>
+					}
+					primary={
+						<>
+							<NotificationBell listHref="/admin/notifications" panel="admin" onNavigate={closeMobileNav} />
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<button
+										type="button"
+										className="h-10 w-10 min-h-10 min-w-10 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-semibold text-sm shrink-0 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+										aria-label={t("profile")}
+									>
+										{user ? initialsFromName(user.name) : "?"}
+									</button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="w-56">
+									<DropdownMenuLabel className="font-normal">
+										<p className="text-sm font-medium text-foreground truncate">{user?.name ?? "—"}</p>
+										<p className="text-xs text-muted-foreground truncate">{user?.email ?? ""}</p>
+									</DropdownMenuLabel>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem asChild>
+										<Link href="/admin/profile" className="cursor-pointer" onClick={() => closeMobileNav()}>
+											<Settings className="w-4 h-4" />
+											{t("profileSettings")}
+										</Link>
+									</DropdownMenuItem>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem variant="destructive" onClick={handleLogout}>
+										<LogOut className="w-4 h-4" />
+										{t("logout")}
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
+						</>
+					}
+				/>
 			)}
 			renderSidebar={({ closeMobileNav }) => (
 				<div className="flex flex-col h-full min-h-0 bg-hero">

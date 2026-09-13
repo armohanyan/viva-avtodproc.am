@@ -47,7 +47,7 @@ export default function About() {
       <Navbar />
 
       {/* Hero */}
-      <section className="bg-hero text-hero-foreground py-20">
+      <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
@@ -60,7 +60,7 @@ export default function About() {
       </section>
 
       {/* Story */}
-      <section className="py-20 bg-background">
+      <section className="py-14 sm:py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center">
             <div>
@@ -99,7 +99,7 @@ export default function About() {
       </section>
 
       {/* Founder / owner */}
-      <section className="py-20 bg-accent/30 border-y border-border/60">
+      <section className="py-14 sm:py-20 bg-accent/30 border-y border-border/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-10">
             <h2 className="text-3xl font-bold text-foreground">{t("aboutFounderSectionTitle")}</h2>
@@ -130,7 +130,7 @@ export default function About() {
       </section>
 
       {/* Values */}
-      <section className="py-20 bg-accent">
+      <section className="py-14 sm:py-20 bg-accent">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-foreground mb-4">{t("aboutOurValuesTitle")}</h2>

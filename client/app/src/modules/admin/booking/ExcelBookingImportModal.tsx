@@ -527,8 +527,8 @@ export default function ExcelBookingImportModal({
                   {t("adminBookingsImportMonthJumpHint")}
                 </p>
               </div>
-              <div ref={tableScrollRef} className="overflow-auto max-h-[min(68vh,680px)]">
-                <table className="w-full text-sm">
+              <div ref={tableScrollRef} className="overflow-auto max-h-[min(68vh,680px)] touch-pan-x touch-pan-y overscroll-contain min-w-0">
+                <table className="w-full text-sm min-w-[48rem]">
                   <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur border-b border-border">
                     <tr>
                       <th className="w-10 px-3 py-2 text-left">

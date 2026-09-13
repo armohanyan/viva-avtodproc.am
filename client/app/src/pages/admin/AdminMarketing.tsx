@@ -19,6 +19,7 @@ import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 const textareaClass = cn(
   "flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none md:text-sm dark:bg-input/30",
@@ -416,8 +417,9 @@ export default function AdminMarketing() {
           {testimonials.length === 0 ? (
             <p className="text-muted-foreground">{t("adminMarketingNoTestimonials")}</p>
           ) : (
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-xl border border-border overflow-hidden min-w-0">
+              <AdminTableScroll>
+              <table className="w-full text-sm min-w-[40rem]">
                 <thead className="bg-muted/40">
                   <tr>
                     <th className="text-left px-4 py-2">{t("adminMarketingTestimonialAuthor")}</th>
@@ -467,6 +469,7 @@ export default function AdminMarketing() {
                   ))}
                 </tbody>
               </table>
+              </AdminTableScroll>
             </div>
           )}
         </TabsContent>
@@ -731,7 +734,7 @@ export default function AdminMarketing() {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label>{t("adminMarketingTestimonialRating")}</Label>
               <Input

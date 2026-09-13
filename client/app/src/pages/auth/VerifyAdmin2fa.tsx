@@ -134,7 +134,7 @@ export default function VerifyAdmin2fa() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="bg-card rounded-2xl border border-border shadow-sm p-8">
+        <div className="bg-card rounded-2xl border border-border shadow-sm p-5 sm:p-8">
           <div className="flex items-center gap-2 mb-8">
             <img src="/logo.svg" alt={t("brandName")} className="w-9 h-9 object-contain" />
             <span className="font-bold text-lg text-foreground">{t("brandName")}</span>
@@ -164,7 +164,7 @@ export default function VerifyAdmin2fa() {
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 placeholder="000000"
-                className="h-11 text-center text-lg tracking-[0.35em] font-mono"
+                className="h-11 w-full min-w-0 text-center text-base tracking-[0.2em] sm:text-lg sm:tracking-[0.35em] font-mono"
                 disabled={missingToken}
               />
             </div>

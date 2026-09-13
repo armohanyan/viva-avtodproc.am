@@ -58,18 +58,23 @@ export default function DashboardBookingsShell({ active, children }: Props) {
                   Գործնական: {packagePracticalRemaining} · Տեսական անհատական: {theoryLessonsRemaining}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
                 {hasPracticalRemaining ? (
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-full sm:w-auto"
                     onClick={() => setLocation(absWouterHref("/dashboard/bookings/practical"))}
                   >
                     {t("dashboardLessonsBookPractical")}
                   </Button>
                 ) : null}
                 {hasTheoryRemaining ? (
-                  <Button size="sm" onClick={() => setLocation(absWouterHref("/dashboard/bookings/theory-personal"))}>
+                  <Button
+                    size="sm"
+                    className="w-full sm:w-auto"
+                    onClick={() => setLocation(absWouterHref("/dashboard/bookings/theory-personal"))}
+                  >
                     {t("bookingsSubnavTheoryPersonal")}
                   </Button>
                 ) : null}

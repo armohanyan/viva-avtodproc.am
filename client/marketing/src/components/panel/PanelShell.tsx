@@ -83,7 +83,7 @@ export function PanelShell({
 			<div className={cn("flex flex-col flex-1 min-w-0 min-h-0", !focusMode && "lg:pl-64")}>
 				{!focusMode ? (
 				<header className="bg-card border-b border-border px-3 sm:px-6 min-h-14 h-14 sm:h-16 sm:min-h-16 flex items-center justify-between gap-2 shrink-0 z-20">
-					<div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+					<div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 overflow-hidden">
 						<Sheet open={open} onOpenChange={setOpen}>
 							<SheetTrigger asChild className="lg:hidden shrink-0">
 								<Button variant="ghost" size="icon-lg" aria-label={t("openMenu")}>
@@ -123,7 +123,9 @@ export function PanelShell({
 						</Sheet>
 						<h1 className="font-semibold text-foreground text-sm sm:text-base truncate min-w-0">{headerTitle}</h1>
 					</div>
-					<div className="flex items-center gap-1.5 sm:gap-2 shrink-0">{trailing}</div>
+					<div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 min-w-0">
+						{trailing}
+					</div>
 				</header>
 				) : null}
 				<main

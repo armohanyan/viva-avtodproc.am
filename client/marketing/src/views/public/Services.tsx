@@ -294,7 +294,7 @@ export default function Services() {
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="bg-hero text-hero-foreground py-20">
+      <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
@@ -306,7 +306,7 @@ export default function Services() {
         </div>
       </section>
 
-      <section className="py-20 bg-background">
+      <section className="py-14 sm:py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ServicesDetailCards />
         </div>

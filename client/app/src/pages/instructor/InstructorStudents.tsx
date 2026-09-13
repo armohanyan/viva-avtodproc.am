@@ -18,6 +18,7 @@ import {
 } from "src/modules/instructor/useInstructorPanelData";
 import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
 import { getApiErrorMessage } from "src/lib/api";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -124,10 +125,10 @@ export default function InstructorStudents() {
 			{error ? <p className="text-sm text-destructive mb-3">{error}</p> : null}
 			{loading ? <p className="text-sm text-muted-foreground mb-3">{t("loading")}</p> : null}
 
-			<Card className="border-border overflow-hidden">
+			<Card className="border-border overflow-hidden min-w-0">
 				<DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />
-				<div className="overflow-x-auto">
-					<table className="w-full text-sm">
+				<AdminTableScroll>
+					<table className="w-full text-sm min-w-[36rem]">
 						<thead className="bg-muted/40">
 							<tr>
 								<th className="text-left text-xs font-semibold text-muted-foreground px-4 py-3 uppercase tracking-wider whitespace-nowrap">
@@ -192,10 +193,10 @@ export default function InstructorStudents() {
 							))}
 						</tbody>
 					</table>
-				</div>
+				</AdminTableScroll>
 				{filtered.length === 0 && <p className="p-6 text-sm text-muted-foreground text-center">{t("tableNoMatches")}</p>}
 			</Card>
-			<Card className="border-border overflow-hidden mt-4">
+			<Card className="border-border overflow-hidden mt-4 min-w-0">
 				<div className="px-4 py-3 border-b border-border">
 					<h3 className="font-semibold text-foreground text-sm">{t("studentRatingStatsTitle")}</h3>
 				</div>
@@ -214,7 +215,7 @@ export default function InstructorStudents() {
 						height={220}
 					/>
 				</div>
-				<div className="overflow-x-auto">
+				<AdminTableScroll>
 					<table className="w-full text-sm min-w-[28rem]">
 						<thead className="bg-muted/40">
 							<tr>
@@ -236,7 +237,7 @@ export default function InstructorStudents() {
 							))}
 						</tbody>
 					</table>
-				</div>
+				</AdminTableScroll>
 			</Card>
 			</InstructorScopeGuard>
 		</InstructorPanelLayout>

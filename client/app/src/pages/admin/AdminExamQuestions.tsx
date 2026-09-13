@@ -363,7 +363,7 @@ export default function AdminExamQuestions() {
       </div>
 
       <div className="mt-4 rounded-xl border border-border bg-card p-4 space-y-4">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Քարտեր և հարցեր</h3>
             <p className="text-xs text-muted-foreground">Ընտրեք քարտը, հետո ավելացրեք/խմբագրեք/հեռացրեք հարցերը։</p>
@@ -534,11 +534,11 @@ export default function AdminExamQuestions() {
         title={form.id ? t("adminExamQuestionsEdit") : t("adminExamQuestionsAdd")}
         contentClassName="max-w-lg max-h-[90vh]"
         footer={
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setDialogOpen(false)}>
               {t("cancel")}
             </Button>
-            <Button type="submit" form={examQuestionFormId}>
+            <Button type="submit" form={examQuestionFormId} className="w-full sm:w-auto">
               {t("save")}
             </Button>
           </div>

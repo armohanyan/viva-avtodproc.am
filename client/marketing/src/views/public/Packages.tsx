@@ -40,7 +40,7 @@ export default function Packages() {
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="bg-hero text-hero-foreground py-20">
+      <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
@@ -53,7 +53,7 @@ export default function Packages() {
       </section>
 
       {(loading || sorted.length > 0) && (
-        <section className="py-20 bg-background">
+        <section className="py-14 sm:py-20 bg-background">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
             {loading ? (
               <p className="text-center text-muted-foreground py-12">{t("loading")}</p>
@@ -64,16 +64,16 @@ export default function Packages() {
                   return (
                     <Reveal
                       key={pkg.id}
-                      className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} bg-card overflow-hidden p-0 flex flex-col h-full`}
+                      className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} bg-card overflow-visible p-0 flex flex-col h-full`}
                       delay={i * 0.06}
                     >
                       {popular && (
-                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+                        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
                           <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                         </div>
                       )}
                       {pkg.imageUrl ? (
-                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0">
+                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0 rounded-t-2xl">
                           <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
                         </div>
                       ) : null}
@@ -120,7 +120,7 @@ export default function Packages() {
         </section>
       )}
 
-      <section className="py-20 bg-accent">
+      <section className="py-14 sm:py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-12 text-center">
             {t("packagesFaqTitle")}

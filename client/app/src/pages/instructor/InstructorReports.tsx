@@ -13,6 +13,7 @@ import { BarChart3 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { TranslationKey } from "src/lib/i18n";
 import { useInstructorTeachingScope } from "src/modules/instructor/useInstructorTeachingScope";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 type SalaryLessonRow = {
   id: number;
@@ -50,8 +51,8 @@ function LessonsTable({
   const { t } = useLang();
   const items = section?.items ?? [];
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <AdminTableScroll>
+      <table className="w-full text-sm min-w-[36rem]">
         <thead className="bg-muted/40">
           <tr>
             {[t("adminPetrolColDate"), t("adminSalaryColTime"), t(labelHeaderKey), t("adminSalaryColLessons")].map((h, i) => (
@@ -88,7 +89,7 @@ function LessonsTable({
           )}
         </tbody>
       </table>
-    </div>
+    </AdminTableScroll>
   );
 }
 

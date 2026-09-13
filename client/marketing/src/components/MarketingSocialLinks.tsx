@@ -47,8 +47,8 @@ export function MarketingSocialLinks({ social, variant = "footer", className }: 
 
   const linkClass =
     variant === "footer"
-      ? "w-9 h-9 rounded-lg bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors"
-      : "w-11 h-11 rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors";
+      ? "min-h-10 min-w-10 w-10 h-10 rounded-lg bg-secondary text-secondary-foreground hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors"
+      : "w-11 h-11 min-h-11 min-w-11 rounded-xl bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-colors";
 
   return (
     <div className={cn("flex flex-wrap gap-3", className)}>

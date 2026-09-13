@@ -44,6 +44,7 @@ import { toCanonicalBookingStatus } from "src/utils/booking.utils";
 import { SimulatedAcbaPosDialog } from "src/components/booking/SimulatedAcbaPosDialog";
 import { AcbaPaymentTrustStrip } from "src/components/payments/AcbaPaymentTrustStrip";
 import { useVposCheckout } from "src/modules/payments/useVposCheckout";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import { BookingCancellationPolicyCallout } from "src/components/booking/BookingCancellationPolicyCallout";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
 import { STUDENT_SELF_SERVICE_BOOKING_ENABLED } from "src/constants/booking.constants";
@@ -1108,8 +1109,8 @@ export default function LessonBookingCalendar({
         className="border-t border-border bg-muted/20"
       />
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse">
+      <AdminTableScroll>
+        <table className="w-full text-sm border-collapse min-w-[40rem]">
           <thead>
             <tr>
               <th className="text-left text-xs text-muted-foreground font-medium pr-4 py-2 w-16">
@@ -1193,7 +1194,7 @@ export default function LessonBookingCalendar({
             ))}
           </tbody>
         </table>
-      </div>
+      </AdminTableScroll>
 
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
         {[

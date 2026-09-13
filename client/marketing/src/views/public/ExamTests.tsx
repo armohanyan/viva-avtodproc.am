@@ -216,7 +216,7 @@ export default function ExamTests() {
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="bg-hero text-hero-foreground py-20">
+      <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">{t("examTestsEyebrow")}</p>
@@ -234,7 +234,7 @@ export default function ExamTests() {
 
           {activeSession && (isExamPage ? activeExamContinueHref : activeThematicContinueHref) && (
             <Card className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-4">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-wide text-primary font-semibold">
                     {t("examTestsActiveSession")}
@@ -245,8 +245,9 @@ export default function ExamTests() {
                 </div>
                 <MarketingLink
                   href={(isExamPage ? activeExamContinueHref : activeThematicContinueHref) ?? "/thematic-questions"}
+                  className="w-full sm:w-auto shrink-0"
                 >
-                  <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <Button size="sm" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
                     {t("examTestsContinueSession")}
                   </Button>
                 </MarketingLink>
@@ -382,7 +383,7 @@ export default function ExamTests() {
         </div>
       </section>
 
-      <section className="py-20 bg-accent">
+      <section className="py-14 sm:py-20 bg-accent">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-8 sm:mb-10 text-center">{t("examTestsHowTitle")}</h2>
           <ol className="space-y-6">
@@ -405,19 +406,19 @@ export default function ExamTests() {
         </div>
       </section>
 
-      <section className="py-20 bg-card border-t border-border">
+      <section className="py-14 sm:py-20 bg-card border-t border-border">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-foreground mb-4">{t("examTestsCtaTitle")}</h2>
           <p className="text-muted-foreground text-lg mb-10 max-w-2xl mx-auto">{t("examTestsCtaSub")}</p>
           <Reveal>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a href={panelHref("/login?redirect=/thematic-questions")}>
-                <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8">
+              <a href={panelHref("/login?redirect=/thematic-questions")} className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8">
                   {t("examTestsSignInToPractice")}
                 </Button>
               </a>
-              <MarketingLink href="/packages">
-                <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-accent px-8">
+              <MarketingLink href="/packages" className="w-full sm:w-auto">
+                <Button size="lg" variant="outline" className="w-full sm:w-auto border-border text-foreground hover:bg-accent px-8">
                   {t("packages")}
                 </Button>
               </MarketingLink>

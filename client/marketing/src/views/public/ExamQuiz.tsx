@@ -407,7 +407,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
       <section
         className={cn(
           "flex-1 min-h-0 px-4",
-          focusMode ? "overflow-y-auto py-3 sm:py-5" : "py-12",
+          focusMode ? "overflow-y-auto py-3 sm:py-5" : "py-6 sm:py-12",
         )}
       >
         <div className={cn("mx-auto w-full", focusMode ? "max-w-5xl" : "max-w-3xl")}>
@@ -425,7 +425,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
           ) : finished ? (
             <>
               <Reveal delay={0.06}>
-                <Card className="p-8 border-border text-center">
+                <Card className="p-4 sm:p-8 border-border text-center">
                   <h2 className="text-2xl font-bold text-foreground mb-2">{t("examQuizResultsTitle")}</h2>
                   {endedByTimeout ? (
                     <p className="text-sm text-amber-700 dark:text-amber-400 mb-4">{t("examQuizAutoSubmitted")}</p>
@@ -612,7 +612,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                 <div className="min-w-0 flex-1">
               {layoutMode === "step" ? (
                 <Reveal delay={0.06}>
-                  <Card className="p-8 border-border">
+                  <Card className="p-4 sm:p-8 border-border">
                     {q?.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
                     <div className="flex items-start justify-between gap-3 mb-6">
                       <h2 className="text-lg font-semibold text-foreground leading-snug min-w-0 flex-1">

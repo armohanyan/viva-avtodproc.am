@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { useFleetCars } from "src/modules/cars";
 import { useAccount } from "src/modules/accounts";
 import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 export default function InstructorCars() {
   const { t } = useLang();
@@ -47,10 +48,10 @@ export default function InstructorCars() {
       <InstructorScopeGuard require="practical">
         <PanelPageHeader icon={CarFront} title={t("instructorCarsTitle")} subtitle={t("instructorCarsSubtitle")} />
 
-        <Card className="border-border overflow-hidden">
+        <Card className="border-border overflow-hidden min-w-0">
           <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <AdminTableScroll>
+            <table className="w-full text-sm min-w-[36rem]">
               <thead className="bg-muted/40">
                 <tr>
                   {[t("carColModel"), t("carColPlate"), t("fleetFieldVin"), t("carColTransmission")].map((h, i) => (
@@ -80,7 +81,7 @@ export default function InstructorCars() {
                 )}
               </tbody>
             </table>
-          </div>
+          </AdminTableScroll>
           {!loading && filtered.length === 0 && (
             <p className="p-6 text-sm text-muted-foreground text-center">{t("instructorCarsEmpty")}</p>
           )}

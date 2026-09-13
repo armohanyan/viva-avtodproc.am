@@ -12,8 +12,8 @@ export type PanelPageHeaderProps = {
 
 export default function PanelPageHeader({ icon: Icon, title, subtitle, actions, className }: PanelPageHeaderProps) {
   return (
-    <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between mb-6", className)}>
-      <div>
+    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-6", className)}>
+      <div className="min-w-0">
         <h2 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2 flex-wrap">
           {Icon ? <Icon className="w-6 h-6 sm:w-7 sm:h-7 text-primary shrink-0" aria-hidden /> : null}
           <span className="min-w-0 break-words">{title}</span>
@@ -21,9 +21,9 @@ export default function PanelPageHeader({ icon: Icon, title, subtitle, actions, 
         {subtitle != null && subtitle !== "" ? (
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">{subtitle}</p>
         ) : null}
-      </div>  
+      </div>
       {actions != null ? (
-        <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end sm:gap-2 [&_a]:min-w-0">
+        <div className="flex w-full min-w-0 shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end sm:gap-2 [&_a]:min-w-0 max-sm:[&_>button]:w-full max-sm:[&_>a]:w-full max-sm:[&_>_*:has(button)]:w-full">
           {actions}
         </div>
       ) : null}

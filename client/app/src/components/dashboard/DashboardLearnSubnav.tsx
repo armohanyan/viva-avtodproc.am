@@ -15,14 +15,17 @@ export default function DashboardLearnSubnav({ active }: { active: ActiveTab }) 
 
   const tabClass = (isActive: boolean) =>
     cn(
-      "px-3 py-2 sm:py-1.5 rounded-lg text-sm font-medium transition-colors min-h-10 sm:min-h-0 inline-flex items-center justify-center",
+      "px-3 py-2 sm:py-1.5 rounded-lg text-sm font-medium transition-colors min-h-10 sm:min-h-0 inline-flex items-center justify-center shrink-0 whitespace-nowrap",
       isActive
         ? "bg-primary text-primary-foreground"
         : "border border-border text-muted-foreground hover:text-foreground hover:bg-accent",
     );
 
   return (
-    <nav className="flex flex-wrap gap-2 mb-6 sm:mb-8" aria-label={t("learn")}>
+    <nav
+      className="flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain touch-pan-x pb-1 mb-6 sm:mb-8 sm:flex-wrap sm:overflow-visible"
+      aria-label={t("learn")}
+    >
       <Link href={roadSignsHref} className={tabClass(active === "road-signs")}>
         {t("dashboardLearnRoadSigns")}
       </Link>

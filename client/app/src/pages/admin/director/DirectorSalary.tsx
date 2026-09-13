@@ -10,6 +10,7 @@ import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director
 import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import TableSkeletonRows from "src/components/TableSkeletonRows";
+import AdminTableScroll from "src/components/AdminTableScroll";
 import {
   Dialog,
   DialogContent,
@@ -317,8 +318,8 @@ function SalaryReportView({
               {lessons ? `${lessons.startDate} — ${lessons.endDate} · ${lessons.totalUnits} դաս` : start + " — " + end}
             </DialogDescription>
           </DialogHeader>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <AdminTableScroll>
+            <table className="w-full text-sm min-w-[36rem]">
               <thead className="bg-muted/40">
                 <tr>
                   {["Ամսաթիվ", "Ժամ", "Նկարագրություն", "Դասեր"].map((h) => (
@@ -352,7 +353,7 @@ function SalaryReportView({
                 )}
               </tbody>
             </table>
-          </div>
+          </AdminTableScroll>
         </DialogContent>
       </Dialog>
 

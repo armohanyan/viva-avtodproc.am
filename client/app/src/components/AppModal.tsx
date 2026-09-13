@@ -83,7 +83,7 @@ export function AppModal({
         {hasFooter ? (
           <div
             className={cn(
-              "flex shrink-0 items-center justify-end gap-3 border-t border-border bg-background px-6 py-4",
+              "flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-6 sm:py-4",
               footerClassName
             )}
           >

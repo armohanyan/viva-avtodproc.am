@@ -450,7 +450,7 @@ export default function QuickPracticalBookingModal({
             </p>
             {customSlot ? (
               <div className="mt-2 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <div>
                     <label className="block text-[11px] font-medium text-muted-foreground mb-1">
                       {t("adminDrivingQuickBookingCustomStart")}
@@ -505,7 +505,7 @@ export default function QuickPracticalBookingModal({
                     </Button>
                   </div>
                   {setDelayedRest ? (
-                    <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-1">
                       <div>
                         <label className="block text-[11px] font-medium text-muted-foreground mb-1">
                           {t("adminDrivingQuickBookingDelayedLunchStart")}

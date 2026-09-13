@@ -112,11 +112,11 @@ export default function AdminInstructorDaySlotsModal({
       contentClassName="max-w-md sm:max-w-lg"
       bodyClassName="px-4 pb-4"
       footer={
-        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => onOpenChange(false)}>
             {t("cancel")}
           </Button>
-          <Button type="button" onClick={handleDone}>
+          <Button type="button" className="w-full sm:w-auto" onClick={handleDone}>
             {t("adminBookingSlotsModalDone")}
           </Button>
         </div>

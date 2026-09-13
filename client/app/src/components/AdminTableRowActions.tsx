@@ -163,13 +163,13 @@ export default function AdminTableRowActions({
               href={a.href}
               className={cn(
                 presentation === "icon"
-                  ? "p-1.5 rounded-md hover:bg-primary/10 text-primary inline-flex shrink-0"
-                  : "text-primary hover:underline text-xs",
+                  ? "min-h-10 min-w-10 p-2 rounded-md hover:bg-primary/10 text-primary inline-flex items-center justify-center shrink-0"
+                  : "text-primary hover:underline text-xs min-h-10 inline-flex items-center",
               )}
               title={titleAttr}
               aria-label={aria}
             >
-              {Icon ? <Icon className="w-3.5 h-3.5" /> : a.label}
+              {Icon ? <Icon className="w-4 h-4" /> : a.label}
             </Link>
           );
         }
@@ -181,16 +181,19 @@ export default function AdminTableRowActions({
             className={cn(
               presentation === "icon"
                 ? cn(
-                    "p-1.5 rounded-md inline-flex shrink-0",
+                    "min-h-10 min-w-10 p-2 rounded-md inline-flex items-center justify-center shrink-0",
                     a.destructive ? "hover:bg-red-50 text-red-500" : "hover:bg-primary/10 text-primary",
                   )
-                : cn("text-xs", a.destructive ? "text-red-500 hover:underline" : "text-primary hover:underline"),
+                : cn(
+                    "text-xs min-h-10 inline-flex items-center",
+                    a.destructive ? "text-red-500 hover:underline" : "text-primary hover:underline",
+                  ),
             )}
             onClick={a.onClick}
             aria-label={aria}
             title={titleAttr}
           >
-            {Icon ? <Icon className="w-3.5 h-3.5" /> : a.label}
+            {Icon ? <Icon className="w-4 h-4" /> : a.label}
           </button>
         );
       })}

@@ -915,7 +915,7 @@ export default function AdminInstructors() {
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("labelYearsExperienceShort")}</label>
                 <Input type="number" value={editIns.years} onChange={(e) => updateEdit(editIns.id, { years: +e.target.value || 1 })} className="h-10" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("ratingDisplayLabel")}</label>
                   <Input readOnly value={editIns.rating.toFixed(1)} className="h-10 bg-muted/40" />
@@ -975,7 +975,7 @@ export default function AdminInstructors() {
                 <div
                   className={
                     editIns.teachesPractical && editIns.teachesTheory
-                      ? "grid grid-cols-2 gap-3"
+                      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
                       : undefined
                   }
                 >
@@ -1149,7 +1149,7 @@ export default function AdminInstructors() {
                   className="h-10"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("ratingDisplayLabel")}</label>
                   <Input readOnly value="—" className="h-10 bg-muted/40" />
@@ -1207,7 +1207,7 @@ export default function AdminInstructors() {
                 <div
                   className={
                     newIns.teachesPractical && newIns.teachesTheory
-                      ? "grid grid-cols-2 gap-3"
+                      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
                       : undefined
                   }
                 >
@@ -1422,7 +1422,7 @@ export default function AdminInstructors() {
                         </label>
                       </fieldset>
                       {dayOffScope === "time_window" && (
-                        <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 mt-3">
                           <div>
                             <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityFrom")}</label>
                             <TimeSelectInput value={offWindowStart} onChange={setOffWindowStart} triggerClassName="h-10" />
@@ -1446,7 +1446,7 @@ export default function AdminInstructors() {
                       <div>
                         <h4 className="text-sm font-semibold text-foreground">{t("instructorAvailabilitySectionWeeklyTitle")}</h4>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
                           <label className="block text-xs font-medium text-muted-foreground mb-1">{t("instructorAvailabilityFrom")}</label>
                           <TimeSelectInput value={weeklyBreakStart} onChange={setWeeklyBreakStart} triggerClassName="h-10" />

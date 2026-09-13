@@ -188,10 +188,11 @@ export default function AdminArchivePage(): JSX.Element {
           title={t("adminArchiveNav")}
           subtitle={t("adminArchivePageDesc")}
           actions={
-            <div className="flex flex-wrap gap-2">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
               <Button
                 type="button"
                 variant="destructive"
+                className="w-full sm:w-auto"
                 disabled={loading || selectedIds.size === 0}
                 onClick={() =>
                   setPurgeDialog({ mode: "selected", ids: [...selectedIds] })
@@ -204,7 +205,7 @@ export default function AdminArchivePage(): JSX.Element {
               <Button
                 type="button"
                 variant="outline"
-                className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                className="w-full sm:w-auto text-destructive border-destructive/40 hover:bg-destructive/10"
                 disabled={loading || filtered.length === 0}
                 onClick={() => setPurgeDialog({ mode: "all" })}
               >
@@ -213,7 +214,7 @@ export default function AdminArchivePage(): JSX.Element {
             </div>
           }
         />
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end min-w-0">
           <Select
             value={kindFilter}
             onValueChange={(v) => {
@@ -221,7 +222,7 @@ export default function AdminArchivePage(): JSX.Element {
               setSelectedIds(new Set());
             }}
           >
-            <SelectTrigger className="w-[12rem]">
+            <SelectTrigger className="w-full sm:w-[12rem]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -37,7 +37,7 @@ export default function AdminBranchFilterSelect() {
 		>
 			<SelectTrigger
 				size="sm"
-				className="max-w-[11rem] sm:max-w-[14rem] h-8 gap-1.5 border-border bg-background/80"
+				className="w-full max-w-none sm:max-w-[14rem] h-9 sm:h-8 gap-1.5 border-border bg-background/80 min-h-9"
 				aria-label={t("adminBranchFilterLabel")}
 			>
 				{loading && branches.length === 0 ? (

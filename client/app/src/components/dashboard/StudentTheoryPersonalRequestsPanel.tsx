@@ -9,6 +9,7 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { cn } from "src/lib/utils";
 import { formatDateTime } from "src/utils/locale.utils";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 type RequestStatus = "pending" | "contacted" | "booked" | "cancelled";
 
@@ -105,8 +106,8 @@ export default function StudentTheoryPersonalRequestsPanel() {
 
       <h2 className="text-base font-semibold text-foreground mb-1">{t("bookingsTheoryPersonalRequestsTitle")}</h2>
       <p className="text-sm text-muted-foreground mb-3">{t("bookingsTheoryPersonalRequestsHint")}</p>
-      <Card className="border-border overflow-hidden mb-6">
-        <div className="overflow-x-auto">
+      <Card className="border-border overflow-hidden mb-6 min-w-0">
+        <AdminTableScroll>
           <table className="w-full text-sm text-left border-collapse min-w-[640px]">
             <thead>
               <tr className="border-b border-border bg-muted/30">
@@ -168,7 +169,7 @@ export default function StudentTheoryPersonalRequestsPanel() {
               )}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       </Card>
     </Reveal>
   );

@@ -836,7 +836,7 @@ export default function AdminDrivingDayModal({
         </p>
       ) : (
         <TooltipProvider delayDuration={200}>
-          <div className="relative min-h-0 flex-1 rounded-lg border border-primary/30 max-h-[min(82vh,980px)] overflow-auto overscroll-contain">
+          <div className="relative min-h-0 flex-1 rounded-lg border border-primary/30 max-h-[min(82vh,980px)] overflow-auto overscroll-contain touch-pan-x touch-pan-y min-w-0">
             {busy ? (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/40 pointer-events-none">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />

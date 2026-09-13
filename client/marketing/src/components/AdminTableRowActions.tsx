@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactElement } from "react";
+import { cloneElement, type ComponentProps, type MouseEvent, type ReactElement } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "src/lib/utils";
@@ -32,6 +32,24 @@ export type AdminTableRowAction =
       href: string;
     }
   | { kind: "separator"; id: string };
+
+const ROW_INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, [role='button'], [data-no-row-dblclick]";
+
+function isRowInteractiveDoubleClickTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(target.closest(ROW_INTERACTIVE_SELECTOR));
+}
+
+/** First row menu item with `id: "edit"` (opens edit modal / form in admin tables). */
+export function findAdminTableRowEditAction(
+  actions: AdminTableRowAction[],
+): Extract<AdminTableRowAction, { kind: "item" }> | null {
+  const edit = actions.find(
+    (a): a is Extract<AdminTableRowAction, { kind: "item" }> => a.kind === "item" && a.id === "edit",
+  );
+  return edit ?? null;
+}
 
 function AdminTableRowActionsMenuContent({ actions }: { actions: AdminTableRowAction[] }) {
   const [, setLocation] = useLocation();
@@ -70,13 +88,35 @@ function AdminTableRowActionsMenuContent({ actions }: { actions: AdminTableRowAc
 export function AdminTableRowContextMenu({
   actions,
   children,
+  onRowDoubleClick,
 }: {
   actions: AdminTableRowAction[];
   children: ReactElement<ComponentProps<"tr">>;
+  /** Overrides the default double-click handler (first `id: "edit"` menu item). */
+  onRowDoubleClick?: () => void;
 }) {
+  const { t } = useLang();
+  const editAction = findAdminTableRowEditAction(actions);
+  const handleRowDoubleClick = onRowDoubleClick ?? editAction?.onClick;
+
+  const row =
+    handleRowDoubleClick != null
+      ? cloneElement(children, {
+          onDoubleClick: (e: MouseEvent<HTMLTableRowElement>) => {
+            children.props.onDoubleClick?.(e);
+            if (e.defaultPrevented) return;
+            if (isRowInteractiveDoubleClickTarget(e.target)) return;
+            e.preventDefault();
+            handleRowDoubleClick();
+          },
+          className: cn(children.props.className, "cursor-pointer"),
+          title: children.props.title ?? t("adminTableRowDoubleClickEdit"),
+        })
+      : children;
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
       <AdminTableRowActionsMenuContent actions={actions} />
     </ContextMenu>
   );
@@ -123,13 +163,13 @@ export default function AdminTableRowActions({
               href={a.href}
               className={cn(
                 presentation === "icon"
-                  ? "p-1.5 rounded-md hover:bg-primary/10 text-primary inline-flex shrink-0"
-                  : "text-primary hover:underline text-xs",
+                  ? "min-h-10 min-w-10 p-2 rounded-md hover:bg-primary/10 text-primary inline-flex items-center justify-center shrink-0"
+                  : "text-primary hover:underline text-xs min-h-10 inline-flex items-center",
               )}
               title={titleAttr}
               aria-label={aria}
             >
-              {Icon ? <Icon className="w-3.5 h-3.5" /> : a.label}
+              {Icon ? <Icon className="w-4 h-4" /> : a.label}
             </Link>
           );
         }
@@ -141,16 +181,19 @@ export default function AdminTableRowActions({
             className={cn(
               presentation === "icon"
                 ? cn(
-                    "p-1.5 rounded-md inline-flex shrink-0",
+                    "min-h-10 min-w-10 p-2 rounded-md inline-flex items-center justify-center shrink-0",
                     a.destructive ? "hover:bg-red-50 text-red-500" : "hover:bg-primary/10 text-primary",
                   )
-                : cn("text-xs", a.destructive ? "text-red-500 hover:underline" : "text-primary hover:underline"),
+                : cn(
+                    "text-xs min-h-10 inline-flex items-center",
+                    a.destructive ? "text-red-500 hover:underline" : "text-primary hover:underline",
+                  ),
             )}
             onClick={a.onClick}
             aria-label={aria}
             title={titleAttr}
           >
-            {Icon ? <Icon className="w-3.5 h-3.5" /> : a.label}
+            {Icon ? <Icon className="w-4 h-4" /> : a.label}
           </button>
         );
       })}

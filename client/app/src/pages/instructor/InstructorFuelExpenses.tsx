@@ -18,6 +18,7 @@ import { PETROL_TYPE_OPTIONS, type PetrolTypeValue } from "src/pages/admin/petro
 import { Fuel, ImageIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 type FuelExpenseRequest = {
   id: number;
@@ -202,7 +203,7 @@ export default function InstructorFuelExpenses() {
             </span>
           ) : null}
         </div>
-        <div className="overflow-x-auto">
+        <AdminTableScroll>
           <table className="w-full text-sm min-w-[48rem]">
             <thead className="bg-muted/40">
               <tr>
@@ -271,7 +272,7 @@ export default function InstructorFuelExpenses() {
               )}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       </Card>
 
       <AppModal

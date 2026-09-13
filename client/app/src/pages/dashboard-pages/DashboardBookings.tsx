@@ -27,6 +27,7 @@ import {
 } from "src/components/dashboard/studentBookingDisplay";
 import { formatDateTimeCompact } from "src/utils/locale.utils";
 import { useStudentEntitlements } from "src/modules/dashboard/studentEntitlements";
+import AdminTableScroll from "src/components/AdminTableScroll";
 
 function isPracticalLesson(b: StudentDemoBooking): boolean {
   return b.lessonTypeKey === "lessonTypePractical";
@@ -169,8 +170,8 @@ export function DashboardBookingsListTab() {
         <div className="mb-4">
           <BookingCancellationPolicyCallout />
         </div>
-        <Card className="border-border overflow-hidden">
-          <div className="overflow-x-auto">
+        <Card className="border-border overflow-hidden min-w-0">
+          <AdminTableScroll>
             <table className="w-full text-sm text-left border-collapse min-w-[720px]">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
@@ -354,7 +355,7 @@ export function DashboardBookingsListTab() {
                 ) : null}
               </tbody>
             </table>
-          </div>
+          </AdminTableScroll>
         </Card>
       </Reveal>
 

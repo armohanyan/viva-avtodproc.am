@@ -239,7 +239,7 @@ export default function AdminInstructorAvailabilityTable({
       {instructorColumns.length === 0 ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
       ) : (
-        <div className="rounded-lg border border-primary/30 max-h-[min(calc(100dvh-14rem),720px)] overflow-auto overscroll-contain touch-pan-x touch-pan-y">
+        <div className="rounded-lg border border-primary/30 max-h-[min(calc(100dvh-14rem),720px)] overflow-auto overscroll-contain touch-pan-x touch-pan-y min-w-0">
           <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
             <thead>
               <tr>

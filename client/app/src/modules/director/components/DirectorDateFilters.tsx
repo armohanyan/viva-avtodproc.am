@@ -40,15 +40,15 @@ export default function DirectorDateFilters({
   const { branches } = useBranches();
 
   return (
-    <div className="flex flex-wrap gap-4 items-end mb-5">
-      <DirectorField label="Սկիզբ" className="w-auto">
-        <DirectorInput type="date" className="w-auto" value={start} onChange={(e) => onStartChange(e.target.value)} />
+    <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+      <DirectorField label="Սկիզբ" className="w-full sm:w-auto">
+        <DirectorInput type="date" className="w-full sm:w-auto" value={start} onChange={(e) => onStartChange(e.target.value)} />
       </DirectorField>
-      <DirectorField label="Վերջ" className="w-auto">
-        <DirectorInput type="date" className="w-auto" value={end} onChange={(e) => onEndChange(e.target.value)} />
+      <DirectorField label="Վերջ" className="w-full sm:w-auto">
+        <DirectorInput type="date" className="w-full sm:w-auto" value={end} onChange={(e) => onEndChange(e.target.value)} />
       </DirectorField>
       {showBranch && onBranchChange ? (
-        <DirectorField label="Մասնաճյուղ">
+        <DirectorField label="Մասնաճյուղ" className="w-full sm:w-auto">
           <DirectorSelect value={branchId ?? "all"} onChange={(e) => onBranchChange(e.target.value)}>
             <option value="all">Բոլորը</option>
             {branches.map((b) => (
@@ -59,7 +59,7 @@ export default function DirectorDateFilters({
           </DirectorSelect>
         </DirectorField>
       ) : null}
-      <DirectorButton onClick={onRefresh}>Թարմացնել</DirectorButton>
+      <DirectorButton className="w-full sm:w-auto" onClick={onRefresh}>Թարմացնել</DirectorButton>
     </div>
   );
 }

@@ -113,7 +113,7 @@ export default function RoadSigns() {
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="bg-hero text-hero-foreground py-20">
+      <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
             <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">{t("roadSignsEyebrow")}</p>
@@ -131,13 +131,13 @@ export default function RoadSigns() {
 
           {activeSession && activeContinueHref && (
             <Card className="rounded-xl border border-primary/20 bg-primary/5 p-4 mb-4">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-wide text-primary font-semibold">{t("examTestsActiveSession")}</p>
                   <p className="text-sm text-foreground truncate">{activeCategory?.title ?? t("dashboardLearnRoadSigns")}</p>
                 </div>
-                <MarketingLink href={activeContinueHref}>
-                  <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <MarketingLink href={activeContinueHref} className="w-full sm:w-auto shrink-0">
+                  <Button size="sm" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
                     {t("examTestsContinueSession")}
                   </Button>
                 </MarketingLink>

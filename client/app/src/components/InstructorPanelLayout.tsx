@@ -33,6 +33,7 @@ import { PanelFocusModeProvider } from "src/components/panel/PanelFocusModeConte
 import { initialsFromName } from "src/components/panel/initialsFromName";
 import NotificationBell from "src/components/NotificationBell";
 import { pathHasPrefix } from "src/lib/navigation/appShell";
+import { PanelHeaderExtras } from "src/components/panel/PanelHeaderExtras";
 
 interface Props {
 	children: ReactNode;
@@ -83,45 +84,50 @@ export default function InstructorPanelLayout({ children }: Props) {
 				sidebarSurface="card"
 				headerTitle={headerTitle}
 				headerTrailing={({ closeMobileNav }) => (
-					<>
-						<ThemeToggle />
-						<NotificationBell listHref="/instructor/notifications" panel="instructor" onNavigate={closeMobileNav} />
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<button
-									type="button"
-									className="w-9 h-9 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm shrink-0 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-hidden"
-									aria-label={t("profile")}
-								>
-									{user ? (
-										<span className="text-xs font-semibold">{initialsFromName(user.name)}</span>
-									) : (
-										<img src="/logo.svg" alt="" className="w-full h-full object-cover" />
-									)}
-								</button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="w-56">
-								<DropdownMenuLabel className="font-normal">
-									<p className="text-sm font-medium text-foreground truncate">
-										{user?.name ?? t("dashboardProfileInstructorDemo")}
-									</p>
-									<p className="text-xs text-muted-foreground truncate">{user?.email ?? ""}</p>
-								</DropdownMenuLabel>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem asChild>
-									<Link href="/instructor/profile" className="cursor-pointer" onClick={() => closeMobileNav()}>
-										<Settings className="w-4 h-4" />
-										{t("profileSettings")}
-									</Link>
-								</DropdownMenuItem>
-								<DropdownMenuSeparator />
-								<DropdownMenuItem variant="destructive" onClick={handleLogout}>
-									<LogOut className="w-4 h-4" />
-									{t("logout")}
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</>
+					<PanelHeaderExtras
+						moreLabel={t("actions")}
+						secondary={<ThemeToggle />}
+						primary={
+							<>
+								<NotificationBell listHref="/instructor/notifications" panel="instructor" onNavigate={closeMobileNav} />
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<button
+											type="button"
+											className="h-10 w-10 min-h-10 min-w-10 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm shrink-0 outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 overflow-hidden"
+											aria-label={t("profile")}
+										>
+											{user ? (
+												<span className="text-xs font-semibold">{initialsFromName(user.name)}</span>
+											) : (
+												<img src="/logo.svg" alt="" className="w-full h-full object-cover" />
+											)}
+										</button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end" className="w-56">
+										<DropdownMenuLabel className="font-normal">
+											<p className="text-sm font-medium text-foreground truncate">
+												{user?.name ?? t("dashboardProfileInstructorDemo")}
+											</p>
+											<p className="text-xs text-muted-foreground truncate">{user?.email ?? ""}</p>
+										</DropdownMenuLabel>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem asChild>
+											<Link href="/instructor/profile" className="cursor-pointer" onClick={() => closeMobileNav()}>
+												<Settings className="w-4 h-4" />
+												{t("profileSettings")}
+											</Link>
+										</DropdownMenuItem>
+										<DropdownMenuSeparator />
+										<DropdownMenuItem variant="destructive" onClick={handleLogout}>
+											<LogOut className="w-4 h-4" />
+											{t("logout")}
+										</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</>
+						}
+					/>
 				)}
 				renderSidebar={({ closeMobileNav }) => (
 					<div className="flex flex-col h-full min-h-0 bg-card">

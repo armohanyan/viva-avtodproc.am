@@ -2017,12 +2017,12 @@ export default function AdminBookings() {
         title={t("bookings")}
         subtitle={t(activeBookingsTab === "debts" ? "adminBookingsDebtsPageSubtitle" : "adminBookingsPageSubtitle")}
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setImportOpen(true)}>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+            <Button variant="outline" className="gap-2 w-full sm:w-auto" onClick={() => setImportOpen(true)}>
               <FileSpreadsheet className="w-4 h-4" />
               {t("adminBookingsImportFromExcel")}
             </Button>
-            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" onClick={() => openAdd()}>
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 w-full sm:w-auto" onClick={() => openAdd()}>
               <Plus className="w-4 h-4" />
               {t("addNew")}
             </Button>

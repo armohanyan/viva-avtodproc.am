@@ -201,25 +201,25 @@ export default function DirectorDriverProfilePage() {
 
   const filters = (
     <DirectorCard>
-      <div className="flex flex-wrap gap-4 items-end mb-5">
-        <DirectorField label="Սկիզբ" className="w-auto">
-          <DirectorInput type="date" className="w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
+      <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:flex-wrap sm:items-end sm:gap-4">
+        <DirectorField label="Սկիզբ" className="w-full sm:w-auto">
+          <DirectorInput type="date" className="w-full sm:w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
         </DirectorField>
-        <DirectorField label="Վերջ" className="w-auto">
-          <DirectorInput type="date" className="w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
+        <DirectorField label="Վերջ" className="w-full sm:w-auto">
+          <DirectorInput type="date" className="w-full sm:w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
         </DirectorField>
-        <DirectorField label="Հրահանգիչ">
+        <DirectorField label="Հրահանգիչ" className="w-full sm:w-auto">
           <DirectorSelect
             value={instructorUserId}
             onChange={(e) => setInstructorUserId(e.target.value)}
-            className="min-w-[180px]"
+            className="w-full sm:min-w-[180px]"
           >
             {instructors.map((i) => (
               <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
             ))}
           </DirectorSelect>
         </DirectorField>
-        <DirectorButton onClick={() => void load()}>Ցույց տալ</DirectorButton>
+        <DirectorButton className="w-full sm:w-auto" onClick={() => void load()}>Ցույց տալ</DirectorButton>
       </div>
 
       <DirectorStatGrid>

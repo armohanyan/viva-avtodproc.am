@@ -118,7 +118,7 @@ export default function AuthCallback() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <div className="bg-card rounded-2xl border border-border shadow-sm p-8 text-center">
+        <div className="bg-card rounded-2xl border border-border shadow-sm p-5 sm:p-8 text-center">
           <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
             {status === "loading" && <Loader2 className="w-7 h-7 text-primary animate-spin" />}
             {status === "success" && <Loader2 className="w-7 h-7 text-primary animate-spin" />}
