@@ -1520,6 +1520,7 @@ const en = {
   resetPasswordSuccess: "Your password was updated. You can sign in now.",
   sendingResetLink: "Sending…",
   placeholderMapEmbedUrl: "https://maps.google.com/…",
+  adminTableRowDoubleClickEdit: "Double-click to edit",
 };
 
 // ─── Russian ─────────────────────────────────────────────────────────────────
@@ -3025,6 +3026,7 @@ const ru: typeof en = {
   resetPasswordSuccess: "Пароль обновлён. Теперь можно войти.",
   sendingResetLink: "Отправка…",
   placeholderMapEmbedUrl: "https://maps.google.com/…",
+  adminTableRowDoubleClickEdit: "Двойной щелчок - редактировать",
 };
 
 // ─── Armenian ─────────────────────────────────────────────────────────────────
@@ -4531,6 +4533,7 @@ const am: typeof en = {
   resetPasswordSuccess: "Գաղտնաբառը թարմացված է։ Կարող եք մուտք գործել։",
   sendingResetLink: "Ուղարկում…",
   placeholderMapEmbedUrl: "https://maps.google.com/…",
+  adminTableRowDoubleClickEdit: "Կրկնակի սեղմեք խմբագրելու համար",
 };
 
 // ─── Type & Context ───────────────────────────────────────────────────────────
