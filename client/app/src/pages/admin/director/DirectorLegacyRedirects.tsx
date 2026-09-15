@@ -4,3 +4,8 @@ import { Redirect } from "wouter";
 export function DirectorRedirectFuelKmToFuel() {
   return <Redirect to="/admin/director/fuel" replace />;
 }
+
+/** Instructor lessons live under driver profile. */
+export function DirectorRedirectInstructorHoursToDriverProfile() {
+  return <Redirect to="/admin/director/driver-profile" replace />;
+}

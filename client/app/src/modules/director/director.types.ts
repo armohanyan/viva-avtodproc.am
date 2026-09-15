@@ -1,6 +1,8 @@
 export type DirectorPaymentMethod = "card" | "cash";
 
-export type DirectorOptionCategory = "exp_type" | "sal_role" | "cash_type" | "fuel_type";
+export type DirectorCashDirection = "in" | "out";
+
+export type DirectorOptionCategory = "exp_type" | "sal_role" | "fuel_type";
 
 export type DirectorDashboard = {
   totalRevenue: number;
@@ -10,10 +12,8 @@ export type DirectorDashboard = {
   totalExpense: number;
   fuel: number;
   salaryTotal: number;
-  cashBalance: number;
   instructorHours: number;
   instructorSalary: number;
-  incashment: number;
   fuelLiters: number;
 };
 
@@ -30,11 +30,26 @@ export type DirectorChartPoint = { label: string; value: number };
 
 export type DirectorCashEntry = {
   id: number;
+  source: "manual" | "finance" | "expense" | "fuel" | "repair";
+  sourceId: number;
+  readOnly: boolean;
   date: string;
   branchId: number | null;
-  entryType: string;
+  direction: DirectorCashDirection;
+  paymentMethod: DirectorPaymentMethod;
   amount: number;
   comment: string | null;
+};
+
+export type DirectorCashSummary = {
+  entries: DirectorCashEntry[];
+  balance: number;
+  periodIn: number;
+  periodOut: number;
+  periodCashIn: number;
+  periodCardIn: number;
+  periodCashOut: number;
+  periodCardOut: number;
 };
 
 export type DirectorExpense = {

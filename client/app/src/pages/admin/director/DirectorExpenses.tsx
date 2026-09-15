@@ -5,15 +5,14 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
-import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorAddRecordButton from "src/modules/director/components/DirectorAddRecordButton";
+import DirectorRecordFormDialog from "src/modules/director/components/DirectorRecordFormDialog";
 import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director/components/DirectorSectionNav";
 import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorCard,
   DirectorField,
-  DirectorFormRow,
   DirectorInput,
   DirectorSelect,
   DirectorTextarea,
@@ -61,13 +60,14 @@ export default function DirectorExpensesPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorExpense[]>([]);
   const [chart, setChart] = useState<{ label: string; value: number }[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
     branchId: branches[0]?.id ? String(branches[0].id) : "",
     expType: "Վարձակալություն",
     amount: "",
-    paymentMethod: "card" as DirectorPaymentMethod,
+    paymentMethod: "cash" as DirectorPaymentMethod,
     comment: "",
   });
 
@@ -109,9 +109,19 @@ export default function DirectorExpensesPage() {
       branchId: branches[0]?.id ? String(branches[0].id) : "",
       expType: "Վարձակալություն",
       amount: "",
-      paymentMethod: "card" as DirectorPaymentMethod,
+      paymentMethod: "cash" as DirectorPaymentMethod,
       comment: "",
     });
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setFormOpen(true);
   };
 
   const submit = async () => {
@@ -131,7 +141,7 @@ export default function DirectorExpensesPage() {
         await createDirectorExpense(body);
         showToast("Գրանցված է", "success");
       }
-      resetForm();
+      closeForm();
       reload();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
@@ -148,6 +158,7 @@ export default function DirectorExpensesPage() {
       paymentMethod: row.paymentMethod,
       comment: row.comment ?? "",
     });
+    setFormOpen(true);
   };
 
   const tableColumns = useMemo(
@@ -241,44 +252,49 @@ export default function DirectorExpensesPage() {
         </DirectorReportSection>
       ) : (
         <>
-          <DirectorCard>
-            <DirectorFormRow>
-              <DirectorField label="Ամսաթիվ">
-                <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Մասնաճյուղ">
-                <DirectorSelect value={form.branchId} onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}>
-                  <option value="">—</option>
-                  {branches.map((b) => (
-                    <option key={b.id} value={String(b.id)}>{b.label || b.name}</option>
-                  ))}
-                </DirectorSelect>
-              </DirectorField>
-              <DirectorField label="Ծախսի տեսակ">
-                <DirectorDynamicSelect
-                  category={DIRECTOR_OPTION_CATEGORY.expType}
-                  value={form.expType}
-                  onChange={(expType) => setForm((f) => ({ ...f, expType }))}
-                />
-              </DirectorField>
-              <DirectorField label="Գումար">
-                <DirectorInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Վճարում">
-                <DirectorPaymentSelect value={form.paymentMethod} onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))} />
-              </DirectorField>
-              <DirectorField label="Մեկնաբանություն">
-                <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
-              </DirectorField>
-              <DirectorFormActions
-                editing={editingId != null}
-                createLabel="Գրանցել ծախս"
-                onSubmit={() => void submit()}
-                onCancel={resetForm}
+          <DirectorDataTable
+            table={table}
+            columns={tableColumns}
+            rowKey={(r) => r.id}
+            toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
+          />
+          <DirectorRecordFormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            title={editingId != null ? "Խմբագրել ծախս" : "Նոր ծախս"}
+            editing={editingId != null}
+            createLabel="Գրանցել ծախս"
+            onSubmit={() => void submit()}
+            onCancel={closeForm}
+          >
+            <DirectorField label="Ամսաթիվ">
+              <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Մասնաճյուղ">
+              <DirectorSelect value={form.branchId} onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}>
+                <option value="">—</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={String(b.id)}>{b.label || b.name}</option>
+                ))}
+              </DirectorSelect>
+            </DirectorField>
+            <DirectorField label="Ծախսի տեսակ">
+              <DirectorDynamicSelect
+                category={DIRECTOR_OPTION_CATEGORY.expType}
+                value={form.expType}
+                onChange={(expType) => setForm((f) => ({ ...f, expType }))}
               />
-            </DirectorFormRow>
-          </DirectorCard>
-          <DirectorDataTable table={table} columns={tableColumns} rowKey={(r) => r.id} />
+            </DirectorField>
+            <DirectorField label="Գումար">
+              <DirectorInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Վճարում">
+              <DirectorPaymentSelect value={form.paymentMethod} onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))} />
+            </DirectorField>
+            <DirectorField label="Մեկնաբանություն">
+              <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
+            </DirectorField>
+          </DirectorRecordFormDialog>
         </>
       )}
     </DirectorLayout>

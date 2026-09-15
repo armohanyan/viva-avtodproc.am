@@ -28,6 +28,8 @@ type Props<T> = {
   rowKey: (row: T) => string | number;
   searchPlaceholder?: string;
   emptyMessage?: string;
+  /** e.g. add-record button shown in the table toolbar */
+  toolbarActions?: ReactNode;
 };
 
 function SortIcon({ active, dir }: { active: boolean; dir: DirectorTableSortDir }) {
@@ -41,6 +43,7 @@ export default function DirectorDataTable<T>({
   rowKey,
   searchPlaceholder = "Որոնել…",
   emptyMessage = "Գրառումներ չկան",
+  toolbarActions,
 }: Props<T>) {
   const {
     search,
@@ -62,7 +65,9 @@ export default function DirectorDataTable<T>({
 
   return (
     <div className="mt-6 rounded-lg border border-border overflow-hidden bg-card">
-      <DataTableToolbar value={search} onChange={setSearch} placeholder={searchPlaceholder} />
+      <DataTableToolbar value={search} onChange={setSearch} placeholder={searchPlaceholder}>
+        {toolbarActions}
+      </DataTableToolbar>
       <DirectorTableWrap className="mt-0 border-0 rounded-none">
         <DirectorTableHead>
           {columns.map((col) => {

@@ -3,15 +3,14 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
-import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorAddRecordButton from "src/modules/director/components/DirectorAddRecordButton";
+import DirectorRecordFormDialog from "src/modules/director/components/DirectorRecordFormDialog";
 import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director/components/DirectorSectionNav";
 import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorCard,
   DirectorField,
-  DirectorFormRow,
   DirectorInput,
   DirectorSelect,
   DirectorStatCard,
@@ -59,6 +58,7 @@ export default function DirectorKmPage() {
   const [rows, setRows] = useState<DirectorKm[]>([]);
   const { branches } = useBranches();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
@@ -90,6 +90,16 @@ export default function DirectorKmPage() {
     setForm({ date: todayIso(), instructorUserId: "", km: "" });
   };
 
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
   const submit = async () => {
     try {
       const body = {
@@ -105,7 +115,7 @@ export default function DirectorKmPage() {
         await createDirectorKm(body);
         showToast("Գրանցված է", "success");
       }
-      resetForm();
+      closeForm();
       reload();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
@@ -119,6 +129,7 @@ export default function DirectorKmPage() {
       instructorUserId: row.instructorUserId != null ? String(row.instructorUserId) : "",
       km: String(row.km),
     });
+    setFormOpen(true);
   };
 
   const kmByMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.km), [rows]);
@@ -198,31 +209,36 @@ export default function DirectorKmPage() {
         </DirectorReportSection>
       ) : (
         <>
-          <DirectorCard>
-            <DirectorFormRow>
-              <DirectorField label="Ամսաթիվ">
-                <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Հրահանգիչ">
-                <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
-                  <option value="">—</option>
-                  {instructors.map((i) => (
-                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
-                  ))}
-                </DirectorSelect>
-              </DirectorField>
-              <DirectorField label="ԿՄ">
-                <DirectorInput value={form.km} onChange={(e) => setForm((f) => ({ ...f, km: e.target.value }))} />
-              </DirectorField>
-              <DirectorFormActions
-                editing={editingId != null}
-                createLabel="Գրանցել ԿՄ"
-                onSubmit={() => void submit()}
-                onCancel={resetForm}
-              />
-            </DirectorFormRow>
-          </DirectorCard>
-          <DirectorDataTable table={table} columns={tableColumns} rowKey={(r) => r.id} />
+          <DirectorDataTable
+            table={table}
+            columns={tableColumns}
+            rowKey={(r) => r.id}
+            toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
+          />
+          <DirectorRecordFormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            title={editingId != null ? "Խմբագրել ԿՄ" : "Նոր ԿՄ"}
+            editing={editingId != null}
+            createLabel="Գրանցել ԿՄ"
+            onSubmit={() => void submit()}
+            onCancel={closeForm}
+          >
+            <DirectorField label="Ամսաթիվ">
+              <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Հրահանգիչ">
+              <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
+                <option value="">—</option>
+                {instructors.map((i) => (
+                  <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
+                ))}
+              </DirectorSelect>
+            </DirectorField>
+            <DirectorField label="ԿՄ">
+              <DirectorInput value={form.km} onChange={(e) => setForm((f) => ({ ...f, km: e.target.value }))} />
+            </DirectorField>
+          </DirectorRecordFormDialog>
         </>
       )}
     </DirectorLayout>

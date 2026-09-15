@@ -2,6 +2,7 @@ import type { NextFunction, Response } from 'express';
 import { z } from 'zod';
 import type { DirectorOptionCategory } from '../constants/director-option-category';
 import { DIRECTOR_OPTION_CATEGORIES } from '../constants/director-option-category';
+import { DIRECTOR_CASH_DIRECTIONS } from '../constants/director-cash-direction';
 import { DIRECTOR_PAYMENT_METHODS } from '../constants/director-payment-method';
 import { parseBody, resolveBranchIdFilter } from '../helpers';
 import {
@@ -88,7 +89,7 @@ export default class DirectorController {
   static async listCash(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const data = await DirectorService.listCash(await resolveRange(req));
-      SuccessHandlerUtil.handleList(res, next, data);
+      SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);
     }
@@ -100,8 +101,8 @@ export default class DirectorController {
         z.object({
           date: directorDateField,
           branchId: directorOptionalIdField,
-          entryType: directorTextField,
-          amount: directorAmdField,
+          direction: z.enum(DIRECTOR_CASH_DIRECTIONS),
+          amount: directorAmdField.pipe(z.number().int().positive()),
           comment: directorCommentField.optional(),
         }),
         req.body,
@@ -128,8 +129,8 @@ export default class DirectorController {
         z.object({
           date: directorDateField,
           branchId: directorOptionalIdField,
-          entryType: directorTextField,
-          amount: directorAmdField,
+          direction: z.enum(DIRECTOR_CASH_DIRECTIONS),
+          amount: directorAmdField.pipe(z.number().int().positive()),
           comment: directorCommentField.optional(),
         }),
         req.body,

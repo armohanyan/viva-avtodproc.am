@@ -11,11 +11,9 @@ export default function DirectorFormActions({ editing, createLabel, onSubmit, on
   return (
     <div className="flex flex-wrap gap-2 self-start">
       <DirectorButton onClick={onSubmit}>{editing ? "Պահպանել" : createLabel}</DirectorButton>
-      {editing ? (
-        <DirectorButton variant="ghost" onClick={onCancel}>
-          Չեղարկել
-        </DirectorButton>
-      ) : null}
+      <DirectorButton variant="ghost" onClick={onCancel}>
+        Չեղարկել
+      </DirectorButton>
     </div>
   );
 }

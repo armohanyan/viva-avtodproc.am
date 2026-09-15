@@ -1,6 +1,8 @@
 import { vivaApiJson } from "src/lib/vivaApi";
 import type {
+  DirectorCashDirection,
   DirectorCashEntry,
+  DirectorCashSummary,
   DirectorDashboard,
   DirectorMonthlyReport,
   DirectorDriverProfile,
@@ -84,15 +86,55 @@ export async function fetchDirectorMonthlyReport(q: string): Promise<DirectorMon
   return vivaApiJson<DirectorMonthlyReport>(`${BASE}/reports/monthly?${q}`);
 }
 
-export async function fetchDirectorCash(q: string): Promise<DirectorCashEntry[]> {
-  return vivaApiJson<DirectorCashEntry[]>(`${BASE}/cash?${q}`);
+export async function fetchDirectorCash(q: string): Promise<DirectorCashSummary> {
+  const data = await vivaApiJson<DirectorCashSummary>(`${BASE}/cash?${q}`);
+  const entries = Array.isArray(data?.entries)
+    ? data.entries.map((e) => ({
+        ...e,
+        source: e.source ?? "manual",
+        sourceId: e.sourceId ?? e.id,
+        readOnly:
+          Boolean(e.readOnly) ||
+          e.source === "finance" ||
+          e.source === "expense" ||
+          e.source === "fuel" ||
+          e.source === "repair",
+        paymentMethod: e.paymentMethod === "cash" ? "cash" : "card",
+        amount: Number(e.amount) || 0,
+      }))
+    : [];
+  return {
+    entries,
+    balance: Number(data?.balance) || 0,
+    periodIn: Number(data?.periodIn) || 0,
+    periodOut: Number(data?.periodOut) || 0,
+    periodCashIn: Number(data?.periodCashIn) || 0,
+    periodCardIn: Number(data?.periodCardIn) || 0,
+    periodCashOut: Number(data?.periodCashOut) || 0,
+    periodCardOut: Number(data?.periodCardOut) || 0,
+  };
 }
 
-export async function createDirectorCash(body: Omit<DirectorCashEntry, "id">): Promise<DirectorCashEntry> {
+export async function createDirectorCash(body: {
+  date: string;
+  branchId: number | null;
+  direction: DirectorCashDirection;
+  amount: number;
+  comment: string | null;
+}): Promise<DirectorCashEntry> {
   return vivaApiJson<DirectorCashEntry>(`${BASE}/cash`, { method: "POST", body });
 }
 
-export async function updateDirectorCash(id: number, body: Omit<DirectorCashEntry, "id">): Promise<DirectorCashEntry> {
+export async function updateDirectorCash(
+  id: number,
+  body: {
+    date: string;
+    branchId: number | null;
+    direction: DirectorCashDirection;
+    amount: number;
+    comment: string | null;
+  },
+): Promise<DirectorCashEntry> {
   return vivaApiJson<DirectorCashEntry>(`${BASE}/cash/${id}`, { method: "PATCH", body });
 }
 

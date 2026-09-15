@@ -4,7 +4,8 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
-import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorAddRecordButton from "src/modules/director/components/DirectorAddRecordButton";
+import DirectorRecordFormDialog from "src/modules/director/components/DirectorRecordFormDialog";
 import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director/components/DirectorSectionNav";
 import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
@@ -21,9 +22,7 @@ import {
 } from "src/components/ui/dialog";
 import {
   DirectorButton,
-  DirectorCard,
   DirectorField,
-  DirectorFormRow,
   DirectorInput,
   DirectorStatCard,
   DirectorStatGrid,
@@ -403,6 +402,7 @@ function SalaryRecordsView({
   const [payments, setPayments] = useState<DirectorSalaryPayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [rows, setRows] = useState<DirectorSalary[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
@@ -461,6 +461,16 @@ function SalaryRecordsView({
     });
   };
 
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
   const submit = async () => {
     try {
       const totalAmd = computedTotal || directorAmd(form.hourlyRate);
@@ -480,7 +490,7 @@ function SalaryRecordsView({
         await createDirectorSalary(body);
         showToast("Գրանցված է", "success");
       }
-      resetForm();
+      closeForm();
       reload();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
@@ -497,6 +507,7 @@ function SalaryRecordsView({
       hourlyRate: row.hourlyRate != null ? String(row.hourlyRate) : "",
       comment: row.comment ?? "",
     });
+    setFormOpen(true);
   };
 
   const tableColumns = useMemo(
@@ -618,42 +629,47 @@ function SalaryRecordsView({
       </DirectorTableWrap>
 
       <h2 className="text-sm font-semibold text-foreground mt-8 mb-3">Ձեռքով գրանցումներ</h2>
-      <DirectorCard>
-        <DirectorFormRow>
-          <DirectorField label="Ամսաթիվ">
-            <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-          </DirectorField>
-          <DirectorField label="Անուն">
-            <DirectorInput value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-          </DirectorField>
-          <DirectorField label="Դեր">
-            <DirectorDynamicSelect
-              category={DIRECTOR_OPTION_CATEGORY.salRole}
-              value={form.role}
-              onChange={(role) => setForm((f) => ({ ...f, role }))}
-            />
-          </DirectorField>
-          <DirectorField label="Ժամ">
-            <DirectorInput value={form.hours} onChange={(e) => setForm((f) => ({ ...f, hours: e.target.value }))} />
-          </DirectorField>
-          <DirectorField label="Ժամավճար">
-            <DirectorInput value={form.hourlyRate} onChange={(e) => setForm((f) => ({ ...f, hourlyRate: e.target.value }))} />
-          </DirectorField>
-          <DirectorField label="Ընդամենը">
-            <DirectorInput value={computedTotal ? String(computedTotal) : ""} readOnly />
-          </DirectorField>
-          <DirectorField label="Մեկնաբանություն">
-            <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
-          </DirectorField>
-          <DirectorFormActions
-            editing={editingId != null}
-            createLabel="Գրանցել աշխատավարձ"
-            onSubmit={() => void submit()}
-            onCancel={resetForm}
+      <DirectorDataTable
+        table={table}
+        columns={tableColumns}
+        rowKey={(r) => r.id}
+        toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
+      />
+      <DirectorRecordFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        title={editingId != null ? "Խմբագրել աշխատավարձ" : "Նոր աշխատավարձ"}
+        editing={editingId != null}
+        createLabel="Գրանցել աշխատավարձ"
+        onSubmit={() => void submit()}
+        onCancel={closeForm}
+      >
+        <DirectorField label="Ամսաթիվ">
+          <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+        </DirectorField>
+        <DirectorField label="Անուն">
+          <DirectorInput value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        </DirectorField>
+        <DirectorField label="Դեր">
+          <DirectorDynamicSelect
+            category={DIRECTOR_OPTION_CATEGORY.salRole}
+            value={form.role}
+            onChange={(role) => setForm((f) => ({ ...f, role }))}
           />
-        </DirectorFormRow>
-      </DirectorCard>
-      <DirectorDataTable table={table} columns={tableColumns} rowKey={(r) => r.id} />
+        </DirectorField>
+        <DirectorField label="Ժամ">
+          <DirectorInput value={form.hours} onChange={(e) => setForm((f) => ({ ...f, hours: e.target.value }))} />
+        </DirectorField>
+        <DirectorField label="Ժամավճար">
+          <DirectorInput value={form.hourlyRate} onChange={(e) => setForm((f) => ({ ...f, hourlyRate: e.target.value }))} />
+        </DirectorField>
+        <DirectorField label="Ընդամենը">
+          <DirectorInput value={computedTotal ? String(computedTotal) : ""} readOnly />
+        </DirectorField>
+        <DirectorField label="Մեկնաբանություն">
+          <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
+        </DirectorField>
+      </DirectorRecordFormDialog>
     </>
   );
 }

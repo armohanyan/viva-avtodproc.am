@@ -30,10 +30,8 @@ const EMPTY: DirectorDashboard = {
   totalExpense: 0,
   fuel: 0,
   salaryTotal: 0,
-  cashBalance: 0,
   instructorHours: 0,
   instructorSalary: 0,
-  incashment: 0,
   fuelLiters: 0,
 };
 
@@ -123,10 +121,8 @@ export default function DirectorDashboardPage() {
         <DirectorStatCard label="Ընդհանուր ծախս" value={formatAmd(data.totalExpense)} />
         <DirectorStatCard label="Վառելիք" value={formatAmd(data.fuel)} />
         <DirectorStatCard label="Աշխատավարձ ընդհանուր" value={formatAmd(data.salaryTotal)} />
-        <DirectorStatCard label="Կասսայի մնացորդ" value={formatAmd(data.cashBalance)} />
         <DirectorStatCard label="Հրահանգիչների դաս" value={formatDirectorLessonSlots(data.instructorHours)} />
         <DirectorStatCard label="Հրահանգիչների աշխատավարձ" value={formatAmd(data.instructorSalary)} />
-        <DirectorStatCard label="Ինկասացիա" value={formatAmd(data.incashment)} />
         <DirectorStatCard label="Վառելիք լիտր" value={data.fuelLiters.toFixed(1)} />
       </DirectorStatGrid>
 

@@ -4,15 +4,14 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
-import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorAddRecordButton from "src/modules/director/components/DirectorAddRecordButton";
+import DirectorRecordFormDialog from "src/modules/director/components/DirectorRecordFormDialog";
 import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director/components/DirectorSectionNav";
 import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorCard,
   DirectorField,
-  DirectorFormRow,
   DirectorInput,
   DirectorSelect,
   DirectorTextarea,
@@ -54,6 +53,7 @@ export default function DirectorRepairPage() {
   const { start, end, setStart, setEnd, query, branchFilterRevision } = useDirectorDateRange();
   const [rows, setRows] = useState<DirectorRepair[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
@@ -61,7 +61,7 @@ export default function DirectorRepairPage() {
     licensePlate: "",
     workDone: "",
     amount: "",
-    paymentMethod: "card" as DirectorPaymentMethod,
+    paymentMethod: "cash" as DirectorPaymentMethod,
     comment: "",
   });
 
@@ -97,9 +97,19 @@ export default function DirectorRepairPage() {
       licensePlate: "",
       workDone: "",
       amount: "",
-      paymentMethod: "card" as DirectorPaymentMethod,
+      paymentMethod: "cash" as DirectorPaymentMethod,
       comment: "",
     });
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setFormOpen(true);
   };
 
   const submit = async () => {
@@ -120,7 +130,7 @@ export default function DirectorRepairPage() {
         await createDirectorRepair(body);
         showToast("Գրանցված է", "success");
       }
-      resetForm();
+      closeForm();
       reload();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
@@ -138,6 +148,7 @@ export default function DirectorRepairPage() {
       paymentMethod: row.paymentMethod,
       comment: row.comment ?? "",
     });
+    setFormOpen(true);
   };
 
   const byMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.amount), [rows]);
@@ -237,43 +248,48 @@ export default function DirectorRepairPage() {
         </DirectorReportSection>
       ) : (
         <>
-          <DirectorCard>
-            <DirectorFormRow>
-              <DirectorField label="Ամսաթիվ">
-                <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Մեքենա">
-                <DirectorSelect value={form.carId} onChange={(e) => setForm((f) => ({ ...f, carId: e.target.value }))}>
-                  <option value="">—</option>
-                  {cars.map((c) => (
-                    <option key={c.id} value={String(c.id)}>{c.label}</option>
-                  ))}
-                </DirectorSelect>
-              </DirectorField>
-              <DirectorField label="Պետհամարանիշ">
-                <DirectorInput value={form.licensePlate} onChange={(e) => setForm((f) => ({ ...f, licensePlate: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Ինչ է արվել">
-                <DirectorInput value={form.workDone} onChange={(e) => setForm((f) => ({ ...f, workDone: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Գումար">
-                <DirectorInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Վճարում">
-                <DirectorPaymentSelect value={form.paymentMethod} onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))} />
-              </DirectorField>
-              <DirectorField label="Մեկնաբանություն">
-                <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
-              </DirectorField>
-              <DirectorFormActions
-                editing={editingId != null}
-                createLabel="Գրանցել վերանորոգում"
-                onSubmit={() => void submit()}
-                onCancel={resetForm}
-              />
-            </DirectorFormRow>
-          </DirectorCard>
-          <DirectorDataTable table={table} columns={tableColumns} rowKey={(r) => r.id} />
+          <DirectorDataTable
+            table={table}
+            columns={tableColumns}
+            rowKey={(r) => r.id}
+            toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
+          />
+          <DirectorRecordFormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            title={editingId != null ? "Խմբագրել վերանորոգում" : "Նոր վերանորոգում"}
+            editing={editingId != null}
+            createLabel="Գրանցել վերանորոգում"
+            onSubmit={() => void submit()}
+            onCancel={closeForm}
+          >
+            <DirectorField label="Ամսաթիվ">
+              <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Մեքենա">
+              <DirectorSelect value={form.carId} onChange={(e) => setForm((f) => ({ ...f, carId: e.target.value }))}>
+                <option value="">—</option>
+                {cars.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.label}</option>
+                ))}
+              </DirectorSelect>
+            </DirectorField>
+            <DirectorField label="Պետհամարանիշ">
+              <DirectorInput value={form.licensePlate} onChange={(e) => setForm((f) => ({ ...f, licensePlate: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Ինչ է արվել">
+              <DirectorInput value={form.workDone} onChange={(e) => setForm((f) => ({ ...f, workDone: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Գումար">
+              <DirectorInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Վճարում">
+              <DirectorPaymentSelect value={form.paymentMethod} onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))} />
+            </DirectorField>
+            <DirectorField label="Մեկնաբանություն">
+              <DirectorTextarea rows={3} value={form.comment} onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))} />
+            </DirectorField>
+          </DirectorRecordFormDialog>
         </>
       )}
     </DirectorLayout>

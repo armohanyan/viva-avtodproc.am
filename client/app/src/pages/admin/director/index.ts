@@ -4,7 +4,9 @@ export { default as DirectorExpensesPage } from "./DirectorExpenses";
 export { default as DirectorRepairPage } from "./DirectorRepair";
 export { default as DirectorFuelPage } from "./DirectorFuel";
 export { default as DirectorKmPage } from "./DirectorKm";
-export { default as DirectorInstructorHoursPage } from "./DirectorInstructorHours";
 export { default as DirectorDriverProfilePage } from "./DirectorDriverProfile";
 export { default as DirectorSalaryPage } from "./DirectorSalary";
-export { DirectorRedirectFuelKmToFuel } from "./DirectorLegacyRedirects";
+export {
+  DirectorRedirectFuelKmToFuel,
+  DirectorRedirectInstructorHoursToDriverProfile,
+} from "./DirectorLegacyRedirects";

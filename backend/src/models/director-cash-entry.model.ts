@@ -1,7 +1,8 @@
 import { DataTypes, Model, type CreationOptional, type InferAttributes, type InferCreationAttributes } from 'sequelize';
 import { sequelize } from '../database/sequelize';
-import { autoIncrementPk, fkUnsignedInt, fkUnsignedIntNullable } from './auto-id';
+import { autoIncrementPk, fkUnsignedIntNullable } from './auto-id';
 
+/** Cash register movement. `amount` is signed: positive = in, negative = out. */
 export class DirectorCashEntry extends Model<
   InferAttributes<DirectorCashEntry>,
   InferCreationAttributes<DirectorCashEntry>

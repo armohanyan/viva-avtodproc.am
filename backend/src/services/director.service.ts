@@ -5,6 +5,12 @@ import {
   DIRECTOR_OPTION_DEFAULTS,
 } from '../constants/director-option-category';
 import type { DirectorPaymentMethod } from '../constants/director-payment-method';
+import {
+  directorCashDirectionFromAmount,
+  directorCashEntryType,
+  directorCashSignedAmount,
+  type DirectorCashDirection,
+} from '../constants/director-cash-direction';
 import { DirectorCashEntry } from '../models/director-cash-entry.model';
 import { DirectorExpense } from '../models/director-expense.model';
 import { DirectorFuel } from '../models/director-fuel.model';
@@ -68,6 +74,204 @@ function dateWhere(range: DateRange): WhereOptions {
     };
   }
   return base;
+}
+
+function cashBranchWhere(branchId?: number | null): WhereOptions {
+  if (branchId == null) return {};
+  return { [Op.or]: [{ branchId }, { branchId: null }] };
+}
+
+function yerevanDateIso(value: Date | string | null | undefined): string | null {
+  const d = value instanceof Date ? value : value ? new Date(value) : null;
+  if (d == null || Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
+type CashLedgerPaymentMethod = 'card' | 'cash';
+
+type CashLedgerRow = {
+  id: number;
+  source: 'manual' | 'finance' | 'expense' | 'fuel' | 'repair';
+  sourceId: number;
+  readOnly: boolean;
+  date: string;
+  branchId: number | null;
+  direction: DirectorCashDirection;
+  paymentMethod: CashLedgerPaymentMethod;
+  amount: number;
+  comment: string | null;
+};
+
+function normalizeCashLedgerPayment(raw: unknown): CashLedgerPaymentMethod {
+  return raw === 'cash' ? 'cash' : 'card';
+}
+
+function serializeManualCashEntry(row: {
+  id: number;
+  date: string;
+  branchId: number | null;
+  amount: number;
+  comment: string | null;
+}): CashLedgerRow {
+  const signed = num(row.amount);
+  return {
+    id: row.id,
+    source: 'manual',
+    sourceId: row.id,
+    readOnly: false,
+    date: row.date,
+    branchId: row.branchId,
+    direction: directorCashDirectionFromAmount(signed),
+    paymentMethod: 'cash',
+    amount: Math.abs(signed),
+    comment: row.comment,
+  };
+}
+
+function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
+  const createdRaw = (tx as unknown as { createdAt?: Date | string }).createdAt;
+  const date = yerevanDateIso(createdRaw);
+  if (!date) return null;
+  const amount = Math.abs(num(tx.grossAmd));
+  if (amount <= 0) return null;
+  const direction: DirectorCashDirection = tx.entryType === 'expense' ? 'out' : 'in';
+  const customer = (tx.customer ?? '').trim();
+  const description = (tx.description ?? '').trim();
+  const comment = [customer, description].filter(Boolean).join(' · ') || null;
+  return {
+    id: -tx.id,
+    source: 'finance',
+    sourceId: tx.id,
+    readOnly: true,
+    date,
+    branchId: tx.branchId ?? null,
+    direction,
+    paymentMethod: normalizeCashLedgerPayment(tx.method),
+    amount,
+    comment,
+  };
+}
+
+function serializeDirectorCashExpense(row: {
+  id: number;
+  date: string;
+  branchId: number | null;
+  expType: string;
+  amount: number;
+  paymentMethod?: string | null;
+  comment: string | null;
+}): CashLedgerRow | null {
+  const amount = Math.abs(num(row.amount));
+  if (amount <= 0) return null;
+  const note = (row.comment ?? '').trim();
+  return {
+    id: -(1_000_000_000 + row.id),
+    source: 'expense',
+    sourceId: row.id,
+    readOnly: true,
+    date: row.date,
+    branchId: row.branchId,
+    direction: 'out',
+    paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
+    amount,
+    comment: note ? `${row.expType} · ${note}` : row.expType,
+  };
+}
+
+function serializeDirectorCashFuel(row: {
+  id: number;
+  date: string;
+  fuelType: string;
+  amount: number;
+  paymentMethod?: string | null;
+}): CashLedgerRow | null {
+  const amount = Math.abs(num(row.amount));
+  if (amount <= 0) return null;
+  return {
+    id: -(2_000_000_000 + row.id),
+    source: 'fuel',
+    sourceId: row.id,
+    readOnly: true,
+    date: row.date,
+    branchId: null,
+    direction: 'out',
+    paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
+    amount,
+    comment: `Վառելիք · ${row.fuelType}`,
+  };
+}
+
+function serializeDirectorCashRepair(row: {
+  id: number;
+  date: string;
+  workDone: string;
+  licensePlate: string | null;
+  amount: number;
+  paymentMethod?: string | null;
+  comment: string | null;
+}): CashLedgerRow | null {
+  const amount = Math.abs(num(row.amount));
+  if (amount <= 0) return null;
+  const plate = (row.licensePlate ?? '').trim();
+  const work = (row.workDone ?? '').trim() || 'Վերանորոգում';
+  const note = (row.comment ?? '').trim();
+  const parts = [plate ? `Վերանորոգում · ${plate}` : 'Վերանորոգում', work, note].filter(Boolean);
+  return {
+    id: -(3_000_000_000 + row.id),
+    source: 'repair',
+    sourceId: row.id,
+    readOnly: true,
+    date: row.date,
+    branchId: null,
+    direction: 'out',
+    paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
+    amount,
+    comment: parts.join(' · '),
+  };
+}
+
+function sortCashLedger(a: CashLedgerRow, b: CashLedgerRow): number {
+  const byDate = b.date.localeCompare(a.date);
+  if (byDate !== 0) return byDate;
+  return b.sourceId - a.sourceId;
+}
+
+function sumCashDirections(rows: readonly CashLedgerRow[]): {
+  periodIn: number;
+  periodOut: number;
+  periodCashIn: number;
+  periodCardIn: number;
+  periodCashOut: number;
+  periodCardOut: number;
+} {
+  let periodIn = 0;
+  let periodOut = 0;
+  let periodCashIn = 0;
+  let periodCardIn = 0;
+  let periodCashOut = 0;
+  let periodCardOut = 0;
+  for (const e of rows) {
+    if (e.direction === 'out') {
+      periodOut += e.amount;
+      if (e.paymentMethod === 'cash') periodCashOut += e.amount;
+      else periodCardOut += e.amount;
+    } else {
+      periodIn += e.amount;
+      if (e.paymentMethod === 'cash') periodCashIn += e.amount;
+      else periodCardIn += e.amount;
+    }
+  }
+  return { periodIn, periodOut, periodCashIn, periodCardIn, periodCashOut, periodCardOut };
+}
+
+function signedCashAmount(row: CashLedgerRow): number {
+  if (row.paymentMethod !== 'cash') return 0;
+  return row.direction === 'out' ? -row.amount : row.amount;
 }
 
 function monthsBetween(startDate: string, endDate: string): string[] {
@@ -144,27 +348,138 @@ export default class DirectorService {
   }
 
   static async listCash(range: DateRange) {
-    const rows = await DirectorCashEntry.findAll({
-      where: dateWhere(range),
-      order: [['date', 'DESC'], ['id', 'DESC']],
-    });
-    return rowJson(rows);
+    const { startAt, endAt } = yerevanRangeBounds(range.startDate, range.endDate);
+    const financeBranch =
+      range.branchId != null ? { branchId: range.branchId } : {};
+    const dateOnly = { date: { [Op.between]: [range.startDate, range.endDate] } };
+    const dateUntilEnd = { date: { [Op.lte]: range.endDate } };
+
+    const [
+      manualPeriod,
+      manualBalance,
+      financeTxs,
+      expensesPeriod,
+      expensesBalance,
+      fuelPeriodRows,
+      fuelBalanceRows,
+      repairPeriodRows,
+      repairBalanceRows,
+    ] = await Promise.all([
+      DirectorCashEntry.findAll({
+        where: dateWhere(range),
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      DirectorCashEntry.findAll({
+        where: {
+          date: { [Op.lte]: range.endDate },
+          ...cashBranchWhere(range.branchId),
+        },
+      }),
+      FinanceTransaction.findAll({
+        where: {
+          status: 'completed',
+          ...financeBranch,
+        },
+      }),
+      DirectorExpense.findAll({
+        where: dateWhere(range),
+      }),
+      DirectorExpense.findAll({
+        where: {
+          ...dateUntilEnd,
+          ...cashBranchWhere(range.branchId),
+        },
+      }),
+      DirectorFuel.findAll({ where: dateOnly }),
+      DirectorFuel.findAll({ where: dateUntilEnd }),
+      DirectorRepair.findAll({ where: dateOnly }),
+      DirectorRepair.findAll({ where: dateUntilEnd }),
+    ]);
+
+    const financePeriod: CashLedgerRow[] = [];
+    let financeCashBalanceSigned = 0;
+    for (const tx of financeTxs) {
+      const row = serializeFinanceCashTx(tx);
+      if (!row) continue;
+      const createdRaw = (tx as unknown as { createdAt?: Date | string }).createdAt;
+      const created = createdRaw instanceof Date ? createdRaw : createdRaw ? new Date(createdRaw) : null;
+      if (created != null && !Number.isNaN(created.getTime()) && created <= endAt) {
+        financeCashBalanceSigned += signedCashAmount(row);
+      }
+      if (created != null && financeTxInYerevanRange(tx, startAt, endAt)) {
+        financePeriod.push(row);
+      }
+    }
+
+    const expensePeriod = expensesPeriod
+      .map((r) => serializeDirectorCashExpense(r.toJSON()))
+      .filter((r): r is CashLedgerRow => r != null);
+    const fuelPeriod = fuelPeriodRows
+      .map((r) => serializeDirectorCashFuel(r.toJSON()))
+      .filter((r): r is CashLedgerRow => r != null);
+    const repairPeriod = repairPeriodRows
+      .map((r) => serializeDirectorCashRepair(r.toJSON()))
+      .filter((r): r is CashLedgerRow => r != null);
+
+    const expenseCashBalanceOut = expensesBalance
+      .filter((r) => normalizeCashLedgerPayment(r.paymentMethod) === 'cash')
+      .reduce((s, r) => s + Math.abs(num(r.amount)), 0);
+    const fuelCashBalanceOut = fuelBalanceRows
+      .filter((r) => normalizeCashLedgerPayment(r.paymentMethod) === 'cash')
+      .reduce((s, r) => s + Math.abs(num(r.amount)), 0);
+    const repairCashBalanceOut = repairBalanceRows
+      .filter((r) => normalizeCashLedgerPayment(r.paymentMethod) === 'cash')
+      .reduce((s, r) => s + Math.abs(num(r.amount)), 0);
+
+    const manualPeriodRows = manualPeriod.map((r) => serializeManualCashEntry(r.toJSON()));
+    const entries = [
+      ...financePeriod,
+      ...expensePeriod,
+      ...fuelPeriod,
+      ...repairPeriod,
+      ...manualPeriodRows,
+    ].sort(sortCashLedger);
+    const totals = sumCashDirections(entries);
+    const manualBalanceSigned = manualBalance.reduce((s, r) => s + num(r.amount), 0);
+    const balance =
+      manualBalanceSigned +
+      financeCashBalanceSigned -
+      expenseCashBalanceOut -
+      fuelCashBalanceOut -
+      repairCashBalanceOut;
+
+    return {
+      entries,
+      balance,
+      ...totals,
+    };
   }
 
   static async createCash(
     input: {
       date: string;
       branchId: number | null;
-      entryType: string;
+      direction: DirectorCashDirection;
       amount: number;
       comment?: string | null;
     },
     createdByUserId?: number,
   ) {
-    return DirectorCashEntry.create({ ...input, createdByUserId: createdByUserId ?? null });
+    const row = await DirectorCashEntry.create({
+      date: input.date,
+      branchId: input.branchId,
+      entryType: directorCashEntryType(input.direction),
+      amount: directorCashSignedAmount(input.direction, input.amount),
+      comment: input.comment ?? null,
+      createdByUserId: createdByUserId ?? null,
+    });
+    return serializeManualCashEntry(row.toJSON());
   }
 
   static async deleteCash(id: number) {
+    if (!(id > 0)) {
+      throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
     const row = await DirectorCashEntry.findByPk(id);
     if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
     await row.destroy();
@@ -175,15 +490,24 @@ export default class DirectorService {
     input: {
       date: string;
       branchId: number | null;
-      entryType: string;
+      direction: DirectorCashDirection;
       amount: number;
       comment?: string | null;
     },
   ) {
+    if (!(id > 0)) {
+      throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
     const row = await DirectorCashEntry.findByPk(id);
     if (!row) throw new ResourceNotFoundError('Record not found', HttpStatusCodesUtil.NOT_FOUND);
-    await row.update(input);
-    return row;
+    await row.update({
+      date: input.date,
+      branchId: input.branchId,
+      entryType: directorCashEntryType(input.direction),
+      amount: directorCashSignedAmount(input.direction, input.amount),
+      comment: input.comment ?? null,
+    });
+    return serializeManualCashEntry(row.toJSON());
   }
 
   static async listExpenses(range: DateRange) {
@@ -518,7 +842,6 @@ export default class DirectorService {
       fuel,
       salaries,
       instructorHours,
-      cashEntries,
       financeTxs,
       legacyExpenses,
       legacyFuel,
@@ -532,7 +855,6 @@ export default class DirectorService {
       DirectorFuel.findAll({ where: dateFilter }),
       DirectorSalary.findAll({ where: dateFilter }),
       DirectorInstructorHours.findAll({ where: dateFilter }),
-      DirectorCashEntry.findAll({ where: cashExpenseWhere }),
       FinanceTransaction.findAll({
         where: {
           entryType: 'income',
@@ -586,13 +908,9 @@ export default class DirectorService {
       legacySalaries
         .filter((s) => s.role === 'Հրահանգիչ')
         .reduce((acc, s) => acc + s.totalAmd, 0);
-    const incashmentTotal = cashEntries
-      .filter((c) => c.entryType.includes('Ինկասացի'))
-      .reduce((s, c) => s + Math.abs(c.amount), 0);
     const fuelLiters =
       fuel.reduce((s, f) => s + Number(f.liters), 0) +
       legacyFuel.reduce((s, f) => s + Number(f.liters), 0);
-    const cashBalance = cashEntries.reduce((s, c) => s + c.amount, 0);
 
     const netProfit = totalRevenue - totalExpense - fuelTotal - salaryTotal;
 
@@ -604,10 +922,8 @@ export default class DirectorService {
       totalExpense,
       fuel: fuelTotal,
       salaryTotal,
-      cashBalance,
       instructorHours: instructorHoursTotal,
       instructorSalary: instructorSalaryTotal,
-      incashment: incashmentTotal,
       fuelLiters,
     };
   }

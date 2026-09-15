@@ -43,8 +43,8 @@ export {
   DirectorRepairPage,
   DirectorFuelPage,
   DirectorKmPage,
-  DirectorInstructorHoursPage,
   DirectorDriverProfilePage,
   DirectorSalaryPage,
   DirectorRedirectFuelKmToFuel,
+  DirectorRedirectInstructorHoursToDriverProfile,
 } from "./director";

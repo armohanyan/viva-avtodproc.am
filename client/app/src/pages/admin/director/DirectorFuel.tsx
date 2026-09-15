@@ -5,15 +5,14 @@ import DirectorDateFilters, {
   useDirectorDateRange,
   useDirectorReload,
 } from "src/modules/director/components/DirectorDateFilters";
-import DirectorFormActions from "src/modules/director/components/DirectorFormActions";
+import DirectorAddRecordButton from "src/modules/director/components/DirectorAddRecordButton";
+import DirectorRecordFormDialog from "src/modules/director/components/DirectorRecordFormDialog";
 import DirectorRecordActions from "src/modules/director/components/DirectorRecordActions";
 import DirectorSectionNav, { useDirectorSectionView } from "src/modules/director/components/DirectorSectionNav";
 import DirectorDataTable from "src/modules/director/components/DirectorDataTable";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import {
-  DirectorCard,
   DirectorField,
-  DirectorFormRow,
   DirectorInput,
   DirectorSelect,
   DirectorStatCard,
@@ -68,6 +67,7 @@ export default function DirectorFuelPage() {
   const { branches } = useBranches();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [cars, setCars] = useState<CarOption[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     date: todayIso(),
@@ -76,7 +76,7 @@ export default function DirectorFuelPage() {
     fuelType: "Գազ",
     liters: "",
     amount: "",
-    paymentMethod: "card" as DirectorPaymentMethod,
+    paymentMethod: "cash" as DirectorPaymentMethod,
   });
 
   useEffect(() => {
@@ -108,8 +108,18 @@ export default function DirectorFuelPage() {
       fuelType: "Գազ",
       liters: "",
       amount: "",
-      paymentMethod: "card" as DirectorPaymentMethod,
+      paymentMethod: "cash" as DirectorPaymentMethod,
     });
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setFormOpen(true);
   };
 
   const submit = async () => {
@@ -130,7 +140,7 @@ export default function DirectorFuelPage() {
         await createDirectorFuel(body);
         showToast("Գրանցված է", "success");
       }
-      resetForm();
+      closeForm();
       reload();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
@@ -148,6 +158,7 @@ export default function DirectorFuelPage() {
       amount: String(row.amount),
       paymentMethod: row.paymentMethod,
     });
+    setFormOpen(true);
   };
 
   const fuelByMonth = useMemo(() => sumByMonth(rows, (r) => r.date, (r) => r.amount), [rows]);
@@ -252,52 +263,57 @@ export default function DirectorFuelPage() {
         </DirectorReportSection>
       ) : (
         <>
-          <DirectorCard>
-            <DirectorFormRow>
-              <DirectorField label="Ամսաթիվ">
-                <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Հրահանգիչ">
-                <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
-                  <option value="">—</option>
-                  {instructors.map((i) => (
-                    <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
-                  ))}
-                </DirectorSelect>
-              </DirectorField>
-              <DirectorField label="Մեքենա">
-                <DirectorSelect value={form.carId} onChange={(e) => setForm((f) => ({ ...f, carId: e.target.value }))}>
-                  <option value="">—</option>
-                  {cars.map((c) => (
-                    <option key={c.id} value={String(c.id)}>{c.plate || c.model}</option>
-                  ))}
-                </DirectorSelect>
-              </DirectorField>
-              <DirectorField label="Վառելիք">
-                <DirectorDynamicSelect
-                  category={DIRECTOR_OPTION_CATEGORY.fuelType}
-                  value={form.fuelType}
-                  onChange={(fuelType) => setForm((f) => ({ ...f, fuelType }))}
-                />
-              </DirectorField>
-              <DirectorField label="Լիտր">
-                <DirectorInput value={form.liters} onChange={(e) => setForm((f) => ({ ...f, liters: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Գումար">
-                <DirectorInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
-              </DirectorField>
-              <DirectorField label="Վճարում">
-                <DirectorPaymentSelect value={form.paymentMethod} onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))} />
-              </DirectorField>
-              <DirectorFormActions
-                editing={editingId != null}
-                createLabel="Գրանցել վառելիք"
-                onSubmit={() => void submit()}
-                onCancel={resetForm}
+          <DirectorDataTable
+            table={table}
+            columns={tableColumns}
+            rowKey={(r) => r.id}
+            toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
+          />
+          <DirectorRecordFormDialog
+            open={formOpen}
+            onOpenChange={setFormOpen}
+            title={editingId != null ? "Խմբագրել վառելիք" : "Նոր վառելիք"}
+            editing={editingId != null}
+            createLabel="Գրանցել վառելիք"
+            onSubmit={() => void submit()}
+            onCancel={closeForm}
+          >
+            <DirectorField label="Ամսաթիվ">
+              <DirectorInput type="date" value={form.date} onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Հրահանգիչ">
+              <DirectorSelect value={form.instructorUserId} onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}>
+                <option value="">—</option>
+                {instructors.map((i) => (
+                  <option key={i.id} value={String(i.id)}>{formatDirectorInstructorLabel(i, branches)}</option>
+                ))}
+              </DirectorSelect>
+            </DirectorField>
+            <DirectorField label="Մեքենա">
+              <DirectorSelect value={form.carId} onChange={(e) => setForm((f) => ({ ...f, carId: e.target.value }))}>
+                <option value="">—</option>
+                {cars.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.plate || c.model}</option>
+                ))}
+              </DirectorSelect>
+            </DirectorField>
+            <DirectorField label="Վառելիք">
+              <DirectorDynamicSelect
+                category={DIRECTOR_OPTION_CATEGORY.fuelType}
+                value={form.fuelType}
+                onChange={(fuelType) => setForm((f) => ({ ...f, fuelType }))}
               />
-            </DirectorFormRow>
-          </DirectorCard>
-          <DirectorDataTable table={table} columns={tableColumns} rowKey={(r) => r.id} />
+            </DirectorField>
+            <DirectorField label="Լիտր">
+              <DirectorInput value={form.liters} onChange={(e) => setForm((f) => ({ ...f, liters: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Գումար">
+              <DirectorInput value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} />
+            </DirectorField>
+            <DirectorField label="Վճարում">
+              <DirectorPaymentSelect value={form.paymentMethod} onChange={(paymentMethod) => setForm((f) => ({ ...f, paymentMethod }))} />
+            </DirectorField>
+          </DirectorRecordFormDialog>
         </>
       )}
     </DirectorLayout>

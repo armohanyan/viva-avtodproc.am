@@ -1,97 +1,40 @@
-export type DirectorNavChild = {
-  href: string;
-  label: string;
-};
-
 export type DirectorNavLink = {
   href: string;
   label: string;
-  children?: DirectorNavChild[];
 };
 
+/** Sidebar order for director room (in-page tabs stay on each section page). */
 export const DIRECTOR_NAV_LINKS: DirectorNavLink[] = [
   { href: "/admin/director", label: "Գլխավոր" },
-  {
-    href: "/admin/director/cash",
-    label: "Կասսա",
-    children: [
-      { href: "/admin/director/cash", label: "Հաշվետվություն" },
-      { href: "/admin/director/cash/records", label: "Տվյալներ" },
-    ],
-  },
-  {
-    href: "/admin/director/expenses",
-    label: "Ծախսեր",
-    children: [
-      { href: "/admin/director/expenses", label: "Հաշվետվություն" },
-      { href: "/admin/director/expenses/records", label: "Տվյալներ" },
-    ],
-  },
-  {
-    href: "/admin/director/repair",
-    label: "Վերանորոգում",
-    children: [
-      { href: "/admin/director/repair", label: "Հաշվետվություն" },
-      { href: "/admin/director/repair/records", label: "Տվյալներ" },
-    ],
-  },
-  {
-    href: "/admin/director/fuel",
-    label: "Վառելիք",
-    children: [
-      { href: "/admin/director/fuel", label: "Հաշվետվություն" },
-      { href: "/admin/director/fuel/records", label: "Տվյալներ" },
-    ],
-  },
-  {
-    href: "/admin/director/km",
-    label: "Կիլոմետրեր",
-    children: [
-      { href: "/admin/director/km", label: "Հաշվետվություն" },
-      { href: "/admin/director/km/records", label: "Տվյալներ" },
-    ],
-  },
-  {
-    href: "/admin/director/instructor-hours",
-    label: "Հրահանգիչների դասեր",
-    children: [
-      { href: "/admin/director/instructor-hours", label: "Հաշվետվություն" },
-      { href: "/admin/director/instructor-hours/records", label: "Տվյալներ" },
-    ],
-  },
-  {
-    href: "/admin/director/driver-profile",
-    label: "Վարորդի պրոֆիլ",
-    children: [
-      { href: "/admin/director/driver-profile", label: "Հաշվետվություն" },
-      { href: "/admin/director/driver-profile/records", label: "Օրական ցանկ" },
-    ],
-  },
-  {
-    href: "/admin/director/salary",
-    label: "Աշխատավարձ",
-    children: [
-      { href: "/admin/director/salary", label: "Հաշվետվություն" },
-      { href: "/admin/director/salary/records", label: "Տվյալներ" },
-    ],
-  },
+  { href: "/admin/director/cash", label: "Կասսա" },
+  { href: "/admin/director/expenses", label: "Ծախսեր" },
+  { href: "/admin/director/driver-profile", label: "Վարորդի պրոֆիլ" },
+  { href: "/admin/director/fuel", label: "Վառելիք" },
+  { href: "/admin/director/km", label: "Կիլոմետրեր" },
+  { href: "/admin/director/salary", label: "Աշխատավարձ" },
+  { href: "/admin/director/repair", label: "Վերանորոգում" },
 ];
 
-export function directorNavLabel(path: string): string {
-  for (const link of DIRECTOR_NAV_LINKS) {
-    if (link.href === path) return link.label;
-    for (const child of link.children ?? []) {
-      if (child.href === path) return `${link.label} · ${child.label}`;
-    }
+function directorNavMatch(path: string): DirectorNavLink | null {
+  // Longest href first so /admin/director does not swallow /admin/director/cash
+  const sorted = [...DIRECTOR_NAV_LINKS].sort((a, b) => b.href.length - a.href.length);
+  for (const link of sorted) {
+    if (path === link.href || path.startsWith(`${link.href}/`)) return link;
   }
-  return "Տնօրենի միջավայր";
+  return null;
+}
+
+export function directorNavLabel(path: string): string {
+  return directorNavMatch(path)?.label ?? "Տնօրենի միջավայր";
 }
 
 export function directorNavSectionBase(path: string): string | null {
-  for (const link of DIRECTOR_NAV_LINKS) {
-    if (path === link.href || path.startsWith(`${link.href}/`)) return link.href;
-  }
-  return null;
+  return directorNavMatch(path)?.href ?? null;
+}
+
+export function isDirectorNavActive(path: string, href: string): boolean {
+  if (href === "/admin/director") return path === "/admin/director";
+  return path === href || path.startsWith(`${href}/`);
 }
 
 export const DIRECTOR_PAYMENT_LABELS: Record<"card" | "cash", string> = {
@@ -99,10 +42,25 @@ export const DIRECTOR_PAYMENT_LABELS: Record<"card" | "cash", string> = {
   cash: "Կանխիկ",
 };
 
+export const DIRECTOR_CASH_DIRECTION_LABELS: Record<"in" | "out", string> = {
+  in: "Մուտք",
+  out: "Ելք",
+};
+
+export const DIRECTOR_CASH_SOURCE_LABELS: Record<
+  "manual" | "finance" | "expense" | "fuel" | "repair",
+  string
+> = {
+  manual: "Ձեռքով",
+  finance: "Վճարում",
+  expense: "Ծախս",
+  fuel: "Վառելիք",
+  repair: "Վերանորոգում",
+};
+
 export const DIRECTOR_OPTION_CATEGORY: Record<string, import("./director.types").DirectorOptionCategory> = {
   expType: "exp_type",
   salRole: "sal_role",
-  cashType: "cash_type",
   fuelType: "fuel_type",
 };
 
