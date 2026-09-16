@@ -9,6 +9,7 @@ router.use(requireSuperAdmin);
 
 router.get('/dashboard', DirectorController.dashboard);
 router.get('/reports/monthly', DirectorController.monthlyReport);
+router.get('/students/analytics', DirectorController.studentAnalytics);
 router.get('/options/:category', DirectorController.listOptions);
 router.post('/options/:category', DirectorController.addOption);
 

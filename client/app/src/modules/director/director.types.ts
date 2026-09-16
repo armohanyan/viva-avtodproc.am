@@ -26,6 +26,18 @@ export type DirectorMonthlyReport = {
   netProfit: number[];
 };
 
+export type DirectorStudentAnalytics = {
+  totalRealStudents: number;
+  registeredStudents: number;
+  newInPeriod: number;
+  monthlyReport: {
+    labels: string[];
+    newStudents: number[];
+  };
+  byBranch: DirectorChartPoint[];
+  registrationSplit: DirectorChartPoint[];
+};
+
 export type DirectorChartPoint = { label: string; value: number };
 
 export type DirectorCashEntry = {

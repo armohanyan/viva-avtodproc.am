@@ -285,6 +285,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/director/km": Gauge,
 		"/admin/director/salary": Banknote,
 		"/admin/director/repair": Wrench,
+		"/admin/director/students": GraduationCap,
 	};
 
 	const renderDirectorNavItem = (link: (typeof DIRECTOR_NAV_LINKS)[number], closeMobileNav: () => void) => {

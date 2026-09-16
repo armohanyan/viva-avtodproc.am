@@ -19,6 +19,7 @@ import type {
   DirectorSalaryPayment,
   DirectorSalaryReport,
   DirectorChartPoint,
+  DirectorStudentAnalytics,
 } from "./director.types";
 import { directorHoursNumber } from "./directorFormat";
 
@@ -84,6 +85,24 @@ export async function fetchDirectorDashboard(q: string): Promise<DirectorDashboa
 
 export async function fetchDirectorMonthlyReport(q: string): Promise<DirectorMonthlyReport> {
   return vivaApiJson<DirectorMonthlyReport>(`${BASE}/reports/monthly?${q}`);
+}
+
+export async function fetchDirectorStudentAnalytics(q: string): Promise<DirectorStudentAnalytics> {
+  const data = await vivaApiJson<DirectorStudentAnalytics>(`${BASE}/students/analytics?${q}`);
+  return {
+    ...data,
+    totalRealStudents: apiNumber(data.totalRealStudents),
+    registeredStudents: apiNumber(data.registeredStudents),
+    newInPeriod: apiNumber(data.newInPeriod),
+    monthlyReport: {
+      labels: Array.isArray(data.monthlyReport?.labels) ? data.monthlyReport.labels : [],
+      newStudents: Array.isArray(data.monthlyReport?.newStudents)
+        ? data.monthlyReport.newStudents.map(apiNumber)
+        : [],
+    },
+    byBranch: Array.isArray(data.byBranch) ? data.byBranch : [],
+    registrationSplit: Array.isArray(data.registrationSplit) ? data.registrationSplit : [],
+  };
 }
 
 export async function fetchDirectorCash(q: string): Promise<DirectorCashSummary> {

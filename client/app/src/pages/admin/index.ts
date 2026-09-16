@@ -45,6 +45,7 @@ export {
   DirectorKmPage,
   DirectorDriverProfilePage,
   DirectorSalaryPage,
+  DirectorStudentsPage,
   DirectorRedirectFuelKmToFuel,
   DirectorRedirectInstructorHoursToDriverProfile,
 } from "./director";

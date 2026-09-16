@@ -18,6 +18,7 @@ import {
 } from '../helpers/director-form.helper';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
 import DirectorService from '../services/director.service';
+import DirectorStudentAnalyticsService from '../services/director-student-analytics.service';
 import { SuccessHandlerUtil } from '../utils';
 
 const dateRangeSchema = z.object({
@@ -80,6 +81,16 @@ export default class DirectorController {
     try {
       const range = await resolveRange(req);
       const data = await DirectorService.monthlyReport(range);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async studentAnalytics(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const range = await resolveRange(req);
+      const data = await DirectorStudentAnalyticsService.analytics(range);
       SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);
