@@ -97,6 +97,37 @@ function yerevanDateIso(value: Date | string | null | undefined): string | null 
   }).format(d);
 }
 
+/** Yerevan local `YYYY-MM-DD HH:mm:ss` for cash ledger display/sort. */
+function yerevanDateTimeIso(value: Date | string | null | undefined): string | null {
+  const d = value instanceof Date ? value : value ? new Date(value) : null;
+  if (d == null || Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  const y = get('year');
+  const m = get('month');
+  const day = get('day');
+  const h = get('hour');
+  const min = get('minute');
+  const s = get('second');
+  if (!y || !m || !day) return null;
+  return `${y}-${m}-${day} ${h || '00'}:${min || '00'}:${s || '00'}`;
+}
+
+function occurredAtFromDateOnly(dateIso: string, createdAt?: Date | string | null): string {
+  const fromCreated = yerevanDateTimeIso(createdAt ?? null);
+  if (fromCreated && fromCreated.slice(0, 10) === dateIso.slice(0, 10)) return fromCreated;
+  return `${dateIso.slice(0, 10)} 00:00:00`;
+}
+
 type CashLedgerPaymentMethod = 'card' | 'cash';
 
 type CashLedgerRow = {
@@ -104,7 +135,10 @@ type CashLedgerRow = {
   source: 'manual' | 'finance' | 'expense' | 'fuel' | 'repair';
   sourceId: number;
   readOnly: boolean;
+  /** Calendar day in Yerevan (`YYYY-MM-DD`) used for day filters. */
   date: string;
+  /** Full payment/event time in Yerevan (`YYYY-MM-DD HH:mm:ss`). */
+  occurredAt: string;
   branchId: number | null;
   direction: DirectorCashDirection;
   paymentMethod: CashLedgerPaymentMethod;
@@ -125,18 +159,21 @@ function serializeManualCashEntry(row: {
   amount: number;
   comment: string | null;
   createdByUserId?: number | null;
+  createdAt?: Date | string | null;
 }): CashLedgerRow {
   const signed = num(row.amount);
   const performedByUserId =
     row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
       ? Number(row.createdByUserId)
       : null;
+  const date = row.date.slice(0, 10);
   return {
     id: row.id,
     source: 'manual',
     sourceId: row.id,
     readOnly: false,
-    date: row.date,
+    date,
+    occurredAt: occurredAtFromDateOnly(date, row.createdAt ?? null),
     branchId: row.branchId,
     direction: directorCashDirectionFromAmount(signed),
     paymentMethod: 'cash',
@@ -150,7 +187,8 @@ function serializeManualCashEntry(row: {
 function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
   const createdRaw = (tx as unknown as { createdAt?: Date | string }).createdAt;
   const date = yerevanDateIso(createdRaw);
-  if (!date) return null;
+  const occurredAt = yerevanDateTimeIso(createdRaw);
+  if (!date || !occurredAt) return null;
   const amount = Math.abs(num(tx.grossAmd));
   if (amount <= 0) return null;
   const direction: DirectorCashDirection = tx.entryType === 'expense' ? 'out' : 'in';
@@ -167,6 +205,7 @@ function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
     sourceId: tx.id,
     readOnly: true,
     date,
+    occurredAt,
     branchId: tx.branchId ?? null,
     direction,
     paymentMethod: normalizeCashLedgerPayment(tx.method),
@@ -187,6 +226,7 @@ function serializeBookingSlotCashRevenue(row: CashBookingRevenueRow): CashLedger
     sourceId: row.bookingId,
     readOnly: true,
     date: row.date,
+    occurredAt: row.occurredAt,
     branchId: row.branchId,
     direction: 'in',
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
@@ -206,6 +246,7 @@ function serializeDirectorCashExpense(row: {
   paymentMethod?: string | null;
   comment: string | null;
   createdByUserId?: number | null;
+  createdAt?: Date | string | null;
 }): CashLedgerRow | null {
   const amount = Math.abs(num(row.amount));
   if (amount <= 0) return null;
@@ -214,12 +255,14 @@ function serializeDirectorCashExpense(row: {
     row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
       ? Number(row.createdByUserId)
       : null;
+  const date = row.date.slice(0, 10);
   return {
     id: -(1_000_000_000 + row.id),
     source: 'expense',
     sourceId: row.id,
     readOnly: true,
-    date: row.date,
+    date,
+    occurredAt: occurredAtFromDateOnly(date, row.createdAt ?? null),
     branchId: row.branchId,
     direction: 'out',
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
@@ -237,6 +280,7 @@ function serializeDirectorCashFuel(row: {
   amount: number;
   paymentMethod?: string | null;
   createdByUserId?: number | null;
+  createdAt?: Date | string | null;
 }): CashLedgerRow | null {
   const amount = Math.abs(num(row.amount));
   if (amount <= 0) return null;
@@ -244,12 +288,14 @@ function serializeDirectorCashFuel(row: {
     row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
       ? Number(row.createdByUserId)
       : null;
+  const date = row.date.slice(0, 10);
   return {
     id: -(2_000_000_000 + row.id),
     source: 'fuel',
     sourceId: row.id,
     readOnly: true,
-    date: row.date,
+    date,
+    occurredAt: occurredAtFromDateOnly(date, row.createdAt ?? null),
     branchId: null,
     direction: 'out',
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
@@ -269,6 +315,7 @@ function serializeDirectorCashRepair(row: {
   paymentMethod?: string | null;
   comment: string | null;
   createdByUserId?: number | null;
+  createdAt?: Date | string | null;
 }): CashLedgerRow | null {
   const amount = Math.abs(num(row.amount));
   if (amount <= 0) return null;
@@ -280,12 +327,14 @@ function serializeDirectorCashRepair(row: {
     row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
       ? Number(row.createdByUserId)
       : null;
+  const date = row.date.slice(0, 10);
   return {
     id: -(3_000_000_000 + row.id),
     source: 'repair',
     sourceId: row.id,
     readOnly: true,
-    date: row.date,
+    date,
+    occurredAt: occurredAtFromDateOnly(date, row.createdAt ?? null),
     branchId: null,
     direction: 'out',
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
@@ -297,8 +346,8 @@ function serializeDirectorCashRepair(row: {
 }
 
 function sortCashLedger(a: CashLedgerRow, b: CashLedgerRow): number {
-  const byDate = b.date.localeCompare(a.date);
-  if (byDate !== 0) return byDate;
+  const byTime = b.occurredAt.localeCompare(a.occurredAt);
+  if (byTime !== 0) return byTime;
   return b.sourceId - a.sourceId;
 }
 

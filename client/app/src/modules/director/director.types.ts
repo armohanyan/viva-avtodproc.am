@@ -46,6 +46,8 @@ export type DirectorCashEntry = {
   sourceId: number;
   readOnly: boolean;
   date: string;
+  /** Yerevan local payment/event time: `YYYY-MM-DD HH:mm:ss`. */
+  occurredAt: string;
   branchId: number | null;
   direction: DirectorCashDirection;
   paymentMethod: DirectorPaymentMethod;

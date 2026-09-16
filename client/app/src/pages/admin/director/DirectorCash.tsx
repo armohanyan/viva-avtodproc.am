@@ -191,9 +191,9 @@ export default function DirectorCashPage() {
         id: "date",
         header: "Վճարման ամսաթիվ",
         sortable: true,
-        sortValue: (r: DirectorCashEntry) => r.date,
-        searchValue: (r: DirectorCashEntry) => r.date,
-        render: (r: DirectorCashEntry) => r.date,
+        sortValue: (r: DirectorCashEntry) => r.occurredAt || r.date,
+        searchValue: (r: DirectorCashEntry) => r.occurredAt || r.date,
+        render: (r: DirectorCashEntry) => r.occurredAt || r.date,
       },
       {
         id: "source",

@@ -107,6 +107,7 @@ export type CashBookingRevenueRow = {
   slotId: number | null;
   slotTime: string | null;
   date: string;
+  occurredAt: string;
   branchId: number;
   amount: number;
   paymentMethod: DirectorPaymentMethod;
@@ -124,6 +125,30 @@ function yerevanDateIsoFromInstant(value: Date | string | null | undefined): str
     month: '2-digit',
     day: '2-digit',
   }).format(d);
+}
+
+function yerevanDateTimeFromInstant(value: Date | string | null | undefined): string | null {
+  const d = value instanceof Date ? value : value ? new Date(value) : null;
+  if (d == null || Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '';
+  const y = get('year');
+  const m = get('month');
+  const day = get('day');
+  const h = get('hour');
+  const min = get('minute');
+  const s = get('second');
+  if (!y || !m || !day) return null;
+  return `${y}-${m}-${day} ${h || '00'}:${min || '00'}:${s || '00'}`;
 }
 
 export function isLegacyDirectorId(id: number): boolean {
@@ -465,10 +490,14 @@ export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBo
     if (resolved.paymentStatus !== 'paid' && resolved.paymentStatus !== 'partial') continue;
     const amount = recognizedIncomeAmd(booking);
     if (amount <= 0) continue;
+    const paidInstant =
+      booking.paidAt ??
+      (booking as unknown as { updatedAt?: Date | string }).updatedAt ??
+      null;
     const date =
-      yerevanDateIsoFromInstant(booking.paidAt) ||
-      yerevanDateIsoFromInstant((booking as unknown as { updatedAt?: Date | string }).updatedAt) ||
-      String(booking.dateIso).slice(0, 10);
+      yerevanDateIsoFromInstant(paidInstant) || String(booking.dateIso).slice(0, 10);
+    const occurredAt =
+      yerevanDateTimeFromInstant(paidInstant) || `${date} 00:00:00`;
     if (date < range.startDate || date > range.endDate) continue;
     if (!(booking.branchId > 0)) continue;
     const lessonType = String(booking.lessonType ?? '').trim().toLowerCase();
@@ -489,6 +518,7 @@ export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBo
       slotId: null,
       slotTime: String(booking.time ?? '').trim() || null,
       date,
+      occurredAt,
       branchId: booking.branchId,
       amount: Math.round(amount),
       paymentMethod: paymentMethodForBooking(booking.id, financeTxs),
@@ -498,7 +528,9 @@ export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBo
     });
   }
 
-  return rows.sort((a, b) => b.date.localeCompare(a.date) || b.bookingId - a.bookingId);
+  return rows.sort(
+    (a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.bookingId - a.bookingId,
+  );
 }
 
 function sortByDateDesc<T extends { date: string; id: number }>(rows: T[]): T[] {
