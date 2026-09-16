@@ -10,9 +10,7 @@ import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/T
 import TableSkeletonRows from "src/components/TableSkeletonRows";
 import { Skeleton } from "src/components/ui/skeleton";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Users, Calendar, TrendingUp, LayoutDashboard, Edit2, Trash2, Undo2 } from "lucide-react";
-import type { FinanceTx } from "src/pages/admin/finance/adminFinanceShared";
-import { dashboardRevenueAmdInPeriod } from "src/modules/admin/dashboard/adminDashboardKpi";
+import { LayoutDashboard, Edit2, Trash2 } from "lucide-react";
 import { useToast } from "src/lib/toast";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -21,20 +19,6 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { Button } from "src/components/ui/button";
-import {
-	yerevanTodayIso,
-	yerevanWeekRangeContaining,
-	yerevanMonthRangeContaining,
-	yerevanDateInInclusiveRange,
-	yerevanLocalRangeToUtcMsBounds,
-	yerevanCalendarDateFromInstant,
-} from "src/lib/yerevanLessonCalendar";
-
-const SLOT_LIKE = ["confirmed", "pending", "pending_prebook", "pending_payment", "completed"] as const;
-
-function isSlotReservingStatus(s: string): boolean {
-	return (SLOT_LIKE as readonly string[]).includes(s);
-}
 
 type BookingAdminRow = {
 	id: number;
@@ -53,7 +37,6 @@ type BookingAdminRow = {
 };
 
 type StudentMini = { id: string; name: string; joinedIso?: string };
-type KpiPeriod = "day" | "week" | "month";
 
 type RecentBookingRow = {
   id: number;
@@ -100,33 +83,20 @@ export default function AdminDashboard() {
   const [recentContactRequests, setRecentContactRequests] = useState<RecentContactRequestRow[]>([]);
   const [bookedCallsPage, setBookedCallsPage] = useState(1);
   const [contactRequestsPage, setContactRequestsPage] = useState(1);
-  const [kpiPeriod, setKpiPeriod] = useState<KpiPeriod>("day");
-  const [rawStudents, setRawStudents] = useState<StudentMini[]>([]);
-  const [rawBookings, setRawBookings] = useState<BookingAdminRow[]>([]);
-  const [rawTxs, setRawTxs] = useState<FinanceTx[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const [students, bookings, txs, bookedCalls, contactRequests] = await Promise.all([
+      const [students, bookings, bookedCalls, contactRequests] = await Promise.all([
         vivaApiJson<StudentMini[]>("/students"),
         vivaApiJson<BookingAdminRow[]>("/bookings"),
-        vivaApiJson<FinanceTx[]>("/finance/transactions"),
         vivaApiJson<RecentBookedCallRow[]>("/booked-calls"),
         vivaApiJson<RecentContactRequestRow[]>("/contact-requests"),
       ]);
       const studentRows = Array.isArray(students) ? students : [];
       const byStudent = new Map(studentRows.map((s) => [String(s.id), s.name]));
-      setRawStudents(
-        studentRows.map((s) => ({
-          id: String(s.id),
-          name: typeof s.name === "string" ? s.name : "",
-          joinedIso: typeof (s as { joinedIso?: string }).joinedIso === "string" ? (s as { joinedIso: string }).joinedIso : undefined,
-        })),
-      );
       const bookingList = Array.isArray(bookings) ? bookings : [];
-      setRawBookings(bookingList);
 
       const rows = bookingList.slice(0, 12).map((b) => ({
         id: typeof b.id === "number" ? b.id : Number(b.id),
@@ -140,13 +110,6 @@ export default function AdminDashboard() {
       setRecentBookingsData(rows);
       setRecentBookedCalls(Array.isArray(bookedCalls) ? bookedCalls : []);
       setRecentContactRequests(Array.isArray(contactRequests) ? contactRequests : []);
-      setRawTxs(
-        (Array.isArray(txs) ? txs : []).map((x) => ({
-          ...x,
-          entryType: (x as FinanceTx).entryType ?? "income",
-          expenseKind: (x as FinanceTx).expenseKind ?? null,
-        })),
-      );
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
     } finally {
@@ -157,66 +120,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard, branchFilterRevision]);
-
-  const kpiStats = useMemo(() => {
-    const todayY = yerevanTodayIso();
-    let start: string;
-    let end: string;
-    if (kpiPeriod === "day") {
-      start = todayY;
-      end = todayY;
-    } else if (kpiPeriod === "week") {
-      ({ start, end } = yerevanWeekRangeContaining(todayY));
-    } else {
-      ({ start, end } = yerevanMonthRangeContaining(todayY));
-    }
-    const { fromMs, toMs } = yerevanLocalRangeToUtcMsBounds(start, end);
-
-    const newStudents = rawStudents.filter((s) => {
-      if (!s.joinedIso?.trim()) return false;
-      const jd = yerevanCalendarDateFromInstant(s.joinedIso);
-      return yerevanDateInInclusiveRange(jd, start, end);
-    }).length;
-
-    const bookingsInPeriod = rawBookings.filter(
-      (b) => yerevanDateInInclusiveRange(String(b.dateIso), start, end) && isSlotReservingStatus(String(b.status)),
-    );
-
-    const txsInPeriod = rawTxs.filter((x) => {
-      const ts = new Date(x.createdAt).getTime();
-      return ts >= fromMs && ts <= toMs;
-    });
-
-    const revenue = dashboardRevenueAmdInPeriod(
-      rawBookings,
-      rawTxs,
-      fromMs,
-      toMs,
-      isSlotReservingStatus,
-    );
-
-    const bookingRefundSum = txsInPeriod
-      .filter(
-        (x) =>
-          (x.entryType ?? "income") === "expense" &&
-          x.expenseKind === "booking_refund" &&
-          x.status === "completed",
-      )
-      .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
-
-    const legacyRefundedIncomeSum = txsInPeriod
-      .filter((x) => (x.entryType ?? "income") === "income" && x.status === "refunded")
-      .reduce((s, x) => s + (x.grossAmd ?? 0), 0);
-
-    const refundMoney = bookingRefundSum + legacyRefundedIncomeSum;
-
-    return {
-      newStudents,
-      bookingsCount: bookingsInPeriod.length,
-      revenue,
-      refundMoney,
-    };
-  }, [rawStudents, rawBookings, rawTxs, kpiPeriod]);
 
   const filteredRecentBookings = useMemo(() => {
     const q = bookingSearch.trim().toLowerCase();
@@ -254,41 +157,6 @@ export default function AdminDashboard() {
     return activeContactRequests.slice(start, start + PAGE_SIZE);
   }, [activeContactRequests, safeContactRequestsPage]);
 
-  const stats = useMemo(
-    () =>
-      [
-        {
-          label: t("adminKpiStudentsJoined"),
-          value: String(kpiStats.newStudents),
-          icon: Users,
-          color: "text-primary",
-          bg: "bg-primary/10",
-        },
-        {
-          label: t("adminKpiLessonBookings"),
-          value: String(kpiStats.bookingsCount),
-          icon: Calendar,
-          color: "text-primary",
-          bg: "bg-primary/10",
-        },
-        {
-          label: t("revenue"),
-          value: `${kpiStats.revenue.toLocaleString()} ֏`,
-          icon: TrendingUp,
-          color: "text-primary",
-          bg: "bg-primary/10",
-        },
-        {
-          label: t("adminKpiRefundMoney"),
-          value: `${kpiStats.refundMoney.toLocaleString()} ֏`,
-          icon: Undo2,
-          color: "text-rose-600 dark:text-rose-400",
-          bg: "bg-rose-500/10",
-        },
-      ] as const,
-    [kpiStats, t],
-  );
-
   const statusColor: Record<string, string> = {
     confirmed: "bg-emerald-100 text-emerald-700",
     pending: "bg-amber-100 text-amber-700",
@@ -299,46 +167,6 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <PanelPageHeader icon={LayoutDashboard} title={t("adminDashboard")} />
-
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 mb-4">
-        <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/50 shrink-0" role="group">
-          {(["day", "week", "month"] as const).map((p) => (
-            <Button
-              key={p}
-              type="button"
-              size="sm"
-              variant={kpiPeriod === p ? "secondary" : "ghost"}
-              className="h-8 px-3 rounded-md"
-              onClick={() => setKpiPeriod(p)}
-            >
-              {p === "day" ? t("adminKpiFilterDay") : p === "week" ? t("adminKpiFilterWeek") : t("adminKpiFilterMonth")}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {stats.map((s, i) => (
-          <Card key={i} className="p-5 border-border">
-            <div className="flex items-start justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted-foreground mb-1">{s.label}</p>
-                {loading ? (
-                  <Skeleton className="h-8 w-24" />
-                ) : (
-                  <p className="text-2xl font-bold text-foreground">
-                    {s.value}
-                  </p>
-                )}
-              </div>
-              <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center shrink-0`}>
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-8">
         <Card className="border-border overflow-hidden min-w-0">

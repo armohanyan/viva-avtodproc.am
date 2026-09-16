@@ -11,10 +11,13 @@ import {
   PetrolExpense,
   SalaryPayment,
   TheoryCohortSession,
+  Booking,
 } from '../models';
 import AdminFinanceExpenseService from '../services/admin-finance-expense.service';
 import {
   legacyBookingRevenueAmd,
+  recognizedIncomeAmd,
+  resolveBookingPayment,
   slotRevenueAmd,
 } from '../utils/booking-admin-payment.util';
 import {
@@ -96,6 +99,31 @@ export type LegacyDirectorRevenueRow = {
   paymentMethod: DirectorPaymentMethod;
   comment: string | null;
 };
+
+/** Per-booking cash fallback when no finance ledger row exists yet. */
+export type CashBookingRevenueRow = {
+  id: number;
+  bookingId: number;
+  slotId: number | null;
+  slotTime: string | null;
+  date: string;
+  branchId: number;
+  amount: number;
+  paymentMethod: DirectorPaymentMethod;
+  paymentStatus: 'paid' | 'partial';
+  comment: string | null;
+};
+
+function yerevanDateIsoFromInstant(value: Date | string | null | undefined): string | null {
+  const d = value instanceof Date ? value : value ? new Date(value) : null;
+  if (d == null || Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
 
 export function isLegacyDirectorId(id: number): boolean {
   return id < 0;
@@ -397,6 +425,74 @@ export async function fetchLegacyRevenues(range: DateRange): Promise<LegacyDirec
       paymentMethod: row.paymentMethod,
       comment: null as string | null,
     }));
+}
+
+/**
+ * Kassa fallback income: paid / partial bookings (practical + theory) that have no completed
+ * finance income row yet. Dated by payment instant (`paidAt` / `updatedAt`), not lesson day.
+ * Primary cash income still comes from individual finance transactions.
+ */
+export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBookingRevenueRow[]> {
+  const bookings = await Booking.findAll({
+    where: {
+      ...(range.branchId != null ? { branchId: range.branchId } : {}),
+      [Op.or]: [{ paymentStatus: 'paid' }, { paymentStatus: 'partial' }],
+    },
+  });
+  if (bookings.length === 0) return [];
+
+  const bookingIds = bookings.map((b) => b.id);
+  const financeTxs = await FinanceTransaction.findAll({
+    where: {
+      bookingId: { [Op.in]: bookingIds },
+      entryType: 'income',
+      status: 'completed',
+    },
+    attributes: ['bookingId', 'method'],
+  });
+  const bookingIdsWithFinance = new Set(
+    financeTxs
+      .map((t) => (t.bookingId != null ? Number(t.bookingId) : 0))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  );
+
+  const rows: CashBookingRevenueRow[] = [];
+  for (const booking of bookings) {
+    if (bookingIdsWithFinance.has(booking.id)) continue;
+    if (lessonSlotExcludedFromReports(booking)) continue;
+    const resolved = resolveBookingPayment(booking);
+    if (resolved.paymentStatus !== 'paid' && resolved.paymentStatus !== 'partial') continue;
+    const amount = recognizedIncomeAmd(booking);
+    if (amount <= 0) continue;
+    const date =
+      yerevanDateIsoFromInstant(booking.paidAt) ||
+      yerevanDateIsoFromInstant((booking as unknown as { updatedAt?: Date | string }).updatedAt) ||
+      String(booking.dateIso).slice(0, 10);
+    if (date < range.startDate || date > range.endDate) continue;
+    if (!(booking.branchId > 0)) continue;
+    const lessonType = String(booking.lessonType ?? '').trim().toLowerCase();
+    const typeLabel =
+      lessonType === 'theory'
+        ? 'Տեսական'
+        : lessonType === 'theory_personal'
+          ? 'Անհատական տեսական'
+          : 'Գործնական';
+    const statusLabel = resolved.paymentStatus === 'partial' ? 'Մասնակի վճարում' : 'Վճարված';
+    rows.push({
+      id: legacyDirectorId(booking.id),
+      bookingId: booking.id,
+      slotId: null,
+      slotTime: String(booking.time ?? '').trim() || null,
+      date,
+      branchId: booking.branchId,
+      amount: Math.round(amount),
+      paymentMethod: paymentMethodForBooking(booking.id, financeTxs),
+      paymentStatus: resolved.paymentStatus,
+      comment: `Ամրագրում #${booking.id} · ${typeLabel} · ${statusLabel}`,
+    });
+  }
+
+  return rows.sort((a, b) => b.date.localeCompare(a.date) || b.bookingId - a.bookingId);
 }
 
 function sortByDateDesc<T extends { date: string; id: number }>(rows: T[]): T[] {

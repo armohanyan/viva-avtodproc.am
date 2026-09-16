@@ -5,7 +5,6 @@ export type DirectorNavLink = {
 
 /** Sidebar order for director room (in-page tabs stay on each section page). */
 export const DIRECTOR_NAV_LINKS: DirectorNavLink[] = [
-  { href: "/admin/director", label: "Գլխավոր" },
   { href: "/admin/director/cash", label: "Կասսա" },
   { href: "/admin/director/expenses", label: "Ծախսեր" },
   { href: "/admin/director/driver-profile", label: "Վարորդի պրոֆիլ" },
@@ -17,7 +16,7 @@ export const DIRECTOR_NAV_LINKS: DirectorNavLink[] = [
 ];
 
 function directorNavMatch(path: string): DirectorNavLink | null {
-  // Longest href first so /admin/director does not swallow /admin/director/cash
+  // Longest href first so shorter prefixes do not swallow nested routes
   const sorted = [...DIRECTOR_NAV_LINKS].sort((a, b) => b.href.length - a.href.length);
   for (const link of sorted) {
     if (path === link.href || path.startsWith(`${link.href}/`)) return link;
@@ -34,7 +33,6 @@ export function directorNavSectionBase(path: string): string | null {
 }
 
 export function isDirectorNavActive(path: string, href: string): boolean {
-  if (href === "/admin/director") return path === "/admin/director";
   return path === href || path.startsWith(`${href}/`);
 }
 

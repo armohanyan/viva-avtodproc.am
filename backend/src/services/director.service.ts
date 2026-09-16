@@ -26,6 +26,7 @@ import { User } from '../models/user.model';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import {
+  fetchCashBookingRevenues,
   fetchLegacyExpenses,
   fetchLegacyFuel,
   fetchLegacyInstructorHours,
@@ -35,6 +36,7 @@ import {
   fetchLegacySalaries,
   mergeDirectorRows,
   mergeDirectorRowsPreferManual,
+  type CashBookingRevenueRow,
   type LegacyDirectorFuelRow,
   type LegacyDirectorInstructorHoursRow,
   type LegacyDirectorKmRow,
@@ -43,6 +45,8 @@ import {
 const { ResourceNotFoundError } = ErrorsUtil;
 
 const YEREVAN_OFFSET = '+04:00';
+/** Inclusive lower bound when summing cash balance through the selected day. */
+const CASH_BALANCE_START_DATE = '2000-01-01';
 
 type DateRange = { startDate: string; endDate: string; branchId?: number | null };
 
@@ -154,6 +158,24 @@ function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
     paymentMethod: normalizeCashLedgerPayment(tx.method),
     amount,
     comment,
+  };
+}
+
+/** Paid / partial booking income fallback when no finance transaction exists yet. */
+function serializeBookingSlotCashRevenue(row: CashBookingRevenueRow): CashLedgerRow | null {
+  const amount = Math.abs(num(row.amount));
+  if (amount <= 0) return null;
+  return {
+    id: row.id,
+    source: 'finance',
+    sourceId: row.bookingId,
+    readOnly: true,
+    date: row.date,
+    branchId: row.branchId,
+    direction: 'in',
+    paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
+    amount,
+    comment: row.comment?.trim() || 'Դասերի վճարում',
   };
 }
 
@@ -353,6 +375,11 @@ export default class DirectorService {
       range.branchId != null ? { branchId: range.branchId } : {};
     const dateOnly = { date: { [Op.between]: [range.startDate, range.endDate] } };
     const dateUntilEnd = { date: { [Op.lte]: range.endDate } };
+    const bookingRevenueBalanceRange: DateRange = {
+      startDate: CASH_BALANCE_START_DATE,
+      endDate: range.endDate,
+      branchId: range.branchId,
+    };
 
     const [
       manualPeriod,
@@ -364,6 +391,7 @@ export default class DirectorService {
       fuelBalanceRows,
       repairPeriodRows,
       repairBalanceRows,
+      bookingRevenuesThroughEnd,
     ] = await Promise.all([
       DirectorCashEntry.findAll({
         where: dateWhere(range),
@@ -394,6 +422,7 @@ export default class DirectorService {
       DirectorFuel.findAll({ where: dateUntilEnd }),
       DirectorRepair.findAll({ where: dateOnly }),
       DirectorRepair.findAll({ where: dateUntilEnd }),
+      fetchCashBookingRevenues(bookingRevenueBalanceRange),
     ]);
 
     const financePeriod: CashLedgerRow[] = [];
@@ -410,6 +439,14 @@ export default class DirectorService {
         financePeriod.push(row);
       }
     }
+
+    const bookingPeriodRows = bookingRevenuesThroughEnd
+      .filter((r) => r.date >= range.startDate && r.date <= range.endDate)
+      .map(serializeBookingSlotCashRevenue)
+      .filter((r): r is CashLedgerRow => r != null);
+    const bookingCashBalanceIn = bookingRevenuesThroughEnd
+      .filter((r) => normalizeCashLedgerPayment(r.paymentMethod) === 'cash')
+      .reduce((s, r) => s + Math.abs(num(r.amount)), 0);
 
     const expensePeriod = expensesPeriod
       .map((r) => serializeDirectorCashExpense(r.toJSON()))
@@ -434,6 +471,7 @@ export default class DirectorService {
     const manualPeriodRows = manualPeriod.map((r) => serializeManualCashEntry(r.toJSON()));
     const entries = [
       ...financePeriod,
+      ...bookingPeriodRows,
       ...expensePeriod,
       ...fuelPeriod,
       ...repairPeriod,
@@ -443,7 +481,8 @@ export default class DirectorService {
     const manualBalanceSigned = manualBalance.reduce((s, r) => s + num(r.amount), 0);
     const balance =
       manualBalanceSigned +
-      financeCashBalanceSigned -
+      financeCashBalanceSigned +
+      bookingCashBalanceIn -
       expenseCashBalanceOut -
       fuelCashBalanceOut -
       repairCashBalanceOut;

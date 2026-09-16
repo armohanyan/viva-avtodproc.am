@@ -37,7 +37,6 @@ export {
   AdminRedirectLearnTheoryToStudents,
 } from "./AdminStudentsLegacyRedirects";
 export {
-  DirectorDashboardPage,
   DirectorCashPage,
   DirectorExpensesPage,
   DirectorRepairPage,
@@ -46,6 +45,7 @@ export {
   DirectorDriverProfilePage,
   DirectorSalaryPage,
   DirectorStudentsPage,
+  DirectorRedirectRootToCash,
   DirectorRedirectFuelKmToFuel,
   DirectorRedirectInstructorHoursToDriverProfile,
 } from "./director";

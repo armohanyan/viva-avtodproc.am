@@ -276,14 +276,25 @@ export type LessonSlotPaymentRow = {
   paymentCovered?: boolean;
 };
 
-/** Income attributed to one booked hour (paid / partial-covered slots only). */
+/**
+ * Income attributed to one booked hour for paid / partial bookings.
+ * - paid → total split across all slots
+ * - partial with paymentCovered flags → paid amount split across covered slots only
+ * - partial with no covered flags (common when admin only enters paid AMD) → paid amount
+ *   split across all slots so cash / reports still see the money
+ * - prepaidMeta with billable total (e.g. theory cohort) → count as paid total
+ * - prepaidMeta with zero total (package credit) → not cash income
+ */
 export function slotRevenueAmd(
   booking: BookingPaymentRow,
   slot: LessonSlotPaymentRow,
   allSlots: readonly LessonSlotPaymentRow[],
 ): number {
   if (!bookingCountsTowardStudentDebt(booking)) return 0;
-  if (booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object') return 0;
+
+  const hasPrepaidMeta = booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object';
+  const total = bookingTotalPriceAmd(booking);
+  if (hasPrepaidMeta && total <= 0) return 0;
 
   const resolved = resolveBookingPayment(booking);
   const ps = resolved.paymentStatus;
@@ -291,13 +302,17 @@ export function slotRevenueAmd(
   if (resolved.totalPriceAmd <= 0) return 0;
 
   const slotCount = allSlots.length > 0 ? allSlots.length : 1;
-  if (ps === 'paid') {
+  if (ps === 'paid' || (hasPrepaidMeta && total > 0)) {
     return Math.round(resolved.totalPriceAmd / slotCount);
   }
   if (ps === 'partial') {
-    if (!slot.paymentCovered) return 0;
+    if (resolved.paidAmountAmd <= 0) return 0;
     const coveredCount = allSlots.filter((s) => s.paymentCovered).length;
-    return coveredCount > 0 ? Math.round(resolved.paidAmountAmd / coveredCount) : 0;
+    if (coveredCount > 0) {
+      if (!slot.paymentCovered) return 0;
+      return Math.round(resolved.paidAmountAmd / coveredCount);
+    }
+    return Math.round(resolved.paidAmountAmd / slotCount);
   }
   return 0;
 }
@@ -351,6 +366,11 @@ export function recognizedIncomeAmd(row: BookingPaymentRow): number {
   const resolved = resolveBookingPayment(row);
   const ps = resolved.paymentStatus;
   if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 0;
+  const hasPrepaidMeta = row.prepaidMeta != null && typeof row.prepaidMeta === 'object';
+  // Theory cohort / linked prepaid still bill a total when set; zero-total package credits stay 0.
+  if (hasPrepaidMeta) {
+    return resolved.totalPriceAmd > 0 ? resolved.totalPriceAmd : 0;
+  }
   return resolved.paidAmountAmd;
 }
 

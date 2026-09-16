@@ -33,7 +33,6 @@ import {
   AdminRedirectLegacyStudentsAnalytics,
   AdminRedirectLearnPracticalToStudents,
   AdminRedirectLearnTheoryToStudents,
-  DirectorDashboardPage,
   DirectorCashPage,
   DirectorExpensesPage,
   DirectorRepairPage,
@@ -42,6 +41,7 @@ import {
   DirectorDriverProfilePage,
   DirectorSalaryPage,
   DirectorStudentsPage,
+  DirectorRedirectRootToCash,
   DirectorRedirectFuelKmToFuel,
   DirectorRedirectInstructorHoursToDriverProfile,
 } from "src/pages/admin";
@@ -102,7 +102,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/director/instructor-hours/records", component: DirectorRedirectInstructorHoursToDriverProfile, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/instructor-hours", component: DirectorRedirectInstructorHoursToDriverProfile, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/fuel-km", component: DirectorRedirectFuelKmToFuel, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
-  { path: "/admin/director", component: DirectorDashboardPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/director", component: DirectorRedirectRootToCash, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/accounts", component: AdminAccountsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/profile", component: AdminProfilePage, allowedAccountTypes: STAFF },
 ];

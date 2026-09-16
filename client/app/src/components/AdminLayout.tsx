@@ -277,7 +277,6 @@ export default function AdminLayout({ children }: Props) {
 	const isDirectorMode = isDirectorRoute(location);
 
 	const directorIconByPath: Record<string, typeof LayoutDashboard> = {
-		"/admin/director": LayoutGrid,
 		"/admin/director/cash": Wallet,
 		"/admin/director/expenses": Receipt,
 		"/admin/director/driver-profile": User,
@@ -343,7 +342,7 @@ export default function AdminLayout({ children }: Props) {
 							) : null}
 							{isSuperAdmin && !isDirectorMode ? (
 								<Button size="sm" asChild className="shrink-0 max-sm:w-full">
-									<Link href="/admin/director" onClick={() => closeMobileNav()}>
+									<Link href="/admin/director/cash" onClick={() => closeMobileNav()}>
 										<Crown className="w-3.5 h-3.5" />
 										<span>Տնօրենի միջավայր</span>
 									</Link>
@@ -393,7 +392,7 @@ export default function AdminLayout({ children }: Props) {
 				<div className="flex flex-col h-full min-h-0 bg-hero">
 					<div className="px-3 pt-4 pb-2 shrink-0">
 						<Link
-							href={isDirectorMode ? "/admin/director" : "/admin/dashboard"}
+							href={isDirectorMode ? "/admin/director/cash" : "/admin/dashboard"}
 							onClick={() => closeMobileNav()}
 							className="flex items-center gap-2 min-w-0"
 						>

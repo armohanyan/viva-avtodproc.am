@@ -1,4 +1,3 @@
-export { default as DirectorDashboardPage } from "./DirectorDashboard";
 export { default as DirectorCashPage } from "./DirectorCash";
 export { default as DirectorExpensesPage } from "./DirectorExpenses";
 export { default as DirectorRepairPage } from "./DirectorRepair";
@@ -8,6 +7,7 @@ export { default as DirectorDriverProfilePage } from "./DirectorDriverProfile";
 export { default as DirectorSalaryPage } from "./DirectorSalary";
 export { default as DirectorStudentsPage } from "./DirectorStudents";
 export {
+  DirectorRedirectRootToCash,
   DirectorRedirectFuelKmToFuel,
   DirectorRedirectInstructorHoursToDriverProfile,
 } from "./DirectorLegacyRedirects";

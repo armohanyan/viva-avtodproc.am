@@ -339,7 +339,7 @@ export default function DirectorCashPage() {
         <DirectorDataTable
           table={table}
           columns={tableColumns}
-          rowKey={(r) => `${r.source}:${r.sourceId}`}
+          rowKey={(r) => `${r.source}:${r.sourceId}:${r.id}`}
           toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
         />
       </div>
