@@ -664,6 +664,41 @@ async function ensureFinanceTransactionsRefundColumns(): Promise<void> {
   }
 }
 
+/** Adds staff attribution on finance ledger rows when missing. */
+async function ensureFinanceTransactionsCreatedByUserIdColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'
+       AND COLUMN_NAME = 'created_by_user_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0) {
+    await sequelize.query(
+      'ALTER TABLE `finance_transactions` ADD COLUMN `created_by_user_id` INT UNSIGNED NULL AFTER `related_payment_transaction_id`',
+    );
+  }
+  // Best-effort backfill from the admin who created the linked booking.
+  await sequelize.query(
+    `UPDATE \`finance_transactions\` ft
+     INNER JOIN \`bookings\` b ON b.\`id\` = ft.\`booking_id\`
+     SET ft.\`created_by_user_id\` = b.\`created_by_user_id\`
+     WHERE ft.\`created_by_user_id\` IS NULL
+       AND b.\`created_by_user_id\` IS NOT NULL
+       AND b.\`created_by_type\` = 'admin'`,
+  );
+}
+
 /** Adds `booking_refund` expense kind and optional link to the original payment row. */
 async function ensureFinanceTransactionsBookingRefundExpenseKind(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
@@ -2665,6 +2700,7 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceTransactionsEntryColumns();
   await ensureFinanceTransactionsRefundColumns();
   await ensureFinanceTransactionsBookingRefundExpenseKind();
+  await ensureFinanceTransactionsCreatedByUserIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureDirectorTablesNullableFkColumns();
   await ensureBookingsInstructorUserIdOnDeleteSetNull();

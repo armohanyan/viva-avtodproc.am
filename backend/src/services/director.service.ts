@@ -23,6 +23,7 @@ import { DirectorSalary } from '../models/director-salary.model';
 import { FinanceTransaction } from '../models/finance-transaction.model';
 import { FleetCar } from '../models/fleet-car.model';
 import { User } from '../models/user.model';
+import { Booking } from '../models/booking.model';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import {
@@ -109,6 +110,8 @@ type CashLedgerRow = {
   paymentMethod: CashLedgerPaymentMethod;
   amount: number;
   comment: string | null;
+  performedByUserId: number | null;
+  performedByName: string | null;
 };
 
 function normalizeCashLedgerPayment(raw: unknown): CashLedgerPaymentMethod {
@@ -121,8 +124,13 @@ function serializeManualCashEntry(row: {
   branchId: number | null;
   amount: number;
   comment: string | null;
+  createdByUserId?: number | null;
 }): CashLedgerRow {
   const signed = num(row.amount);
+  const performedByUserId =
+    row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
+      ? Number(row.createdByUserId)
+      : null;
   return {
     id: row.id,
     source: 'manual',
@@ -134,6 +142,8 @@ function serializeManualCashEntry(row: {
     paymentMethod: 'cash',
     amount: Math.abs(signed),
     comment: row.comment,
+    performedByUserId,
+    performedByName: null,
   };
 }
 
@@ -147,6 +157,10 @@ function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
   const customer = (tx.customer ?? '').trim();
   const description = (tx.description ?? '').trim();
   const comment = [customer, description].filter(Boolean).join(' · ') || null;
+  const performedByUserId =
+    tx.createdByUserId != null && Number.isFinite(Number(tx.createdByUserId)) && Number(tx.createdByUserId) > 0
+      ? Number(tx.createdByUserId)
+      : null;
   return {
     id: -tx.id,
     source: 'finance',
@@ -158,6 +172,8 @@ function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
     paymentMethod: normalizeCashLedgerPayment(tx.method),
     amount,
     comment,
+    performedByUserId,
+    performedByName: null,
   };
 }
 
@@ -176,6 +192,8 @@ function serializeBookingSlotCashRevenue(row: CashBookingRevenueRow): CashLedger
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
     amount,
     comment: row.comment?.trim() || 'Դասերի վճարում',
+    performedByUserId: row.performedByUserId,
+    performedByName: null,
   };
 }
 
@@ -187,10 +205,15 @@ function serializeDirectorCashExpense(row: {
   amount: number;
   paymentMethod?: string | null;
   comment: string | null;
+  createdByUserId?: number | null;
 }): CashLedgerRow | null {
   const amount = Math.abs(num(row.amount));
   if (amount <= 0) return null;
   const note = (row.comment ?? '').trim();
+  const performedByUserId =
+    row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
+      ? Number(row.createdByUserId)
+      : null;
   return {
     id: -(1_000_000_000 + row.id),
     source: 'expense',
@@ -202,6 +225,8 @@ function serializeDirectorCashExpense(row: {
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
     amount,
     comment: note ? `${row.expType} · ${note}` : row.expType,
+    performedByUserId,
+    performedByName: null,
   };
 }
 
@@ -211,9 +236,14 @@ function serializeDirectorCashFuel(row: {
   fuelType: string;
   amount: number;
   paymentMethod?: string | null;
+  createdByUserId?: number | null;
 }): CashLedgerRow | null {
   const amount = Math.abs(num(row.amount));
   if (amount <= 0) return null;
+  const performedByUserId =
+    row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
+      ? Number(row.createdByUserId)
+      : null;
   return {
     id: -(2_000_000_000 + row.id),
     source: 'fuel',
@@ -225,6 +255,8 @@ function serializeDirectorCashFuel(row: {
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
     amount,
     comment: `Վառելիք · ${row.fuelType}`,
+    performedByUserId,
+    performedByName: null,
   };
 }
 
@@ -236,6 +268,7 @@ function serializeDirectorCashRepair(row: {
   amount: number;
   paymentMethod?: string | null;
   comment: string | null;
+  createdByUserId?: number | null;
 }): CashLedgerRow | null {
   const amount = Math.abs(num(row.amount));
   if (amount <= 0) return null;
@@ -243,6 +276,10 @@ function serializeDirectorCashRepair(row: {
   const work = (row.workDone ?? '').trim() || 'Վերանորոգում';
   const note = (row.comment ?? '').trim();
   const parts = [plate ? `Վերանորոգում · ${plate}` : 'Վերանորոգում', work, note].filter(Boolean);
+  const performedByUserId =
+    row.createdByUserId != null && Number.isFinite(Number(row.createdByUserId)) && Number(row.createdByUserId) > 0
+      ? Number(row.createdByUserId)
+      : null;
   return {
     id: -(3_000_000_000 + row.id),
     source: 'repair',
@@ -254,6 +291,8 @@ function serializeDirectorCashRepair(row: {
     paymentMethod: normalizeCashLedgerPayment(row.paymentMethod),
     amount,
     comment: parts.join(' · '),
+    performedByUserId,
+    performedByName: null,
   };
 }
 
@@ -477,6 +516,55 @@ export default class DirectorService {
       ...repairPeriod,
       ...manualPeriodRows,
     ].sort(sortCashLedger);
+
+    const financeBookingIds = [
+      ...new Set(
+        financeTxs
+          .map((tx) => (tx.bookingId != null ? Number(tx.bookingId) : 0))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+    const bookingCreatorById = new Map<number, number>();
+    if (financeBookingIds.length > 0) {
+      const linkedBookings = await Booking.findAll({
+        where: { id: { [Op.in]: financeBookingIds } },
+        attributes: ['id', 'createdByUserId'],
+      });
+      for (const b of linkedBookings) {
+        const uid = b.createdByUserId != null ? Number(b.createdByUserId) : 0;
+        if (Number.isFinite(uid) && uid > 0) bookingCreatorById.set(b.id, uid);
+      }
+    }
+
+    for (const entry of entries) {
+      if (entry.performedByUserId != null) continue;
+      if (entry.source !== 'finance') continue;
+      const tx = financeTxs.find((t) => t.id === entry.sourceId);
+      const bookingId = tx?.bookingId != null ? Number(tx.bookingId) : 0;
+      if (!Number.isFinite(bookingId) || bookingId <= 0) continue;
+      const creatorId = bookingCreatorById.get(bookingId);
+      if (creatorId != null) entry.performedByUserId = creatorId;
+    }
+
+    const performerIds = [
+      ...new Set(
+        entries
+          .map((e) => e.performedByUserId)
+          .filter((id): id is number => id != null && Number.isFinite(id) && id > 0),
+      ),
+    ];
+    if (performerIds.length > 0) {
+      const users = await User.findAll({
+        where: { id: { [Op.in]: performerIds } },
+        attributes: ['id', 'name'],
+      });
+      const nameById = new Map(users.map((u) => [u.id, (u.name ?? '').trim() || `User #${u.id}`]));
+      for (const entry of entries) {
+        if (entry.performedByUserId == null) continue;
+        entry.performedByName = nameById.get(entry.performedByUserId) ?? `User #${entry.performedByUserId}`;
+      }
+    }
+
     const totals = sumCashDirections(entries);
     const manualBalanceSigned = manualBalance.reduce((s, r) => s + num(r.amount), 0);
     const balance =

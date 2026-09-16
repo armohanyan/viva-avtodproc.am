@@ -124,7 +124,26 @@ export default class FinanceController {
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(createSchema, req.body);
-      const row = await FinanceService.create(body);
+      let createdByUserId: number | null = null;
+      const token = FinanceController.readBearerToken(req);
+      if (token) {
+        try {
+          const payload = verifyAccessToken(token);
+          const id = Number(payload.sub);
+          if (
+            Number.isFinite(id) &&
+            id > 0 &&
+            (payload.accountType === 'admin' ||
+              payload.accountType === 'super_admin' ||
+              payload.accountType === 'instructor')
+          ) {
+            createdByUserId = id;
+          }
+        } catch {
+          // Optional attribution when token is missing/invalid.
+        }
+      }
+      const row = await FinanceService.create({ ...body, createdByUserId });
       SuccessHandlerUtil.handleAdd(res, next, row);
     } catch (e) {
       next(e);

@@ -188,6 +188,14 @@ export default function DirectorCashPage() {
   const tableColumns = useMemo(
     () => [
       {
+        id: "date",
+        header: "Վճարման ամսաթիվ",
+        sortable: true,
+        sortValue: (r: DirectorCashEntry) => r.date,
+        searchValue: (r: DirectorCashEntry) => r.date,
+        render: (r: DirectorCashEntry) => r.date,
+      },
+      {
         id: "source",
         header: "Աղբյուր",
         sortable: true,
@@ -246,6 +254,16 @@ export default function DirectorCashPage() {
             {formatAmd(r.amount)}
           </span>
         ),
+      },
+      {
+        id: "performedBy",
+        header: "Ադմին",
+        sortable: true,
+        filterable: true,
+        sortValue: (r: DirectorCashEntry) => r.performedByName ?? "",
+        filterValue: (r: DirectorCashEntry) => r.performedByName ?? "-",
+        searchValue: (r: DirectorCashEntry) => r.performedByName ?? "",
+        render: (r: DirectorCashEntry) => r.performedByName ?? "-",
       },
       {
         id: "branch",

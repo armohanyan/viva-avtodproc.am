@@ -250,6 +250,7 @@ export default class FinanceService {
     createdAt?: string;
     bookingId?: number | null;
     relatedPaymentTransactionId?: number | null;
+    createdByUserId?: number | null;
     transaction?: SequelizeTransaction;
   }): Promise<FinanceTxDto> {
     const bookingIdNorm =
@@ -332,6 +333,11 @@ export default class FinanceService {
     }
 
     const createdAt = input.createdAt ? new Date(input.createdAt) : new Date();
+    const createdByUserIdRaw = input.createdByUserId != null ? Number(input.createdByUserId) : null;
+    const createdByUserId =
+      createdByUserIdRaw != null && Number.isFinite(createdByUserIdRaw) && createdByUserIdRaw > 0
+        ? createdByUserIdRaw
+        : null;
     const row = await FinanceTransaction.create(
       {
         customer,
@@ -353,6 +359,7 @@ export default class FinanceService {
         createdAt,
         bookingId: bookingIdNorm,
         relatedPaymentTransactionId,
+        createdByUserId,
       } as never,
       { transaction: input.transaction },
     );

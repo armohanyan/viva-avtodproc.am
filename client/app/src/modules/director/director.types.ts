@@ -51,6 +51,8 @@ export type DirectorCashEntry = {
   paymentMethod: DirectorPaymentMethod;
   amount: number;
   comment: string | null;
+  performedByUserId: number | null;
+  performedByName: string | null;
 };
 
 export type DirectorCashSummary = {

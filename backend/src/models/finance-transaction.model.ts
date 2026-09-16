@@ -46,6 +46,8 @@ export class FinanceTransaction extends Model<
   declare bookingId: CreationOptional<number | null>;
   /** For `booking_refund` expense rows: original income transaction that was refunded (partial/full). */
   declare relatedPaymentTransactionId: CreationOptional<number | null>;
+  /** Staff user who recorded this transaction (admin panel / office). */
+  declare createdByUserId: CreationOptional<number | null>;
 }
 
 FinanceTransaction.init(
@@ -106,6 +108,7 @@ FinanceTransaction.init(
       onDelete: 'RESTRICT',
     },
     relatedPaymentTransactionId: fkUnsignedIntNullable(),
+    createdByUserId: fkUnsignedIntNullable(),
   },
   {
     sequelize,
@@ -116,6 +119,7 @@ FinanceTransaction.init(
       { fields: ['provider_ref'] },
       { fields: ['booking_id', 'entry_type', 'status'] },
       { fields: ['booking_id', 'provider_ref'] },
+      { fields: ['created_by_user_id'] },
     ],
   },
 );

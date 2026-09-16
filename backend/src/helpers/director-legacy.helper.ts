@@ -111,6 +111,7 @@ export type CashBookingRevenueRow = {
   amount: number;
   paymentMethod: DirectorPaymentMethod;
   paymentStatus: 'paid' | 'partial';
+  performedByUserId: number | null;
   comment: string | null;
 };
 
@@ -478,6 +479,10 @@ export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBo
           ? 'Անհատական տեսական'
           : 'Գործնական';
     const statusLabel = resolved.paymentStatus === 'partial' ? 'Մասնակի վճարում' : 'Վճարված';
+    const createdBy =
+      booking.createdByUserId != null && Number.isFinite(Number(booking.createdByUserId))
+        ? Number(booking.createdByUserId)
+        : null;
     rows.push({
       id: legacyDirectorId(booking.id),
       bookingId: booking.id,
@@ -488,6 +493,7 @@ export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBo
       amount: Math.round(amount),
       paymentMethod: paymentMethodForBooking(booking.id, financeTxs),
       paymentStatus: resolved.paymentStatus,
+      performedByUserId: createdBy != null && createdBy > 0 ? createdBy : null,
       comment: `Ամրագրում #${booking.id} · ${typeLabel} · ${statusLabel}`,
     });
   }
