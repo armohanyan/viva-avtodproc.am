@@ -3723,23 +3723,27 @@ export default class BookingService {
           { transaction },
         );
         newId = created.id;
-        await BookingSlot.bulkCreate(
-          sorted.map((slotTime) => ({
-            bookingId: created.id,
-            instructorUserId,
-            dateIso,
-            slotTime,
-          })),
-          { transaction },
-        );
-        await syncSlotPaymentCoverage(
-          newId,
-          {
-            paymentStatus: payStatusMulti,
-            paidSlotEntries: input.paidSlotEntries,
-          },
-          transaction,
-        );
+        // Group theory is shared across students; exclusive booking_slots would block every
+        // additional enrollment (unique instructor+date+time). Cohort sessions own the calendar.
+        if (input.lessonType !== 'theory') {
+          await BookingSlot.bulkCreate(
+            sorted.map((slotTime) => ({
+              bookingId: created.id,
+              instructorUserId,
+              dateIso,
+              slotTime,
+            })),
+            { transaction },
+          );
+          await syncSlotPaymentCoverage(
+            newId,
+            {
+              paymentStatus: payStatusMulti,
+              paidSlotEntries: input.paidSlotEntries,
+            },
+            transaction,
+          );
+        }
         if (input.lessonType === 'theory' && theoryCohort) {
           await TheoryCohortService.ensureEnrolledInTx(theoryCohort.id, input.studentId, transaction);
         }
@@ -3914,19 +3918,24 @@ export default class BookingService {
         if (branchId !== previousBranchId) {
           await syncLinkedFinanceTransactionsBranch(id, branchId, transaction);
         }
-        await replaceBookingSlotRows(id, instructorUserId, dateIso, sorted, transaction);
-        if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
+        if (lessonType === 'theory') {
+          // Drop any legacy exclusive slot claims from older admin enrollments.
           await BookingSlot.destroy({ where: { bookingId: id }, transaction });
         } else {
-          await syncSlotPaymentCoverage(
-            id,
-            {
-              paymentStatus: effectivePaymentStatusAfterPatch(row, payUpdate),
-              paidSlotEntries: (patch as { paidSlotEntries?: readonly { dateIso: string; time: string }[] })
-                .paidSlotEntries,
-            },
-            transaction,
-          );
+          await replaceBookingSlotRows(id, instructorUserId, dateIso, sorted, transaction);
+          if (!rawBookingStatusReservesSlot(mergedStatusBeforeTx)) {
+            await BookingSlot.destroy({ where: { bookingId: id }, transaction });
+          } else {
+            await syncSlotPaymentCoverage(
+              id,
+              {
+                paymentStatus: effectivePaymentStatusAfterPatch(row, payUpdate),
+                paidSlotEntries: (patch as { paidSlotEntries?: readonly { dateIso: string; time: string }[] })
+                  .paidSlotEntries,
+              },
+              transaction,
+            );
+          }
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: id,
