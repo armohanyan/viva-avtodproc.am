@@ -15,6 +15,7 @@ import {
 } from '../models';
 import AdminFinanceExpenseService from '../services/admin-finance-expense.service';
 import {
+  bookingCountsTowardStudentDebt,
   legacyBookingRevenueAmd,
   recognizedIncomeAmd,
   resolveBookingPayment,
@@ -457,11 +458,13 @@ export async function fetchLegacyRevenues(range: DateRange): Promise<LegacyDirec
  * Kassa fallback income: paid / partial bookings (practical + theory) that have no completed
  * finance income row yet. Dated by payment instant (`paidAt` / `updatedAt`), not lesson day.
  * Primary cash income still comes from individual finance transactions.
+ * Cancelled / refunded / archived bookings never contribute (even if payment fields remain).
  */
 export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBookingRevenueRow[]> {
   const bookings = await Booking.findAll({
     where: {
       ...(range.branchId != null ? { branchId: range.branchId } : {}),
+      status: { [Op.notIn]: ['cancelled', 'refunded', 'archived'] },
       [Op.or]: [{ paymentStatus: 'paid' }, { paymentStatus: 'partial' }],
     },
   });
@@ -485,6 +488,7 @@ export async function fetchCashBookingRevenues(range: DateRange): Promise<CashBo
   const rows: CashBookingRevenueRow[] = [];
   for (const booking of bookings) {
     if (bookingIdsWithFinance.has(booking.id)) continue;
+    if (!bookingCountsTowardStudentDebt(booking)) continue;
     if (lessonSlotExcludedFromReports(booking)) continue;
     const resolved = resolveBookingPayment(booking);
     if (resolved.paymentStatus !== 'paid' && resolved.paymentStatus !== 'partial') continue;

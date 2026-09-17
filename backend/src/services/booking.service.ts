@@ -5329,6 +5329,9 @@ export default class BookingService {
         await row.update({ status: 'archived' }, { transaction });
       }
 
+      // Removed bookings must not keep completed ledger rows in kassa / KPI totals.
+      await FinanceService.voidLedgerForArchivedBookingInTx(id, transaction);
+
       AuditLogService.recordFireAndForget({
         category: 'booking',
         action: 'booking_archive',

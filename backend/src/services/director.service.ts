@@ -384,6 +384,54 @@ function signedCashAmount(row: CashLedgerRow): number {
   return row.direction === 'out' ? -row.amount : row.amount;
 }
 
+/**
+ * Completed ledger rows linked to archived (removed) bookings are not real cash for kassa / KPIs.
+ * Also heals legacy rows that were left `completed` before archive started voiding the ledger.
+ */
+async function dropFinanceLinkedToArchivedBookings(
+  txs: FinanceTransaction[],
+): Promise<FinanceTransaction[]> {
+  const bookingIds = [
+    ...new Set(
+      txs
+        .map((tx) => (tx.bookingId != null ? Number(tx.bookingId) : 0))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  ];
+  if (bookingIds.length === 0) return txs;
+  const archived = await Booking.findAll({
+    where: { id: { [Op.in]: bookingIds }, status: 'archived' },
+    attributes: ['id'],
+  });
+  if (archived.length === 0) return txs;
+  const archivedIds = new Set(archived.map((b) => b.id));
+
+  const stale = txs.filter((tx) => {
+    const bid = tx.bookingId != null ? Number(tx.bookingId) : 0;
+    return Number.isFinite(bid) && bid > 0 && archivedIds.has(bid);
+  });
+  if (stale.length > 0) {
+    const suffix = ' · archived booking void';
+    await Promise.all(
+      stale.map(async (row) => {
+        if (row.status === 'failed') return;
+        const desc = String(row.description ?? '').trim();
+        const nextDesc = desc.includes('archived booking void') ? desc : `${desc || 'Payment'}${suffix}`;
+        await row.update({
+          status: 'failed',
+          description: nextDesc.slice(0, 512),
+          refundReviewedAt: row.refundReviewedAt ?? new Date(),
+        });
+      }),
+    );
+  }
+
+  return txs.filter((tx) => {
+    const bid = tx.bookingId != null ? Number(tx.bookingId) : 0;
+    return !(Number.isFinite(bid) && bid > 0 && archivedIds.has(bid));
+  });
+}
+
 function monthsBetween(startDate: string, endDate: string): string[] {
   const out: string[] = [];
   let y = Number(startDate.slice(0, 4));
@@ -513,9 +561,11 @@ export default class DirectorService {
       fetchCashBookingRevenues(bookingRevenueBalanceRange),
     ]);
 
+    const activeFinanceTxs = await dropFinanceLinkedToArchivedBookings(financeTxs);
+
     const financePeriod: CashLedgerRow[] = [];
     let financeCashBalanceSigned = 0;
-    for (const tx of financeTxs) {
+    for (const tx of activeFinanceTxs) {
       const row = serializeFinanceCashTx(tx);
       if (!row) continue;
       const createdRaw = (tx as unknown as { createdAt?: Date | string }).createdAt;
@@ -568,7 +618,7 @@ export default class DirectorService {
 
     const financeBookingIds = [
       ...new Set(
-        financeTxs
+        activeFinanceTxs
           .map((tx) => (tx.bookingId != null ? Number(tx.bookingId) : 0))
           .filter((id) => Number.isFinite(id) && id > 0),
       ),
@@ -588,7 +638,7 @@ export default class DirectorService {
     for (const entry of entries) {
       if (entry.performedByUserId != null) continue;
       if (entry.source !== 'finance') continue;
-      const tx = financeTxs.find((t) => t.id === entry.sourceId);
+      const tx = activeFinanceTxs.find((t) => t.id === entry.sourceId);
       const bookingId = tx?.bookingId != null ? Number(tx.bookingId) : 0;
       if (!Number.isFinite(bookingId) || bookingId <= 0) continue;
       const creatorId = bookingCreatorById.get(bookingId);

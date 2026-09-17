@@ -719,11 +719,28 @@ export default class AdminFinancialReportService {
         status: 'completed',
         createdAt: { [Op.between]: [startAt, endAt] },
       } as WhereOptions,
-      attributes: ['grossAmd', 'channel', 'method'],
+      attributes: ['grossAmd', 'channel', 'method', 'bookingId'],
     });
+    const incomeBookingIds = [
+      ...new Set(
+        incomeTxs
+          .map((tx) => (tx.bookingId != null ? Number(tx.bookingId) : 0))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
+    const archivedIncomeBookingIds = new Set<number>();
+    if (incomeBookingIds.length > 0) {
+      const archivedRows = await Booking.findAll({
+        where: { id: { [Op.in]: incomeBookingIds }, status: 'archived' },
+        attributes: ['id'],
+      });
+      for (const row of archivedRows) archivedIncomeBookingIds.add(row.id);
+    }
     let paymentsOnlineAmd = 0;
     let paymentsManualAmd = 0;
     for (const tx of incomeTxs) {
+      const bid = tx.bookingId != null ? Number(tx.bookingId) : 0;
+      if (Number.isFinite(bid) && bid > 0 && archivedIncomeBookingIds.has(bid)) continue;
       const amt = Math.max(0, Math.round(Number(tx.grossAmd) || 0));
       if (tx.channel === 'online') paymentsOnlineAmd += amt;
       else paymentsManualAmd += amt;

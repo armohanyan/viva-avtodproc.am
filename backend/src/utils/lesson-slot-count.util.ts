@@ -191,13 +191,14 @@ export function lessonSlotExcludedFromReports(
 
 /**
  * Slot counts toward director reports (salary, instructor-hours): payment-covered slots,
- * approved gifts, and prepaid/package lessons. Booking lifecycle `status` is ignored.
+ * approved gifts, and prepaid/package lessons. Archived / cancelled / refunded are excluded.
  */
 export function slotCountsForPayableLesson(
   booking: PayableLessonBookingRow,
   slot: PayableLessonSlotRow,
 ): boolean {
   if (lessonSlotExcludedFromReports(booking)) return false;
+  if (!bookingCountsTowardStudentDebt(booking) && !isApprovedGiftBooking(booking)) return false;
   if (isApprovedGiftBooking(booking)) return true;
   if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return true;
 
@@ -216,6 +217,8 @@ export function slotCountsForPayableLesson(
  */
 export function legacyBookingCountsForPayableLesson(booking: PayableLessonBookingRow): boolean {
   if (lessonSlotExcludedFromReports(booking)) return false;
+  // Removed / closed bookings never count toward director revenue, even if payment fields remain.
+  if (!bookingCountsTowardStudentDebt(booking) && !isApprovedGiftBooking(booking)) return false;
   if (isApprovedGiftBooking(booking)) return true;
   if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return true;
 

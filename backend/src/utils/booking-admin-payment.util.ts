@@ -71,18 +71,20 @@ function normalizeLifecycleStatus(raw: string): string {
   return s;
 }
 
-const TERMINAL_BOOKING_LIFECYCLE_STATUSES = new Set(['cancelled', 'refunded']);
+const TERMINAL_BOOKING_LIFECYCLE_STATUSES = new Set(['cancelled', 'refunded', 'archived']);
 
 /** Booking lifecycle `status` follows payment: paid → confirmed, otherwise → pending. */
 export function bookingLifecycleStatusFromPayment(
   paymentStatus: AdminBookingPaymentStatus | 'pending' | 'failed',
   opts?: { explicitStatus?: string; currentStatus?: string },
-): 'confirmed' | 'pending' | 'cancelled' | 'refunded' {
+): 'confirmed' | 'pending' | 'cancelled' | 'refunded' | 'archived' {
   const explicit = opts?.explicitStatus ? normalizeLifecycleStatus(opts.explicitStatus) : undefined;
-  if (explicit === 'cancelled' || explicit === 'refunded') return explicit;
+  if (explicit === 'cancelled' || explicit === 'refunded' || explicit === 'archived') {
+    return explicit;
+  }
   const current = normalizeLifecycleStatus(opts?.currentStatus ?? '');
   if (!explicit && TERMINAL_BOOKING_LIFECYCLE_STATUSES.has(current)) {
-    return current as 'cancelled' | 'refunded';
+    return current as 'cancelled' | 'refunded' | 'archived';
   }
   return paymentStatus === 'paid' ? 'confirmed' : 'pending';
 }
@@ -90,7 +92,7 @@ export function bookingLifecycleStatusFromPayment(
 /** Whether this booking row can contribute to student debt (has a billable total). */
 export function bookingCountsTowardStudentDebt(row: BookingPaymentRow): boolean {
   const st = normalizeLifecycleStatus(String(row.status ?? ''));
-  if (st === 'cancelled' || st === 'refunded') return false;
+  if (st === 'cancelled' || st === 'refunded' || st === 'archived') return false;
   return bookingTotalPriceAmd(row) > 0;
 }
 

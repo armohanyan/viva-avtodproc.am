@@ -29,8 +29,18 @@ export function financeDescriptionForBooking(booking: Booking): string {
   return `${typeEn} lesson ${dateIso} · #${booking.id}`;
 }
 
-function normalizeBookingStatus(raw: string): 'confirmed' | 'pending' | 'cancelled' | 'refunded' {
-  if (raw === 'confirmed' || raw === 'pending' || raw === 'cancelled' || raw === 'refunded') return raw;
+function normalizeBookingStatus(
+  raw: string,
+): 'confirmed' | 'pending' | 'cancelled' | 'refunded' | 'archived' {
+  if (
+    raw === 'confirmed' ||
+    raw === 'pending' ||
+    raw === 'cancelled' ||
+    raw === 'refunded' ||
+    raw === 'archived'
+  ) {
+    return raw;
+  }
   if (raw === 'completed') return 'confirmed';
   if (raw === 'pending_prebook' || raw === 'pending_payment') return 'pending';
   return 'pending';
@@ -40,7 +50,8 @@ function financeStatusFromBooking(booking: Booking): FinanceTxStatus {
   const st = normalizeBookingStatus(String(booking.status ?? ''));
   if (st === 'confirmed') return 'completed';
   if (st === 'refunded') return 'refunded';
-  if (st === 'cancelled') return 'failed';
+  // Archived / cancelled bookings are not real open receivables - void linked income.
+  if (st === 'cancelled' || st === 'archived') return 'failed';
   return 'pending';
 }
 
@@ -592,6 +603,43 @@ export default class FinanceService {
     if (v == null) return 0;
     const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * Staff archive/remove of a booking: void every linked ledger row so kassa, reports, and KPIs no longer
+   * treat the payment as real cash movement. Idempotent.
+   */
+  static async voidLedgerForArchivedBookingInTx(
+    bookingId: number,
+    transaction: SequelizeTransaction,
+  ): Promise<number> {
+    const id = Math.floor(Number(bookingId));
+    if (!Number.isFinite(id) || id <= 0) return 0;
+
+    const rows = await FinanceTransaction.findAll({
+      where: {
+        bookingId: id,
+        status: { [Op.in]: ['completed', 'pending', 'refunded'] },
+      },
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (rows.length === 0) return 0;
+
+    const suffix = ' · archived booking void';
+    for (const row of rows) {
+      const desc = String(row.description ?? '').trim();
+      const nextDesc = desc.includes('archived booking void') ? desc : `${desc || 'Payment'}${suffix}`;
+      await row.update(
+        {
+          status: 'failed',
+          description: nextDesc.slice(0, 512),
+          refundReviewedAt: row.refundReviewedAt ?? new Date(),
+        },
+        { transaction },
+      );
+    }
+    return rows.length;
   }
 
   /**
