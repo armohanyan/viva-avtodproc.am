@@ -41,6 +41,19 @@ async function resolveRange(req: StaffRequest) {
   return { startDate, endDate, branchId };
 }
 
+/** Optional `?adminUserId=` for kassa admin-scoped KPIs (omitted / `all` / invalid → no filter). */
+function parseAdminUserIdQuery(req: StaffRequest): number | undefined {
+  const raw = req.query.adminUserId;
+  const s =
+    typeof raw === 'string' ? raw : Array.isArray(raw) && typeof raw[0] === 'string' ? raw[0] : undefined;
+  if (!s) return undefined;
+  const trimmed = s.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'all') return undefined;
+  const n = Math.floor(Number(trimmed));
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n;
+}
+
 export default class DirectorController {
   static async listOptions(req: StaffRequest, res: Response, next: NextFunction) {
     try {
@@ -99,7 +112,12 @@ export default class DirectorController {
 
   static async listCash(req: StaffRequest, res: Response, next: NextFunction) {
     try {
-      const data = await DirectorService.listCash(await resolveRange(req));
+      const range = await resolveRange(req);
+      const adminUserId = parseAdminUserIdQuery(req);
+      const data = await DirectorService.listCash({
+        ...range,
+        adminUserId: adminUserId ?? null,
+      });
       SuccessHandlerUtil.handleGet(res, next, data);
     } catch (e) {
       next(e);

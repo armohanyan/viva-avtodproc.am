@@ -83,12 +83,20 @@ export function isLegacyDirectorRecord(id: number): boolean {
   return id < 0;
 }
 
-export function directorDateQuery(start: string, end: string, branchId?: string | null): string {
+export type DirectorCashViewBy = "admin" | "branch";
+
+export function directorDateQuery(
+  start: string,
+  end: string,
+  branchId?: string | null,
+  adminUserId?: string | null,
+): string {
   const params = new URLSearchParams({
     startDate: start,
     endDate: end,
   });
-  if (branchId) params.set("branchId", branchId);
+  if (adminUserId) params.set("adminUserId", adminUserId);
+  else if (branchId) params.set("branchId", branchId);
   return params.toString();
 }
 

@@ -26,6 +26,7 @@ import {
   DIRECTOR_PAYMENT_LABELS,
   directorDateQuery,
   todayIso,
+  type DirectorCashViewBy,
 } from "src/modules/director/director.consts";
 import type { DirectorCashDirection, DirectorCashEntry } from "src/modules/director/director.types";
 import { useBranches } from "src/modules/branches/useBranches";
@@ -42,9 +43,9 @@ import {
   directorOptionalId,
 } from "src/modules/director/directorFormValues";
 import { useDirectorTable } from "src/modules/director/useDirectorTable";
-import { getApiErrorMessage } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Wallet } from "lucide-react";
 import { cn } from "src/lib/utils";
 
@@ -53,6 +54,11 @@ type CashForm = {
   amount: string;
   comment: string;
   branchId: string;
+};
+
+type CashAdminOption = {
+  id: string;
+  name: string;
 };
 
 function emptyCashForm(branchId = ""): CashForm {
@@ -69,6 +75,9 @@ export default function DirectorCashPage() {
   const { branches } = useBranches();
   const { branchId: filterBranchId, revision: branchFilterRevision } = useAdminBranchFilterSnapshot();
   const [day, setDay] = useState(todayIso);
+  const [viewBy, setViewBy] = useState<DirectorCashViewBy>("admin");
+  const [filterAdminUserId, setFilterAdminUserId] = useState<string | null>(null);
+  const [admins, setAdmins] = useState<CashAdminOption[]>([]);
   const [rows, setRows] = useState<DirectorCashEntry[]>([]);
   const [balance, setBalance] = useState(0);
   const [dayIn, setDayIn] = useState(0);
@@ -83,13 +92,42 @@ export default function DirectorCashPage() {
     emptyCashForm(branches[0]?.id ? String(branches[0].id) : ""),
   );
 
-  const query = useMemo(
-    () => directorDateQuery(day, day, filterBranchId),
-    [day, filterBranchId],
-  );
+  const query = useMemo(() => {
+    if (viewBy === "admin") {
+      return directorDateQuery(day, day, null, filterAdminUserId);
+    }
+    return directorDateQuery(day, day, filterBranchId, null);
+  }, [day, viewBy, filterAdminUserId, filterBranchId]);
 
   const isToday = day === todayIso();
   const dayNet = dayIn - dayOut;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await vivaApiJson<Array<{ id: number | string; name?: string; email?: string }>>(
+          "/accounts?roles=admin,super_admin",
+        );
+        if (cancelled) return;
+        const next = (Array.isArray(data) ? data : [])
+          .map((a) => {
+            const id = String(a.id ?? "").trim();
+            if (!id) return null;
+            const name = String(a.name ?? "").trim() || String(a.email ?? "").trim() || `Admin #${id}`;
+            return { id, name };
+          })
+          .filter((a): a is CashAdminOption => a != null)
+          .sort((a, b) => a.name.localeCompare(b.name, "hy"));
+        setAdmins(next);
+      } catch {
+        if (!cancelled) setAdmins([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -115,7 +153,7 @@ export default function DirectorCashPage() {
     }
   }, [query, showToast]);
 
-  const reload = useDirectorReload(load, [query, branchFilterRevision]);
+  const reload = useDirectorReload(load, [query, branchFilterRevision, viewBy]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -138,6 +176,17 @@ export default function DirectorCashPage() {
 
   const onBranchFilterChange = (value: string) => {
     setAdminBranchFilterId(value === ADMIN_BRANCH_FILTER_ALL || !value ? null : value);
+  };
+
+  const onAdminFilterChange = (value: string) => {
+    setFilterAdminUserId(!value || value === "all" ? null : value);
+  };
+
+  const onViewByChange = (next: DirectorCashViewBy) => {
+    setViewBy(next);
+    if (next === "branch") {
+      setFilterAdminUserId(null);
+    }
   };
 
   const submit = async () => {
@@ -184,6 +233,20 @@ export default function DirectorCashPage() {
     const b = branches.find((x) => String(x.id) === String(id));
     return b?.label || b?.name || `#${id}`;
   };
+
+  const adminOptions = useMemo(() => {
+    const byId = new Map(admins.map((a) => [a.id, a]));
+    for (const row of rows) {
+      if (row.performedByUserId == null) continue;
+      const id = String(row.performedByUserId);
+      if (byId.has(id)) continue;
+      byId.set(id, {
+        id,
+        name: row.performedByName?.trim() || `Admin #${id}`,
+      });
+    }
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "hy"));
+  }, [admins, rows]);
 
   const tableColumns = useMemo(
     () => [
@@ -318,20 +381,47 @@ export default function DirectorCashPage() {
             onChange={(e) => setDay(e.target.value || todayIso())}
           />
         </DirectorField>
-        <DirectorField label="Մասնաճյուղ" className="w-full sm:w-auto">
+        <DirectorField label="Դիտել ըստ" className="w-full sm:w-auto">
           <DirectorSelect
             className="w-full sm:w-auto min-w-[12rem]"
-            value={filterBranchId ?? ADMIN_BRANCH_FILTER_ALL}
-            onChange={(e) => onBranchFilterChange(e.target.value)}
+            value={viewBy}
+            onChange={(e) => onViewByChange(e.target.value as DirectorCashViewBy)}
           >
-            <option value={ADMIN_BRANCH_FILTER_ALL}>Բոլորը</option>
-            {branches.map((b) => (
-              <option key={b.id} value={String(b.id)}>
-                {b.label || b.name}
-              </option>
-            ))}
+            <option value="admin">Ադմին</option>
+            <option value="branch">Մասնաճյուղ</option>
           </DirectorSelect>
         </DirectorField>
+        {viewBy === "admin" ? (
+          <DirectorField label="Ադմին" className="w-full sm:w-auto">
+            <DirectorSelect
+              className="w-full sm:w-auto min-w-[12rem]"
+              value={filterAdminUserId ?? "all"}
+              onChange={(e) => onAdminFilterChange(e.target.value)}
+            >
+              <option value="all">Բոլորը</option>
+              {adminOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </DirectorSelect>
+          </DirectorField>
+        ) : (
+          <DirectorField label="Մասնաճյուղ" className="w-full sm:w-auto">
+            <DirectorSelect
+              className="w-full sm:w-auto min-w-[12rem]"
+              value={filterBranchId ?? ADMIN_BRANCH_FILTER_ALL}
+              onChange={(e) => onBranchFilterChange(e.target.value)}
+            >
+              <option value={ADMIN_BRANCH_FILTER_ALL}>Բոլորը</option>
+              {branches.map((b) => (
+                <option key={b.id} value={String(b.id)}>
+                  {b.label || b.name}
+                </option>
+              ))}
+            </DirectorSelect>
+          </DirectorField>
+        )}
         {!isToday ? (
           <DirectorButton className="w-full sm:w-auto" variant="ghost" onClick={() => setDay(todayIso())}>
             Այսօր
