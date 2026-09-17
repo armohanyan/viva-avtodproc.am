@@ -8,6 +8,7 @@ import type { Booking as BookingType } from '../models/booking.model';
 import type { BookingSlot } from '../models/booking-slot.model';
 import {
   bookingCountsTowardStudentDebt,
+  isPackageCreditPrepaidMeta,
   resolveBookingPayment,
   type BookingPaymentRow,
 } from './booking-admin-payment.util';
@@ -198,7 +199,7 @@ export function slotCountsForPayableLesson(
 ): boolean {
   if (lessonSlotExcludedFromReports(booking)) return false;
   if (isApprovedGiftBooking(booking)) return true;
-  if (booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object') return true;
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return true;
 
   if (!bookingCountsTowardStudentDebt(booking)) return false;
 
@@ -216,7 +217,7 @@ export function slotCountsForPayableLesson(
 export function legacyBookingCountsForPayableLesson(booking: PayableLessonBookingRow): boolean {
   if (lessonSlotExcludedFromReports(booking)) return false;
   if (isApprovedGiftBooking(booking)) return true;
-  if (booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object') return true;
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return true;
 
   const resolved = resolveBookingPayment(booking);
   const ps = resolved.paymentStatus;

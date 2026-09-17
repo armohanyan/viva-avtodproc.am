@@ -41,6 +41,7 @@ import {
   bookingLifecycleStatusFromPayment,
   bookingTotalPriceAmd,
   buildStudentPaymentSummary,
+  isPackageCreditPrepaidMeta,
   resolveBookingPayment,
   type AdminBookingPaymentStatus,
   type StudentPaymentSummaryDto,
@@ -236,7 +237,9 @@ function mergeAdminPaymentIntoRowUpdate(
   patch: AdminPaymentPatchInput,
   nextTotalPriceAmd: number | null,
 ): Partial<{ paymentStatus: import('../utils/booking-admin-payment.util').BookingPaymentStatusDb; paidAmountAmd: number; paidAt: Date | null }> {
-  const billable = row.prepaidMeta ? 0 : bookingTotalPriceAmd({ totalPriceAmd: nextTotalPriceAmd });
+  const billable = isPackageCreditPrepaidMeta(row.prepaidMeta)
+    ? 0
+    : bookingTotalPriceAmd({ totalPriceAmd: nextTotalPriceAmd });
   const hasExplicit = patch.adminPaymentStatus !== undefined || patch.paidAmountAmd !== undefined;
   if (!hasExplicit && billable === bookingTotalPriceAmd(row)) {
     return {};
@@ -251,7 +254,11 @@ function mergeAdminPaymentIntoRowUpdate(
       : 'unpaid');
   const paidAmt =
     patch.paidAmountAmd ?? (status === 'partial' ? resolved.paidAmountAmd : undefined);
-  return adminPaymentDbPatch(billable, { adminPaymentStatus: status, paidAmountAmd: paidAmt }, row.prepaidMeta);
+  return adminPaymentDbPatch(
+    billable,
+    { adminPaymentStatus: status, paidAmountAmd: paidAmt },
+    isPackageCreditPrepaidMeta(row.prepaidMeta) ? row.prepaidMeta : null,
+  );
 }
 
 function meetLinkPatchForLessonType(
@@ -3684,7 +3691,7 @@ export default class BookingService {
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
-          prepaidMeta,
+          packagePrepaid ? prepaidMeta : null,
         );
         createdLifecycleStatus = adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatusMulti =
@@ -4587,7 +4594,7 @@ export default class BookingService {
     const computedTotal = Number.isFinite(hourly)
       ? hourly * billableSlotCountForLesson(lessonType, remaining.length)
       : previousTotalAmd;
-    const nextTotalAmd = row.prepaidMeta
+    const nextTotalAmd = isPackageCreditPrepaidMeta(row.prepaidMeta)
       ? 0
       : Math.max(0, Math.round(Number.isFinite(computedTotal) ? computedTotal : previousTotalAmd));
 
@@ -4602,7 +4609,7 @@ export default class BookingService {
 
     let nextPayStatus: AdminBookingPaymentStatus = 'unpaid';
     let nextPaidAmt: number | undefined;
-    if (row.prepaidMeta) {
+    if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
       nextPayStatus = 'paid';
     } else if (prevPayment.paymentStatus === 'unpaid' && previousPaid <= 0) {
       nextPayStatus = 'unpaid';
@@ -4615,7 +4622,7 @@ export default class BookingService {
       nextPayStatus = 'unpaid';
     }
 
-    const payUpdate = row.prepaidMeta
+    const payUpdate = isPackageCreditPrepaidMeta(row.prepaidMeta)
       ? adminPaymentDbPatch(0, { adminPaymentStatus: 'paid' }, row.prepaidMeta)
       : adminPaymentDbPatch(nextTotalAmd, {
           adminPaymentStatus: nextPayStatus,

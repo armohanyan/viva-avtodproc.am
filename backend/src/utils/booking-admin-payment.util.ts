@@ -43,6 +43,21 @@ function roundAmd(n: number): number {
   return Math.max(0, Math.round(n));
 }
 
+/**
+ * True when `prepaidMeta` means package/credit coverage (treat as fully prepaid).
+ * Cohort linkage alone (`theoryCohortId`) is not payment coverage - group theory still bills cash.
+ */
+export function isPackageCreditPrepaidMeta(meta: unknown): boolean {
+  if (meta == null || typeof meta !== 'object') return false;
+  const m = meta as Record<string, unknown>;
+  if (Math.floor(Number(m.packageOrderId) || 0) > 0) return true;
+  if (Math.max(0, Math.floor(Number(m.packageBalanceUnits) || 0)) > 0) return true;
+  if (Math.max(0, Math.floor(Number(m.pkg) || 0)) > 0) return true;
+  if (Math.max(0, Math.floor(Number(m.pkgTheory) || 0)) > 0) return true;
+  if (Array.isArray(m.extras) && m.extras.length > 0) return true;
+  return false;
+}
+
 export function bookingTotalPriceAmd(row: { totalPriceAmd?: number | null }): number {
   const t = row.totalPriceAmd;
   return t != null && Number.isFinite(Number(t)) ? roundAmd(Number(t)) : 0;
@@ -80,7 +95,7 @@ export function bookingCountsTowardStudentDebt(row: BookingPaymentRow): boolean 
 }
 
 function inferAdminStatusFromLegacy(row: BookingPaymentRow): AdminBookingPaymentStatus {
-  if (row.prepaidMeta != null && typeof row.prepaidMeta === 'object') {
+  if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
     return 'paid';
   }
   const ps = String(row.paymentStatus ?? '').trim().toLowerCase();
@@ -101,7 +116,7 @@ export function resolveBookingPayment(row: BookingPaymentRow): ResolvedBookingPa
   const total = bookingTotalPriceAmd(row);
   const rawPs = String(row.paymentStatus ?? '').trim().toLowerCase();
 
-  if (row.prepaidMeta != null && typeof row.prepaidMeta === 'object') {
+  if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
     return { paymentStatus: 'paid', paidAmountAmd: 0, totalPriceAmd: total, remainingAmd: 0 };
   }
 
@@ -200,7 +215,7 @@ export function adminPaymentFieldsForDb(
   paidAmountAmd: number | undefined,
   opts?: { prepaidMeta?: Record<string, unknown> | null },
 ): { paymentStatus: BookingPaymentStatusDb; paidAmountAmd: number; paidAt: Date | null } {
-  if (opts?.prepaidMeta != null) {
+  if (isPackageCreditPrepaidMeta(opts?.prepaidMeta)) {
     return { paymentStatus: 'paid', paidAmountAmd: 0, paidAt: new Date() };
   }
   const status = adminPaymentStatus ?? 'unpaid';
@@ -282,8 +297,7 @@ export type LessonSlotPaymentRow = {
  * - partial with paymentCovered flags → paid amount split across covered slots only
  * - partial with no covered flags (common when admin only enters paid AMD) → paid amount
  *   split across all slots so cash / reports still see the money
- * - prepaidMeta with billable total (e.g. theory cohort) → count as paid total
- * - prepaidMeta with zero total (package credit) → not cash income
+ * - package-credit prepaidMeta (typically zero total) → not cash income
  */
 export function slotRevenueAmd(
   booking: BookingPaymentRow,
@@ -292,9 +306,9 @@ export function slotRevenueAmd(
 ): number {
   if (!bookingCountsTowardStudentDebt(booking)) return 0;
 
-  const hasPrepaidMeta = booking.prepaidMeta != null && typeof booking.prepaidMeta === 'object';
+  const packagePrepaid = isPackageCreditPrepaidMeta(booking.prepaidMeta);
   const total = bookingTotalPriceAmd(booking);
-  if (hasPrepaidMeta && total <= 0) return 0;
+  if (packagePrepaid && total <= 0) return 0;
 
   const resolved = resolveBookingPayment(booking);
   const ps = resolved.paymentStatus;
@@ -302,7 +316,7 @@ export function slotRevenueAmd(
   if (resolved.totalPriceAmd <= 0) return 0;
 
   const slotCount = allSlots.length > 0 ? allSlots.length : 1;
-  if (ps === 'paid' || (hasPrepaidMeta && total > 0)) {
+  if (ps === 'paid') {
     return Math.round(resolved.totalPriceAmd / slotCount);
   }
   if (ps === 'partial') {
@@ -366,10 +380,9 @@ export function recognizedIncomeAmd(row: BookingPaymentRow): number {
   const resolved = resolveBookingPayment(row);
   const ps = resolved.paymentStatus;
   if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 0;
-  const hasPrepaidMeta = row.prepaidMeta != null && typeof row.prepaidMeta === 'object';
-  // Theory cohort / linked prepaid still bill a total when set; zero-total package credits stay 0.
-  if (hasPrepaidMeta) {
-    return resolved.totalPriceAmd > 0 ? resolved.totalPriceAmd : 0;
+  // Package credits are not cash income (usually zero billable total).
+  if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
+    return 0;
   }
   return resolved.paidAmountAmd;
 }
