@@ -122,7 +122,8 @@ export function aggregateBookingsByMonth(
 ): AdminReportPoint[] {
   const map = new Map<string, number>();
   for (const b of bookings) {
-    const key = b.lessonDateIso.slice(0, 7);
+    // Registrations = when the booking was created, not the lesson date.
+    const key = (b.createdAtIso || b.lessonDateIso).slice(0, 7);
     map.set(key, (map.get(key) ?? 0) + 1);
   }
   return [...map.entries()]

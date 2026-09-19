@@ -2,12 +2,10 @@ import type { AccountType } from "src/modules/accounts";
 import type { AppRoute } from "src/types/router.types";
 import {
   AdminDashboardPage,
-  AdminReportsPage,
   AdminUsersPage,
   AdminStudentDetailsPage,
   AdminInstructorsPage,
   AdminBookingsPage,
-  AdminArchivePage,
   AdminDrivingPage,
   AdminClassSchedulePage,
   AdminInboxRequestsPage,
@@ -41,9 +39,13 @@ import {
   DirectorDriverProfilePage,
   DirectorSalaryPage,
   DirectorStudentsPage,
+  DirectorArchivePage,
+  DirectorReportsPage,
   DirectorRedirectRootToCash,
   DirectorRedirectFuelKmToFuel,
   DirectorRedirectInstructorHoursToDriverProfile,
+  DirectorRedirectLegacyAdminArchive,
+  DirectorRedirectLegacyAdminReports,
 } from "src/pages/admin";
 import { SUPER_ADMIN_ONLY_ACCOUNT_TYPES } from "./admin.consts";
 
@@ -51,7 +53,7 @@ const STAFF: readonly AccountType[] = ["super_admin", "admin"];
 
 export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/dashboard", component: AdminDashboardPage, allowedAccountTypes: STAFF },
-  { path: "/admin/reports", component: AdminReportsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/reports", component: DirectorRedirectLegacyAdminReports, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/branches", component: AdminBranchesPage, allowedAccountTypes: STAFF },
   { path: "/admin/cars", component: AdminCarsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/students/analytics", component: AdminRedirectLegacyStudentsAnalytics, allowedAccountTypes: STAFF },
@@ -64,7 +66,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/instructors", component: AdminInstructorsPage, allowedAccountTypes: STAFF },
   { path: "/admin/bookings/debts", component: AdminBookingsPage, allowedAccountTypes: STAFF },
   { path: "/admin/bookings", component: AdminBookingsPage, allowedAccountTypes: STAFF },
-  { path: "/admin/archive", component: AdminArchivePage, allowedAccountTypes: STAFF },
+  { path: "/admin/archive", component: DirectorRedirectLegacyAdminArchive, allowedAccountTypes: STAFF },
   { path: "/admin/driving", component: AdminDrivingPage, allowedAccountTypes: STAFF },
   { path: "/admin/settings", component: AdminSettingsPage, allowedAccountTypes: STAFF },
   { path: "/admin/class-schedule", component: AdminClassSchedulePage, allowedAccountTypes: STAFF },
@@ -99,6 +101,8 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/director/repair/records", component: DirectorRepairPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/repair", component: DirectorRepairPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/students", component: DirectorStudentsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/director/archive", component: DirectorArchivePage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/director/reports", component: DirectorReportsPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/instructor-hours/records", component: DirectorRedirectInstructorHoursToDriverProfile, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/instructor-hours", component: DirectorRedirectInstructorHoursToDriverProfile, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/fuel-km", component: DirectorRedirectFuelKmToFuel, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },

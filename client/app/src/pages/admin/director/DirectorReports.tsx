@@ -1,4 +1,3 @@
-import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { DirectorButton, DirectorField, DirectorInput, DirectorStatCard, DirectorStatGrid } from "src/modules/director/components/DirectorUi";
 import {
@@ -10,6 +9,7 @@ import {
   DirectorReportSection,
   DirectorTrendChart,
 } from "src/modules/director/components/DirectorCharts";
+import DirectorLayout from "src/modules/director/DirectorLayout";
 import { useAdminBranchFilterSnapshot } from "src/modules/admin/AdminBranchFilterProvider";
 import { adminReportsQuery, fetchAdminReportsBundle } from "src/modules/admin/reports/adminReports.api";
 import { downloadAdminReportsPdf } from "src/modules/admin/reports/adminReportsPdf";
@@ -57,7 +57,7 @@ const EMPTY: AdminReportsBundle = {
   leads: { contactRequests: 0, bookedCalls: 0 },
 };
 
-export default function AdminReportsPage() {
+export default function DirectorReportsPage() {
   const { t } = useLang();
   const { showToast } = useToast();
   const { branches } = useBranches();
@@ -164,7 +164,7 @@ export default function AdminReportsPage() {
   };
 
   return (
-    <AdminLayout>
+    <DirectorLayout>
       <PanelPageHeader icon={BarChart3} title={t("adminReports")} />
 
       <div className="flex flex-wrap gap-4 items-end mb-6">
@@ -207,23 +207,24 @@ export default function AdminReportsPage() {
       </DirectorStatGrid>
 
       <div className="mt-8 space-y-8">
-        <DirectorReportSection title={`Ֆինանսական · ${formatAmd(summary.netRevenueAmd)}`}>
+        <DirectorReportSection title="Ֆինանսական">
           <DirectorReportGrid>
-            <DirectorChartPanel title="Վճարման աղբյուր" subtitle="Օնլայն vs ձեռքով">
-              <DirectorDoughnutChart points={paymentSplit} />
+            <DirectorChartPanel title="Վճարման աղբյուր" subtitle="Օնլայն vs ձեռքով / կանխիկ (AMD)">
+              <DirectorDoughnutChart points={paymentSplit} valueFormat="currency" />
             </DirectorChartPanel>
-            <DirectorChartPanel title="Վճարումների կարգավիճակ">
+            <DirectorChartPanel title="Վճարումների կարգավիճակ" subtitle="Գրանցումների քանակով">
               <DirectorDoughnutChart
                 points={[
                   { label: "Վճարված", value: summary.paidBookingsCount },
                   { label: "Մասնակի", value: summary.partialBookingsCount },
                   { label: "Չվճարված", value: summary.unpaidBookingsCount },
                 ].filter((p) => p.value > 0)}
+                valueFormat="count"
               />
             </DirectorChartPanel>
             {branchComparison.length > 0 ? (
-              <DirectorChartPanel title="Ըստ մասնաճյուղի (եկամուտ)" className="md:col-span-2">
-                <DirectorRankChart points={branchComparison} />
+              <DirectorChartPanel title="Եկամուտ ըստ մասնաճյուղի" subtitle="AMD" className="md:col-span-2">
+                <DirectorRankChart points={branchComparison} label="Եկամուտ" valueFormat="currency" />
               </DirectorChartPanel>
             ) : null}
           </DirectorReportGrid>
@@ -231,10 +232,10 @@ export default function AdminReportsPage() {
 
         <DirectorReportSection title={`Ուսանողներ · ${summary.newStudentsCount} նոր`}>
           <DirectorReportGrid>
-            <DirectorChartPanel title="Նոր ուսանողներ ըստ մասնաճյուղի">
-              <DirectorRankChart points={studentsByBranch} label="Քանակ" />
+            <DirectorChartPanel title="Նոր ուսանողներ ըստ մասնաճյուղի" subtitle="Քանակ">
+              <DirectorRankChart points={studentsByBranch} label="Քանակ" valueFormat="count" />
             </DirectorChartPanel>
-            <DirectorChartPanel title="Փաթեթային վաճառք">
+            <DirectorChartPanel title="Փաթեթային վաճառք" subtitle="Ընտրված ժամանակահատված">
               <DirectorStatGrid>
                 <DirectorStatCard label="Փաթեթներ" value={optional?.packageSalesCount ?? 0} />
                 <DirectorStatCard label="Գումար" value={formatAmd(optional?.packageSalesAmountAmd ?? 0)} />
@@ -245,14 +246,14 @@ export default function AdminReportsPage() {
 
         <DirectorReportSection title={`Գրանցումներ · ${summary.bookingsCreatedCount}`}>
           <DirectorReportGrid>
-            <DirectorChartPanel title="Գրանցումներ ըստ ամիսների">
-              <DirectorTrendChart points={bookingsByMonth} label="Գրանցում" />
+            <DirectorChartPanel title="Գրանցումներ ըստ ամիսների" subtitle="Ըստ ստեղծման ամսաթվի">
+              <DirectorTrendChart points={bookingsByMonth} label="Գրանցում" valueFormat="count" />
             </DirectorChartPanel>
-            <DirectorChartPanel title="Գրանցման տեսակներ">
-              <DirectorDoughnutChart points={bookingTypes} />
+            <DirectorChartPanel title="Գրանցման տեսակներ" subtitle="Քանակ">
+              <DirectorDoughnutChart points={bookingTypes} valueFormat="count" />
             </DirectorChartPanel>
-            <DirectorChartPanel title="Հրահանգիչներ (դաս)" className="md:col-span-2">
-              <DirectorRankChart points={instructorRank} label="Ժամ" />
+            <DirectorChartPanel title="Հրահանգիչներ (դասեր)" subtitle="Ժամեր" className="md:col-span-2">
+              <DirectorRankChart points={instructorRank} label="Ժամ" valueFormat="hours" />
             </DirectorChartPanel>
           </DirectorReportGrid>
         </DirectorReportSection>
@@ -269,22 +270,29 @@ export default function AdminReportsPage() {
         {data.director && data.monthlyTrend ? (
           <DirectorReportSection title={`Տնօրենի ամփոփ · ${formatAmd(data.director.netProfit)}`}>
             <DirectorReportGrid>
-              <DirectorChartPanel title="Հասույթ և շահույթ" subtitle="Ըստ ամիսների" className="md:col-span-2" tall>
-                <DirectorLineChart series={directorTrend} />
+              <DirectorChartPanel
+                title="Հասույթ և մաքուր շահույթ"
+                subtitle="AMD · ըստ ամիսների"
+                className="md:col-span-2"
+                tall
+              >
+                <DirectorLineChart series={directorTrend} valueFormat="currency" />
               </DirectorChartPanel>
-              <DirectorChartPanel title="Ծախսերի կառուցվածք">
+              <DirectorChartPanel title="Ծախսերի կառուցվածք" subtitle="AMD">
                 <DirectorRankChart
                   points={[
                     { label: "Ծախսեր", value: data.director.totalExpense },
                     { label: "Վառելիք", value: data.director.fuel },
                     { label: "Աշխատավարձ", value: data.director.salaryTotal },
                   ].filter((p) => p.value > 0)}
+                  label="AMD"
+                  valueFormat="currency"
                 />
               </DirectorChartPanel>
             </DirectorReportGrid>
           </DirectorReportSection>
         ) : null}
       </div>
-    </AdminLayout>
+    </DirectorLayout>
   );
 }

@@ -254,7 +254,7 @@ export default function DirectorFuelPage() {
               <DirectorTrendChart points={fuelByMonth} label="Վառելիք" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Լիտր ըստ ամիսների">
-              <DirectorTrendChart points={litersByMonth} label="Լիտր" />
+              <DirectorTrendChart points={litersByMonth} label="Լիտր" valueFormat="liters" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Հրահանգիչներ Top 8">
               <DirectorRankChart points={fuelByInstructor} />

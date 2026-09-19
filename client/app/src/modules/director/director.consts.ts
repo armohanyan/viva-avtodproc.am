@@ -13,6 +13,8 @@ export const DIRECTOR_NAV_LINKS: DirectorNavLink[] = [
   { href: "/admin/director/salary", label: "Աշխատավարձ" },
   { href: "/admin/director/repair", label: "Վերանորոգում" },
   { href: "/admin/director/students", label: "Ուսանողներ" },
+  { href: "/admin/director/archive", label: "Արխիվ" },
+  { href: "/admin/director/reports", label: "Հաշվետվություններ" },
 ];
 
 function directorNavMatch(path: string): DirectorNavLink | null {

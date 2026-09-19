@@ -21,6 +21,18 @@ function refreshExpiresAt(): Date {
   return new Date(Date.now() + ms);
 }
 
+/**
+ * Parallel refresh requests often present a just-rotated token within a short window.
+ * Treat that as a race, not theft. Delayed reuse (stolen token) still revokes all sessions.
+ */
+const REFRESH_REUSE_GRACE_MS = 30_000;
+
+export type RefreshRotateResult =
+  | { status: 'ok'; plain: string; userId: number }
+  /** Another request already rotated this token; caller's cookie may already be stale in-flight. */
+  | { status: 'conflict' }
+  | { status: 'invalid' };
+
 export default class RefreshTokenService {
   static async createForUser(userId: number): Promise<{ plain: string; expiresAt: Date }> {
     const plain = newPlainRefresh();
@@ -34,27 +46,46 @@ export default class RefreshTokenService {
     return { plain, expiresAt };
   }
 
-  /** Rotates refresh token: revokes the current row and returns a new plain token persisted for the same user. */
-  static async rotate(plain: string): Promise<{ plain: string; userId: number } | null> {
+  /**
+   * Rotates refresh token: revokes the current row and returns a new plain token persisted for the same user.
+   * Uses a conditional update so concurrent rotators do not both "win" and then trip reuse detection.
+   */
+  static async rotate(plain: string): Promise<RefreshRotateResult> {
     const tokenHash = hashRefreshToken(plain);
     const row = await RefreshToken.findOne({ where: { tokenHash } });
     if (!row) {
-      return null;
+      return { status: 'invalid' };
     }
-    // Refresh token reuse: presenting a rotated (revoked) token invalidates all sessions for that user.
-    if (row.revokedAt) {
-      await this.revokeAllForUser(row.userId);
-      return null;
-    }
+
     if (row.expiresAt.getTime() <= Date.now()) {
-      return null;
+      return { status: 'invalid' };
     }
+
+    if (row.revokedAt) {
+      const revokedAgoMs = Date.now() - row.revokedAt.getTime();
+      if (revokedAgoMs > REFRESH_REUSE_GRACE_MS) {
+        await this.revokeAllForUser(row.userId);
+        return { status: 'invalid' };
+      }
+      // Likely a concurrent refresh race (or a login that replaced the cookie mid-flight).
+      return { status: 'conflict' };
+    }
+
     const plainNext = newPlainRefresh();
     const tokenHashNext = hashRefreshToken(plainNext);
     const expiresAt = refreshExpiresAt();
 
-    await RefreshToken.sequelize!.transaction(async (t) => {
-      await row.update({ revokedAt: new Date() }, { transaction: t });
+    const won = await RefreshToken.sequelize!.transaction(async (t) => {
+      const [affected] = await RefreshToken.update(
+        { revokedAt: new Date() },
+        {
+          where: { id: row.id, revokedAt: { [Op.is]: null } },
+          transaction: t,
+        },
+      );
+      if (affected === 0) {
+        return false;
+      }
       await RefreshToken.create(
         {
           userId: row.userId,
@@ -63,9 +94,14 @@ export default class RefreshTokenService {
         },
         { transaction: t },
       );
+      return true;
     });
 
-    return { plain: plainNext, userId: row.userId };
+    if (!won) {
+      return { status: 'conflict' };
+    }
+
+    return { status: 'ok', plain: plainNext, userId: row.userId };
   }
 
   static async revokeByPlain(plain: string): Promise<void> {

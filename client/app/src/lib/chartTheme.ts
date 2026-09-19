@@ -1,9 +1,13 @@
 import { useMemo } from "react";
 import type { ChartOptions, TooltipItem } from "chart.js";
 import { useTheme } from "src/lib/theme";
+import { AMD_NUMBER_LOCALE } from "src/constants/finance.constants";
 import { formatAmd } from "src/utils/currency.utils";
 
-/** Brand-safe palette — no black or near-black. */
+/** How chart values should be shown in tooltips and axis ticks. */
+export type ChartValueFormat = "currency" | "count" | "hours" | "km" | "liters";
+
+/** Brand-safe palette - no black or near-black. */
 const FALLBACK_PALETTE = [
   "#f48633",
   "#2563eb",
@@ -87,9 +91,25 @@ export function getChartPrimaryColor(): string {
   return resolveCssColor("--primary", FALLBACK_PALETTE[0]);
 }
 
-function tooltipValue(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
-  return formatAmd(Math.round(value));
+export function formatChartValue(
+  value: number | null | undefined,
+  format: ChartValueFormat = "currency",
+): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  const n = format === "currency" || format === "count" ? Math.round(value) : Math.round(value * 10) / 10;
+  switch (format) {
+    case "currency":
+      return formatAmd(n);
+    case "hours":
+      return `${n.toLocaleString(AMD_NUMBER_LOCALE)} ժ`;
+    case "km":
+      return `${n.toLocaleString(AMD_NUMBER_LOCALE)} կմ`;
+    case "liters":
+      return `${n.toLocaleString(AMD_NUMBER_LOCALE)} լ`;
+    case "count":
+    default:
+      return n.toLocaleString(AMD_NUMBER_LOCALE);
+  }
 }
 
 function chartNumericValue(context: TooltipItem<"bar" | "doughnut" | "line">): number | null {
@@ -102,7 +122,7 @@ function chartNumericValue(context: TooltipItem<"bar" | "doughnut" | "line">): n
   return typeof raw === "number" ? raw : null;
 }
 
-function buildTooltipOptions(colors: ChartThemeColors) {
+function buildTooltipOptions(colors: ChartThemeColors, valueFormat: ChartValueFormat) {
   return {
     enabled: true,
     backgroundColor: colors.tooltipBg,
@@ -119,20 +139,23 @@ function buildTooltipOptions(colors: ChartThemeColors) {
     titleFont: {
       size: 13,
       weight: "600" as const,
-      family: "Inter, system-ui, sans-serif",
+      family: "inherit",
     },
     bodyFont: {
       size: 12,
-      family: "Inter, system-ui, sans-serif",
+      family: "inherit",
     },
     footerFont: {
       size: 11,
-      family: "Inter, system-ui, sans-serif",
+      family: "inherit",
     },
     callbacks: {
       label(context: TooltipItem<"bar" | "doughnut" | "line">) {
-        const formatted = tooltipValue(chartNumericValue(context));
-        if (context.chart.config.type === "doughnut") return formatted;
+        const formatted = formatChartValue(chartNumericValue(context), valueFormat);
+        if (context.chart.config.type === "doughnut") {
+          const slice = context.label ? `${context.label}: ` : "";
+          return `${slice}${formatted}`;
+        }
         const label = context.dataset.label
           ? `${context.dataset.label}: `
           : context.label
@@ -142,6 +165,25 @@ function buildTooltipOptions(colors: ChartThemeColors) {
       },
     },
   };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Deep-merge chart option objects so plugin overrides keep tooltips/legends. */
+function mergeChartOptions<T extends Record<string, unknown>>(base: T, overrides?: Partial<T>): T {
+  if (!overrides) return base;
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(overrides)) {
+    const prev = out[key];
+    if (isPlainObject(prev) && isPlainObject(value)) {
+      out[key] = mergeChartOptions(prev, value);
+    } else if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out as T;
 }
 
 function baseScaleColors(colors: ChartThemeColors) {
@@ -155,113 +197,165 @@ function baseScaleColors(colors: ChartThemeColors) {
   };
 }
 
-function compactAxis(value: string | number): string {
+function compactAxis(value: string | number, format: ChartValueFormat): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "";
-  if (n >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return String(n);
+  if (format === "currency") {
+    if (Math.abs(n) >= 1_000_000) return `${Math.round(n / 1_000_000)}M`;
+    if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)}K`;
+    return String(Math.round(n));
+  }
+  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return format === "count" ? String(Math.round(n)) : String(Math.round(n * 10) / 10);
 }
 
 type ScaleChartOptions = ChartOptions<"bar" | "line">;
-
-export function barChartOptions(overrides?: Partial<ScaleChartOptions>): ScaleChartOptions {
-  const colors = getChartThemeColors();
-  const scale = baseScaleColors(colors);
-
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-        labels: { color: colors.text, boxWidth: 12, boxHeight: 12, usePointStyle: true },
-      },
-      tooltip: buildTooltipOptions(colors),
-    },
-    scales: {
-      x: {
-        ...scale,
-        ticks: { ...scale.ticks, callback: compactAxis },
-      },
-      y: {
-        ...scale,
-        ticks: { ...scale.ticks, callback: compactAxis },
-      },
-    },
-    ...overrides,
-  };
-}
-
-export function horizontalBarChartOptions(overrides?: Partial<ScaleChartOptions>): ScaleChartOptions {
-  return barChartOptions({
-    indexAxis: "y",
-    ...overrides,
-  });
-}
-
 type LineChartOptions = ChartOptions<"line">;
-
-export function lineChartOptions(overrides?: Partial<LineChartOptions>): LineChartOptions {
-  const colors = getChartThemeColors();
-  const scale = baseScaleColors(colors);
-
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: {
-        display: true,
-        position: "bottom",
-        labels: {
-          color: colors.text,
-          boxWidth: 10,
-          boxHeight: 10,
-          usePointStyle: true,
-          padding: 16,
-          font: { size: 11 },
-        },
-      },
-      tooltip: buildTooltipOptions(colors),
-    },
-    scales: {
-      x: scale,
-      y: {
-        ...scale,
-        ticks: { ...scale.ticks, callback: compactAxis },
-      },
-    },
-    ...overrides,
-  };
-}
-
 type DoughnutChartOptions = ChartOptions<"doughnut">;
 
-export function doughnutChartOptions(overrides?: Partial<DoughnutChartOptions>): DoughnutChartOptions {
-  const colors = getChartThemeColors();
+type ChartOptionArgs = {
+  valueFormat?: ChartValueFormat;
+};
 
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    cutout: "62%",
-    plugins: {
-      legend: {
-        display: true,
-        position: "bottom",
-        labels: {
-          color: colors.text,
-          boxWidth: 12,
-          boxHeight: 12,
-          usePointStyle: true,
-          padding: 16,
-          font: { size: 11 },
+export function barChartOptions(
+  overrides?: Partial<ScaleChartOptions>,
+  args?: ChartOptionArgs,
+): ScaleChartOptions {
+  const colors = getChartThemeColors();
+  const scale = baseScaleColors(colors);
+  const valueFormat = args?.valueFormat ?? "currency";
+  const tickCb = (value: string | number) => compactAxis(value, valueFormat);
+
+  return mergeChartOptions(
+    {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+          labels: { color: colors.text, boxWidth: 12, boxHeight: 12, usePointStyle: true },
+        },
+        tooltip: buildTooltipOptions(colors, valueFormat),
+      },
+      scales: {
+        x: {
+          ...scale,
+          ticks: { ...scale.ticks, callback: tickCb },
+        },
+        y: {
+          ...scale,
+          ticks: { ...scale.ticks, callback: tickCb },
         },
       },
-      tooltip: buildTooltipOptions(colors),
-    },
-    ...overrides,
-  };
+    } as ScaleChartOptions,
+    overrides,
+  );
+}
+
+export function horizontalBarChartOptions(
+  overrides?: Partial<ScaleChartOptions>,
+  args?: ChartOptionArgs,
+): ScaleChartOptions {
+  const colors = getChartThemeColors();
+  const scale = baseScaleColors(colors);
+  const valueFormat = args?.valueFormat ?? "currency";
+  const valueTick = (value: string | number) => compactAxis(value, valueFormat);
+
+  return mergeChartOptions(
+    barChartOptions(
+      {
+        indexAxis: "y",
+        scales: {
+          x: {
+            ...scale,
+            ticks: { ...scale.ticks, callback: valueTick },
+          },
+          y: {
+            ...scale,
+            ticks: {
+              ...scale.ticks,
+              autoSkip: false,
+            },
+          },
+        },
+      },
+      args,
+    ),
+    overrides,
+  );
+}
+
+export function lineChartOptions(
+  overrides?: Partial<LineChartOptions>,
+  args?: ChartOptionArgs,
+): LineChartOptions {
+  const colors = getChartThemeColors();
+  const scale = baseScaleColors(colors);
+  const valueFormat = args?.valueFormat ?? "currency";
+
+  return mergeChartOptions(
+    {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom",
+          labels: {
+            color: colors.text,
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            padding: 16,
+            font: { size: 11 },
+          },
+        },
+        tooltip: buildTooltipOptions(colors, valueFormat),
+      },
+      scales: {
+        x: scale,
+        y: {
+          ...scale,
+          ticks: { ...scale.ticks, callback: (value: string | number) => compactAxis(value, valueFormat) },
+        },
+      },
+    } as LineChartOptions,
+    overrides,
+  );
+}
+
+export function doughnutChartOptions(
+  overrides?: Partial<DoughnutChartOptions>,
+  args?: ChartOptionArgs & { showLegend?: boolean },
+): DoughnutChartOptions {
+  const colors = getChartThemeColors();
+  const valueFormat = args?.valueFormat ?? "currency";
+  const showLegend = args?.showLegend ?? false;
+
+  return mergeChartOptions(
+    {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "58%",
+      plugins: {
+        legend: {
+          display: showLegend,
+          position: "bottom",
+          labels: {
+            color: colors.text,
+            boxWidth: 12,
+            boxHeight: 12,
+            usePointStyle: true,
+            padding: 14,
+            font: { size: 11 },
+          },
+        },
+        tooltip: buildTooltipOptions(colors, valueFormat),
+      },
+    } as DoughnutChartOptions,
+    overrides,
+  );
 }
 
 /** One bar per category with distinct palette colors. */
@@ -293,12 +387,16 @@ export function useChartTheme() {
       return {
         theme,
         colors,
-        barChartOptions: (overrides?: Partial<ScaleChartOptions>) => barChartOptions(overrides),
-        horizontalBarChartOptions: (overrides?: Partial<ScaleChartOptions>) =>
-          horizontalBarChartOptions(overrides),
-        lineChartOptions: (overrides?: Partial<LineChartOptions>) => lineChartOptions(overrides),
-        doughnutChartOptions: (overrides?: Partial<DoughnutChartOptions>) =>
-          doughnutChartOptions(overrides),
+        barChartOptions: (overrides?: Partial<ScaleChartOptions>, args?: ChartOptionArgs) =>
+          barChartOptions(overrides, args),
+        horizontalBarChartOptions: (overrides?: Partial<ScaleChartOptions>, args?: ChartOptionArgs) =>
+          horizontalBarChartOptions(overrides, args),
+        lineChartOptions: (overrides?: Partial<LineChartOptions>, args?: ChartOptionArgs) =>
+          lineChartOptions(overrides, args),
+        doughnutChartOptions: (
+          overrides?: Partial<DoughnutChartOptions>,
+          args?: ChartOptionArgs & { showLegend?: boolean },
+        ) => doughnutChartOptions(overrides, args),
         barDatasetColors: (count: number) => barDatasetColors(count),
         doughnutDatasetColors: (count: number) => doughnutDatasetColors(count, colors.sliceBorder),
       };

@@ -95,7 +95,7 @@ export default function DirectorStudentsPage() {
             />
           </DirectorChartPanel>
           <DirectorChartPanel title="Ընդամենը ըստ ամիսների" subtitle="ամսական միտում" tall>
-            <DirectorTrendChart points={monthlyTrend} label="Նոր ուսանողներ" />
+            <DirectorTrendChart points={monthlyTrend} label="Նոր ուսանողներ" valueFormat="count" />
           </DirectorChartPanel>
         </DirectorReportGrid>
       </DirectorReportSection>
@@ -104,14 +104,14 @@ export default function DirectorStudentsPage() {
         <DirectorReportGrid>
           <DirectorChartPanel title="Գրանցում vs անհրաժեշտ գրանցում">
             {data.registrationSplit.length > 0 ? (
-              <DirectorDoughnutChart points={data.registrationSplit} />
+              <DirectorDoughnutChart points={data.registrationSplit} valueFormat="count" />
             ) : (
               <DirectorChartEmpty />
             )}
           </DirectorChartPanel>
           <DirectorChartPanel title="Ուսանողներ ըստ մասնաճյուղի">
             {branchTop.length > 0 ? (
-              <DirectorRankChart points={branchTop} label="հաշիվ" />
+              <DirectorRankChart points={branchTop} label="հաշիվ" valueFormat="count" />
             ) : (
               <DirectorChartEmpty />
             )}

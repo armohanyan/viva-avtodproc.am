@@ -1,10 +1,8 @@
 export { default as AdminDashboardPage } from "./AdminDashboard";
-export { default as AdminReportsPage } from "./AdminReports";
 export { default as AdminUsersPage } from "./AdminUsers";
 export { default as AdminStudentDetailsPage } from "./AdminStudentDetails";
 export { default as AdminInstructorsPage } from "./AdminInstructors";
 export { default as AdminBookingsPage } from "./AdminBookings";
-export { default as AdminArchivePage } from "./AdminArchive";
 export { default as AdminDrivingPage } from "./AdminDriving";
 export { default as AdminSettingsPage } from "./AdminSettings";
 export { default as AdminClassSchedulePage } from "./AdminClassSchedule";
@@ -45,7 +43,11 @@ export {
   DirectorDriverProfilePage,
   DirectorSalaryPage,
   DirectorStudentsPage,
+  DirectorArchivePage,
+  DirectorReportsPage,
   DirectorRedirectRootToCash,
   DirectorRedirectFuelKmToFuel,
   DirectorRedirectInstructorHoursToDriverProfile,
+  DirectorRedirectLegacyAdminArchive,
+  DirectorRedirectLegacyAdminReports,
 } from "./director";

@@ -173,22 +173,27 @@ export default class AuthService {
     return this.issueTokens(user);
   }
 
-  /** Returns new access + rotated refresh, or null if refresh is invalid. */
-  static async refreshWithPlain(refreshPlain: string): Promise<AuthTokensDto | null> {
+  /**
+   * Returns new access + rotated refresh.
+   * `conflict` means a concurrent refresh already rotated the cookie - do not clear the browser cookie.
+   */
+  static async refreshWithPlain(
+    refreshPlain: string,
+  ): Promise<{ status: 'ok'; tokens: AuthTokensDto } | { status: 'conflict' } | { status: 'invalid' }> {
     const rotated = await RefreshTokenService.rotate(refreshPlain);
-    if (!rotated) {
-      return null;
+    if (rotated.status !== 'ok') {
+      return rotated;
     }
 
     const user = await User.findByPk(rotated.userId);
     if (!user) {
-      return null;
+      return { status: 'invalid' };
     }
 
     try {
       await this.assertActive(user);
     } catch {
-      return null;
+      return { status: 'invalid' };
     }
 
     const accessToken = signAccessToken({
@@ -197,7 +202,10 @@ export default class AuthService {
       accountType: user.accountType,
     });
 
-    return { accessToken, user: toDto(user), refreshPlain: rotated.plain };
+    return {
+      status: 'ok',
+      tokens: { accessToken, user: toDto(user), refreshPlain: rotated.plain },
+    };
   }
 
   static async logoutPlain(refreshPlain: string | undefined): Promise<void> {

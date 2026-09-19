@@ -34,6 +34,7 @@ import {
   Gauge,
   Banknote,
   BarChart3,
+  Archive,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import ThemeToggle from "./ThemeToggle";
@@ -94,7 +95,6 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/blogs": Newspaper,
 		"/admin/accounts": UserCog,
 		"/admin/marketing-content": Sparkles,
-		"/admin/reports": BarChart3,
 	} as const;
 
 	const adminNavLabels = useMemo(() => {
@@ -285,6 +285,8 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/director/salary": Banknote,
 		"/admin/director/repair": Wrench,
 		"/admin/director/students": GraduationCap,
+		"/admin/director/archive": Archive,
+		"/admin/director/reports": BarChart3,
 	};
 
 	const renderDirectorNavItem = (link: (typeof DIRECTOR_NAV_LINKS)[number], closeMobileNav: () => void) => {

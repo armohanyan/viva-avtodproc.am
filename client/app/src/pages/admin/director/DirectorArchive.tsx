@@ -1,6 +1,5 @@
-import { Trash2 } from "lucide-react";
+import { Archive, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AdminLayout from "src/components/AdminLayout";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import PanelPageHeader from "src/components/PanelPageHeader";
@@ -18,6 +17,7 @@ import { formatDateTime } from "src/lib/adminFormat";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
+import DirectorLayout from "src/modules/director/DirectorLayout";
 
 type ArchiveKind = "booking" | "slot";
 type ArchiveFilter = "all" | ArchiveKind;
@@ -58,10 +58,10 @@ function lessonTypeLabel(t: (k: string) => string, lessonType: string | null): s
   if (lessonType === "practical") return t("lessonTypePractical");
   if (lessonType === "theory") return t("lessonTypeTheory");
   if (lessonType === "theory_personal") return t("lessonTypeTheoryPersonal");
-  return lessonType?.trim() || "—";
+  return lessonType?.trim() || "-";
 }
 
-export default function AdminArchivePage(): JSX.Element {
+export default function DirectorArchivePage(): JSX.Element {
   const { t, lang } = useLang();
   const { showToast } = useToast();
   const [rows, setRows] = useState<BookingArchiveRow[]>([]);
@@ -182,9 +182,10 @@ export default function AdminArchivePage(): JSX.Element {
         : t("adminArchivePurgeDesc");
 
   return (
-    <AdminLayout>
+    <DirectorLayout>
       <div className="flex flex-col gap-4 p-4 md:p-6">
         <PanelPageHeader
+          icon={Archive}
           title={t("adminArchiveNav")}
           subtitle={t("adminArchivePageDesc")}
           actions={
@@ -302,10 +303,10 @@ export default function AdminArchivePage(): JSX.Element {
                               <div className="text-muted-foreground text-xs">{r.archivedByEmail}</div>
                             ) : null}
                           </td>
-                          <td className="px-3 py-2 whitespace-nowrap">{r.branchName ?? "—"}</td>
-                          <td className="px-3 py-2">{r.studentName ?? "—"}</td>
-                          <td className="px-3 py-2">{r.instructorName ?? "—"}</td>
-                          <td className="px-3 py-2 whitespace-nowrap">{scheduleParts.join(" ") || "—"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{r.branchName ?? "-"}</td>
+                          <td className="px-3 py-2">{r.studentName ?? "-"}</td>
+                          <td className="px-3 py-2">{r.instructorName ?? "-"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">{scheduleParts.join(" ") || "-"}</td>
                           <td className="max-w-[240px] px-3 py-2 whitespace-pre-wrap text-muted-foreground">
                             {r.remark}
                           </td>
@@ -341,6 +342,6 @@ export default function AdminArchivePage(): JSX.Element {
         confirmLabel={t("delete")}
         danger
       />
-    </AdminLayout>
+    </DirectorLayout>
   );
 }

@@ -301,7 +301,13 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 
 		if (res.status === 401 && typeof window !== "undefined" && shouldAttemptAuthRefreshRetry(path)) {
 			if (!_authRetry) {
-				const refreshed = await tryRefreshAccessToken();
+				const failedAccessToken = (() => {
+					const auth = hdrs.get("Authorization");
+					if (!auth?.startsWith("Bearer ")) return null;
+					const t = auth.slice("Bearer ".length).trim();
+					return t || null;
+				})();
+				const refreshed = await tryRefreshAccessToken({ failedAccessToken });
 				if (refreshed === "rate_limited") {
 					return res;
 				}
@@ -317,6 +323,15 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 
 					return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
 				}
+			}
+			// Do not wipe a brand-new login if this 401 belonged to a stale pre-login request
+			// (missing/old bearer). Only revoke when the failing token is still the current one.
+			const latest = loadAccountSession()?.accessToken;
+			const failedAuth = hdrs.get("Authorization");
+			const failedToken =
+				failedAuth?.startsWith("Bearer ") ? failedAuth.slice("Bearer ".length).trim() : null;
+			if (latest && latest !== failedToken) {
+				return res;
 			}
 			revokeClientSessionAfterAuthorizationFailure();
 		}

@@ -200,10 +200,10 @@ export default function DirectorKmPage() {
           </DirectorStatGrid>
           <DirectorReportGrid className="mt-4">
             <DirectorChartPanel title="Կիլոմետրեր ըստ ամիսների">
-              <DirectorTrendChart points={kmByMonth} label="ԿՄ" />
+              <DirectorTrendChart points={kmByMonth} label="ԿՄ" valueFormat="km" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Հրահանգիչներ Top 8">
-              <DirectorRankChart points={kmByInstructor} label="ԿՄ" />
+              <DirectorRankChart points={kmByInstructor} label="ԿՄ" valueFormat="km" />
             </DirectorChartPanel>
           </DirectorReportGrid>
         </DirectorReportSection>

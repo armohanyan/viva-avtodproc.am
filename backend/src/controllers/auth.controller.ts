@@ -199,13 +199,21 @@ export default class AuthController {
         clearRefreshCookie(res);
         return next(new UnauthorizedError('Session expired', HttpStatusCodesUtil.UNAUTHORIZED));
       }
-      const data = await AuthService.refreshWithPlain(rt);
-      if (!data) {
+      const outcome = await AuthService.refreshWithPlain(rt);
+      if (outcome.status === 'conflict') {
+        // Another refresh already rotated and may have Set-Cookie'd the winner.
+        // Clearing here would wipe that valid cookie and log the user out.
+        return next(new UnauthorizedError('Session expired', HttpStatusCodesUtil.UNAUTHORIZED));
+      }
+      if (outcome.status === 'invalid') {
         clearRefreshCookie(res);
         return next(new UnauthorizedError('Session expired', HttpStatusCodesUtil.UNAUTHORIZED));
       }
-      attachRefreshCookie(res, data.refreshPlain);
-      SuccessHandlerUtil.handleGet(res, next, { accessToken: data.accessToken, user: data.user });
+      attachRefreshCookie(res, outcome.tokens.refreshPlain);
+      SuccessHandlerUtil.handleGet(res, next, {
+        accessToken: outcome.tokens.accessToken,
+        user: outcome.tokens.user,
+      });
     } catch (e) {
       next(e);
     }

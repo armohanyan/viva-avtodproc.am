@@ -1,4 +1,5 @@
 import { API_V1_PREFIX } from "src/constants/api.constants";
+import { getAccessTokenInMemory, memoryAccessTokenLooksValid } from "src/lib/accessTokenMemory";
 import { getApiBaseUrl } from "src/lib/apiBaseUrl";
 import { saveAccountSession } from "src/modules/accounts/account.session";
 import type { AccountSessionUser, AccountType } from "src/modules/accounts/account.types";
@@ -37,7 +38,18 @@ export function clearRefreshCookieBestEffort(): void {
 
 export type RefreshAttempt = "ok" | "failed" | "rate_limited";
 
+export type TryRefreshOptions = {
+	/**
+	 * Access token that just received HTTP 401. When set, a different in-memory token
+	 * (e.g. from a login that completed while refresh was in flight) counts as success
+	 * without rotating the refresh cookie again.
+	 */
+	failedAccessToken?: string | null;
+};
+
 let refreshChain: Promise<RefreshAttempt> | null = null;
+
+const REFRESH_LOCK_NAME = "viva-auth-refresh";
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
@@ -97,25 +109,74 @@ async function postRefreshAndApplySession(): Promise<RefreshAttempt> {
 	return "ok";
 }
 
+function sessionRecoveredAfterFailure(failedAccessToken?: string | null): boolean {
+	const current = getAccessTokenInMemory();
+	if (!current || !memoryAccessTokenLooksValid(45)) {
+		return false;
+	}
+	// Login (or another tab's refresh) produced a different usable access token.
+	if (failedAccessToken != null && failedAccessToken !== "" && current !== failedAccessToken) {
+		return true;
+	}
+	// Hydration / no prior bearer: any valid in-memory token is enough.
+	if (failedAccessToken == null || failedAccessToken === "") {
+		return memoryAccessTokenLooksValid(45);
+	}
+	return false;
+}
+
+async function runRefreshAttempt(opts?: TryRefreshOptions): Promise<RefreshAttempt> {
+	if (sessionRecoveredAfterFailure(opts?.failedAccessToken)) {
+		return "ok";
+	}
+
+	const outcome = await postRefreshAndApplySession();
+	if (outcome === "ok" || outcome === "rate_limited") {
+		return outcome;
+	}
+
+	// Refresh failed, but login may have completed while the request was in flight.
+	if (sessionRecoveredAfterFailure(opts?.failedAccessToken)) {
+		return "ok";
+	}
+	return "failed";
+}
+
+async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+	const locks = typeof navigator !== "undefined" ? navigator.locks : undefined;
+	if (!locks?.request) {
+		return fn();
+	}
+	return locks.request(REFRESH_LOCK_NAME, fn);
+}
+
 /**
  * Uses httpOnly refresh cookie; on success stores a new access token in memory and user snapshot in
  * localStorage (never persists the access token to localStorage).
  *
- * Coalesces concurrent callers onto one refresh request.
+ * Coalesces concurrent callers onto one refresh request and serializes across tabs via Web Locks
+ * so rotating refresh tokens are not presented twice (which previously revoked all sessions).
  *
- * Important: this is used after the API already returned **401**. Returning `"ok"` without hitting
- * the refresh endpoint would make `apiFetch` retry the same Bearer token, get 401 again, and then
- * revoke the client session — e.g. right after MFA when the server rejects the access JWT for a
- * reason the client `exp` check does not reflect.
+ * Important: after an API **401**, pass `failedAccessToken` so we still hit `/auth/refresh` when the
+ * rejected JWT is the one still in memory (e.g. MFA / server-side invalidation). Returning `"ok"`
+ * without refreshing in that case would retry the same Bearer and then revoke the client session.
  */
-export async function tryRefreshAccessToken(): Promise<RefreshAttempt> {
+export async function tryRefreshAccessToken(opts?: TryRefreshOptions): Promise<RefreshAttempt> {
 	if (typeof window === "undefined") return "failed";
 	if (refreshChain) {
-		return refreshChain;
+		const shared = await refreshChain;
+		if (shared === "ok" || shared === "rate_limited") {
+			return shared;
+		}
+		// Shared attempt failed — still allow recovery if login landed a new token.
+		if (sessionRecoveredAfterFailure(opts?.failedAccessToken)) {
+			return "ok";
+		}
+		return shared;
 	}
 	refreshChain = (async (): Promise<RefreshAttempt> => {
 		try {
-			return await postRefreshAndApplySession();
+			return await withRefreshLock(() => runRefreshAttempt(opts));
 		} finally {
 			refreshChain = null;
 		}

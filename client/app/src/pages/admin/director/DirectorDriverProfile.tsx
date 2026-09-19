@@ -241,16 +241,16 @@ export default function DirectorDriverProfilePage() {
         <DirectorReportSection title={`${instructorTitle} · հաշվետվություն`}>
           <DirectorReportGrid>
             <DirectorChartPanel title="Դասեր" subtitle="Ըստ օրերի">
-              <DirectorTrendChart points={hoursTrend} label="Դաս" />
+              <DirectorTrendChart points={hoursTrend} label="Դաս" valueFormat="hours" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Կիլոմետրեր" subtitle="Ըստ օրերի">
-              <DirectorTrendChart points={kmTrend} label="ԿՄ" />
+              <DirectorTrendChart points={kmTrend} label="ԿՄ" valueFormat="km" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Վառելիք (AMD)" subtitle="Ըստ օրերի">
               <DirectorTrendChart points={fuelTrend} label="Գումար" />
             </DirectorChartPanel>
             <DirectorChartPanel title="Արդյունավետություն" subtitle="լ/100կմ և դր/կմ">
-              <DirectorLineChart series={efficiencySeries} />
+              <DirectorLineChart series={efficiencySeries} valueFormat="count" />
             </DirectorChartPanel>
           </DirectorReportGrid>
         </DirectorReportSection>
