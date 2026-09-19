@@ -187,10 +187,7 @@ export default class LessonCompletionService {
   ): Promise<boolean> {
     const status = normalizeBookingStatus(String(booking.status ?? ''));
     const reservesSlot =
-      status === 'confirmed' ||
-      status === 'pending' ||
-      status === 'pending_payment' ||
-      status === 'completed';
+      status === 'confirmed' || status === 'pending' || status === 'pending_payment';
     if (!reservesSlot) return false;
 
     const cs = String(booking.lessonCompletionStatus ?? '')
