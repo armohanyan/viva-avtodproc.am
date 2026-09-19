@@ -137,7 +137,7 @@ export function DashboardBookingsListTab() {
       b.holdExpiresAt.length > 0 &&
       new Date(b.holdExpiresAt).getTime() > Date.now();
 
-  const colSpan = 7;
+  const colSpan = 8;
 
   return (
     <>
@@ -175,6 +175,9 @@ export function DashboardBookingsListTab() {
             <table className="w-full text-sm text-left border-collapse min-w-[720px]">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
+                  <th scope="col" className="py-3 px-4 font-medium text-muted-foreground whitespace-nowrap">
+                    {t("tableColId")}
+                  </th>
                   <th scope="col" className="py-3 px-4 font-medium text-muted-foreground whitespace-nowrap">
                     {t("bookingsTableColDate")}
                   </th>
@@ -222,6 +225,9 @@ export function DashboardBookingsListTab() {
                     </tr>
                     {upcoming.map((b) => (
                       <tr key={String(b.id)} className="border-b border-border last:border-b-0 hover:bg-muted/20">
+                        <td className="py-3 px-4 text-muted-foreground text-xs font-mono whitespace-nowrap tabular-nums">
+                          {b.id}
+                        </td>
                         <td className="py-3 px-4 text-foreground whitespace-nowrap">{fullDateLabel(b.dateIso, locale)}</td>
                         <td className="py-3 px-4 text-muted-foreground whitespace-nowrap tabular-nums">
                           {formatTimeRange(b.time, b.endTime)}
@@ -327,6 +333,9 @@ export function DashboardBookingsListTab() {
                     </tr>
                     {past.map((b) => (
                       <tr key={String(b.id)} className="border-b border-border last:border-b-0 hover:bg-muted/20">
+                        <td className="py-3 px-4 text-muted-foreground text-xs font-mono whitespace-nowrap tabular-nums">
+                          {b.id}
+                        </td>
                         <td className="py-3 px-4 text-foreground whitespace-nowrap">{fullDateLabel(b.dateIso, locale)}</td>
                         <td className="py-3 px-4 text-muted-foreground whitespace-nowrap tabular-nums">
                           {formatTimeRange(b.time, b.endTime)}

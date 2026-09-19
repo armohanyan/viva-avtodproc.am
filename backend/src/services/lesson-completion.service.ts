@@ -41,13 +41,19 @@ function mapBookingStatusToCompletionOnCancel(nextBookingStatus: string): Lesson
 export default class LessonCompletionService {
   /**
    * Idempotent: marks past practical / personal-theory lessons and group sessions as completed (or missed).
+   * Also heals active bookings that still carry a stale cancelled/refunded completion flag
+   * (those occupy the graphic but are excluded from salary).
    */
   static async markDueLessonsCompleted(now = new Date()): Promise<{
     bookingsMarkedCompleted: number;
     bookingsMarkedMissed: number;
     bookingsCompletionSynced: number;
+    bookingsStaleCompletionHealed: number;
     cohortSessionsMarkedCompleted: number;
   }> {
+    const bookingsStaleCompletionHealed =
+      await LessonCompletionService.healStaleClosedCompletionsForActiveBookings(now);
+
     const today = yerevanTodayIso(now);
     const candidates = await Booking.findAll({
       where: {
@@ -116,10 +122,11 @@ export default class LessonCompletionService {
 
     if (
       bookingsCompletionSynced > 0 ||
+      bookingsStaleCompletionHealed > 0 ||
       cohortSessionsMarkedCompleted > 0
     ) {
       LoggerUtil.info(
-        `Lesson completion cron: bookings completed=${bookingsMarkedCompleted} missed=${bookingsMarkedMissed}; cohort sessions=${cohortSessionsMarkedCompleted}`,
+        `Lesson completion cron: bookings completed=${bookingsMarkedCompleted} missed=${bookingsMarkedMissed} staleHealed=${bookingsStaleCompletionHealed}; cohort sessions=${cohortSessionsMarkedCompleted}`,
       );
     }
 
@@ -127,8 +134,41 @@ export default class LessonCompletionService {
       bookingsMarkedCompleted,
       bookingsMarkedMissed,
       bookingsCompletionSynced,
+      bookingsStaleCompletionHealed,
       cohortSessionsMarkedCompleted,
     };
+  }
+
+  /**
+   * Find every active (slot-reserving) booking whose completion still says cancelled/refunded
+   * and recompute the correct standing. Covers all instructors / date ranges.
+   */
+  static async healStaleClosedCompletionsForActiveBookings(now = new Date()): Promise<number> {
+    const rows = await Booking.findAll({
+      where: {
+        lessonType: { [Op.in]: [...BOOKING_LESSON_TYPES] },
+        status: { [Op.in]: ['confirmed', 'pending_payment', 'completed', 'pending', 'pending_prebook'] },
+        lessonCompletionStatus: { [Op.in]: ['cancelled', 'cancelled_no_refund', 'refunded'] },
+      },
+      attributes: [
+        'id',
+        'dateIso',
+        'time',
+        'endTime',
+        'status',
+        'lessonType',
+        'lessonPassedSuccessfully',
+        'lessonCompletionStatus',
+        'lessonCompletedAt',
+      ],
+    });
+
+    let healed = 0;
+    for (const row of rows) {
+      const ok = await LessonCompletionService.clearStaleClosedCompletionForActiveBooking(row, { now });
+      if (ok) healed += 1;
+    }
+    return healed;
   }
 
   /** Apply terminal completion status when a booking is cancelled/refunded. */

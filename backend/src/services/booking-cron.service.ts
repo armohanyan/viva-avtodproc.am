@@ -146,6 +146,7 @@ export default class BookingCronService {
       upcomingLessonRemindersCreated,
       bookingsMarkedCompleted: lessonCompletion.bookingsMarkedCompleted,
       bookingsMarkedMissed: lessonCompletion.bookingsMarkedMissed,
+      bookingsStaleCompletionHealed: lessonCompletion.bookingsStaleCompletionHealed,
       cohortSessionsMarkedCompleted: lessonCompletion.cohortSessionsMarkedCompleted,
       vposReconciled: vposResult.checked,
       vposFulfilled: vposResult.fulfilled,

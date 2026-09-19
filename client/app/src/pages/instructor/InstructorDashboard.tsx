@@ -177,7 +177,7 @@ export default function InstructorDashboard() {
 								<div>
 									<p className="font-medium text-foreground">{row.studentName}</p>
 									<p className="text-sm text-muted-foreground">
-										{fmtDate(row.dateIso)} · {displayTimeHHMM(row.time)} · {t(typeKey)}
+										#{row.id} · {fmtDate(row.dateIso)} · {displayTimeHHMM(row.time)} · {t(typeKey)}
 									</p>
 								</div>
 								<Badge

@@ -104,6 +104,7 @@ export function GiftBookingsPanel({ onCountsChange }: Props) {
           <table className="w-full min-w-[880px] text-left text-sm">
             <thead className="bg-muted/50 border-b">
               <tr>
+                <th className="px-3 py-2 font-medium">{t("tableColId")}</th>
                 <th className="px-3 py-2 font-medium">{t("bookedCallColCreated")}</th>
                 <th className="px-3 py-2 font-medium">{t("bookingColStudent")}</th>
                 <th className="px-3 py-2 font-medium">{t("cohortColInstructor")}</th>
@@ -116,10 +117,11 @@ export function GiftBookingsPanel({ onCountsChange }: Props) {
             </thead>
             <tbody>
               {loading ? (
-                <TableSkeletonRows cols={8} cellClassName="px-3 py-2" />
+                <TableSkeletonRows cols={9} cellClassName="px-3 py-2" />
               ) : (
                 rows.map((r) => (
                   <tr key={r.id} className="border-b last:border-0">
+                    <td className="text-muted-foreground px-3 py-2 text-xs font-mono whitespace-nowrap tabular-nums">{r.id}</td>
                     <td className="text-muted-foreground px-3 py-2 whitespace-nowrap">
                       {formatDateTime(r.createdAt, lang)}
                     </td>

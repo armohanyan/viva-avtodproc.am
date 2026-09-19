@@ -237,6 +237,11 @@ export default function InstructorClassSchedule() {
 				{displayTime(item.startTime)}–{displayTime(item.endTime)}
 			</div>
 			<div className="truncate text-muted-foreground">{item.student.name}</div>
+			{item.bookingId > 0 ? (
+				<div className={cn("font-mono text-muted-foreground/80 tabular-nums", compact ? "text-[10px]" : "text-xs")}>
+					#{item.bookingId}
+				</div>
+			) : null}
 			{item.meetLink?.trim() &&
 			(item.lessonType === "theory_personal" || item.lessonType === "theory") ? (
 				<span
@@ -387,6 +392,7 @@ export default function InstructorClassSchedule() {
 								<table className="w-full text-sm">
 									<thead>
 										<tr className="border-b text-left text-muted-foreground">
+											<th className="py-2 pr-3 font-medium">{t("tableColId")}</th>
 											<th className="py-2 pr-3 font-medium">{t("adminClassScheduleColTime")}</th>
 											<th className="py-2 pr-3 font-medium">{t("adminClassScheduleColStudent")}</th>
 											<th className="py-2 pr-3 font-medium">{t("adminClassScheduleColType")}</th>
@@ -400,6 +406,9 @@ export default function InstructorClassSchedule() {
 													className="border-b border-border/60 hover:bg-muted/40 cursor-pointer"
 													onClick={() => setDetail(item)}
 												>
+													<td className="py-2.5 pr-3 text-xs font-mono text-muted-foreground whitespace-nowrap tabular-nums">
+														{item.bookingId > 0 ? item.bookingId : "—"}
+													</td>
 													<td className="py-2.5 pr-3 tabular-nums whitespace-nowrap">
 														{displayTime(item.startTime)} – {displayTime(item.endTime)}
 													</td>
@@ -535,6 +544,7 @@ export default function InstructorClassSchedule() {
 								<table className="w-full text-sm">
 									<thead>
 										<tr className="border-b text-left text-muted-foreground">
+											<th className="py-2 pr-3 font-medium">{t("tableColId")}</th>
 											<th className="py-2 pr-3 font-medium">{t("adminClassScheduleColDate")}</th>
 											<th className="py-2 pr-3 font-medium">{t("adminClassScheduleColTime")}</th>
 											<th className="py-2 pr-3 font-medium">{t("adminClassScheduleColStudent")}</th>
@@ -549,6 +559,9 @@ export default function InstructorClassSchedule() {
 													className="border-b border-border/60 hover:bg-muted/40 cursor-pointer"
 													onClick={() => setDetail(item)}
 												>
+													<td className="py-2.5 pr-3 text-xs font-mono text-muted-foreground whitespace-nowrap tabular-nums">
+														{item.bookingId > 0 ? item.bookingId : "—"}
+													</td>
 													<td className="py-2.5 pr-3">{formatShortDateFromIso(item.date, lang)}</td>
 													<td className="py-2.5 pr-3 tabular-nums">
 														{displayTime(item.startTime)} – {displayTime(item.endTime)}
@@ -576,11 +589,18 @@ export default function InstructorClassSchedule() {
 					if (!open) setDetail(null);
 				}}
 				title={t("adminClassScheduleDetailTitle")}
+				description={detail && detail.bookingId > 0 ? `#${detail.bookingId}` : undefined}
 				contentClassName="max-w-lg"
 			>
 				{detail ? (
 					<dl className="space-y-3 text-sm">
 						<div className="grid grid-cols-[minmax(0,7rem)_1fr] gap-x-3 gap-y-2">
+							{detail.bookingId > 0 ? (
+								<>
+									<dt className="text-muted-foreground">{t("tableColId")}</dt>
+									<dd className="font-mono tabular-nums">{detail.bookingId}</dd>
+								</>
+							) : null}
 							<dt className="text-muted-foreground">{t("adminClassScheduleColStudent")}</dt>
 							<dd>{detail.student.name}</dd>
 							{detail.student.phone ? (

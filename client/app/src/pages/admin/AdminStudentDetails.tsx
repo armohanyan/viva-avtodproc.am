@@ -479,6 +479,7 @@ export default function AdminStudentDetails() {
                 <table className="w-full text-sm min-w-[40rem]">
                   <thead className="bg-muted/40">
                     <tr className="text-left">
+                      <th className="px-4 py-3 font-medium text-muted-foreground">{t("tableColId")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground">{t("date")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground">{t("studentDetailsLessonType")}</th>
                       <th className="px-4 py-3 font-medium text-muted-foreground text-right">{t("adminColPrice")}</th>
@@ -491,6 +492,7 @@ export default function AdminStudentDetails() {
                   <tbody className="divide-y divide-border">
                     {(paymentSummary?.unpaidBookings ?? []).map((b) => (
                       <tr key={b.id} className="hover:bg-muted/30">
+                        <td className="px-4 py-3 text-muted-foreground text-xs font-mono whitespace-nowrap tabular-nums">{b.id}</td>
                         <td className="px-4 py-3 whitespace-nowrap tabular-nums">
                           {displayJoined(b.dateIso)} · {b.time}
                         </td>
@@ -530,6 +532,7 @@ export default function AdminStudentDetails() {
               <table className="w-full text-sm min-w-[48rem]">
                 <thead className="bg-muted/40">
                   <tr className="text-left">
+                    <th className="px-4 py-3 font-medium text-muted-foreground">{t("tableColId")}</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">{t("date")}</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">{t("bookingColTime")}</th>
                     <th className="px-4 py-3 font-medium text-muted-foreground">{t("cohortColInstructor")}</th>
@@ -542,7 +545,7 @@ export default function AdminStudentDetails() {
                 <tbody className="divide-y divide-border">
                   {bookings.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                      <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
                         {t("studentDetailsLessonsEmpty")}
                       </td>
                     </tr>
@@ -553,6 +556,7 @@ export default function AdminStudentDetails() {
                       const pay = paymentStatusBadge(b);
                       return (
                         <tr key={b.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3 text-muted-foreground text-xs font-mono whitespace-nowrap tabular-nums">{b.id}</td>
                           <td className="px-4 py-3 text-foreground whitespace-nowrap tabular-nums">{displayJoined(b.dateIso)}</td>
                           <td className="px-4 py-3 text-muted-foreground whitespace-nowrap tabular-nums">
                             {b.time}
