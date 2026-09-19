@@ -54,6 +54,8 @@ export type DrivingDayCellBooking = {
   instructorId: number | null;
   instructorName: string;
   time: string;
+  /** Exclusive end from class-schedule - used to fill plan rows covered by this occurrence. */
+  endTime?: string;
 };
 
 type ClassScheduleItem = {
@@ -531,9 +533,21 @@ export default function AdminDrivingDayModal({
 
   const bookingByInstructorTime = useMemo(() => {
     const map = new Map<string, DrivingDayCellBooking>();
+    const setCell = (key: string, cell: DrivingDayCellBooking, overwrite: boolean) => {
+      if (overwrite || !map.has(key)) map.set(key, cell);
+    };
+    const cells: Array<{
+      instructorKey: string;
+      branchId: string;
+      cell: DrivingDayCellBooking;
+      startM: number;
+      endM: number;
+    }> = [];
+
     for (const item of items) {
       if (item.date.slice(0, 10) !== day) continue;
       const time = padSlotTime(item.startTime);
+      const endTime = item.endTime ? padSlotTime(item.endTime) : "";
       const instructorKey =
         item.instructor.id != null && item.instructor.id > 0
           ? String(item.instructor.id)
@@ -547,17 +561,37 @@ export default function AdminDrivingDayModal({
         instructorId: item.instructor.id,
         instructorName: item.instructor.name,
         time,
+        endTime: endTime || undefined,
       };
       const branchId = String(item.branch?.id ?? "");
+      const startM = parseTimeToMinutes(time);
+      const endM = endTime ? parseTimeToMinutes(endTime) : startM + 60;
+      cells.push({ instructorKey, branchId, cell, startM, endM });
+      // Pass 1: exact start times always win (per-slot payment color for multi-slot bookings).
       if (branchId) {
-        map.set(`${instructorKey}|${branchId}|${time}`, cell);
+        setCell(`${instructorKey}|${branchId}|${time}`, cell, true);
       }
-      if (!map.has(`${instructorKey}|${time}`)) {
-        map.set(`${instructorKey}|${time}`, cell);
+      setCell(`${instructorKey}|${time}`, cell, true);
+    }
+
+    // Pass 2: fill plan rows covered by [start, end) that have no booking yet so busy-only
+    // hours of the same booking are not left as grey occupied cells.
+    const planTimes = bookableTimesFromPlan(
+      planRows.length > 0 ? ensureLunchBreakRow(planRows) : ensureLunchBreakRow(DEFAULT_PRACTICAL_SLOT_PLAN),
+    ).map(padSlotTime);
+    for (const { instructorKey, branchId, cell, startM, endM } of cells) {
+      if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) continue;
+      for (const planTime of planTimes) {
+        const m = parseTimeToMinutes(planTime);
+        if (!Number.isFinite(m) || m < startM || m >= endM) continue;
+        if (branchId) {
+          setCell(`${instructorKey}|${branchId}|${planTime}`, { ...cell, time: planTime }, false);
+        }
+        setCell(`${instructorKey}|${planTime}`, { ...cell, time: planTime }, false);
       }
     }
     return map;
-  }, [items, day]);
+  }, [items, day, planRows]);
 
   const displayRows = useMemo(() => {
     const base =

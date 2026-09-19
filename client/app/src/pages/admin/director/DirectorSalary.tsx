@@ -54,6 +54,7 @@ import {
 import type {
   DirectorSalary,
   DirectorSalaryEmployeeKind,
+  DirectorSalaryLessonPaymentBucket,
   DirectorSalaryLessons,
   DirectorSalaryPayment,
   DirectorSalaryReport,
@@ -87,6 +88,19 @@ const KIND_LABEL: Record<DirectorSalaryEmployeeKind, string> = {
 
 function kindLabel(kind: DirectorSalaryEmployeeKind): string {
   return KIND_LABEL[kind];
+}
+
+function formatOutstandingSlots(unpaid: number, partial: number): string | null {
+  const parts: string[] = [];
+  if (unpaid > 0) parts.push(`${unpaid} չվճարված`);
+  if (partial > 0) parts.push(`${partial} մասնակի`);
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+function lessonPaymentBucketLabel(bucket: DirectorSalaryLessonPaymentBucket): string {
+  if (bucket === "unpaid") return "Չվճարված";
+  if (bucket === "partial_uncovered") return "Մասնակի";
+  return "Վճարված";
 }
 
 function employeeDisplayName(
@@ -246,6 +260,7 @@ function SalaryReportView({
 
       <p className="text-xs text-muted-foreground mt-4 mb-2">
         Հաշվարկը հիմնված է վճարված դասերի (սլոթերի) քանակի վրա՝ ներառյալ հաստատված նվեր-ամրագրումները.
+        Չվճարված և մասնակի սլոթերը ցուցադրվում են առանձին, որպեսզի երևա, եթե վճարումը դեռ չի նշվել.
         Գործնական դասի լռելյայն դրույք՝ {formatAmd(report?.instructorRateAmd ?? 1500)}, տեսություն{" "}
         {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}.
       </p>
@@ -268,7 +283,12 @@ function SalaryReportView({
               </DirectorTableTd>
             </DirectorTableRow>
           ) : (
-            report?.rows.map((row) => (
+            report?.rows.map((row) => {
+              const outstanding = formatOutstandingSlots(
+                row.unpaidLessonsCount,
+                row.partialUnpaidLessonsCount,
+              );
+              return (
               <DirectorTableRow key={`${row.kind}:${row.employeeUserId}`}>
                 <DirectorTableTd>
                   {employeeDisplayName(row.employeeUserId, row.employeeName, instructors, branches)}
@@ -277,10 +297,15 @@ function SalaryReportView({
                 <DirectorTableTd>
                   <button
                     type="button"
-                    className="text-primary underline-offset-2 hover:underline tabular-nums"
+                    className="text-left text-primary underline-offset-2 hover:underline tabular-nums"
                     onClick={() => void openLessons(row)}
                   >
-                    {row.lessonsCount}
+                    <span className="font-medium">{row.lessonsCount}</span>
+                    {outstanding ? (
+                      <span className="block text-xs font-normal text-amber-700 dark:text-amber-400 no-underline">
+                        +{outstanding}
+                      </span>
+                    ) : null}
                   </button>
                 </DirectorTableTd>
                 <DirectorTableTd className="tabular-nums">{formatAmd(row.ratePerLessonAmd)}</DirectorTableTd>
@@ -297,14 +322,15 @@ function SalaryReportView({
                   )}
                 </DirectorTableTd>
                 <DirectorTableTd className="text-right">
-                  {!row.paid ? (
+                  {!row.paid && row.lessonsCount > 0 ? (
                     <DirectorButton className="h-8 text-xs" onClick={() => setPayRow(row)}>
                       Վճարել
                     </DirectorButton>
                   ) : null}
                 </DirectorTableTd>
               </DirectorTableRow>
-            ))
+              );
+            })
           )}
         </DirectorTableBody>
       </DirectorTableWrap>
@@ -314,14 +340,19 @@ function SalaryReportView({
           <DialogHeader>
             <DialogTitle>Դասեր</DialogTitle>
             <DialogDescription>
-              {lessons ? `${lessons.startDate} — ${lessons.endDate} · ${lessons.totalUnits} դաս` : start + " — " + end}
+              {lessons
+                ? `${lessons.startDate} — ${lessons.endDate} · ${lessons.totalUnits} վճարված` +
+                  (lessons.unpaidUnits > 0 || lessons.partialUnpaidUnits > 0
+                    ? ` · ${formatOutstandingSlots(lessons.unpaidUnits, lessons.partialUnpaidUnits) ?? ""}`
+                    : "")
+                : start + " — " + end}
             </DialogDescription>
           </DialogHeader>
           <AdminTableScroll>
             <table className="w-full text-sm min-w-[36rem]">
               <thead className="bg-muted/40">
                 <tr>
-                  {["Ամսաթիվ", "Ժամ", "Նկարագրություն", "Դասեր"].map((h) => (
+                  {["Ամսաթիվ", "Ժամ", "Նկարագրություն", "Կարգավիճակ", "Դասեր"].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-3 py-2 uppercase">
                       {h}
                     </th>
@@ -330,10 +361,10 @@ function SalaryReportView({
               </thead>
               <tbody className="divide-y divide-border">
                 {lessonsLoading ? (
-                  <TableSkeletonRows cols={4} cellClassName="px-3 py-2" />
+                  <TableSkeletonRows cols={5} cellClassName="px-3 py-2" />
                 ) : (lessons?.items.length ?? 0) === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
                       Դասեր չկան
                     </td>
                   </tr>
@@ -346,6 +377,18 @@ function SalaryReportView({
                         {item.endTime ? ` — ${item.endTime}` : ""}
                       </td>
                       <td className="px-3 py-2">{item.label}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                            item.paymentBucket === "payable"
+                              ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                              : "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+                          )}
+                        >
+                          {lessonPaymentBucketLabel(item.paymentBucket ?? "payable")}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{item.units}</td>
                     </tr>
                   ))

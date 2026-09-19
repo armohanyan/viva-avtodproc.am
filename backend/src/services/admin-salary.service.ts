@@ -12,9 +12,10 @@ import { lessonEndUtcMs } from '../utils/lesson-datetime.util';
 import {
   findLegacyBookingsWithoutSlots,
   findSlotsInDateRange,
-  legacyBookingCountsForPayableLesson,
+  legacySalaryPaymentBucket,
+  salarySlotPaymentBucket,
   slotCountFromTimeRange,
-  slotCountsForPayableLesson,
+  type SalarySlotPaymentBucket,
 } from '../utils/lesson-slot-count.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -62,7 +63,12 @@ export type SalaryReportRowDto = {
   kind: SalaryEmployeeKind;
   employeeUserId: number;
   employeeName: string;
+  /** Payable (paid / covered) lesson slots that drive salary total. */
   lessonsCount: number;
+  /** Active practical slots still unpaid (admin may have forgotten to mark paid). */
+  unpaidLessonsCount: number;
+  /** Partial-payment practical slots not marked paymentCovered. */
+  partialUnpaidLessonsCount: number;
   ratePerLessonAmd: number;
   totalAmd: number;
   /** Existing submitted payment whose period overlaps the requested range (already paid). */
@@ -106,10 +112,12 @@ export type SalaryLessonRowDto = {
   dateIso: string;
   startTime: string;
   endTime: string | null;
-  /** Payable lesson units this row contributes (hours for practical, 1 for theory sessions). */
+  /** Lesson units this row contributes (hours for practical, 1 for theory sessions). */
   units: number;
   /** Student name for practical lessons; theory group name for sessions. */
   label: string;
+  /** Payment standing for practical slots; theory sessions are always payable. */
+  paymentBucket: SalarySlotPaymentBucket;
 };
 
 export type SalaryLessonsDto = {
@@ -118,7 +126,15 @@ export type SalaryLessonsDto = {
   startDate: string;
   endDate: string;
   totalUnits: number;
+  unpaidUnits: number;
+  partialUnpaidUnits: number;
   items: SalaryLessonRowDto[];
+};
+
+type PracticalLessonBreakdown = {
+  payable: number;
+  unpaid: number;
+  partialUncovered: number;
 };
 
 export type CreateCalculatedSalaryInput = {
@@ -180,8 +196,26 @@ function paymentRowToDto(row: SalaryPayment, createdBy?: User | null): SalaryPay
   };
 }
 
-/** Paid practical lesson slots per instructor in the date range (payment status, not booking lifecycle). */
-async function practicalLessonCounts(start: string, end: string): Promise<Map<number, number>> {
+function emptyBreakdown(): PracticalLessonBreakdown {
+  return { payable: 0, unpaid: 0, partialUncovered: 0 };
+}
+
+function addBucket(
+  breakdown: PracticalLessonBreakdown,
+  bucket: SalarySlotPaymentBucket,
+  units: number,
+): void {
+  if (units <= 0) return;
+  if (bucket === 'payable') breakdown.payable += units;
+  else if (bucket === 'unpaid') breakdown.unpaid += units;
+  else breakdown.partialUncovered += units;
+}
+
+/** Practical lesson slot breakdown per instructor in the date range. */
+async function practicalLessonBreakdowns(
+  start: string,
+  end: string,
+): Promise<Map<number, PracticalLessonBreakdown>> {
   const query = {
     startDate: start,
     endDate: end,
@@ -191,16 +225,33 @@ async function practicalLessonCounts(start: string, end: string): Promise<Map<nu
     findSlotsInDateRange(query),
     findLegacyBookingsWithoutSlots(query),
   ]);
-  const counts = new Map<number, number>();
+  const counts = new Map<number, PracticalLessonBreakdown>();
   for (const slot of slots) {
-    if (!slotCountsForPayableLesson(slot.booking, slot)) continue;
-    counts.set(slot.instructorUserId, (counts.get(slot.instructorUserId) ?? 0) + 1);
+    const bucket = salarySlotPaymentBucket(slot.booking, slot);
+    if (!bucket) continue;
+    const row = counts.get(slot.instructorUserId) ?? emptyBreakdown();
+    addBucket(row, bucket, 1);
+    counts.set(slot.instructorUserId, row);
   }
   for (const row of legacyBookings) {
-    if (!legacyBookingCountsForPayableLesson(row)) continue;
+    const bucket = legacySalaryPaymentBucket(row);
+    if (!bucket) continue;
     const iid = row.instructorUserId as number;
     const d = String(row.dateIso).slice(0, 10);
-    counts.set(iid, (counts.get(iid) ?? 0) + slotCountFromTimeRange(d, String(row.time), row.endTime));
+    const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
+    const entry = counts.get(iid) ?? emptyBreakdown();
+    addBucket(entry, bucket, units);
+    counts.set(iid, entry);
+  }
+  return counts;
+}
+
+/** Payable practical lesson slots per instructor (salary calculation). */
+async function practicalLessonCounts(start: string, end: string): Promise<Map<number, number>> {
+  const breakdowns = await practicalLessonBreakdowns(start, end);
+  const counts = new Map<number, number>();
+  for (const [id, b] of breakdowns) {
+    if (b.payable > 0) counts.set(id, b.payable);
   }
   return counts;
 }
@@ -274,7 +325,8 @@ async function practicalLessonRows(
   const items: SalaryLessonRowDto[] = [];
 
   for (const slot of slots) {
-    if (!slotCountsForPayableLesson(slot.booking, slot)) continue;
+    const bucket = salarySlotPaymentBucket(slot.booking, slot);
+    if (!bucket) continue;
     items.push({
       id: slot.slotId,
       dateIso: slot.dateIso,
@@ -282,11 +334,13 @@ async function practicalLessonRows(
       endTime: null,
       units: 1,
       label: studentNameById.get(slot.booking.studentUserId) ?? `Student #${slot.booking.studentUserId}`,
+      paymentBucket: bucket,
     });
   }
 
   for (const row of legacyBookings) {
-    if (!legacyBookingCountsForPayableLesson(row)) continue;
+    const bucket = legacySalaryPaymentBucket(row);
+    if (!bucket) continue;
     const d = String(row.dateIso).slice(0, 10);
     const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
     items.push({
@@ -296,6 +350,7 @@ async function practicalLessonRows(
       endTime: row.endTime ?? null,
       units,
       label: studentNameById.get(row.studentUserId) ?? `Student #${row.studentUserId}`,
+      paymentBucket: bucket,
     });
   }
 
@@ -330,6 +385,7 @@ async function theoryLessonRows(
       endTime: String(session.endTime),
       units: 1,
       label: cohort?.name?.trim() || `Group #${session.cohortId}`,
+      paymentBucket: 'payable',
     });
   }
   return items;
@@ -352,7 +408,12 @@ export default class AdminSalaryService {
       employeeUserId,
       startDate: start,
       endDate: end,
-      totalUnits: items.reduce((s, r) => s + r.units, 0),
+      totalUnits: items.reduce((s, r) => s + (r.paymentBucket === 'payable' ? r.units : 0), 0),
+      unpaidUnits: items.reduce((s, r) => s + (r.paymentBucket === 'unpaid' ? r.units : 0), 0),
+      partialUnpaidUnits: items.reduce(
+        (s, r) => s + (r.paymentBucket === 'partial_uncovered' ? r.units : 0),
+        0,
+      ),
       items,
     };
   }
@@ -360,13 +421,15 @@ export default class AdminSalaryService {
   static async report(startDate?: string, endDate?: string): Promise<SalaryReportDto> {
     const { start, end } = parseDateRange(startDate, endDate);
 
-    const [practicalCounts, theoryCounts, paidByKey] = await Promise.all([
-      practicalLessonCounts(start, end),
+    const [practicalBreakdowns, theoryCounts, paidByKey] = await Promise.all([
+      practicalLessonBreakdowns(start, end),
       theoryLessonCounts(start, end),
       overlappingPayments(start, end),
     ]);
 
-    const userIds = [...new Set([...practicalCounts.keys(), ...theoryCounts.keys()])];
+    const userIds = [
+      ...new Set([...practicalBreakdowns.keys(), ...theoryCounts.keys()]),
+    ];
     const [users, salaryRates] = await Promise.all([
       userIds.length > 0
         ? User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ['id', 'name'] })
@@ -376,37 +439,66 @@ export default class AdminSalaryService {
     const nameById = new Map(users.map((u) => [u.id, u.name?.trim() || `Instructor #${u.id}`]));
 
     const rows: SalaryReportRowDto[] = [];
-    const pushRows = (kind: SalaryEmployeeKind, counts: Map<number, number>): void => {
-      for (const [employeeUserId, lessonsCount] of counts) {
-        if (lessonsCount <= 0) continue;
-        const rate = rateForKind(salaryRates, employeeUserId, kind);
-        const paidRow = paidByKey.get(`${kind}:${employeeUserId}`) ?? null;
-        rows.push({
-          kind,
-          employeeUserId,
-          employeeName: nameById.get(employeeUserId) ?? `Instructor #${employeeUserId}`,
-          lessonsCount,
-          ratePerLessonAmd: rate,
-          totalAmd: lessonsCount * rate,
-          paid: paidRow
-            ? {
-                paymentId: paidRow.id,
-                title: paidRow.title,
-                periodStartIso: String(paidRow.periodStartIso).slice(0, 10),
-                periodEndIso: String(paidRow.periodEndIso).slice(0, 10),
-                lessonsCount: paidRow.lessonsCount ?? null,
-                totalAmd: paidRow.totalAmd,
-                paidAtIso:
-                  (paidRow as SalaryPayment & { createdAt?: Date }).createdAt?.toISOString() ??
-                  new Date().toISOString(),
-              }
-            : null,
-        });
-      }
-    };
 
-    pushRows('instructor', practicalCounts);
-    pushRows('theory_teacher', theoryCounts);
+    for (const [employeeUserId, breakdown] of practicalBreakdowns) {
+      if (breakdown.payable <= 0 && breakdown.unpaid <= 0 && breakdown.partialUncovered <= 0) {
+        continue;
+      }
+      const rate = rateForKind(salaryRates, employeeUserId, 'instructor');
+      const paidRow = paidByKey.get(`instructor:${employeeUserId}`) ?? null;
+      rows.push({
+        kind: 'instructor',
+        employeeUserId,
+        employeeName: nameById.get(employeeUserId) ?? `Instructor #${employeeUserId}`,
+        lessonsCount: breakdown.payable,
+        unpaidLessonsCount: breakdown.unpaid,
+        partialUnpaidLessonsCount: breakdown.partialUncovered,
+        ratePerLessonAmd: rate,
+        totalAmd: breakdown.payable * rate,
+        paid: paidRow
+          ? {
+              paymentId: paidRow.id,
+              title: paidRow.title,
+              periodStartIso: String(paidRow.periodStartIso).slice(0, 10),
+              periodEndIso: String(paidRow.periodEndIso).slice(0, 10),
+              lessonsCount: paidRow.lessonsCount ?? null,
+              totalAmd: paidRow.totalAmd,
+              paidAtIso:
+                (paidRow as SalaryPayment & { createdAt?: Date }).createdAt?.toISOString() ??
+                new Date().toISOString(),
+            }
+          : null,
+      });
+    }
+
+    for (const [employeeUserId, lessonsCount] of theoryCounts) {
+      if (lessonsCount <= 0) continue;
+      const rate = rateForKind(salaryRates, employeeUserId, 'theory_teacher');
+      const paidRow = paidByKey.get(`theory_teacher:${employeeUserId}`) ?? null;
+      rows.push({
+        kind: 'theory_teacher',
+        employeeUserId,
+        employeeName: nameById.get(employeeUserId) ?? `Instructor #${employeeUserId}`,
+        lessonsCount,
+        unpaidLessonsCount: 0,
+        partialUnpaidLessonsCount: 0,
+        ratePerLessonAmd: rate,
+        totalAmd: lessonsCount * rate,
+        paid: paidRow
+          ? {
+              paymentId: paidRow.id,
+              title: paidRow.title,
+              periodStartIso: String(paidRow.periodStartIso).slice(0, 10),
+              periodEndIso: String(paidRow.periodEndIso).slice(0, 10),
+              lessonsCount: paidRow.lessonsCount ?? null,
+              totalAmd: paidRow.totalAmd,
+              paidAtIso:
+                (paidRow as SalaryPayment & { createdAt?: Date }).createdAt?.toISOString() ??
+                new Date().toISOString(),
+            }
+          : null,
+      });
+    }
 
     rows.sort(
       (a, b) =>

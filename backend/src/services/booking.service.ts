@@ -1039,7 +1039,12 @@ async function syncSlotPaymentCoverage(
     await BookingSlot.update({ paymentCovered: false }, { where: { bookingId }, transaction });
     return;
   }
-  if (status !== 'partial' || opts.paidSlotEntries == null) {
+  if (status !== 'partial') {
+    return;
+  }
+  // Partial without explicit paid hours: leave flags unchanged when omitted; when provided
+  // (including empty), sync coverage so the day graphic can show green vs red per slot.
+  if (opts.paidSlotEntries == null) {
     return;
   }
   const slots = await BookingSlot.findAll({ where: { bookingId }, transaction });
@@ -2388,14 +2393,27 @@ export default class BookingService {
     return BookingService.mapBookingToInstructorDto(refreshed as BookingWithStudent);
   }
 
-  /** For calendar: each occupied hour for this instructor in the date range. */
+  /**
+   * For calendar: each occupied hour for this instructor in the date range.
+   * Includes practical bookings, 1:1 theory, and theory-group sessions (so hybrid
+   * instructors cannot double-book). Callers that display lesson counts (e.g. the
+   * practical matrix) should filter by `lessonType === 'practical'`.
+   */
   static async listBusySlotsForInstructor(
     instructorUserId: number,
     fromIso: string,
     toIso: string,
     excludeBookingId?: number,
     branchId?: number,
-  ): Promise<{ dateIso: string; time: string; studentUserId: number; branchId: number }[]> {
+  ): Promise<
+    {
+      dateIso: string;
+      time: string;
+      studentUserId: number;
+      branchId: number;
+      lessonType: 'practical' | 'theory' | 'theory_personal' | 'theory_group';
+    }[]
+  > {
     const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
     if (!exists) return [];
 
@@ -2417,7 +2435,7 @@ export default class BookingService {
         {
           model: Booking,
           as: 'booking',
-          attributes: ['studentUserId', 'branchId'],
+          attributes: ['studentUserId', 'branchId', 'lessonType'],
           required: true,
           where: bookingWhere,
         },
@@ -2425,12 +2443,21 @@ export default class BookingService {
     });
 
     const fromSlots = slotRows.map((r) => {
-      const bk = (r as unknown as { booking: { studentUserId: number; branchId: number } }).booking;
+      const bk = (
+        r as unknown as {
+          booking: {
+            studentUserId: number;
+            branchId: number;
+            lessonType: 'practical' | 'theory' | 'theory_personal';
+          };
+        }
+      ).booking;
       return {
         dateIso: dateIsoString(r.dateIso),
         time: r.slotTime,
         studentUserId: bk.studentUserId,
         branchId: bk.branchId,
+        lessonType: bk.lessonType,
       };
     });
 
@@ -2454,7 +2481,11 @@ export default class BookingService {
     });
 
     const fromLegacy = legacyBookings.flatMap((b) =>
-      expandLegacyBookingHours(b).map((slot) => ({ ...slot, branchId: b.branchId })),
+      expandLegacyBookingHours(b).map((slot) => ({
+        ...slot,
+        branchId: b.branchId,
+        lessonType: b.lessonType,
+      })),
     );
 
     // Theory-group sessions block practical calendars for hybrid instructors.
@@ -2477,12 +2508,24 @@ export default class BookingService {
       if (!Number.isFinite(startM) || !Number.isFinite(endExclM) || endExclM <= startM) {
         const t = normalizeTimeHHMM(String(s.startTime).slice(0, 5));
         return t
-          ? [{ dateIso, time: t, studentUserId: 0, branchId: s.branchId }]
+          ? [{ dateIso, time: t, studentUserId: 0, branchId: s.branchId, lessonType: 'theory_group' as const }]
           : [];
       }
-      const out: { dateIso: string; time: string; studentUserId: number; branchId: number }[] = [];
+      const out: {
+        dateIso: string;
+        time: string;
+        studentUserId: number;
+        branchId: number;
+        lessonType: 'theory_group';
+      }[] = [];
       for (let m = startM; m < endExclM; m += 60) {
-        out.push({ dateIso, time: minutesToHHMM(m), studentUserId: 0, branchId: s.branchId });
+        out.push({
+          dateIso,
+          time: minutesToHHMM(m),
+          studentUserId: 0,
+          branchId: s.branchId,
+          lessonType: 'theory_group',
+        });
       }
       return out;
     });
@@ -3349,6 +3392,14 @@ export default class BookingService {
             slotTime,
           })),
           { transaction },
+        );
+        await syncSlotPaymentCoverage(
+          newId,
+          {
+            paymentStatus: payStatusSingle,
+            paidSlotEntries: input.paidSlotEntries,
+          },
+          transaction,
         );
       });
     } catch (e) {

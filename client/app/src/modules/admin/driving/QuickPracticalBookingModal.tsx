@@ -22,6 +22,8 @@ import type { Instructor } from "src/data/instructors";
 import type { Branch } from "src/modules/branches";
 import {
   formatGridDateLabel,
+  padSlotTime,
+  slotEntryKey,
   sortSlotEntriesChrono,
   sortTimesUnique,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
@@ -125,6 +127,8 @@ export default function QuickPracticalBookingModal({
     defaultAdminBookingPayment(),
   );
   const [paymentErrorKey, setPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
+  /** Slot keys marked as paid when booking payment is partial (multi-slot day graphic). */
+  const [paidSlotKeys, setPaidSlotKeys] = useState<Set<string>>(() => new Set());
   /** Gift lesson (free, super admin must approve). */
   const [isGift, setIsGift] = useState(false);
   const [giftNote, setGiftNote] = useState("");
@@ -174,6 +178,7 @@ export default function QuickPracticalBookingModal({
     setTotalPriceStr(String(suggestedTotalAmd));
     setBookingPayment(defaultAdminBookingPayment());
     setPaymentErrorKey(null);
+    setPaidSlotKeys(new Set());
     setIsGift(false);
     setGiftNote("");
     const start = normalizeUiTime(slotEntries[0]?.time ?? "") ?? "14:00";
@@ -201,6 +206,7 @@ export default function QuickPracticalBookingModal({
   }, [open, suggestedTotalAmd]);
 
   const firstEntry = sortedEntries[0];
+  const showPaidSlotPickers = !isGift && bookingPayment.status === "partial" && sortedEntries.length > 1;
   const dateLabel = useMemo(() => {
     const dates = Array.from(new Set(sortedEntries.map((e) => e.dateIso)));
     if (dates.length === 0) return formatGridDateLabel(dateIso);
@@ -294,6 +300,11 @@ export default function QuickPracticalBookingModal({
     }
     setPaymentErrorKey(null);
 
+    if (showPaidSlotPickers && paidSlotKeys.size === 0) {
+      showToast(t("adminDrivingPaidSlotsRequired"), "error");
+      return;
+    }
+
     const paymentBody = isGift
       ? { isGift: true, ...(giftNote.trim() ? { giftNote: giftNote.trim() } : {}) }
       : adminPaymentApiPayload(bookingPayment, totalPriceAmd);
@@ -312,6 +323,16 @@ export default function QuickPracticalBookingModal({
     try {
       const sameDayTimes = sortedEntries.filter((e) => e.dateIso === firstEntry.dateIso).map((e) => e.time);
       const times = sortTimesUnique(sameDayTimes.length > 0 ? sameDayTimes : [firstEntry.time]);
+      const paidSlotEntries =
+        !isGift &&
+        "adminPaymentStatus" in paymentBody &&
+        paymentBody.adminPaymentStatus === "partial"
+          ? sortedEntries.length === 1
+            ? sortedEntries.map((e) => ({ dateIso: e.dateIso, time: e.time }))
+            : sortedEntries
+                .filter((e) => paidSlotKeys.has(slotEntryKey(e.dateIso, e.time)))
+                .map((e) => ({ dateIso: e.dateIso, time: e.time }))
+          : undefined;
       const body = {
         studentId: Number(studentId),
         branchId: Number(branchId),
@@ -329,6 +350,7 @@ export default function QuickPracticalBookingModal({
           ? { allowCustomPracticalTime: true, customSlotEndTime: customEndNorm }
           : {}),
         ...paymentBody,
+        ...(paidSlotEntries ? { paidSlotEntries } : {}),
       };
       const created = await vivaApiJson<{ id: number }>("/bookings", { method: "POST", body });
       const bookingIdNum = Number(created.id);
@@ -531,13 +553,52 @@ export default function QuickPracticalBookingModal({
                 </div>
               </div>
             ) : (
-              <ul className="mt-1 max-h-40 overflow-y-auto space-y-0.5 text-sm text-foreground">
-                {sortedEntries.map((entry) => (
-                  <li key={`${entry.dateIso}|${entry.time}`} className="tabular-nums">
-                    {formatGridDateLabel(entry.dateIso)} · {entry.time}
-                  </li>
-                ))}
-              </ul>
+              <>
+                {showPaidSlotPickers ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{t("adminDrivingPaidSlotsHint")}</p>
+                ) : null}
+                <ul className="mt-1 max-h-40 overflow-y-auto space-y-1 text-sm text-foreground">
+                  {sortedEntries.map((entry) => {
+                    const key = slotEntryKey(entry.dateIso, entry.time);
+                    const isPaidHour = paidSlotKeys.has(key);
+                    return (
+                      <li key={key} className="flex items-center gap-2 tabular-nums">
+                        {showPaidSlotPickers ? (
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={isPaidHour}
+                              disabled={submitting}
+                              onChange={() => {
+                                setPaidSlotKeys((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
+                                  return next;
+                                });
+                              }}
+                              className="h-3.5 w-3.5 rounded border-input accent-primary"
+                              aria-label={t("adminDrivingSlotPaidCheckbox")}
+                            />
+                            <span>
+                              {formatGridDateLabel(entry.dateIso)} · {padSlotTime(entry.time)}
+                              {isPaidHour ? (
+                                <span className="ml-1.5 text-[11px] font-medium text-emerald-700">
+                                  {t("adminDrivingSlotPaidBadge")}
+                                </span>
+                              ) : null}
+                            </span>
+                          </label>
+                        ) : (
+                          <span>
+                            {formatGridDateLabel(entry.dateIso)} · {entry.time}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
           </div>
         </div>

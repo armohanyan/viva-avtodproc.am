@@ -190,6 +190,33 @@ export function lessonSlotExcludedFromReports(
 }
 
 /**
+ * How a practical slot stands for director salary:
+ * - payable: counts toward instructor salary (paid / covered / gift / package)
+ * - unpaid: active lesson not marked paid (admin may have forgotten)
+ * - partial_uncovered: partial booking slot not marked paymentCovered
+ */
+export type SalarySlotPaymentBucket = 'payable' | 'unpaid' | 'partial_uncovered';
+
+export function salarySlotPaymentBucket(
+  booking: PayableLessonBookingRow,
+  slot: PayableLessonSlotRow,
+): SalarySlotPaymentBucket | null {
+  if (lessonSlotExcludedFromReports(booking)) return null;
+  if (isApprovedGiftBooking(booking)) return 'payable';
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return 'payable';
+  if (!bookingCountsTowardStudentDebt(booking)) return null;
+
+  const resolved = resolveBookingPayment(booking);
+  const ps = resolved.paymentStatus;
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 'unpaid';
+  if (ps === 'paid') return 'payable';
+  if (ps === 'partial') {
+    return Boolean(slot.paymentCovered) ? 'payable' : 'partial_uncovered';
+  }
+  return null;
+}
+
+/**
  * Slot counts toward director reports (salary, instructor-hours): payment-covered slots,
  * approved gifts, and prepaid/package lessons. Archived / cancelled / refunded are excluded.
  */
@@ -197,37 +224,36 @@ export function slotCountsForPayableLesson(
   booking: PayableLessonBookingRow,
   slot: PayableLessonSlotRow,
 ): boolean {
-  if (lessonSlotExcludedFromReports(booking)) return false;
-  if (!bookingCountsTowardStudentDebt(booking) && !isApprovedGiftBooking(booking)) return false;
-  if (isApprovedGiftBooking(booking)) return true;
-  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return true;
+  return salarySlotPaymentBucket(booking, slot) === 'payable';
+}
 
-  if (!bookingCountsTowardStudentDebt(booking)) return false;
+/**
+ * Legacy booking without per-slot rows: classify payment standing for salary visibility.
+ */
+export function legacySalaryPaymentBucket(
+  booking: PayableLessonBookingRow,
+): SalarySlotPaymentBucket | null {
+  if (lessonSlotExcludedFromReports(booking)) return null;
+  // Removed / closed bookings never count toward director revenue, even if payment fields remain.
+  if (isApprovedGiftBooking(booking)) return 'payable';
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return 'payable';
+  if (!bookingCountsTowardStudentDebt(booking)) return null;
 
   const resolved = resolveBookingPayment(booking);
   const ps = resolved.paymentStatus;
-  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return false;
-  if (ps === 'paid') return true;
-  if (ps === 'partial') return Boolean(slot.paymentCovered);
-  return false;
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 'unpaid';
+  if (ps === 'paid') return 'payable';
+  if (ps === 'partial') {
+    return resolved.paidAmountAmd > 0 ? 'payable' : 'partial_uncovered';
+  }
+  return null;
 }
 
 /**
  * Legacy booking without per-slot rows: all hour-slots in range count when the booking is payable.
  */
 export function legacyBookingCountsForPayableLesson(booking: PayableLessonBookingRow): boolean {
-  if (lessonSlotExcludedFromReports(booking)) return false;
-  // Removed / closed bookings never count toward director revenue, even if payment fields remain.
-  if (!bookingCountsTowardStudentDebt(booking) && !isApprovedGiftBooking(booking)) return false;
-  if (isApprovedGiftBooking(booking)) return true;
-  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return true;
-
-  const resolved = resolveBookingPayment(booking);
-  const ps = resolved.paymentStatus;
-  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return false;
-  if (ps === 'paid') return true;
-  if (ps === 'partial') return resolved.paidAmountAmd > 0;
-  return false;
+  return legacySalaryPaymentBucket(booking) === 'payable';
 }
 
 export function slotCountsAsCompleted(

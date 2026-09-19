@@ -134,6 +134,8 @@ export type DirectorSalaryReportRow = {
   employeeUserId: number;
   employeeName: string;
   lessonsCount: number;
+  unpaidLessonsCount: number;
+  partialUnpaidLessonsCount: number;
   ratePerLessonAmd: number;
   totalAmd: number;
   paid: {
@@ -155,6 +157,8 @@ export type DirectorSalaryReport = {
   rows: DirectorSalaryReportRow[];
 };
 
+export type DirectorSalaryLessonPaymentBucket = "payable" | "unpaid" | "partial_uncovered";
+
 export type DirectorSalaryLessonRow = {
   id: number;
   dateIso: string;
@@ -162,6 +166,7 @@ export type DirectorSalaryLessonRow = {
   endTime: string | null;
   units: number;
   label: string;
+  paymentBucket: DirectorSalaryLessonPaymentBucket;
 };
 
 export type DirectorSalaryLessons = {
@@ -170,6 +175,8 @@ export type DirectorSalaryLessons = {
   startDate: string;
   endDate: string;
   totalUnits: number;
+  unpaidUnits: number;
+  partialUnpaidUnits: number;
   items: DirectorSalaryLessonRow[];
 };
 

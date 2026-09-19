@@ -14,6 +14,11 @@ export type InstructorBusySlotRow = {
   studentUserId: number;
   /** Booking branch — used so matrix cells count lessons per instructor × branch. */
   branchId?: number | string;
+  /**
+   * From busy-slots API. Theory-group sessions use `theory_group` (not a booking type).
+   * Practical matrix cells should count only `practical`.
+   */
+  lessonType?: "practical" | "theory" | "theory_personal" | "theory_group" | string | null;
 };
 
 export type GridInstructorColumn = {
@@ -184,11 +189,23 @@ export function busyCountCellKey(instructorId: string, branchId: string, dateIso
 export function aggregateBusyCountsByInstructorDay(
   instructorIds: readonly string[],
   busyByInstructor: ReadonlyMap<string, InstructorBusySlotRow[]>,
+  options?: {
+    /** When set, only slots whose `lessonType` is in this list are counted. */
+    lessonTypes?: readonly string[];
+  },
 ): Map<string, number> {
+  const allow = options?.lessonTypes?.length ? new Set(options.lessonTypes) : null;
   const counts = new Map<string, number>();
   for (const instructorId of instructorIds) {
     const rows = busyByInstructor.get(instructorId) ?? [];
     for (const row of rows) {
+      if (allow) {
+        // Missing lessonType: treat group placeholders (studentUserId 0) as theory_group;
+        // otherwise assume practical for older API payloads.
+        const lt =
+          row.lessonType ?? (row.studentUserId === 0 ? "theory_group" : "practical");
+        if (!allow.has(lt)) continue;
+      }
       const branchId = row.branchId != null ? String(row.branchId).trim() : "";
       if (!branchId) continue;
       const key = busyCountCellKey(instructorId, branchId, row.dateIso);

@@ -298,16 +298,36 @@ function resolvePaymentStatusForOccurrence(
   if (prepaid && (Number(prepaid.packageOrderId) > 0 || Number(prepaid.extraPracticalUnits) > 0)) {
     return 'free';
   }
-  if (row.paymentStatus === 'paid' || row.paidAt != null) return 'paid';
-  if (row.paymentStatus === 'partial' && slot && Boolean(slot.paymentCovered)) {
-    return 'paid';
+  const ps = String(row.paymentStatus ?? '')
+    .trim()
+    .toLowerCase();
+  // Partial: color each hour from paymentCovered (green vs red). Do not let a stale
+  // paidAt flip every slot to paid - multi-slot bookings need per-slot status.
+  if (ps === 'partial') {
+    return slot && Boolean(slot.paymentCovered) ? 'paid' : 'pending';
   }
-  if (row.paymentStatus === 'unpaid' || row.paymentStatus === 'pending' || row.paymentStatus === 'failed') {
+  if (ps === 'paid' || row.paidAt != null) return 'paid';
+  if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') {
     return 'pending';
   }
   const price = row.totalPriceAmd != null ? Number(row.totalPriceAmd) : null;
   if (price == null || price === 0) return 'not_required';
   return 'pending';
+}
+
+/** Legacy booking without booking_slots: expand time→endTime into hour starts for the day graphic. */
+function expandLegacyOccurrenceStarts(row: Booking): string[] {
+  const start = normalizeTimeHHMM(row.time);
+  const startM = parseTimeToMinutes(start);
+  if (!Number.isFinite(startM)) return start ? [start] : [];
+  const endRaw = row.endTime?.trim() ? normalizeTimeHHMM(row.endTime) : '';
+  const endExclM = endRaw ? parseTimeToMinutes(endRaw) : startM + 60;
+  if (!Number.isFinite(endExclM) || endExclM <= startM) return [start];
+  const out: string[] = [];
+  for (let m = startM; m < endExclM; m += 60) {
+    out.push(minutesToHHMM(m));
+  }
+  return out.length > 0 ? out : [start];
 }
 
 function buildNotes(row: Booking): string {
@@ -557,13 +577,11 @@ export default class ClassScheduleService {
               startTime: normalizeTimeHHMM(s.slotTime),
               slot: s as BookingSlot,
             }))
-          : [
-              {
-                date: dateIsoString(row.dateIso),
-                startTime: normalizeTimeHHMM(row.time),
-                slot: null as BookingSlot | null,
-              },
-            ];
+          : expandLegacyOccurrenceStarts(row).map((startTime) => ({
+              date: dateIsoString(row.dateIso),
+              startTime,
+              slot: null as BookingSlot | null,
+            }));
       const slotTimesByDate = new Map<string, string[]>();
       for (const s of slots) {
         const occDate = dateIsoString(s.dateIso);

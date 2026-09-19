@@ -148,8 +148,15 @@ export default function AdminInstructorAvailabilityTable({
   }, [loadBusy, reloadKey, branchFilterRevision]);
 
   const lessonCounts = useMemo(
-    () => aggregateBusyCountsByInstructorDay(instructorIds, busyByInstructor),
-    [instructorIds, busyByInstructor],
+    () =>
+      aggregateBusyCountsByInstructorDay(
+        instructorIds,
+        busyByInstructor,
+        // Practical driving / booking grids must show practical slot counts only
+        // (theory-group hours still block calendars via busy-slots, but are not counted).
+        slotSource === "practical" ? { lessonTypes: ["practical"] } : undefined,
+      ),
+    [instructorIds, busyByInstructor, slotSource],
   );
 
   useEffect(() => {
