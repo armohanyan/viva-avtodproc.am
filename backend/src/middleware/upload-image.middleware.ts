@@ -7,7 +7,8 @@ import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { InputValidationError } = ErrorsUtil;
-const MAX_BYTES = 800 * 1024;
+/** Hero backgrounds need more headroom than avatars / exam thumbs. */
+const MAX_BYTES = 5 * 1024 * 1024;
 
 const ALLOWED_MIMES = new Map<string, string>([
   ['image/png', 'png'],

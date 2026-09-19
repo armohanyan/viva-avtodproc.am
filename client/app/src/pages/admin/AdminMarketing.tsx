@@ -27,7 +27,7 @@ const textareaClass = cn(
 );
 
 const DEFAULT_STAT_KEYS = Object.keys(MARKETING_STAT_LABEL_KEY);
-const MARKETING_IMAGE_MAX_BYTES = 800 * 1024;
+const MARKETING_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
 
 const DEFAULT_HOME_INTRO_TITLE: LocalizedText = { am: "Մեր մասին", ru: "О нас", en: "About Us" };

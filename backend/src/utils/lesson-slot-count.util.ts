@@ -268,6 +268,16 @@ export function legacySalaryStanding(
 }
 
 /**
+ * Daily-graphic rule: if the booking still occupies the calendar, the slot counts for
+ * instructor salary (same universe as Admin Driving cell counts).
+ */
+export function salarySlotOccupiesGraphic(
+  booking: Pick<PayableLessonBookingRow, 'status'>,
+): boolean {
+  return bookingStatusReservesSlot(booking.status);
+}
+
+/**
  * Slot counts toward director reports (salary, instructor-hours): payment-covered slots,
  * approved gifts, and prepaid/package lessons. Archived / cancelled / refunded are excluded.
  */

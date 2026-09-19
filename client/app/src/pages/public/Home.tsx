@@ -17,7 +17,6 @@ import {
   Star,
   ArrowRight,
   CheckCircle2,
-  Trophy,
   ChevronRight,
   ChevronLeft,
   Phone,
@@ -58,6 +57,8 @@ export default function Home() {
     [apiPackages],
   );
   const visibleInstructors = instructors.filter((ins) => ins.status === "active");
+  const homeInstructors = visibleInstructors.slice(0, 6);
+  const hasMoreInstructors = visibleInstructors.length > 6;
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
   const stats = useMemo(() => {
@@ -84,6 +85,34 @@ export default function Home() {
   const introDescription = siteContent?.homeIntroDescription?.[lang]?.trim() || DEFAULT_HOME_INTRO_DESCRIPTION;
   const ownerName = siteContent?.ownerName?.[lang]?.trim() || "";
   const ownerPosition = siteContent?.ownerPosition?.[lang]?.trim() || "";
+
+  const heroContact = useMemo(() => {
+    const contactPhones = (mkt?.contact?.phones ?? []).map((p) => p.trim()).filter(Boolean);
+    const branchPhones = branches.map((b) => b.phone?.trim()).filter((p): p is string => !!p);
+    const phones = [...new Set([...contactPhones, ...branchPhones])];
+
+    const contactEmails = (mkt?.contact?.emails ?? []).map((e) => e.trim()).filter(Boolean);
+    const branchEmails = branches.map((b) => b.email?.trim()).filter((e): e is string => !!e);
+    const emails = [...new Set([...contactEmails, ...branchEmails])];
+
+    const locations: string[] = [];
+    if (branches.length > 0) {
+      for (const branch of branches) {
+        const city = cityNameById(cities, branch.cityId);
+        const line = [city, branch.name].filter(Boolean).join(", ");
+        if (line) locations.push(line);
+      }
+    } else {
+      const addr1 = mkt?.footer?.addressLine1?.trim() || "";
+      const addr2 = mkt?.footer?.addressLine2?.trim() || "";
+      const footerLocation = [addr1, addr2].filter(Boolean).join(", ");
+      if (footerLocation) locations.push(footerLocation);
+    }
+
+    return { phones, emails, locations };
+  }, [mkt, branches, cities]);
+  const hasHeroContact =
+    heroContact.phones.length > 0 || heroContact.emails.length > 0 || heroContact.locations.length > 0;
 
   type ContactTabKey = "phone" | "email" | "address" | "hours";
   const contactTabs = useMemo(() => {
@@ -213,6 +242,43 @@ export default function Home() {
             <p className="text-lg sm:text-xl text-hero-foreground/80 mb-10 max-w-2xl leading-relaxed">
               {t("heroSub")}
             </p>
+            {hasHeroContact ? (
+              <ul className="mb-10 flex flex-col gap-3 text-sm sm:text-base text-hero-foreground/85">
+                {heroContact.locations.map((location) => (
+                  <li key={location}>
+                    <MarketingLink
+                      href="/contact"
+                      className="inline-flex items-start gap-2.5 hover:text-hero-foreground transition-colors"
+                    >
+                      <MapPin className="w-4 h-4 mt-1 text-primary shrink-0" aria-hidden="true" />
+                      <span>{location}</span>
+                    </MarketingLink>
+                  </li>
+                ))}
+                {heroContact.phones.map((phone) => (
+                  <li key={phone}>
+                    <a
+                      href={telHrefFromListedPhone(phone)}
+                      className="inline-flex items-center gap-2.5 hover:text-hero-foreground transition-colors"
+                    >
+                      <Phone className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                      <span>{phone}</span>
+                    </a>
+                  </li>
+                ))}
+                {heroContact.emails.map((email) => (
+                  <li key={email}>
+                    <a
+                      href={`mailto:${email}`}
+                      className="inline-flex items-center gap-2.5 hover:text-hero-foreground transition-colors"
+                    >
+                      <Mail className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                      <span>{email}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <div className="flex flex-col sm:flex-row gap-4">
               <a href={panelHref("/register")}>
                 <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-12 text-base">
@@ -386,7 +452,7 @@ export default function Home() {
         </section>
       )}
 
-      {visibleInstructors.length > 0 ? (
+      {homeInstructors.length > 0 ? (
         <section className="py-20 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
@@ -396,7 +462,7 @@ export default function Home() {
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {visibleInstructors.map((ins, i) => (
+              {homeInstructors.map((ins, i) => (
                 <InstructorCard
                   key={i}
                   instructor={ins}
@@ -405,13 +471,15 @@ export default function Home() {
                 />
               ))}
             </div>
-            <div className="text-center mt-10">
-              <MarketingLink href="/instructors">
-                <Button variant="outline" className="border-border">
-                  {t("viewAll")} <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
-              </MarketingLink>
-            </div>
+            {hasMoreInstructors ? (
+              <div className="text-center mt-10">
+                <MarketingLink href="/instructors">
+                  <Button variant="outline" className="border-border">
+                    {t("viewAll")} <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
+                </MarketingLink>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -658,37 +726,6 @@ export default function Home() {
           />
         </AppModal>
       ) : null}
-
-      <section className="py-20 bg-primary">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <Trophy className="w-12 h-12 text-primary-foreground/80 mx-auto mb-6" />
-          <h2 className="text-3xl sm:text-4xl font-bold text-primary-foreground mb-4">
-            {t("ctaReadyLicenseTitle")}
-          </h2>
-          <p className="text-primary-foreground/80 text-lg mb-10 max-w-xl mx-auto">
-            {t("ctaReadyLicenseSub")}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href={panelHref("/register")}>
-              <Button
-                size="lg"
-                className="bg-hero text-hero-foreground hover:bg-hero/90 px-8 h-12 text-base font-semibold"
-              >
-                {t("getStarted")} <ArrowRight className="ml-2 w-4 h-4" />
-              </Button>
-            </a>
-            <MarketingLink href="/contact">
-              <Button
-                size="lg"
-                variant="outline"
-                className="bg-transparent border-primary-foreground/40 text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground h-12 text-base"
-              >
-                {t("contact")}
-              </Button>
-            </MarketingLink>
-          </div>
-        </div>
-      </section>
 
       <Footer />
     </div>

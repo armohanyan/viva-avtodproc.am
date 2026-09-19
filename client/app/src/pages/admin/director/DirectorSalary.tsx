@@ -95,35 +95,35 @@ function formatOutstandingSlots(unpaid: number, partial: number, excluded = 0): 
   const parts: string[] = [];
   if (unpaid > 0) parts.push(`${unpaid} չվճարված`);
   if (partial > 0) parts.push(`${partial} մասնակի`);
-  if (excluded > 0) parts.push(`${excluded} բացառված`);
+  if (excluded > 0) parts.push(`${excluded} նշված`);
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function lessonPaymentBucketLabel(bucket: DirectorSalaryLessonPaymentBucket): string {
   if (bucket === "unpaid") return "Չվճարված";
   if (bucket === "partial_uncovered") return "Մասնակի";
-  if (bucket === "excluded") return "Բացառված";
+  if (bucket === "excluded") return "Նշված";
   return "Վճարված";
 }
 
 function lessonExcludeReasonLabel(reason: DirectorSalaryExcludeReason | null | undefined): string {
   switch (reason) {
     case "completion_cancelled":
-      return "Դասի արդյունք՝ չեղարկված (completion=cancelled). Գրաֆիկում կա, աշխատավարձում չի հաշվվում։";
+      return "Դասի արդյունք՝ չեղարկված (նշում է, բայց սլոթը մտնում է աշխատավարձ)։";
     case "completion_cancelled_no_refund":
-      return "Դասի արդյունք՝ չեղարկված առանց վերադարձի։";
+      return "Դասի արդյունք՝ չեղարկված առանց վերադարձի (նշում)։";
     case "completion_missed":
-      return "Դասի արդյունք՝ բաց թողնված (missed)։";
+      return "Դասի արդյունք՝ բաց թողնված (նշում)։";
     case "completion_refunded":
-      return "Դասի արդյունք՝ վերադարձված (refunded)։";
+      return "Դասի արդյունք՝ վերադարձված (նշում)։";
     case "lesson_not_passed":
-      return "Հրահանգիչը նշել է, որ դասը չի անցել։";
+      return "Հրահանգիչը նշել է, որ դասը չի անցել (նշում)։";
     case "zero_price":
-      return "Գինը 0 է (ոչ նվեր / ոչ փաթեթ)։";
+      return "Գինը 0 է (նշում)։";
     case "booking_closed":
       return "Ամրագրումը չեղարկված / արխիվացված է։";
     default:
-      return "Աշխատավարձից բացառված է այլ պատճառով։";
+      return "Լրացուցիչ նշում աշխատավարձի մանրամասների համար։";
   }
 }
 
@@ -283,11 +283,10 @@ function SalaryReportView({
       </DirectorStatGrid>
 
       <p className="text-xs text-muted-foreground mt-4 mb-2">
-        Հաշվարկը հիմնված է վճարված դասերի (սլոթերի) քանակի վրա՝ ներառյալ հաստատված նվեր-ամրագրումները.
-        Չվճարված և մասնակի սլոթերը ցուցադրվում են առանձին, որպեսզի երևա, եթե վճարումը դեռ չի նշվել.
-        «Բացառված» նշանակում է՝ սլոթը գրաֆիկում կա, բայց աշխատավարձում չի մտնում (օր. չեղարկված
-        արդյունք, բաց թողնված դաս, 0 գին). Սեղմեք դասերի քանակին՝ մանրամասները տեսնելու համար.
-        Գործնական դասի լռելյայն դրույք՝ {formatAmd(report?.instructorRateAmd ?? 1500)}, տեսություն{" "}
+        Գործնականի հաշվարկը նույն սլոթերն են, ինչ օրական գրաֆիկում (զբաղված գործնական ժամեր)։
+        Գումար = դասերի քանակ × դրույք։ Դեղին նշումները (չվճարված / մասնակի / նշված) միայն
+        տեղեկություն են և չեն հանում հիմնական քանակից։ Սեղմեք դասերի քանակին՝ մանրամասները տեսնելու
+        համար։ Գործնականի լռելյայն դրույք՝ {formatAmd(report?.instructorRateAmd ?? 1500)}, տեսություն{" "}
         {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}.
       </p>
 
@@ -330,7 +329,7 @@ function SalaryReportView({
                     <span className="font-medium">{row.lessonsCount}</span>
                     {outstanding ? (
                       <span className="block text-xs font-normal text-amber-700 dark:text-amber-400 no-underline">
-                        +{outstanding}
+                        այդ թվում {outstanding}
                       </span>
                     ) : null}
                   </button>
@@ -363,16 +362,16 @@ function SalaryReportView({
       </DirectorTableWrap>
 
       <Dialog open={lessonsOpen} onOpenChange={setLessonsOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col gap-4">
+        <DialogContent className="w-full max-w-[calc(100%-2rem)] sm:max-w-[min(96vw,56rem)] max-h-[85vh] overflow-hidden flex flex-col gap-4">
           <DialogHeader className="shrink-0 pr-8">
             <DialogTitle>Դասեր</DialogTitle>
             <DialogDescription>
               {lessons
-                ? `${lessons.startDate} - ${lessons.endDate} · ${lessons.totalUnits} վճարված` +
+                ? `${lessons.startDate} - ${lessons.endDate} · ${lessons.totalUnits} դաս (ինչպես գրաֆիկում)` +
                   (lessons.unpaidUnits > 0 ||
                   lessons.partialUnpaidUnits > 0 ||
                   (lessons.excludedUnits ?? 0) > 0
-                    ? ` · ${
+                    ? ` · այդ թվում ${
                         formatOutstandingSlots(
                           lessons.unpaidUnits,
                           lessons.partialUnpaidUnits,
@@ -383,10 +382,12 @@ function SalaryReportView({
                 : start + " - " + end}
             </DialogDescription>
           </DialogHeader>
-          {(lessons?.excludedUnits ?? 0) > 0 ? (
+          {(lessons?.excludedUnits ?? 0) > 0 ||
+          (lessons?.unpaidUnits ?? 0) > 0 ||
+          (lessons?.partialUnpaidUnits ?? 0) > 0 ? (
             <p className="shrink-0 text-xs text-amber-800 dark:text-amber-400 bg-amber-500/10 rounded-md px-3 py-2">
-              Կան {lessons?.excludedUnits} սլոթ, որոնք գրաֆիկում երևում են, բայց աշխատավարձում չեն
-              հաշվվում։ Ներքևում նշված է յուրաքանչյուրի պատճառը։
+              Բոլոր սլոթերը մտնում են աշխատավարձ։ Դեղին / կարմիր պիտակները միայն նշումներ են
+              (վճարում կամ դասի արդյունք)։
             </p>
           ) : null}
           <AdminTableScroll className="min-h-0 flex-1 overflow-y-auto">

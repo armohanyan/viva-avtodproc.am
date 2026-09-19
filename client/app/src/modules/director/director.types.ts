@@ -136,7 +136,7 @@ export type DirectorSalaryReportRow = {
   lessonsCount: number;
   unpaidLessonsCount: number;
   partialUnpaidLessonsCount: number;
-  /** Graphic slots omitted from salary (cancelled/missed completion, zero price, …). */
+  /** Graphic slots with payment/completion flags (informational - still in lessonsCount). */
   excludedLessonsCount: number;
   ratePerLessonAmd: number;
   totalAmd: number;
