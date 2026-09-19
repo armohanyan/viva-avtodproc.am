@@ -115,6 +115,8 @@ export type SalaryPaymentDto = {
 
 export type SalaryLessonRowDto = {
   id: number;
+  /** Booking id for practical lessons; null for theory cohort sessions. */
+  bookingId: number | null;
   dateIso: string;
   startTime: string;
   endTime: string | null;
@@ -337,6 +339,7 @@ async function practicalLessonRows(
     const { bucket, excludeReason } = salarySlotStanding(slot.booking, slot);
     items.push({
       id: slot.slotId,
+      bookingId: slot.bookingId,
       dateIso: slot.dateIso,
       startTime: slot.slotTime,
       endTime: null,
@@ -353,6 +356,7 @@ async function practicalLessonRows(
     const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
     items.push({
       id: row.id,
+      bookingId: row.id,
       dateIso: d,
       startTime: String(row.time),
       endTime: row.endTime ?? null,
@@ -389,6 +393,7 @@ async function theoryLessonRows(
     const cohort = session.get('cohort') as TheoryCohort | null | undefined;
     items.push({
       id: session.id,
+      bookingId: null,
       dateIso: String(session.dateIso).slice(0, 10),
       startTime: String(session.startTime),
       endTime: String(session.endTime),

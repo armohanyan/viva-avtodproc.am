@@ -173,6 +173,8 @@ export type DirectorSalaryExcludeReason =
 
 export type DirectorSalaryLessonRow = {
   id: number;
+  /** Booking id for practical lessons; null for theory cohort sessions. */
+  bookingId: number | null;
   dateIso: string;
   startTime: string;
   endTime: string | null;

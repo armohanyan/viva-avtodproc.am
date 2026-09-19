@@ -363,12 +363,12 @@ function SalaryReportView({
       </DirectorTableWrap>
 
       <Dialog open={lessonsOpen} onOpenChange={setLessonsOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col gap-4">
+          <DialogHeader className="shrink-0 pr-8">
             <DialogTitle>Դասեր</DialogTitle>
             <DialogDescription>
               {lessons
-                ? `${lessons.startDate} — ${lessons.endDate} · ${lessons.totalUnits} վճարված` +
+                ? `${lessons.startDate} - ${lessons.endDate} · ${lessons.totalUnits} վճարված` +
                   (lessons.unpaidUnits > 0 ||
                   lessons.partialUnpaidUnits > 0 ||
                   (lessons.excludedUnits ?? 0) > 0
@@ -380,20 +380,20 @@ function SalaryReportView({
                         ) ?? ""
                       }`
                     : "")
-                : start + " — " + end}
+                : start + " - " + end}
             </DialogDescription>
           </DialogHeader>
           {(lessons?.excludedUnits ?? 0) > 0 ? (
-            <p className="text-xs text-amber-800 dark:text-amber-400 bg-amber-500/10 rounded-md px-3 py-2">
+            <p className="shrink-0 text-xs text-amber-800 dark:text-amber-400 bg-amber-500/10 rounded-md px-3 py-2">
               Կան {lessons?.excludedUnits} սլոթ, որոնք գրաֆիկում երևում են, բայց աշխատավարձում չեն
               հաշվվում։ Ներքևում նշված է յուրաքանչյուրի պատճառը։
             </p>
           ) : null}
-          <AdminTableScroll>
-            <table className="w-full text-sm min-w-[42rem]">
-              <thead className="bg-muted/40">
+          <AdminTableScroll className="min-h-0 flex-1 overflow-y-auto">
+            <table className="w-full text-sm min-w-[48rem]">
+              <thead className="sticky top-0 z-10 bg-muted">
                 <tr>
-                  {["Ամսաթիվ", "Ժամ", "Նկարագրություն", "Կարգավիճակ", "Դասեր"].map((h) => (
+                  {["ID", "Ամսաթիվ", "Ժամ", "Նկարագրություն", "Կարգավիճակ", "Դասեր"].map((h) => (
                     <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-3 py-2 uppercase">
                       {h}
                     </th>
@@ -402,20 +402,23 @@ function SalaryReportView({
               </thead>
               <tbody className="divide-y divide-border">
                 {lessonsLoading ? (
-                  <TableSkeletonRows cols={5} cellClassName="px-3 py-2" />
+                  <TableSkeletonRows cols={6} cellClassName="px-3 py-2" />
                 ) : (lessons?.items.length ?? 0) === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
                       Դասեր չկան
                     </td>
                   </tr>
                 ) : (
                   lessons?.items.map((item) => (
                     <tr key={`${item.paymentBucket}-${item.id}`} className="hover:bg-muted/30">
+                      <td className="px-3 py-2 text-xs font-mono text-muted-foreground whitespace-nowrap tabular-nums">
+                        {item.bookingId != null && item.bookingId > 0 ? item.bookingId : "-"}
+                      </td>
                       <td className="px-3 py-2 tabular-nums whitespace-nowrap">{item.dateIso}</td>
                       <td className="px-3 py-2 tabular-nums text-muted-foreground whitespace-nowrap">
                         {item.startTime}
-                        {item.endTime ? ` — ${item.endTime}` : ""}
+                        {item.endTime ? ` - ${item.endTime}` : ""}
                       </td>
                       <td className="px-3 py-2">
                         <div>{item.label}</div>
