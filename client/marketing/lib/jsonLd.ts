@@ -8,9 +8,9 @@ const BRAND: Record<SeoLang, string> = {
 };
 
 const DESCRIPTION: Record<SeoLang, string> = {
-  en: "Driving school in Yerevan, Armenia — practical lessons, theory courses, and license exam preparation with certified instructors.",
-  ru: "Автошкола в Ереване, Армения — практические уроки, теория и подготовка к экзамену на права с сертифицированными инструкторами.",
-  am: "Ավտոդպրոց Երևանում, Հայաստան — պրակտիկ վարորդական դասեր, տեսություն և վարորդական քննության պատրաստում սերտիֆիկացված հրահանգիչների հետ։",
+  en: "Driving school in Yerevan, Armenia - practical lessons, theory courses, and license exam preparation with certified instructors.",
+  ru: "Автошкола в Ереване, Армения - практические уроки, теория и подготовка к экзамену на права с сертифицированными инструкторами.",
+  am: "Ավտոդպրոց Երևանում, Հայաստան - պրակտիկ վարորդական դասեր, տեսություն և վարորդական քննության պատրաստում սերտիֆիկացված հրահանգիչների հետ։",
 };
 
 /** Organization + DrivingSchool + WebSite graph for the marketing root layout. */
@@ -27,6 +27,7 @@ export function buildSiteJsonLd(lang: SeoLang): Record<string, unknown> {
         "@type": "Organization",
         "@id": `${origin}/#organization`,
         name,
+        alternateName: ["Viva Autoschool", "Viva Avtodproc", "ՎԻՎԱ ավտոդպրոց"],
         url: origin,
         logo: {
           "@type": "ImageObject",
@@ -47,13 +48,27 @@ export function buildSiteJsonLd(lang: SeoLang): Record<string, unknown> {
         address: {
           "@type": "PostalAddress",
           addressLocality: "Yerevan",
+          addressRegion: "Yerevan",
           addressCountry: "AM",
         },
-        areaServed: {
-          "@type": "Country",
-          name: "Armenia",
+        geo: {
+          "@type": "GeoCoordinates",
+          latitude: 40.1792,
+          longitude: 44.4991,
         },
+        areaServed: [
+          { "@type": "City", name: "Yerevan" },
+          { "@type": "Country", name: "Armenia" },
+        ],
         priceRange: "$$",
+        currenciesAccepted: "AMD",
+        availableLanguage: ["hy", "ru", "en"],
+        knowsAbout: [
+          "driving lessons",
+          "theory exam preparation",
+          "Armenian driver's license",
+          "road signs",
+        ],
       },
       {
         "@type": "WebSite",

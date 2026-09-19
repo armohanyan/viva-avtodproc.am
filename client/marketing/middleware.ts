@@ -9,10 +9,18 @@ function panelOrigin(): string {
 }
 
 /**
- * Admin / instructor / student panel routes are served by the Vite app (`client/app`).
- * Visiting them on the marketing origin (e.g. port 5173 in dev) would 404 — redirect to the panel.
+ * - Canonical host: www → apex (avoid duplicate indexing).
+ * - Panel routes on the marketing origin redirect to the Vite panel app.
  */
 export function middleware(request: NextRequest) {
+  const host = request.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
+  if (host === "www.viva-avtodproc.am") {
+    const url = request.nextUrl.clone();
+    url.hostname = "viva-avtodproc.am";
+    url.protocol = "https:";
+    return NextResponse.redirect(url, 308);
+  }
+
   const pathname = request.nextUrl.pathname;
   const panel = panelOrigin();
   if (!panel) return NextResponse.next();
@@ -38,14 +46,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/admin/:path*",
-    "/dashboard/:path*",
-    "/instructor/:path*",
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/reset-password",
-    "/setup-password",
-    "/auth/:path*",
+    "/((?!_next/static|_next/image|favicon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
 import Packages from "src/views/public/Packages";
-import { buildRouteMetadata, getRequestSeoLang } from "@/lib/seo";
+import { buildRouteMetadata } from "@/lib/seo";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const lang = await getRequestSeoLang();
-  return buildRouteMetadata("/packages", lang);
-}
+export const metadata: Metadata = buildRouteMetadata("/packages");
 
 export default function Page() {
   return <Packages />;

@@ -2,7 +2,11 @@ import type { MetadataRoute } from "next";
 import { fetchPublishedBlogSlugsApi } from "src/lib/blogsApi";
 import { siteUrl } from "@/lib/site";
 
-const staticPaths: { path: string; changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"]; priority: number }[] = [
+const staticPaths: {
+  path: string;
+  changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"];
+  priority: number;
+}[] = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
   { path: "/about", changeFrequency: "monthly", priority: 0.9 },
   { path: "/services", changeFrequency: "monthly", priority: 0.9 },
@@ -18,6 +22,7 @@ const staticPaths: { path: string; changeFrequency: MetadataRoute.Sitemap[number
   { path: "/payments-and-refunds", changeFrequency: "yearly", priority: 0.3 },
 ];
 
+/** Always return a valid sitemap - never 500 if the blog API is briefly unavailable. */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl().origin;
   const lastModified = new Date();
@@ -27,14 +32,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency,
     priority,
   }));
-  const slugs = await fetchPublishedBlogSlugsApi();
-  for (const slug of slugs) {
-    entries.push({
-      url: `${base}/blogs/${encodeURIComponent(slug)}`,
-      lastModified,
-      changeFrequency: "monthly",
-      priority: 0.7,
-    });
+
+  try {
+    const slugs = await fetchPublishedBlogSlugsApi();
+    for (const slug of slugs) {
+      if (!slug?.trim()) continue;
+      entries.push({
+        url: `${base}/blogs/${encodeURIComponent(slug)}`,
+        lastModified,
+        changeFrequency: "monthly",
+        priority: 0.7,
+      });
+    }
+  } catch {
+    // Static routes alone are enough for Google to discover the marketing site.
   }
+
   return entries;
 }

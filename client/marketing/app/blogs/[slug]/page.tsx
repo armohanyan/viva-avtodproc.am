@@ -10,8 +10,8 @@ import { absoluteUrl } from "@/lib/site";
 
 type Props = { params: Promise<{ slug: string }> };
 
-/** Force dynamic: root layout reads cookies/headers via getRequestSeoLang(); SSG + that combo throws DYNAMIC_SERVER_USAGE (500) in production. */
-export const dynamic = "force-dynamic";
+/** Revalidate blog SEO periodically; avoid cookie-driven layout forcing DYNAMIC_SERVER_USAGE. */
+export const revalidate = 300;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;

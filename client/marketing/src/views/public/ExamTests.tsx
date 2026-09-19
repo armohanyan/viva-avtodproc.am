@@ -3,7 +3,6 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import {
   THEMATIC_TOPIC_ICON,
@@ -29,9 +28,8 @@ import { vivaApiJson } from "src/lib/vivaApi";
 
 export default function ExamTests() {
   const { t } = useLang();
-  const [location] = useLocation();
+  const { pathname: location, MarketingLink, panelHref } = useAppNavigation();
   const isExamPage = location.startsWith("/exam-tests");
-  const { MarketingLink, panelHref } = useAppNavigation();
   const lockedTopicHref = panelHref("/login?redirect=/thematic-questions");
   const [stats, setStats] = useState<ExamStats>({
     answered: 0,

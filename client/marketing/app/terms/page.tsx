@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
 import TermsOfService from "src/views/public/TermsOfService";
-import { getRequestSeoLang, legalMetadata } from "@/lib/seo";
+import { CRAWL_SEO_LANG, legalMetadata } from "@/lib/seo";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const lang = await getRequestSeoLang();
-  return legalMetadata("terms", lang, "/terms");
-}
+export const metadata: Metadata = legalMetadata("terms", CRAWL_SEO_LANG, "/terms");
 
 export default function Page() {
   return <TermsOfService />;

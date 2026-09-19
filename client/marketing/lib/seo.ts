@@ -5,6 +5,14 @@ import { absoluteUrl, siteUrl } from "./site";
 
 export type SeoLang = "en" | "ru" | "am";
 
+/**
+ * Crawl/index language for marketing metadata.
+ * Must NOT depend on cookies/headers - those force Next.js to stream title/description
+ * outside `<head>`, which destroys SEO and browser/search visibility.
+ * Armenian is the primary market for viva-avtodproc.am.
+ */
+export const CRAWL_SEO_LANG: SeoLang = "am";
+
 type LocalizedText = Record<SeoLang, string>;
 
 type RouteSeo = {
@@ -19,7 +27,7 @@ const BRAND_TITLE: LocalizedText = {
   am: "Վիվա Ավտոդպրոց",
 };
 
-/** Full homepage titles (absolute — already include the brand). */
+/** Full homepage titles (absolute - already include the brand). */
 const HOME_TITLE: LocalizedText = {
   en: "Viva Autoschool Yerevan | Driving Lessons & Theory in Armenia",
   ru: "Автошкола Viva Ереван | Уроки вождения и теория в Армении",
@@ -45,8 +53,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
   "/": {
     title: HOME_TITLE,
     description: {
-      en: "Learn to drive in Yerevan with Viva Autoschool — certified instructors, practical lessons, theory courses, and Armenian driver's license exam prep.",
-      ru: "Научитесь водить в Ереване в автошколе Viva — сертифицированные инструкторы, практика, теория и подготовка к экзамену на права в Армении.",
+      en: "Learn to drive in Yerevan with Viva Autoschool - certified instructors, practical lessons, theory courses, and Armenian driver's license exam prep.",
+      ru: "Научитесь водить в Ереване в автошколе Viva - сертифицированные инструкторы, практика, теория и подготовка к экзамену на права в Армении.",
       am: "Սովորեք վարել Երևանում «Վիվա Ավտոդպրոցում»՝ սերտիֆիկացված հրահանգիչներ, պրակտիկա, տեսություն և վարորդական իրավունքի քննության պատրաստում։",
     },
     keywords: {
@@ -58,8 +66,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
   "/services": {
     title: { en: "Services", ru: "Услуги", am: "Ծառայություններ" },
     description: {
-      en: "Practical driving lessons, theory courses, license preparation, and refresher training — everything you need for your Armenian driver's license.",
-      ru: "Практические уроки вождения, теория, подготовка к экзамену и восстановление навыков — все для получения прав в Армении.",
+      en: "Practical driving lessons, theory courses, license preparation, and refresher training - everything you need for your Armenian driver's license.",
+      ru: "Практические уроки вождения, теория, подготовка к экзамену и восстановление навыков - все для получения прав в Армении.",
       am: "Պրակտիկ վարորդական դասեր, տեսական ուսուցում, քննության պատրաստում և հմտությունների վերապատրաստում՝ վարորդական իրավունքի համար Հայաստանում։",
     },
     keywords: {
@@ -71,8 +79,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
   "/about": {
     title: { en: "About Us", ru: "О нас", am: "Մեր մասին" },
     description: {
-      en: "About Viva Autoschool — a trusted driving school in Yerevan, Armenia. Certified instructors, modern vehicles, and student-centered training.",
-      ru: "Об автошколе Viva — надёжная автошкола в Ереване, Армения. Сертифицированные инструкторы и современные автомобили.",
+      en: "About Viva Autoschool - a trusted driving school in Yerevan, Armenia. Certified instructors, modern vehicles, and student-centered training.",
+      ru: "Об автошколе Viva - надёжная автошкола в Ереване, Армения. Сертифицированные инструкторы и современные автомобили.",
       am: "«Վիվա Ավտոդպրոցի» մասին՝ վստահելի ավտոդպրոց Երևանում, Հայաստան։ Սերտիֆիկացված հրահանգիչներ և ժամանակակից մեքենաներ։",
     },
     keywords: {
@@ -88,8 +96,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
       am: "Փաթեթներ և գներ",
     },
     description: {
-      en: "Compare driving lesson packages at Viva Autoschool in Yerevan — flexible options for practical training and theory.",
-      ru: "Сравните пакеты уроков вождения в автошколе Viva в Ереване — гибкие варианты практики и теории.",
+      en: "Compare driving lesson packages at Viva Autoschool in Yerevan - flexible options for practical training and theory.",
+      ru: "Сравните пакеты уроков вождения в автошколе Viva в Ереване - гибкие варианты практики и теории.",
       am: "Համեմատեք «Վիվա Ավտոդպրոցի» վարորդական դասերի փաթեթները Երևանում՝ ճկուն տարբերակներով և ներառված տեսությամբ։",
     },
     keywords: {
@@ -101,8 +109,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
   "/instructors": {
     title: { en: "Instructors", ru: "Инструкторы", am: "Հրահանգիչներ" },
     description: {
-      en: "Meet certified driving instructors at Viva Autoschool in Yerevan — patient, professional, and focused on safe drivers.",
-      ru: "Познакомьтесь с сертифицированными инструкторами автошколы Viva в Ереване — терпеливыми и профессиональными.",
+      en: "Meet certified driving instructors at Viva Autoschool in Yerevan - patient, professional, and focused on safe drivers.",
+      ru: "Познакомьтесь с сертифицированными инструкторами автошколы Viva в Ереване - терпеливыми и профессиональными.",
       am: "Ծանոթացեք «Վիվա Ավտոդպրոցի» սերտիֆիկացված վարորդական հրահանգիչներին Երևանում՝ համբերատար և պրոֆեսիոնալ թիմ։",
     },
     keywords: {
@@ -114,8 +122,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
   "/contact": {
     title: { en: "Contact", ru: "Контакты", am: "Կապ" },
     description: {
-      en: "Contact Viva Autoschool in Yerevan — phone, email, branches, and driving lesson booking.",
-      ru: "Свяжитесь с автошколой Viva в Ереване — телефон, email, филиалы и запись на уроки.",
+      en: "Contact Viva Autoschool in Yerevan - phone, email, branches, and driving lesson booking.",
+      ru: "Свяжитесь с автошколой Viva в Ереване - телефон, email, филиалы и запись на уроки.",
       am: "Կապ հաստատեք «Վիվա Ավտոդպրոցի» հետ Երևանում՝ հեռախոս, էլ․փոստ, մասնաճյուղեր և դասերի ամրագրում։",
     },
     keywords: {
@@ -144,8 +152,8 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
       am: "Քննության թեստեր",
     },
     description: {
-      en: "Free driving theory exam practice for Armenia — thematic questions and exam-style tests from Viva Autoschool.",
-      ru: "Бесплатная практика к экзамену по теории вождения в Армении — тематические вопросы и тесты от автошколы Viva.",
+      en: "Free driving theory exam practice for Armenia - thematic questions and exam-style tests from Viva Autoschool.",
+      ru: "Бесплатная практика к экзамену по теории вождения в Армении - тематические вопросы и тесты от автошколы Viva.",
       am: "Անվճար վարորդական տեսական քննության պրակտիկա Հայաստանում՝ թեմատիկ հարցեր և քննության թեստեր «Վիվա Ավտոդպրոցից»։",
     },
     keywords: {
@@ -213,6 +221,10 @@ export function ogLocaleFromSeoLang(lang: SeoLang): string {
   return "en_US";
 }
 
+/**
+ * UI language for the document `lang` attribute only.
+ * Do not use this inside `generateMetadata` / static `metadata` - it streams SEO tags out of `<head>`.
+ */
 export async function getRequestSeoLang(): Promise<SeoLang> {
   const cookieStore = await cookies();
   const langFromCookie = normalizeSeoLang(cookieStore.get("viva_lang")?.value);
@@ -220,7 +232,7 @@ export async function getRequestSeoLang(): Promise<SeoLang> {
 
   const headerStore = await headers();
   const langFromHeader = normalizeSeoLang(headerStore.get("accept-language"));
-  return langFromHeader ?? "am";
+  return langFromHeader ?? CRAWL_SEO_LANG;
 }
 
 export function getRouteSeo(pathname: string, lang: SeoLang): { title: string; description: string; keywords: string } {
@@ -250,7 +262,7 @@ function defaultOgImages(): NonNullable<Metadata["openGraph"]>["images"] {
   ];
 }
 
-export function buildRouteMetadata(pathname: string, lang: SeoLang): Metadata {
+export function buildRouteMetadata(pathname: string, lang: SeoLang = CRAWL_SEO_LANG): Metadata {
   const seo = getRouteSeo(pathname, lang);
   const canonical = pathname === "/" ? "/" : pathname;
   const isHome = pathname === "/";
@@ -260,7 +272,15 @@ export function buildRouteMetadata(pathname: string, lang: SeoLang): Metadata {
     title: isHome ? { absolute: seo.title } : seo.title,
     description: seo.description,
     keywords: seo.keywords,
-    alternates: { canonical },
+    alternates: {
+      canonical,
+      languages: {
+        "hy-AM": canonical,
+        "ru-RU": canonical,
+        "en": canonical,
+        "x-default": canonical,
+      },
+    },
     openGraph: {
       type: "website",
       siteName: BRAND_TITLE[lang],
@@ -268,6 +288,7 @@ export function buildRouteMetadata(pathname: string, lang: SeoLang): Metadata {
       description: seo.description,
       url: canonical,
       locale: ogLocaleFromSeoLang(lang),
+      alternateLocale: ["ru_RU", "en_US"].filter((l) => l !== ogLocaleFromSeoLang(lang)),
       images: defaultOgImages(),
     },
     twitter: {
@@ -279,7 +300,7 @@ export function buildRouteMetadata(pathname: string, lang: SeoLang): Metadata {
   };
 }
 
-export function legalMetadata(kind: "privacy" | "terms" | "payments", lang: SeoLang, pathname: string): Metadata {
+export function legalMetadata(kind: "privacy" | "terms" | "payments", lang: SeoLang = CRAWL_SEO_LANG, pathname: string): Metadata {
   const doc = LEGAL_DOCS[kind][lang];
   const base = buildRouteMetadata(pathname, lang);
   return {
@@ -299,7 +320,7 @@ export function legalMetadata(kind: "privacy" | "terms" | "payments", lang: SeoL
   };
 }
 
-export function baseLayoutMetadata(lang: SeoLang): Metadata {
+export function baseLayoutMetadata(lang: SeoLang = CRAWL_SEO_LANG): Metadata {
   return {
     metadataBase: siteUrl(),
     icons: {
@@ -318,13 +339,22 @@ export function baseLayoutMetadata(lang: SeoLang): Metadata {
     creator: BRAND_TITLE[lang],
     publisher: BRAND_TITLE[lang],
     category: "education",
-    alternates: { canonical: "/" },
+    alternates: {
+      canonical: "/",
+      languages: {
+        "hy-AM": "/",
+        "ru-RU": "/",
+        en: "/",
+        "x-default": "/",
+      },
+    },
     openGraph: {
       type: "website",
       siteName: BRAND_TITLE[lang],
       title: HOME_TITLE[lang],
       description: DEFAULT_DESCRIPTION[lang],
       locale: ogLocaleFromSeoLang(lang),
+      alternateLocale: ["ru_RU", "en_US"],
       url: "/",
       images: defaultOgImages(),
     },

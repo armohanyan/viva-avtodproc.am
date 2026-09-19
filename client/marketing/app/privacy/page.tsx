@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
 import PrivacyPolicy from "src/views/public/PrivacyPolicy";
-import { getRequestSeoLang, legalMetadata } from "@/lib/seo";
+import { CRAWL_SEO_LANG, legalMetadata } from "@/lib/seo";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const lang = await getRequestSeoLang();
-  return legalMetadata("privacy", lang, "/privacy");
-}
+export const metadata: Metadata = legalMetadata("privacy", CRAWL_SEO_LANG, "/privacy");
 
 export default function Page() {
   return <PrivacyPolicy />;

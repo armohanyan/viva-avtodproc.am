@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
 import ExamTests from "src/views/public/ExamTests";
-import { buildRouteMetadata, getRequestSeoLang } from "@/lib/seo";
+import { buildRouteMetadata } from "@/lib/seo";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const lang = await getRequestSeoLang();
-  return buildRouteMetadata("/exam-tests", lang);
-}
+export const metadata: Metadata = buildRouteMetadata("/exam-tests");
 
 export default function Page() {
   return <ExamTests />;

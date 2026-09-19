@@ -51,5 +51,25 @@ export function getApiBaseUrl(): string {
 	if (fromVite) {
 		return normalizeApiBaseUrl(fromVite);
 	}
+
+	/**
+	 * Server-side `fetch` cannot use relative `/api/...` URLs.
+	 * Fall back so sitemap / blog SSR still reach Express (rewrites or local API).
+	 */
+	if (isServer) {
+		const site =
+			typeof process !== "undefined" && process.env.NEXT_PUBLIC_SITE_URL
+				? process.env.NEXT_PUBLIC_SITE_URL.trim()
+				: "";
+		if (site) {
+			try {
+				return new URL(site).origin;
+			} catch {
+				/* ignore */
+			}
+		}
+		return "http://127.0.0.1:3001";
+	}
+
 	return "";
 }

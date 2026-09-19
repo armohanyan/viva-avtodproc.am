@@ -4,23 +4,23 @@ import { JsonLd } from "@/components/JsonLd";
 import { MarketingProviders } from "@/components/MarketingProviders";
 import { ScrollToTopOnRoute } from "@/components/ScrollToTopOnRoute";
 import { buildSiteJsonLd } from "@/lib/jsonLd";
-import { baseLayoutMetadata, getRequestSeoLang, htmlLangFromSeoLang } from "@/lib/seo";
+import { baseLayoutMetadata, CRAWL_SEO_LANG, htmlLangFromSeoLang } from "@/lib/seo";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const lang = await getRequestSeoLang();
-  return baseLayoutMetadata(lang);
-}
+/**
+ * Static metadata so title/description/canonical land in `<head>` for crawlers.
+ * Cookie-based `generateMetadata` streamed those tags after `</head>` and killed SEO.
+ */
+export const metadata: Metadata = baseLayoutMetadata(CRAWL_SEO_LANG);
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const lang = await getRequestSeoLang();
   return (
-    <html lang={htmlLangFromSeoLang(lang)} suppressHydrationWarning>
+    <html lang={htmlLangFromSeoLang(CRAWL_SEO_LANG)} suppressHydrationWarning>
       <body className="antialiased min-h-screen bg-background text-foreground">
-        <JsonLd data={buildSiteJsonLd(lang)} />
+        <JsonLd data={buildSiteJsonLd(CRAWL_SEO_LANG)} />
         <MarketingProviders>
           <ScrollToTopOnRoute />
           {children}
