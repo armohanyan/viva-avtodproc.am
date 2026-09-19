@@ -197,6 +197,39 @@ export function lessonSlotExcludedFromReports(
  */
 export type SalarySlotPaymentBucket = 'payable' | 'unpaid' | 'partial_uncovered';
 
+/** Display standing including slots that occupy the graphic but never enter salary math. */
+export type SalaryLessonStandingBucket = SalarySlotPaymentBucket | 'excluded';
+
+export type SalarySlotExcludeReason =
+  | 'completion_cancelled'
+  | 'completion_cancelled_no_refund'
+  | 'completion_missed'
+  | 'completion_refunded'
+  | 'lesson_not_passed'
+  | 'zero_price'
+  | 'booking_closed'
+  | 'unknown';
+
+/** Why a slot is omitted from salary when {@link salarySlotPaymentBucket} returns null. */
+export function salarySlotExcludeReason(
+  booking: PayableLessonBookingRow,
+): SalarySlotExcludeReason {
+  const cs = booking.lessonCompletionStatus as LessonCompletionStatus | null | undefined;
+  if (cs === 'missed') return 'completion_missed';
+  if (cs === 'cancelled') return 'completion_cancelled';
+  if (cs === 'cancelled_no_refund') return 'completion_cancelled_no_refund';
+  if (cs === 'refunded') return 'completion_refunded';
+  if (booking.lessonPassedSuccessfully === false) return 'lesson_not_passed';
+  if (!bookingCountsTowardStudentDebt(booking)) {
+    const st = String(booking.status ?? '')
+      .trim()
+      .toLowerCase();
+    if (st === 'cancelled' || st === 'refunded' || st === 'archived') return 'booking_closed';
+    return 'zero_price';
+  }
+  return 'unknown';
+}
+
 export function salarySlotPaymentBucket(
   booking: PayableLessonBookingRow,
   slot: PayableLessonSlotRow,
@@ -214,6 +247,24 @@ export function salarySlotPaymentBucket(
     return Boolean(slot.paymentCovered) ? 'payable' : 'partial_uncovered';
   }
   return null;
+}
+
+/** Payment bucket, or `excluded` with a machine-readable reason for admin salary details. */
+export function salarySlotStanding(
+  booking: PayableLessonBookingRow,
+  slot: PayableLessonSlotRow,
+): { bucket: SalaryLessonStandingBucket; excludeReason: SalarySlotExcludeReason | null } {
+  const bucket = salarySlotPaymentBucket(booking, slot);
+  if (bucket) return { bucket, excludeReason: null };
+  return { bucket: 'excluded', excludeReason: salarySlotExcludeReason(booking) };
+}
+
+export function legacySalaryStanding(
+  booking: PayableLessonBookingRow,
+): { bucket: SalaryLessonStandingBucket; excludeReason: SalarySlotExcludeReason | null } {
+  const bucket = legacySalaryPaymentBucket(booking);
+  if (bucket) return { bucket, excludeReason: null };
+  return { bucket: 'excluded', excludeReason: salarySlotExcludeReason(booking) };
 }
 
 /**

@@ -125,7 +125,7 @@ export default function AdminDashboard() {
     const q = bookingSearch.trim().toLowerCase();
     return recentBookingsData.filter((b) => {
       const branchLabel = branchNameById(branches, String(b.branchId)) ?? "";
-      const hay = [b.student, b.instructor, branchLabel, b.date, b.time, b.status].join(" ").toLowerCase();
+      const hay = [String(b.id), b.student, b.instructor, branchLabel, b.date, b.time, b.status].join(" ").toLowerCase();
       const matchSearch = !q || hay.includes(q);
       const matchStatus =
         bookingStatus === "all" || canonicalBookingStatusForDashboard(b.status) === bookingStatus;
@@ -310,6 +310,7 @@ export default function AdminDashboard() {
             <CsvExportButton
               filename="admin-dashboard-recent-bookings.csv"
               headers={[
+                t("tableColId"),
                 t("bookingColStudent"),
                 t("filterByBranch"),
                 t("cohortColInstructor"),
@@ -318,6 +319,7 @@ export default function AdminDashboard() {
                 t("status"),
               ]}
               rows={filteredRecentBookings.map((b) => [
+                String(b.id),
                 b.student,
                 branchNameById(branches, String(b.branchId)) ?? String(b.branchId),
                 b.instructor,
@@ -331,6 +333,7 @@ export default function AdminDashboard() {
             <table className="w-full text-sm min-w-[48rem]">
               <thead className="bg-muted/40">
                 <tr>
+                  <TableColumnHeaderWithFilter title={t("tableColId")} className="px-5 py-3" />
                   <TableColumnHeaderWithFilter title={t("bookingColStudent")} className="px-5 py-3" />
                   <TableColumnHeaderWithFilter title={t("filterByBranch")} className="px-5 py-3" />
                   <TableColumnHeaderWithFilter title={t("cohortColInstructor")} className="px-5 py-3" />
@@ -359,7 +362,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
-                  <TableSkeletonRows cols={7} />
+                  <TableSkeletonRows cols={8} />
                 ) : (
                 filteredRecentBookings.map((b, i) => (
                   <AdminTableRowContextMenu
@@ -383,6 +386,7 @@ export default function AdminDashboard() {
                     ]}
                   >
                     <tr className="hover:bg-muted/30 transition-colors">
+                      <td className="px-5 py-3.5 text-muted-foreground text-xs font-mono whitespace-nowrap tabular-nums">{b.id}</td>
                       <td className="px-5 py-3.5 font-medium text-foreground">{b.student}</td>
                       <td
                         className="px-5 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate"

@@ -54,6 +54,7 @@ import {
 import type {
   DirectorSalary,
   DirectorSalaryEmployeeKind,
+  DirectorSalaryExcludeReason,
   DirectorSalaryLessonPaymentBucket,
   DirectorSalaryLessons,
   DirectorSalaryPayment,
@@ -90,17 +91,40 @@ function kindLabel(kind: DirectorSalaryEmployeeKind): string {
   return KIND_LABEL[kind];
 }
 
-function formatOutstandingSlots(unpaid: number, partial: number): string | null {
+function formatOutstandingSlots(unpaid: number, partial: number, excluded = 0): string | null {
   const parts: string[] = [];
   if (unpaid > 0) parts.push(`${unpaid} չվճարված`);
   if (partial > 0) parts.push(`${partial} մասնակի`);
+  if (excluded > 0) parts.push(`${excluded} բացառված`);
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function lessonPaymentBucketLabel(bucket: DirectorSalaryLessonPaymentBucket): string {
   if (bucket === "unpaid") return "Չվճարված";
   if (bucket === "partial_uncovered") return "Մասնակի";
+  if (bucket === "excluded") return "Բացառված";
   return "Վճարված";
+}
+
+function lessonExcludeReasonLabel(reason: DirectorSalaryExcludeReason | null | undefined): string {
+  switch (reason) {
+    case "completion_cancelled":
+      return "Դասի արդյունք՝ չեղարկված (completion=cancelled). Գրաֆիկում կա, աշխատավարձում չի հաշվվում։";
+    case "completion_cancelled_no_refund":
+      return "Դասի արդյունք՝ չեղարկված առանց վերադարձի։";
+    case "completion_missed":
+      return "Դասի արդյունք՝ բաց թողնված (missed)։";
+    case "completion_refunded":
+      return "Դասի արդյունք՝ վերադարձված (refunded)։";
+    case "lesson_not_passed":
+      return "Հրահանգիչը նշել է, որ դասը չի անցել։";
+    case "zero_price":
+      return "Գինը 0 է (ոչ նվեր / ոչ փաթեթ)։";
+    case "booking_closed":
+      return "Ամրագրումը չեղարկված / արխիվացված է։";
+    default:
+      return "Աշխատավարձից բացառված է այլ պատճառով։";
+  }
 }
 
 function employeeDisplayName(
@@ -261,6 +285,8 @@ function SalaryReportView({
       <p className="text-xs text-muted-foreground mt-4 mb-2">
         Հաշվարկը հիմնված է վճարված դասերի (սլոթերի) քանակի վրա՝ ներառյալ հաստատված նվեր-ամրագրումները.
         Չվճարված և մասնակի սլոթերը ցուցադրվում են առանձին, որպեսզի երևա, եթե վճարումը դեռ չի նշվել.
+        «Բացառված» նշանակում է՝ սլոթը գրաֆիկում կա, բայց աշխատավարձում չի մտնում (օր. չեղարկված
+        արդյունք, բաց թողնված դաս, 0 գին). Սեղմեք դասերի քանակին՝ մանրամասները տեսնելու համար.
         Գործնական դասի լռելյայն դրույք՝ {formatAmd(report?.instructorRateAmd ?? 1500)}, տեսություն{" "}
         {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}.
       </p>
@@ -287,6 +313,7 @@ function SalaryReportView({
               const outstanding = formatOutstandingSlots(
                 row.unpaidLessonsCount,
                 row.partialUnpaidLessonsCount,
+                row.excludedLessonsCount ?? 0,
               );
               return (
               <DirectorTableRow key={`${row.kind}:${row.employeeUserId}`}>
@@ -336,20 +363,34 @@ function SalaryReportView({
       </DirectorTableWrap>
 
       <Dialog open={lessonsOpen} onOpenChange={setLessonsOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Դասեր</DialogTitle>
             <DialogDescription>
               {lessons
                 ? `${lessons.startDate} — ${lessons.endDate} · ${lessons.totalUnits} վճարված` +
-                  (lessons.unpaidUnits > 0 || lessons.partialUnpaidUnits > 0
-                    ? ` · ${formatOutstandingSlots(lessons.unpaidUnits, lessons.partialUnpaidUnits) ?? ""}`
+                  (lessons.unpaidUnits > 0 ||
+                  lessons.partialUnpaidUnits > 0 ||
+                  (lessons.excludedUnits ?? 0) > 0
+                    ? ` · ${
+                        formatOutstandingSlots(
+                          lessons.unpaidUnits,
+                          lessons.partialUnpaidUnits,
+                          lessons.excludedUnits ?? 0,
+                        ) ?? ""
+                      }`
                     : "")
                 : start + " — " + end}
             </DialogDescription>
           </DialogHeader>
+          {(lessons?.excludedUnits ?? 0) > 0 ? (
+            <p className="text-xs text-amber-800 dark:text-amber-400 bg-amber-500/10 rounded-md px-3 py-2">
+              Կան {lessons?.excludedUnits} սլոթ, որոնք գրաֆիկում երևում են, բայց աշխատավարձում չեն
+              հաշվվում։ Ներքևում նշված է յուրաքանչյուրի պատճառը։
+            </p>
+          ) : null}
           <AdminTableScroll>
-            <table className="w-full text-sm min-w-[36rem]">
+            <table className="w-full text-sm min-w-[42rem]">
               <thead className="bg-muted/40">
                 <tr>
                   {["Ամսաթիվ", "Ժամ", "Նկարագրություն", "Կարգավիճակ", "Դասեր"].map((h) => (
@@ -370,20 +411,29 @@ function SalaryReportView({
                   </tr>
                 ) : (
                   lessons?.items.map((item) => (
-                    <tr key={item.id} className="hover:bg-muted/30">
+                    <tr key={`${item.paymentBucket}-${item.id}`} className="hover:bg-muted/30">
                       <td className="px-3 py-2 tabular-nums whitespace-nowrap">{item.dateIso}</td>
                       <td className="px-3 py-2 tabular-nums text-muted-foreground whitespace-nowrap">
                         {item.startTime}
                         {item.endTime ? ` — ${item.endTime}` : ""}
                       </td>
-                      <td className="px-3 py-2">{item.label}</td>
+                      <td className="px-3 py-2">
+                        <div>{item.label}</div>
+                        {item.paymentBucket === "excluded" ? (
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {lessonExcludeReasonLabel(item.excludeReason)}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           className={cn(
                             "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
                             item.paymentBucket === "payable"
                               ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                              : "bg-amber-500/15 text-amber-800 dark:text-amber-400",
+                              : item.paymentBucket === "excluded"
+                                ? "bg-rose-500/15 text-rose-700 dark:text-rose-400"
+                                : "bg-amber-500/15 text-amber-800 dark:text-amber-400",
                           )}
                         >
                           {lessonPaymentBucketLabel(item.paymentBucket ?? "payable")}

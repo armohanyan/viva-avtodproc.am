@@ -2513,6 +2513,7 @@ export default function AdminBookings() {
           }
         }}
         title={t("bookingDialogEditTitle")}
+        description={editBooking ? `#${editBooking.id}` : undefined}
         contentClassName={
           editBooking &&
           (editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal")

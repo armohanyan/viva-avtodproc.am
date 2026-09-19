@@ -108,39 +108,50 @@ function AdminDrivingContent() {
 
   return (
     <>
-      <PanelPageHeader
-        icon={Car}
-        title={t("adminDrivingTitle")}
-      />
+      {/*
+        Fill the panel main area (header is h-14/h-16; main padding is p-4/p-6)
+        so the matrix can grow to the remaining viewport instead of capping at 720px.
+      */}
+      <div className="flex flex-col gap-3 min-h-0 h-[calc(100dvh-3.5rem-2rem)] sm:h-[calc(100dvh-4rem-3rem)]">
+        <div className="shrink-0 space-y-3">
+          <PanelPageHeader
+            icon={Car}
+            title={t("adminDrivingTitle")}
+            className="mb-0"
+          />
 
-      <AdminDrivingFilters
-        search={search}
-        onSearchChange={setSearch}
-        branchId={branchFilterId}
-        onBranchIdChange={setBranchFilterId}
-        className="mb-4"
-      />
+          <AdminDrivingFilters
+            search={search}
+            onSearchChange={setSearch}
+            branchId={branchFilterId}
+            onBranchIdChange={setBranchFilterId}
+          />
+        </div>
 
-      {filteredInstructors.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-      ) : (
-        <AdminInstructorAvailabilityTable
-          key={refreshKey}
-          instructors={filteredInstructors}
-          bookingBranchId={branchFilterId}
-          ignoreGlobalBranchFilter
-          studentName=""
-          selectedEntries={[]}
-          onEntriesChange={() => {}}
-          onInstructorPicked={() => {}}
-          slotSource="practical"
-          onCellClick={({ instructor, branchId, dateIso }) => {
-            setSlotModalTarget({ instructor, branchId, dateIso });
-          }}
-          onDateClick={(dateIso) => setDayModalDateIso(dateIso)}
-          t={t}
-        />
-      )}
+        {filteredInstructors.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+        ) : (
+          <div className="flex-1 min-h-0 flex flex-col">
+            <AdminInstructorAvailabilityTable
+              key={refreshKey}
+              instructors={filteredInstructors}
+              bookingBranchId={branchFilterId}
+              ignoreGlobalBranchFilter
+              fillViewport
+              studentName=""
+              selectedEntries={[]}
+              onEntriesChange={() => {}}
+              onInstructorPicked={() => {}}
+              slotSource="practical"
+              onCellClick={({ instructor, branchId, dateIso }) => {
+                setSlotModalTarget({ instructor, branchId, dateIso });
+              }}
+              onDateClick={(dateIso) => setDayModalDateIso(dateIso)}
+              t={t}
+            />
+          </div>
+        )}
+      </div>
 
       {dayModalDateIso ? (
         <AdminDrivingDayModal

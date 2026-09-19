@@ -88,6 +88,7 @@ export default function StudentDemoBookingRow({ booking, variant = "bookings" }:
               {booking.instructor}
             </p>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-xs font-mono text-muted-foreground tabular-nums">#{booking.id}</span>
               <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
               <span className="text-xs text-muted-foreground">
                 {formatBookingSlotRangeLabel(booking.time, booking.endTime)}

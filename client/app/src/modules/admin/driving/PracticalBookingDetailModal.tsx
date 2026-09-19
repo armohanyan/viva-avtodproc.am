@@ -393,6 +393,7 @@ export default function PracticalBookingDetailModal({
           onOpenChange(o);
         }}
         title={t("adminDrivingBookingDetailTitle")}
+        description={bookingId ? `#${bookingId}` : undefined}
         contentClassName="w-full max-w-[calc(100%-2rem)] sm:max-w-xl"
         footer={
           booking && !loading ? (

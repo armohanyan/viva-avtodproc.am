@@ -53,6 +53,10 @@ export function StudentBookingCancelDialog({ booking, locale, busy, onOpenChange
               {booking ? (
                 <div className="rounded-lg border border-border bg-background/80 p-3 shadow-inner sm:p-4 dark:bg-background/40">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {t("tableColId")}
+                  </p>
+                  <p className="mt-1 text-sm font-mono font-semibold text-foreground tabular-nums">#{booking.id}</p>
+                  <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {t("bookingsTableColDate")} · {t("bookingsTableColTime")}
                   </p>
                   <p className="mt-1 text-sm font-semibold text-foreground tabular-nums">
