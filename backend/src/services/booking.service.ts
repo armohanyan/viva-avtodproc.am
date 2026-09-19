@@ -900,6 +900,15 @@ function rawBookingStatusReservesSlot(status: unknown): boolean {
   return (SLOT_RESERVING_STATUSES as readonly string[]).includes(s as (typeof SLOT_RESERVING_STATUSES)[number]);
 }
 
+/** Clear stale cancelled/refunded completion when admin keeps an occupying booking. */
+async function reconcileStaleCompletionAfterAdminKeepSlots(
+  booking: Booking,
+  transaction: Transaction,
+): Promise<void> {
+  if (booking.lessonType !== 'practical' && booking.lessonType !== 'theory_personal') return;
+  await LessonCompletionService.clearStaleClosedCompletionForActiveBooking(booking, { transaction });
+}
+
 function bookingSlotRowKey(dateIso: string, slotTime: string): string {
   return `${dateIsoString(dateIso)}\t${slotTime}`;
 }
@@ -3993,6 +4002,7 @@ export default class BookingService {
               },
               transaction,
             );
+            await reconcileStaleCompletionAfterAdminKeepSlots(row, transaction);
           }
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
@@ -4169,6 +4179,7 @@ export default class BookingService {
             },
             transaction,
           );
+          await reconcileStaleCompletionAfterAdminKeepSlots(row, transaction);
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: id,
@@ -4279,6 +4290,7 @@ export default class BookingService {
           },
           transaction,
         );
+        await reconcileStaleCompletionAfterAdminKeepSlots(row, transaction);
       }
       await recordRefundLedgerWhenAdminMarksRefundedInTx({
         bookingId: id,
@@ -4537,6 +4549,7 @@ export default class BookingService {
             },
             transaction,
           );
+          await reconcileStaleCompletionAfterAdminKeepSlots(row, transaction);
         }
         await recordRefundLedgerWhenAdminMarksRefundedInTx({
           bookingId: row.id,

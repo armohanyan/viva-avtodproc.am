@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import type { Instructor } from "src/data/instructors";
@@ -67,6 +67,11 @@ type Props = {
    * global admin header branch filter is ignored.
    */
   ignoreGlobalBranchFilter?: boolean;
+  /**
+   * Grow to fill the parent height (no 720px cap). Parent should be a flex column with
+   * `flex-1 min-h-0` so the matrix uses the remaining viewport.
+   */
+  fillViewport?: boolean;
   t: (k: TranslationKey) => string;
 };
 
@@ -86,6 +91,7 @@ export default function AdminInstructorAvailabilityTable({
   slotSource = "branch",
   reloadKey = 0,
   ignoreGlobalBranchFilter = false,
+  fillViewport = false,
   t,
 }: Props) {
   const cellClickMode = Boolean(onCellClick);
@@ -105,6 +111,9 @@ export default function AdminInstructorAvailabilityTable({
     branchId: string;
     entries: readonly { dateIso: string; time: string }[];
   } | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const dates = useMemo(() => gridDateRange(rangeStartIso), [rangeStartIso]);
   const rangeEndIso = dates[dates.length - 1] ?? rangeStartIso;
@@ -213,10 +222,84 @@ export default function AdminInstructorAvailabilityTable({
     return `${formatGridDateLabel(dates[0])} – ${formatGridDateLabel(dates[dates.length - 1])}`;
   }, [dates]);
 
+  const updateHorizontalScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 2);
+    setCanScrollRight(maxScroll > 2 && el.scrollLeft < maxScroll - 2);
+  }, []);
+
+  const scrollInstructorsBy = useCallback((direction: -1 | 1) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const step = Math.max(Math.floor(el.clientWidth * 0.75), 240);
+    el.scrollBy({ left: direction * step, behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateHorizontalScrollState();
+    const onScroll = () => updateHorizontalScrollState();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateHorizontalScrollState) : null;
+    ro?.observe(el);
+    window.addEventListener("resize", updateHorizontalScrollState);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro?.disconnect();
+      window.removeEventListener("resize", updateHorizontalScrollState);
+    };
+  }, [updateHorizontalScrollState, instructorColumns.length, dates.length, gridLoading]);
+
+  /** Shift + mouse wheel scrolls instructors horizontally without hunting for the bottom bar. */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
+      if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [instructorColumns.length, gridLoading]);
+
   return (
-    <div className="space-y-3 min-w-0">
-      <div className="flex items-center justify-end gap-2">
-        <Button
+    <div className={cn("space-y-3 min-w-0", fillViewport && "flex flex-col flex-1 min-h-0 h-full")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            disabled={!canScrollLeft}
+            onClick={() => scrollInstructorsBy(-1)}
+            aria-label={t("adminBookingAvailabilityGridScrollLeft")}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            disabled={!canScrollRight}
+            onClick={() => scrollInstructorsBy(1)}
+            aria-label={t("adminBookingAvailabilityGridScrollRight")}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
             type="button"
             variant="outline"
             size="icon"
@@ -237,6 +320,7 @@ export default function AdminInstructorAvailabilityTable({
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
+        </div>
       </div>
 
       {gridLoading ? (
@@ -246,7 +330,16 @@ export default function AdminInstructorAvailabilityTable({
       {instructorColumns.length === 0 ? (
         <p className="text-sm text-amber-600 dark:text-amber-500">{t("adminBookingInstructorCalendarUnavailable")}</p>
       ) : (
-        <div className="rounded-lg border border-primary/30 max-h-[min(calc(100dvh-14rem),720px)] overflow-auto overscroll-contain touch-pan-x touch-pan-y min-w-0">
+        <div className={cn("relative min-w-0", fillViewport && "flex-1 min-h-0 flex flex-col")}>
+          <div
+            ref={scrollRef}
+            className={cn(
+              "rounded-lg border border-primary/30 overflow-auto overscroll-contain touch-pan-x touch-pan-y min-w-0",
+              fillViewport
+                ? "flex-1 min-h-0 max-h-none h-full"
+                : "max-h-[min(calc(100dvh-14rem),720px)]",
+            )}
+          >
           <table className="w-full text-sm border-separate border-spacing-0 min-w-max">
             <thead>
               <tr>
@@ -361,6 +454,39 @@ export default function AdminInstructorAvailabilityTable({
               ))}
             </tbody>
           </table>
+          </div>
+          {canScrollLeft || canScrollRight ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                disabled={!canScrollLeft}
+                onClick={() => scrollInstructorsBy(-1)}
+                aria-label={t("adminBookingAvailabilityGridScrollLeft")}
+                className={cn(
+                  "absolute left-1 top-1/2 z-50 h-9 w-9 -translate-y-1/2 border border-border bg-card/95 shadow-md backdrop-blur-sm",
+                  !canScrollLeft && "pointer-events-none opacity-0",
+                )}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                disabled={!canScrollRight}
+                onClick={() => scrollInstructorsBy(1)}
+                aria-label={t("adminBookingAvailabilityGridScrollRight")}
+                className={cn(
+                  "absolute right-1 top-1/2 z-50 h-9 w-9 -translate-y-1/2 border border-border bg-card/95 shadow-md backdrop-blur-sm",
+                  !canScrollRight && "pointer-events-none opacity-0",
+                )}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </>
+          ) : null}
         </div>
       )}
 
