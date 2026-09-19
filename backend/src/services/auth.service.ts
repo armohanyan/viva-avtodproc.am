@@ -94,6 +94,9 @@ export default class AuthService {
   private static async issueTokens(user: User): Promise<AuthTokensDto> {
     await this.assertActive(user);
 
+    // New login / OAuth / register replaces every prior refresh session for this user.
+    await RefreshTokenService.revokeAllForUser(user.id);
+
     const accessToken = signAccessToken({
       sub: String(user.id),
       email: user.email,

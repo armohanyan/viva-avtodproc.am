@@ -101,18 +101,20 @@ async function postRefreshAndApplySession(): Promise<RefreshAttempt> {
 	return "ok";
 }
 
+/**
+ * True only when a *different* access token appeared after a known 401.
+ * Do NOT treat "any valid in-memory token" as success when `failedAccessToken` is unset —
+ * that skipped `/auth/refresh` after Google OAuth and left the callback page stuck on success.
+ */
 function sessionRecoveredAfterFailure(failedAccessToken?: string | null): boolean {
+	if (failedAccessToken == null || failedAccessToken === "") {
+		return false;
+	}
 	const current = getAccessTokenInMemory();
 	if (!current || !memoryAccessTokenLooksValid(45)) {
 		return false;
 	}
-	if (failedAccessToken != null && failedAccessToken !== "" && current !== failedAccessToken) {
-		return true;
-	}
-	if (failedAccessToken == null || failedAccessToken === "") {
-		return memoryAccessTokenLooksValid(45);
-	}
-	return false;
+	return current !== failedAccessToken;
 }
 
 async function runRefreshAttempt(opts?: TryRefreshOptions): Promise<RefreshAttempt> {

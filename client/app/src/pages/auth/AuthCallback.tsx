@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import {
@@ -15,17 +15,37 @@ import { loadAccountSession } from "src/modules/accounts/account.session";
 
 type CallbackStatus = "loading" | "success" | "error";
 
+function resolveDest(
+  accountType: Parameters<typeof defaultHomePathForAccountType>[0],
+  safeRedirectCandidate: string | null,
+): string {
+  const fallback = defaultHomePathForAccountType(accountType);
+  if (safeRedirectCandidate && isSafePanelRedirect(safeRedirectCandidate, accountType)) {
+    return safeRedirectCandidate;
+  }
+  return fallback;
+}
+
+/** Hard navigation so nested wouter bases / Strict Mode cleanups cannot cancel the redirect. */
+function goToPanel(dest: string): void {
+  window.location.replace(dest);
+}
+
 export default function AuthCallback() {
-  const [, setLocation] = useLocation();
   const { t } = useLang();
   const { showToast } = useToast();
   const { signIn } = useAccount();
   const [status, setStatus] = useState<CallbackStatus>("loading");
   const [message, setMessage] = useState("");
+  const ranRef = useRef(false);
 
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
 
   useEffect(() => {
+    // OAuth returns via full page load; Strict Mode double-invoke must not run twice.
+    if (ranRef.current) return;
+    ranRef.current = true;
+
     const authError = params.get("auth_error");
     const from = params.get("from");
     const code = params.get("code");
@@ -50,13 +70,8 @@ export default function AuthCallback() {
     }
 
     if (from === "oauth") {
-      let cancelled = false;
-      let timer: number | undefined;
       void (async () => {
         const refreshOutcome = await tryRefreshAccessToken();
-        if (cancelled) {
-          return;
-        }
         if (refreshOutcome !== "ok") {
           setStatus("error");
           setMessage(t("socialAuthMissingPayload"));
@@ -64,27 +79,26 @@ export default function AuthCallback() {
           return;
         }
         const session = loadAccountSession();
-        if (!session) {
+        if (!session?.accessToken) {
           setStatus("error");
           setMessage(t("socialAuthMissingPayload"));
           showToast(t("socialAuthFailed"), "error");
           return;
         }
+        signIn({
+          email: session.email,
+          name: session.name,
+          accountType: session.accountType,
+          accessToken: session.accessToken,
+          id: session.id,
+          ...(typeof session.hasPassword === "boolean" ? { hasPassword: session.hasPassword } : {}),
+        });
         setStatus("success");
         showToast(t("socialAuthSuccess"), "success");
-        const fallback = defaultHomePathForAccountType(session.accountType);
-        const dest =
-          safeRedirectCandidate && isSafePanelRedirect(safeRedirectCandidate, session.accountType)
-            ? safeRedirectCandidate
-            : fallback;
-        timer = window.setTimeout(() => setLocation(dest), 600);
+        const dest = resolveDest(session.accountType, safeRedirectCandidate);
+        window.setTimeout(() => goToPanel(dest), 400);
       })();
-      return () => {
-        cancelled = true;
-        if (timer !== undefined) {
-          window.clearTimeout(timer);
-        }
-      };
+      return;
     }
 
     if (code || token) {
@@ -94,26 +108,21 @@ export default function AuthCallback() {
         showToast(t("socialAuthFailed"), "error");
         return;
       }
-      setStatus("success");
       const email = emailParam;
       const name = nameParam || email.split("@")[0] || "User";
       const accountType = inferAccountTypeFromEmail(email);
       signIn({ email, name, accountType });
+      setStatus("success");
       showToast(t("socialAuthSuccess"), "success");
-      const fallback = defaultHomePathForAccountType(accountType);
-      const dest =
-        safeRedirectCandidate && isSafePanelRedirect(safeRedirectCandidate, accountType)
-          ? safeRedirectCandidate
-          : fallback;
-      const timer = window.setTimeout(() => setLocation(dest), 900);
-      return () => window.clearTimeout(timer);
+      const dest = resolveDest(accountType, safeRedirectCandidate);
+      window.setTimeout(() => goToPanel(dest), 400);
+      return;
     }
 
     setStatus("error");
     setMessage(t("socialAuthMissingPayload"));
     showToast(t("socialAuthFailed"), "error");
-    return undefined;
-  }, [params, setLocation, showToast, signIn, t]);
+  }, [params, showToast, signIn, t]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
