@@ -574,16 +574,22 @@ export default function AdminDrivingDayModal({
       setCell(`${instructorKey}|${time}`, cell, true);
     }
 
-    // Pass 2: fill plan rows covered by [start, end) that have no booking yet so busy-only
-    // hours of the same booking are not left as grey occupied cells.
+    // Pass 2: fill real schedule rows covered by [start, end) that have no booking yet so
+    // busy-only hours of the same booking are not left as grey occupied cells.
+    // Do NOT include the synthetic 14:00 lunch row from ensureLunchBreakRow — that row exists
+    // only so admins can book custom lunch slots; painting it green from a 13:20→15:00
+    // exclusive end is a visual false booking.
     const planTimes = bookableTimesFromPlan(
-      planRows.length > 0 ? ensureLunchBreakRow(planRows) : ensureLunchBreakRow(DEFAULT_PRACTICAL_SLOT_PLAN),
+      planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN,
     ).map(padSlotTime);
     for (const { instructorKey, branchId, cell, startM, endM } of cells) {
       if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) continue;
+      const occurrenceStart = padSlotTime(cell.time);
       for (const planTime of planTimes) {
         const m = parseTimeToMinutes(planTime);
         if (!Number.isFinite(m) || m < startM || m >= endM) continue;
+        // Lunch gap display row (13:20–15:00): never inherit a neighboring lesson's endTime span.
+        if (planTime === "14:00" && occurrenceStart !== "14:00") continue;
         if (branchId) {
           setCell(`${instructorKey}|${branchId}|${planTime}`, { ...cell, time: planTime }, false);
         }

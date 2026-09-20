@@ -157,12 +157,17 @@ export function claimStartTimesForOccupiedBooking(input: {
     const n = normalizeTimeHHMM(t) ?? t;
     if (n) starts.add(n);
   }
+  const claimed = new Set(
+    input.slotTimesOnDate.map((t) => normalizeTimeHHMM(t) ?? t).filter(Boolean),
+  );
   for (const range of ranges) {
     for (const t of bookableSorted) {
       const m = parseTimeToMinutes(t);
-      if (Number.isFinite(m) && m >= range.start && m < range.end) {
-        starts.add(t);
-      }
+      if (!Number.isFinite(m) || m < range.start || m >= range.end) continue;
+      // Lunch gap 14:00 is often injected only for UI custom booking — do not treat it as
+      // occupied by a 13:20→15:00 plan lesson unless this booking actually claimed 14:00.
+      if (t === '14:00' && !claimed.has('14:00')) continue;
+      starts.add(t);
     }
     // Off-plan / custom starts that open a range but are not in the plan.
     const rangeStartHHMM = minutesToHHMM(range.start);

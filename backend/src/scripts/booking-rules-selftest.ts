@@ -155,6 +155,37 @@ assert.deepEqual(
   'on-plan 10:00 with end 12:00 occupies only the plan lesson start (same as validation)',
 );
 
+/**
+ * 13:20 lesson with exclusive end 15:00 (across lunch): must NOT mark synthetic 14:00 busy
+ * unless the booking actually claimed 14:00 — day graphic lunch row must stay empty/green-free.
+ */
+const acrossLunchClaims = claimStartTimesForOccupiedBooking({
+  bookingTime: '13:20',
+  bookingEndTime: '15:00',
+  bookingDateIso: '2026-09-20',
+  dateIso: '2026-09-20',
+  slotTimesOnDate: ['13:20'],
+  bookableSorted: [...defaultBookable, '14:00'],
+});
+assert.ok(acrossLunchClaims.includes('13:20'), '13:20 claim must stay busy');
+assert.equal(
+  acrossLunchClaims.includes('14:00'),
+  false,
+  '13:20→15:00 must not paint lunch 14:00 as occupied',
+);
+assert.equal(
+  claimStartTimesForOccupiedBooking({
+    bookingTime: '14:00',
+    bookingEndTime: '15:00',
+    bookingDateIso: '2026-09-20',
+    dateIso: '2026-09-20',
+    slotTimesOnDate: ['14:00'],
+    bookableSorted: [...defaultBookable, '14:00'],
+  }).includes('14:00'),
+  true,
+  'real 14:00 custom claim must still mark 14:00 busy',
+);
+
 /** Multi-slot same day still expands each lesson independently (no long block). */
 const multiSlotClaims = claimStartTimesForOccupiedBooking({
   bookingTime: '10:00',
