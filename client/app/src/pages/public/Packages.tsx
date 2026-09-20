@@ -10,6 +10,7 @@ import { Badge } from "src/components/ui/badge";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { usePackages } from "src/modules/packages/usePackages";
+import PackagePromoImage from "src/components/PackagePromoImage";
 
 export default function Packages() {
   const { t } = useLang();
@@ -72,11 +73,7 @@ export default function Packages() {
                           <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                         </div>
                       )}
-                      {pkg.imageUrl ? (
-                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0">
-                          <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
-                        </div>
-                      ) : null}
+                      <PackagePromoImage src={pkg.imageUrl} alt={pkg.name} />
                       <div className="p-6 sm:p-8 flex flex-col flex-1 min-h-0">
                         <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
                         <div className="flex items-baseline gap-1 mb-1">

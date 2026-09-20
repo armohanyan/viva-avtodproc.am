@@ -5,6 +5,7 @@ import { Phone, Mail, MapPin } from "lucide-react";
 import { legalDoc } from "src/lib/legalDocsContent";
 import { MarketingSocialLinks, hasMarketingSocialLinks } from "src/components/MarketingSocialLinks";
 import { AcbaPaymentAcceptanceMarks } from "src/components/payments/AcbaPaymentAcceptanceMarks";
+import BrandLogo from "src/components/BrandLogo";
 
 export default function Footer() {
   const { t, lang } = useLang();
@@ -28,8 +29,8 @@ export default function Footer() {
           className={`grid grid-cols-1 md:grid-cols-2 gap-10 ${hasFooterContact ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}
         >
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <img src="/logo.svg" alt={t("brandName")} className="w-9 h-9 object-contain" />
+            <div className="mb-4">
+              <BrandLogo layout="horizontal" tone="on-dark" className="h-10 max-w-[14rem]" />
             </div>
             <p className="text-sm text-hero-foreground/80 leading-relaxed mb-4">{t("aboutSub")}</p>
             <p className="text-xs text-hero-foreground/70 leading-relaxed">{t("footerLegalEntity")}</p>

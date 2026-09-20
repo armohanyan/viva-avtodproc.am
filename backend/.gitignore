@@ -9,4 +9,6 @@ coverage/
 
 # Runtime uploads (staff images, exam images) — keep on disk, not in git
 upload/*
+!upload/logo.png
+!upload/logo-mark.png
 !upload/logo.svg

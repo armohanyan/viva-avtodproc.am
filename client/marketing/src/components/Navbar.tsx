@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { ChevronDown, Menu } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import LangToggle from "./LangToggle";
+import BrandLogo from "./BrandLogo";
 import { PUBLIC_NAV_LINKS } from "src/modules/public/public.consts";
 import { DASHBOARD_NAV_LINKS } from "src/modules/dashboard/dashboard.consts";
 import { ADMIN_NAV_LINKS, adminNavAllowedForUser } from "src/modules/admin/admin.consts";
@@ -21,7 +22,6 @@ type AdminNavEntry =
 
 export default function Navbar() {
   const { t } = useLang();
-  const brandDisplayName = t("brandName");
   const { user } = useAccount();
   const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
@@ -110,9 +110,8 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 bg-background border-b border-border shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center gap-4 min-w-0 md:gap-6 lg:gap-8">
-          <MarketingLink href="/" className="flex shrink-0 items-center gap-2">
-            <img src="/logo.svg" alt={t("brandName")} className="h-10 w-10 object-contain shrink-0" />
-            <span className="hidden xl:inline font-semibold text-foreground whitespace-nowrap">{brandDisplayName}</span>
+          <MarketingLink href="/" className="flex shrink-0 items-center">
+            <BrandLogo layout="horizontal" className="h-9 sm:h-10" />
           </MarketingLink>
 
           <div className="hidden lg:flex flex-1 min-w-0 items-center gap-3 lg:gap-4">
@@ -308,10 +307,7 @@ export default function Navbar() {
             <SheetContent side="right" className="w-[86vw] max-w-[22rem] p-0">
               <div className="flex h-full flex-col pt-12">
                 <div className="border-b border-border px-4 pb-4">
-                  <div className="flex items-center gap-2">
-                    <img src="/logo.svg" alt={t("brandName")} className="h-9 w-9 object-contain shrink-0" />
-                    <span className="font-semibold text-foreground">{brandDisplayName}</span>
-                  </div>
+                  <BrandLogo layout="horizontal" className="h-9" />
                 </div>
                 <div className="flex-1 overflow-y-auto px-3 py-3">
                   <div className="flex flex-col gap-1">

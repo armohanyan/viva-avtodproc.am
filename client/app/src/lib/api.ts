@@ -210,6 +210,13 @@ export function getApiErrorMessage(err: unknown): string {
 		if (m.includes("selected slot(s) are no longer available") || m.includes("slot is no longer available")) {
 			return tr("bookingSlotUnavailable");
 		}
+		if (
+			m.includes("instructor already has booking") ||
+			m.includes("instructor has theory group session") ||
+			m.includes("already has a booking in this rest-time window")
+		) {
+			return tr("bookingSlotUnavailable");
+		}
 		if (m.includes("instructor is not available at this time")) return tr("bookingInstructorUnavailable");
 		if (m.includes("instructor not found")) return tr("bookingInstructorNotFound");
 		if (m.includes("instructor does not serve this branch")) return tr("bookingBranchMismatch");

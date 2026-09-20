@@ -26,6 +26,8 @@ export type AdminBookingListItem = {
   studentPhone: string;
   studentPhone2: string;
   instructorName: string;
+  /** Prefer this over name matching when resolving the instructor for edits. */
+  instructorUserId?: number | null;
   dateIso: string;
   time: string;
   endTime?: string | null;

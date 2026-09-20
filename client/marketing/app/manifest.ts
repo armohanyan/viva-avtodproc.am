@@ -15,8 +15,20 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "hy",
     icons: [
       {
-        src: "/favicon.png",
+        src: "/favicon.ico",
         sizes: "any",
+        type: "image/x-icon",
+        purpose: "any",
+      },
+      {
+        src: "/favicon.png",
+        sizes: "256x256",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/apple-touch-icon.png",
+        sizes: "180x180",
         type: "image/png",
         purpose: "any",
       },

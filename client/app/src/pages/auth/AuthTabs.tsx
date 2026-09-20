@@ -20,6 +20,7 @@ import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
 import { joinAppPath } from "src/lib/navigation/crossApp";
 import { resolvedViteMarketingOrigin } from "src/lib/navigation/viteMarketingOrigin";
 import { legalDoc } from "src/lib/legalDocsContent";
+import BrandLogo from "src/components/BrandLogo";
 
 function GoogleIcon() {
   return (
@@ -268,9 +269,8 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
       <div className="hidden lg:flex lg:w-1/2 bg-hero flex-col justify-between p-12 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-hero to-hero" />
         <div className="relative">
-          <Link href="/" className="flex items-center gap-2">
-            <img src="/logo.svg" alt={t("brandName")} className="w-10 h-10 object-contain" />
-            <span className="font-bold text-xl text-hero-foreground">{t("brandName")}</span>
+          <Link href="/" className="inline-flex items-center">
+            <BrandLogo layout="horizontal" tone="on-dark" className="h-10 max-w-[14rem]" />
           </Link>
         </div>
 
@@ -358,9 +358,8 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as AuthTabKey)} className="mx-auto w-full max-w-[440px]">
           <Card className="gap-0 overflow-hidden border-border/80 py-0 shadow-md">
             <div className="border-b border-border/60 bg-muted/30 px-5 pt-5 pb-4 sm:px-8 sm:pt-6">
-              <div className="flex lg:hidden items-center justify-center gap-2 pb-4">
-                <img src="/logo.svg" alt={t("brandName")} className="h-10 w-10 object-contain" />
-                <span className="font-semibold text-lg text-foreground">{t("brandName")}</span>
+              <div className="flex lg:hidden items-center justify-center pb-4">
+                <BrandLogo layout="horizontal" className="h-10" />
               </div>
               <TabsList className="grid h-11 w-full grid-cols-2 rounded-lg bg-muted/80 p-1">
                 <TabsTrigger value="login" className="rounded-md data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm">

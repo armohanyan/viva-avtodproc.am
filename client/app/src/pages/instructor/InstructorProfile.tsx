@@ -36,7 +36,7 @@ export default function InstructorProfile() {
   const firstName = nameParts[0] ?? "";
   const lastName = nameParts.slice(1).join(" ");
 
-  const avatarSrc = me?.imageSrc ?? "/logo.svg";
+  const avatarSrc = me?.imageSrc ?? "/brand/en/mark-on-light.png";
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 

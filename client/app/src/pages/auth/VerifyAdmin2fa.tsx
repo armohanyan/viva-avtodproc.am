@@ -8,6 +8,7 @@ import { resolvePostAuthPanelPath, useAccount, type AccountType } from "src/modu
 import { absWouterHref } from "src/lib/wouterFullPath";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
+import BrandLogo from "src/components/BrandLogo";
 
 const MFA_TOKEN_KEY = "viva-admin-mfa-token";
 
@@ -135,9 +136,8 @@ export default function VerifyAdmin2fa() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="bg-card rounded-2xl border border-border shadow-sm p-5 sm:p-8">
-          <div className="flex items-center gap-2 mb-8">
-            <img src="/logo.svg" alt={t("brandName")} className="w-9 h-9 object-contain" />
-            <span className="font-bold text-lg text-foreground">{t("brandName")}</span>
+          <div className="mb-8">
+            <BrandLogo layout="horizontal" className="h-9" />
           </div>
 
           <div className="w-14 h-14 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">

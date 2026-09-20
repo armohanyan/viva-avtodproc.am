@@ -25,6 +25,7 @@ import {
   Bell,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import BrandLogo from "./BrandLogo";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -307,10 +308,9 @@ export default function AdminLayout({ children }: Props) {
 						<Link
 							href="/admin/dashboard"
 							onClick={() => closeMobileNav()}
-							className="flex items-center gap-2 min-w-0"
+							className="flex items-center min-w-0"
 						>
-							<img src="/logo.svg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
-							<span className="font-bold text-hero-foreground text-sm truncate">{t("brandName")}</span>
+							<BrandLogo layout="horizontal" tone="on-dark" className="h-8 max-w-[11rem]" />
 						</Link>
 					</div>
 					<nav className="px-3 pb-4 flex-1 min-h-0 overflow-y-auto space-y-1">

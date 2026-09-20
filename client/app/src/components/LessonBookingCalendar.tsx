@@ -9,6 +9,7 @@ import { Reveal } from "src/lib/motion";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import type { Instructor } from "src/data/instructors";
+import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { AppModal } from "src/components/AppModal";
 import InstructorCard from "src/components/InstructorCard";
 import type { AvailabilityBlock } from "src/modules/instructors/instructorAvailability";
@@ -1249,10 +1250,14 @@ export default function LessonBookingCalendar({
     <div className="mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start">
       <div className="h-28 w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:h-32 sm:w-36">
         <img
-          src={selectedInstructorRecord.imageSrc}
+          src={(selectedInstructorRecord.imageSrc ?? "").trim() || BRAND_LOGO_FALLBACK_SRC}
           alt={selectedInstructorRecord.name}
-          className="h-full w-full object-contain"
+          className="h-full w-full object-contain p-2"
           loading="lazy"
+          onError={(e) => {
+            if (e.currentTarget.src.endsWith(BRAND_LOGO_FALLBACK_SRC)) return;
+            e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
+          }}
         />
       </div>
       <div className="min-w-0 flex-1 space-y-2">

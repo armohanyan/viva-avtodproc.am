@@ -5,6 +5,7 @@ import { useLang } from "src/lib/i18n";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { Star, CalendarDays, Car, Gauge } from "lucide-react";
 import type { Instructor } from "src/data/instructors";
+import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 
 type Props = {
   instructor: Instructor;
@@ -48,6 +49,8 @@ export default function InstructorCard({
       : pickerMode
         ? "border-2 border-border"
         : "border border-border";
+  const imageSrc = (instructor.imageSrc ?? "").trim() || BRAND_LOGO_FALLBACK_SRC;
+  const usingFallback = imageSrc === BRAND_LOGO_FALLBACK_SRC;
 
   return (
     <Card
@@ -55,14 +58,19 @@ export default function InstructorCard({
     >
       <div className={`${imgClass} bg-muted overflow-hidden shrink-0`}>
         <img
-          src={instructor.imageSrc}
+          src={imageSrc}
           alt={instructor.name}
           className={
-            imageObjectFit === "contain"
-              ? "h-full w-full object-contain"
+            usingFallback || imageObjectFit === "contain"
+              ? "h-full w-full object-contain p-4"
               : "h-full w-full object-cover object-top"
           }
           loading="lazy"
+          onError={(e) => {
+            if (e.currentTarget.src.endsWith(BRAND_LOGO_FALLBACK_SRC)) return;
+            e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
+            e.currentTarget.className = "h-full w-full object-contain p-4";
+          }}
         />
       </div>
       <div className={compact ? "p-3 flex flex-col flex-1 min-h-0" : "p-6"}>

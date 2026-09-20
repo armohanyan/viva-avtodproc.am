@@ -131,6 +131,82 @@ export function occupiedRangesMinutes(
 }
 
 /**
+ * Calendar / busy-slots claim starts for one booking on `dateIso`.
+ * Matches overlap validation: every plan (or claimed) start that falls in an occupied
+ * half-open range is busy, not only the BookingSlot.slotTime row.
+ */
+export function claimStartTimesForOccupiedBooking(input: {
+  bookingTime: string;
+  bookingEndTime: string | null | undefined;
+  bookingDateIso: string;
+  dateIso: string;
+  slotTimesOnDate: readonly string[];
+  bookableSorted?: readonly string[];
+}): string[] {
+  const bookableSorted = input.bookableSorted ?? bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN);
+  const ranges = occupiedRangesMinutes(
+    input.bookingTime,
+    input.bookingEndTime,
+    input.bookingDateIso,
+    input.dateIso,
+    input.slotTimesOnDate,
+    bookableSorted,
+  );
+  const starts = new Set<string>();
+  for (const t of input.slotTimesOnDate) {
+    const n = normalizeTimeHHMM(t) ?? t;
+    if (n) starts.add(n);
+  }
+  for (const range of ranges) {
+    for (const t of bookableSorted) {
+      const m = parseTimeToMinutes(t);
+      if (Number.isFinite(m) && m >= range.start && m < range.end) {
+        starts.add(t);
+      }
+    }
+    // Off-plan / custom starts that open a range but are not in the plan.
+    const rangeStartHHMM = minutesToHHMM(range.start);
+    if (rangeStartHHMM) starts.add(rangeStartHHMM);
+  }
+  if (starts.size === 0 && input.bookingTime) {
+    const fallback = normalizeTimeHHMM(input.bookingTime) ?? input.bookingTime;
+    if (fallback) starts.add(fallback);
+  }
+  return [...starts].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+}
+
+/**
+ * Plan (or minute) starts covered by a half-open [start, end) window — used for theory sessions
+ * and other non-booking busy ranges so :10 / :20 practical rows are marked busy.
+ */
+export function claimStartTimesInRange(
+  rangeStart: string,
+  rangeEndExclusive: string,
+  bookableSorted: readonly string[] = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN),
+): string[] {
+  const startM = parseTimeToMinutes(normalizeTimeHHMM(rangeStart) ?? rangeStart);
+  const endM = parseTimeToMinutes(normalizeTimeHHMM(rangeEndExclusive) ?? rangeEndExclusive);
+  if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) {
+    const t = normalizeTimeHHMM(rangeStart);
+    return t ? [t] : [];
+  }
+  const starts = new Set<string>();
+  for (const t of bookableSorted) {
+    const m = parseTimeToMinutes(t);
+    if (Number.isFinite(m) && m >= startM && m < endM) starts.add(t);
+  }
+  // Hourly fallback when no plan row sits in the window (legacy / theory).
+  if (starts.size === 0) {
+    for (let m = startM; m < endM; m += 60) {
+      starts.add(minutesToHHMM(m));
+    }
+  }
+  const startHHMM = minutesToHHMM(startM);
+  if (startHHMM) starts.add(startHHMM);
+  return [...starts].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+}
+
+/**
  * Force/custom slots may use lunch. A pre-lunch plan lesson's exclusive end jumps to the next
  * bookable after lunch (e.g. 13:20→15:00); for force-slot conflict checks, stop that occupancy
  * at lunch start so lunch itself stays bookable. Real bookings that claim a start inside lunch

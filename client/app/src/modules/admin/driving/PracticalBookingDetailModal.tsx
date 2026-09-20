@@ -178,6 +178,11 @@ export default function PracticalBookingDetailModal({
 
   const instructor = useMemo(() => {
     if (!booking) return null;
+    const bookingInstructorId = booking.instructorUserId;
+    if (bookingInstructorId != null && String(bookingInstructorId).trim() !== "") {
+      const byId = instructors.find((i) => String(i.id) === String(bookingInstructorId));
+      if (byId) return byId;
+    }
     const byName = instructors.find((i) => i.name === booking.instructorName);
     if (byName) return byName;
     return null;

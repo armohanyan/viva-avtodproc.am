@@ -17,7 +17,7 @@ const DESCRIPTION: Record<SeoLang, string> = {
 export function buildSiteJsonLd(lang: SeoLang): Record<string, unknown> {
   const origin = siteUrl().origin;
   const name = BRAND[lang];
-  const logo = absoluteUrl("/logo.svg");
+  const logo = absoluteUrl("/logo.png");
   const image = absoluteUrl("/home-hero.jpg");
 
   return {
@@ -117,7 +117,7 @@ export function buildBlogPostJsonLd(input: {
       url: origin,
       logo: {
         "@type": "ImageObject",
-        url: absoluteUrl("/logo.svg"),
+        url: absoluteUrl("/logo.png"),
       },
     },
   };

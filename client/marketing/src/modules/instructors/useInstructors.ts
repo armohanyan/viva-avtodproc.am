@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Instructor } from "src/data/instructors";
+import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { vivaApiJson } from "src/lib/vivaApi";
+
+function resolveInstructorImageSrc(raw: string | null | undefined): string {
+	const mapped = sameOriginStaffUploadUrl(raw ?? null) ?? raw ?? "";
+	return mapped.trim() || BRAND_LOGO_FALLBACK_SRC;
+}
 
 export function useInstructors() {
 	const [instructors, setInstructors] = useState<Instructor[]>([]);
@@ -15,7 +21,7 @@ export function useInstructors() {
 					? data.map((ins) => ({
 							...ins,
 							id: String(ins.id),
-							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.svg",
+							imageSrc: resolveInstructorImageSrc(ins.imageSrc),
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
 							fleetCarIds: Array.isArray(ins.fleetCarIds) ? ins.fleetCarIds : [],
 							...(typeof ins.inviteEligible === "boolean" ? { inviteEligible: ins.inviteEligible } : {}),

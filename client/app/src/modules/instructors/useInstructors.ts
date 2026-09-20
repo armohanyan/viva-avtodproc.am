@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Instructor } from "src/data/instructors";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+
+function resolveInstructorImageSrc(raw: string | null | undefined): string {
+	const mapped = sameOriginStaffUploadUrl(raw ?? null) ?? raw ?? "";
+	return mapped.trim() || BRAND_LOGO_FALLBACK_SRC;
+}
 
 export function useInstructors() {
 	const branchFilterRevision = useOptionalAdminBranchFilterRevision();
@@ -17,7 +23,7 @@ export function useInstructors() {
 					? data.map((ins) => ({
 							...ins,
 							id: String(ins.id),
-							imageSrc: sameOriginStaffUploadUrl(ins.imageSrc ?? null) ?? ins.imageSrc ?? "/logo.svg",
+							imageSrc: resolveInstructorImageSrc(ins.imageSrc),
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
 							fleetCarIds: Array.isArray(ins.fleetCarIds) ? ins.fleetCarIds : [],
 							practicalSalaryPerLessonAmd:

@@ -1,10 +1,10 @@
 import config from '../config';
 
 /**
- * Public path for the company logo (`backend/upload/logo.svg`, served by Express at `/upload`).
+ * Public path for the company logo (`backend/upload/logo.png`, served by Express at `/upload`).
  * @see `app.ts` — `express.static(process.cwd()/upload)`
  */
-export const EMAIL_DEFAULT_LOGO_PATH = '/upload/logo.svg';
+export const EMAIL_DEFAULT_LOGO_PATH = '/upload/logo.png';
 
 /** Panel brand tokens (aligned with `client` CSS :root). */
 export const EMAIL_BRAND = {
@@ -23,7 +23,7 @@ export const EMAIL_BRAND = {
 export const EMAIL_LAYOUT = {
   maxWidth: 600,
   contentMaxWidth: 520,
-  logoMaxWidth: 180,
+  logoMaxWidth: 220,
   outerPadding: '32px 16px',
   cardRadius: '16px',
   bodyPadding: '8px 32px 24px',

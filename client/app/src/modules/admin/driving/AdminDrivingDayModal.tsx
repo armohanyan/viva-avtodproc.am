@@ -1059,9 +1059,6 @@ export default function AdminDrivingDayModal({
                                       <span className="text-xs sm:text-[13px] leading-snug font-semibold line-clamp-2">
                                         {booking.studentName}
                                       </span>
-                                      <span className="text-[10px] sm:text-[11px] leading-snug opacity-80 font-mono tabular-nums">
-                                        #{booking.bookingId}
-                                      </span>
                                       {booking.studentPhone ? (
                                         <span className="text-[11px] sm:text-xs leading-snug opacity-95 tabular-nums truncate max-w-full">
                                           {booking.studentPhone}
@@ -1074,7 +1071,6 @@ export default function AdminDrivingDayModal({
                                     className="max-w-[min(18rem,90vw)] space-y-1 text-left whitespace-normal"
                                   >
                                     <p className="font-medium">{booking.studentName}</p>
-                                    <p className="opacity-90 font-mono tabular-nums">#{booking.bookingId}</p>
                                     {col.showBranchCode ? (
                                       <p className="opacity-90">{col.bookingBranchName}</p>
                                     ) : null}

@@ -17,6 +17,7 @@ import { Plus, Edit2, Trash2, Package } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { sanitizeCoverImageUrl } from "src/lib/blogHtml";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { Textarea } from "src/components/ui/textarea";
@@ -303,11 +304,15 @@ export default function AdminPackages() {
                     <td className="px-4 py-3.5 text-xs font-mono text-muted-foreground whitespace-nowrap">{pkg.id}</td>
                     <td className="px-4 py-3.5 font-medium text-foreground whitespace-nowrap">{pkg.name}</td>
                     <td className="px-4 py-3.5">
-                      {pkg.imageUrl ? (
-                        <img src={pkg.imageUrl} alt={pkg.name} className="h-10 w-[72px] rounded-md object-cover border border-border bg-muted" />
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
+                      <img
+                        src={(pkg.imageUrl ?? "").trim() || BRAND_LOGO_FALLBACK_SRC}
+                        alt={pkg.name}
+                        className="h-10 w-[72px] rounded-md object-contain border border-border bg-muted p-1"
+                        onError={(e) => {
+                          if (e.currentTarget.src.endsWith(BRAND_LOGO_FALLBACK_SRC)) return;
+                          e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
+                        }}
+                      />
                     </td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.price} ֏</td>
                     <td className="px-4 py-3.5 text-foreground whitespace-nowrap">{pkg.lessons}</td>

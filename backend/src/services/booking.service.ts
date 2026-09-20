@@ -21,7 +21,10 @@ import {
 import { BOOKING_CANCELLATION_REASON } from '../constants/booking-cancellation-reasons';
 import TheoryCohortService from './theory-cohort.service';
 import TheoryCohortInstructorService from './theory-cohort-instructor.service';
-import BookingSlotValidationService from './booking-slot-validation.service';
+import BookingSlotValidationService, {
+  claimStartTimesForOccupiedBooking,
+  claimStartTimesInRange,
+} from './booking-slot-validation.service';
 import PracticalSlotPlanService from './practical-slot-plan.service';
 import FinanceService from './finance.service';
 import BookingNotificationService from './booking-notification.service';
@@ -55,6 +58,7 @@ import {
 import {
   areConsecutiveInBookableTimes,
   bookableTimesFromPlan,
+  DEFAULT_PRACTICAL_SLOT_PLAN,
   exclusiveEndFromBookableStarts,
   normalizePracticalSlotStartsFromBookable,
   type PracticalSlotPlanRow,
@@ -135,6 +139,29 @@ async function resolveInstructorUserIdByName(
   const needle = trimmed.toLowerCase();
   const match = instructors.find((i) => i.name?.trim().toLowerCase() === needle);
   return match?.id ?? null;
+}
+
+/**
+ * Admin update: prefer explicit instructorUserId (same as create), then name, then existing row.
+ */
+async function resolveInstructorUserIdForAdminUpdate(
+  patch: { instructorUserId?: number; instructorName?: string },
+  existingInstructorUserId?: number | null,
+): Promise<number | null> {
+  if (patch.instructorUserId != null && Number.isFinite(patch.instructorUserId) && patch.instructorUserId > 0) {
+    const byId = await User.findOne({
+      where: { id: patch.instructorUserId, accountType: 'instructor' },
+      attributes: ['id'],
+    });
+    if (byId) return byId.id;
+  }
+  if (patch.instructorName !== undefined) {
+    return resolveInstructorUserIdByName(patch.instructorName, existingInstructorUserId);
+  }
+  if (existingInstructorUserId != null && Number.isFinite(existingInstructorUserId) && existingInstructorUserId > 0) {
+    return existingInstructorUserId;
+  }
+  return null;
 }
 
 function meetLinkOrNull(v: unknown): string | null {
@@ -382,6 +409,8 @@ export type BookingAdminDto = {
   createdByType: BookingCreatedByType;
   createdByUserId: number | null;
   instructorName: string;
+  /** Stable instructor identity for edit flows (prefer over name matching). */
+  instructorUserId: number | null;
   dateIso: string;
   time: string;
   endTime: string | null;
@@ -882,16 +911,16 @@ function exclusiveEndFromSortedStarts(sorted: string[]): string {
 
 function expandLegacyBookingHours(row: Booking): { time: string; studentUserId: number; dateIso: string }[] {
   const dateIso = dateIsoString(row.dateIso);
-  const startM = parseTimeToMinutes(row.time);
-  const endExclM = row.endTime ? parseTimeToMinutes(row.endTime) : startM + 60;
-  if (!Number.isFinite(startM) || !Number.isFinite(endExclM) || endExclM <= startM) {
-    return [{ dateIso, time: row.time, studentUserId: row.studentUserId }];
-  }
-  const out: { time: string; studentUserId: number; dateIso: string }[] = [];
-  for (let m = startM; m < endExclM; m += 60) {
-    out.push({ dateIso, time: minutesToHHMM(m), studentUserId: row.studentUserId });
-  }
-  return out;
+  const bookable = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN);
+  const times = claimStartTimesForOccupiedBooking({
+    bookingTime: row.time,
+    bookingEndTime: row.endTime,
+    bookingDateIso: dateIso,
+    dateIso,
+    slotTimesOnDate: [],
+    bookableSorted: bookable,
+  });
+  return times.map((time) => ({ dateIso, time, studentUserId: row.studentUserId }));
 }
 
 /** Raw DB `bookings.status` values that still block the calendar slot row in `booking_slots`. */
@@ -1262,6 +1291,7 @@ async function replaceBookingSlotRowsFromEntries(
 function adminPatchTouchesSchedule(
   patch: Partial<{
     instructorName?: string;
+    instructorUserId?: number;
     dateIso?: string;
     time?: string;
     type?: string;
@@ -1275,6 +1305,7 @@ function adminPatchTouchesSchedule(
     patch.dateIso !== undefined ||
     patch.time !== undefined ||
     patch.instructorName !== undefined ||
+    patch.instructorUserId !== undefined ||
     patch.theoryCohortId !== undefined ||
     patch.type !== undefined ||
     patch.meetLink !== undefined
@@ -1858,6 +1889,7 @@ export default class BookingService {
       createdByType,
       createdByUserId: b.createdByUserId ?? null,
       instructorName: inst?.name ?? '',
+      instructorUserId: b.instructorUserId ?? null,
       dateIso: dateIsoString(b.dateIso),
       time: b.time,
       endTime: b.endTime ?? null,
@@ -2327,6 +2359,7 @@ export default class BookingService {
       createdByType: 'unknown',
       createdByUserId: null,
       instructorName: cohort.instructorName?.trim() ?? '',
+      instructorUserId: null,
       dateIso: startIso,
       time: startTime,
       endTime,
@@ -2407,6 +2440,9 @@ export default class BookingService {
    * Includes practical bookings, 1:1 theory, and theory-group sessions (so hybrid
    * instructors cannot double-book). Callers that display lesson counts (e.g. the
    * practical matrix) should filter by `lessonType === 'practical'`.
+   *
+   * Occupancy matches save validation: plan starts inside each booking's occupied
+   * `[start, end)` window are marked busy (not only BookingSlot claim starts).
    */
   static async listBusySlotsForInstructor(
     instructorUserId: number,
@@ -2426,6 +2462,8 @@ export default class BookingService {
     const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
     if (!exists) return [];
 
+    const bookableSorted = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN);
+
     const bookingWhere: Record<string, unknown> = { status: { [Op.in]: [...SLOT_RESERVING_STATUSES] } };
     if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
       bookingWhere.id = { [Op.ne]: excludeBookingId };
@@ -2435,7 +2473,7 @@ export default class BookingService {
     }
 
     const slotRows = await BookingSlot.findAll({
-      attributes: ['dateIso', 'slotTime'],
+      attributes: ['dateIso', 'slotTime', 'bookingId'],
       where: {
         instructorUserId,
         dateIso: { [Op.between]: [fromIso.slice(0, 10), toIso.slice(0, 10)] },
@@ -2444,31 +2482,83 @@ export default class BookingService {
         {
           model: Booking,
           as: 'booking',
-          attributes: ['studentUserId', 'branchId', 'lessonType'],
+          attributes: ['id', 'studentUserId', 'branchId', 'lessonType', 'dateIso', 'time', 'endTime'],
           required: true,
           where: bookingWhere,
         },
       ],
     });
 
-    const fromSlots = slotRows.map((r) => {
+    type BusyMeta = {
+      studentUserId: number;
+      branchId: number;
+      lessonType: 'practical' | 'theory' | 'theory_personal';
+      bookingTime: string;
+      bookingEndTime: string | null;
+      bookingDateIso: string;
+      slotTimes: string[];
+    };
+    const byBookingDate = new Map<string, BusyMeta>();
+    for (const r of slotRows) {
       const bk = (
         r as unknown as {
           booking: {
+            id: number;
             studentUserId: number;
             branchId: number;
             lessonType: 'practical' | 'theory' | 'theory_personal';
+            dateIso: string;
+            time: string;
+            endTime: string | null;
           };
         }
       ).booking;
-      return {
-        dateIso: dateIsoString(r.dateIso),
-        time: r.slotTime,
-        studentUserId: bk.studentUserId,
-        branchId: bk.branchId,
-        lessonType: bk.lessonType,
-      };
-    });
+      const dateIso = dateIsoString(r.dateIso);
+      const key = `${bk.id}\t${dateIso}`;
+      const cur = byBookingDate.get(key);
+      const slotTime = normalizeTimeHHMM(r.slotTime) ?? r.slotTime;
+      if (cur) {
+        cur.slotTimes.push(slotTime);
+      } else {
+        byBookingDate.set(key, {
+          studentUserId: bk.studentUserId,
+          branchId: bk.branchId,
+          lessonType: bk.lessonType,
+          bookingTime: bk.time,
+          bookingEndTime: bk.endTime,
+          bookingDateIso: dateIsoString(bk.dateIso),
+          slotTimes: [slotTime],
+        });
+      }
+    }
+
+    const fromSlots: {
+      dateIso: string;
+      time: string;
+      studentUserId: number;
+      branchId: number;
+      lessonType: 'practical' | 'theory' | 'theory_personal';
+    }[] = [];
+    for (const [key, meta] of byBookingDate) {
+      const dateIso = key.split('\t')[1]!;
+      const times = claimStartTimesForOccupiedBooking({
+        bookingTime: meta.bookingTime,
+        bookingEndTime: meta.bookingEndTime,
+        bookingDateIso: meta.bookingDateIso,
+        dateIso,
+        slotTimesOnDate: meta.slotTimes,
+        bookableSorted,
+      });
+      for (const time of times) {
+        fromSlots.push({
+          dateIso,
+          time,
+          studentUserId: meta.studentUserId,
+          branchId: meta.branchId,
+          lessonType: meta.lessonType,
+        });
+      }
+    }
 
     const legacyWhere: Record<string, unknown> = {
       instructorUserId,
@@ -2512,36 +2602,31 @@ export default class BookingService {
     });
     const fromTheory = theorySessions.flatMap((s) => {
       const dateIso = dateIsoString(s.dateIso);
-      const startM = parseTimeToMinutes(String(s.startTime).slice(0, 5));
-      const endExclM = parseTimeToMinutes(String(s.endTime).slice(0, 5));
-      if (!Number.isFinite(startM) || !Number.isFinite(endExclM) || endExclM <= startM) {
-        const t = normalizeTimeHHMM(String(s.startTime).slice(0, 5));
-        return t
-          ? [{ dateIso, time: t, studentUserId: 0, branchId: s.branchId, lessonType: 'theory_group' as const }]
-          : [];
-      }
-      const out: {
-        dateIso: string;
-        time: string;
-        studentUserId: number;
-        branchId: number;
-        lessonType: 'theory_group';
-      }[] = [];
-      for (let m = startM; m < endExclM; m += 60) {
-        out.push({
-          dateIso,
-          time: minutesToHHMM(m),
-          studentUserId: 0,
-          branchId: s.branchId,
-          lessonType: 'theory_group',
-        });
-      }
-      return out;
+      const start = normalizeTimeHHMM(String(s.startTime).slice(0, 5)) ?? String(s.startTime).slice(0, 5);
+      const end =
+        normalizeTimeHHMM(String(s.endTime).slice(0, 5)) ?? String(s.endTime).slice(0, 5);
+      const times = claimStartTimesInRange(start, end, bookableSorted);
+      return times.map((time) => ({
+        dateIso,
+        time,
+        studentUserId: 0,
+        branchId: s.branchId,
+        lessonType: 'theory_group' as const,
+      }));
     });
 
     const merged = [...fromSlots, ...fromLegacy, ...fromTheory];
-    merged.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time));
-    return merged;
+    // Dedupe identical date+time rows (expanded ranges can overlap claimed starts).
+    const seen = new Set<string>();
+    const deduped: typeof merged = [];
+    for (const row of merged) {
+      const k = `${row.dateIso}\t${row.time}\t${row.lessonType}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      deduped.push(row);
+    }
+    deduped.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.time.localeCompare(b.time));
+    return deduped;
   }
 
   static async listForStudent(studentUserId: number): Promise<StudentBookingDto[]> {
@@ -3839,6 +3924,7 @@ export default class BookingService {
     patch: Partial<{
       studentId: number;
       instructorName: string;
+      instructorUserId?: number;
       dateIso: string;
       time: string;
       type: 'practical' | 'theory' | 'theory_personal';
@@ -3883,12 +3969,13 @@ export default class BookingService {
       branchId = cohort.branchId;
       instructorUserId = (await resolveTheoryCohortInstructorUser(cohort)).id;
     } else {
-      const resolvedInstructorUserId = await resolveInstructorUserIdByName(
-        patch.instructorName,
-        row.instructorUserId,
-      );
+      const resolvedInstructorUserId = await resolveInstructorUserIdForAdminUpdate(patch, row.instructorUserId);
       if (resolvedInstructorUserId == null) {
-        if (!patch.instructorName?.trim() && row.instructorUserId == null) {
+        if (
+          patch.instructorUserId == null &&
+          !patch.instructorName?.trim() &&
+          row.instructorUserId == null
+        ) {
           throw new InputValidationError(
             'instructorName is required for practical or personal theory bookings.',
             HttpStatusCodesUtil.BAD_REQUEST,
@@ -4034,6 +4121,7 @@ export default class BookingService {
     patch: Partial<{
       studentId: number;
       instructorName: string;
+      instructorUserId?: number;
       dateIso: string;
       time: string;
       type: 'practical' | 'theory' | 'theory_personal';
@@ -4056,12 +4144,8 @@ export default class BookingService {
     const nextStudentId = patch.studentId !== undefined ? patch.studentId : row.studentUserId;
 
     let instructorUserId: number;
-    if (patch.instructorName !== undefined) {
-      const resolvedInstructorUserId = await resolveInstructorUserIdByName(
-        patch.instructorName,
-        row.instructorUserId,
-      );
-      if (resolvedInstructorUserId == null) return null;
+    const resolvedInstructorUserId = await resolveInstructorUserIdForAdminUpdate(patch, row.instructorUserId);
+    if (resolvedInstructorUserId != null) {
       instructorUserId = resolvedInstructorUserId;
     } else if (row.instructorUserId != null) {
       instructorUserId = row.instructorUserId;
@@ -4311,6 +4395,7 @@ export default class BookingService {
     patch: Partial<{
       studentId: number;
       instructorName: string;
+      instructorUserId?: number;
       dateIso: string;
       time: string;
       type: 'practical' | 'theory' | 'theory_personal';
@@ -4355,8 +4440,8 @@ export default class BookingService {
     let allowedPracticalTimes: string[] | undefined;
     if (effectiveType === 'practical' && (patch.slotEntries?.length ?? 0) > 0) {
       let instructorUserId = row.instructorUserId;
-      if (patch.instructorName !== undefined) {
-        instructorUserId = await resolveInstructorUserIdByName(patch.instructorName, row.instructorUserId);
+      if (patch.instructorUserId !== undefined || patch.instructorName !== undefined) {
+        instructorUserId = await resolveInstructorUserIdForAdminUpdate(patch, row.instructorUserId);
       }
       const branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
       if (instructorUserId != null && Number.isFinite(instructorUserId)) {
@@ -4393,8 +4478,8 @@ export default class BookingService {
     if (useMulti && effectiveType === 'practical' && slotList.length === 1) {
       const slotNorm = normalizeTimeHHMM(slotList[0] ?? '');
       let instructorForPlan = row.instructorUserId;
-      if (patch.instructorName !== undefined) {
-        instructorForPlan = await resolveInstructorUserIdByName(patch.instructorName, row.instructorUserId);
+      if (patch.instructorUserId !== undefined || patch.instructorName !== undefined) {
+        instructorForPlan = await resolveInstructorUserIdForAdminUpdate(patch, row.instructorUserId);
       }
       const branchIdForPlan = patch.branchId !== undefined ? patch.branchId : row.branchId;
       const bookable =
@@ -4427,17 +4512,17 @@ export default class BookingService {
     }
 
     let instructorUserId = row.instructorUserId;
-    if (patch.instructorName !== undefined) {
-      const resolvedInstructorUserId = await resolveInstructorUserIdByName(
-        patch.instructorName,
-        row.instructorUserId,
-      );
+    if (patch.instructorUserId !== undefined || patch.instructorName !== undefined) {
+      const resolvedInstructorUserId = await resolveInstructorUserIdForAdminUpdate(patch, row.instructorUserId);
       if (resolvedInstructorUserId == null) return null;
       instructorUserId = resolvedInstructorUserId;
     }
 
     const touchesSchedule =
-      patch.dateIso !== undefined || patch.time !== undefined || patch.instructorName !== undefined;
+      patch.dateIso !== undefined ||
+      patch.time !== undefined ||
+      patch.instructorName !== undefined ||
+      patch.instructorUserId !== undefined;
 
     if (touchesSchedule && instructorUserId == null) {
       throw new InputValidationError(
@@ -4502,7 +4587,10 @@ export default class BookingService {
       touchesSchedule && Number.isFinite(hourly) ? hourly * sorted.length : row.totalPriceAmd ?? null;
 
     const nextTotalForPayment =
-      patch.time !== undefined || patch.dateIso !== undefined || patch.instructorName !== undefined
+      patch.time !== undefined ||
+      patch.dateIso !== undefined ||
+      patch.instructorName !== undefined ||
+      patch.instructorUserId !== undefined
         ? totalPriceAmd
         : row.totalPriceAmd ?? null;
     const payUpdate = mergeAdminPaymentRowPatch(row, patch, nextTotalForPayment);
@@ -4513,13 +4601,15 @@ export default class BookingService {
     try {
       await sequelize.transaction(async (transaction) => {
         const previousBranchId = row.branchId;
+        const instructorChanged =
+          patch.instructorName !== undefined || patch.instructorUserId !== undefined;
         await row.update(
           {
             ...(patch.studentId !== undefined ? { studentUserId: patch.studentId } : {}),
-            ...(patch.instructorName !== undefined ? { instructorUserId } : {}),
+            ...(instructorChanged ? { instructorUserId } : {}),
             ...(patch.dateIso !== undefined ? { dateIso: nextDateIso } : {}),
             ...(patch.time !== undefined ? { time: sorted[0] } : {}),
-            ...(patch.time !== undefined || patch.dateIso !== undefined || patch.instructorName !== undefined
+            ...(patch.time !== undefined || patch.dateIso !== undefined || instructorChanged
               ? { endTime: exclusiveEnd, totalPriceAmd }
               : {}),
             ...(patch.type !== undefined ? { lessonType: patch.type } : {}),

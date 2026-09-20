@@ -32,6 +32,7 @@ import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { HomeServicesBlock } from "src/views/public/Services";
+import PackagePromoImage from "src/components/PackagePromoImage";
 
 function telHrefFromListedPhone(phone: string): string {
   const compact = phone.replace(/[^\d+]/g, "");
@@ -380,11 +381,7 @@ export default function Home() {
                           <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
                         </div>
                       )}
-                      {pkg.imageUrl ? (
-                        <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted shrink-0 rounded-t-2xl">
-                          <img src={pkg.imageUrl} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
-                        </div>
-                      ) : null}
+                      <PackagePromoImage src={pkg.imageUrl} alt={pkg.name} className="rounded-t-2xl" />
                       <div className="p-6 sm:p-8 flex flex-col flex-1 min-h-0">
                         <div className="mb-6">
                           <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>

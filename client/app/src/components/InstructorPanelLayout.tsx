@@ -17,6 +17,7 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import BrandLogo from "./BrandLogo";
 import { filterInstructorNavLinks, INSTRUCTOR_NAV_LINKS } from "src/modules/instructor/instructor.consts";
 import { useInstructorTeachingScope } from "src/modules/instructor/useInstructorTeachingScope";
 import { useAccount } from "src/modules/accounts";
@@ -100,7 +101,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 											{user ? (
 												<span className="text-xs font-semibold">{initialsFromName(user.name)}</span>
 											) : (
-												<img src="/logo.svg" alt="" className="w-full h-full object-cover" />
+												<img src="/brand/en/mark-on-light.png" alt="" className="w-full h-full object-contain p-1.5" />
 											)}
 										</button>
 									</DropdownMenuTrigger>
@@ -135,10 +136,9 @@ export default function InstructorPanelLayout({ children }: Props) {
 							<Link
 								href="/instructor/dashboard"
 								onClick={() => closeMobileNav()}
-								className="flex items-center gap-2 min-w-0"
+								className="flex items-center min-w-0"
 							>
-								<img src="/logo.svg" alt="" className="h-8 w-8 object-contain shrink-0" aria-hidden />
-								<span className="font-bold text-foreground text-sm truncate">{t("brandName")}</span>
+								<BrandLogo layout="horizontal" className="h-8 max-w-[11rem]" />
 							</Link>
 						</div>
 						<nav className="px-3 pb-4 flex-1 min-h-0 overflow-y-auto space-y-1">

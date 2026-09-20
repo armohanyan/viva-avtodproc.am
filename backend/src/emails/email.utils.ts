@@ -32,7 +32,7 @@ function joinPublicOrigin(origin: string, pathname: string): string {
 
 /**
  * Resolves a public logo URL for email `<img src>`.
- * Default asset: `backend/upload/logo.svg` → `{API_PUBLIC_URL}/upload/logo.svg`.
+ * Default asset: `backend/upload/logo.png` → `{API_PUBLIC_URL}/upload/logo.png`.
  * Override with `EMAIL_LOGO_URL` when the logo is hosted elsewhere (CDN, etc.).
  */
 export function resolveEmailLogoUrl(): string | null {

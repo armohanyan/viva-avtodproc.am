@@ -20,6 +20,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { Instructor } from "src/data/instructors";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
@@ -65,7 +66,7 @@ const createNewInstructorDraft = (): InstructorForm => ({
   hourlyPrice: 7000,
   practicalSalaryPerLessonAmd: 1500,
   theorySalaryPerLessonAmd: 3000,
-  imageSrc: "/logo.svg",
+  imageSrc: BRAND_LOGO_FALLBACK_SRC,
   fleetCarIds: [],
 });
 
@@ -235,7 +236,8 @@ export default function AdminInstructors() {
           ? data.map((i) => ({
               ...i,
               id: String(i.id),
-              imageSrc: sameOriginStaffUploadUrl(i.imageSrc ?? null) ?? i.imageSrc ?? "/logo.svg",
+              imageSrc:
+                (sameOriginStaffUploadUrl(i.imageSrc ?? null) ?? i.imageSrc ?? "").trim() || BRAND_LOGO_FALLBACK_SRC,
               studentRatingCount: typeof i.studentRatingCount === "number" ? i.studentRatingCount : 0,
               /** API uses numeric ids; branch options and validation use strings (see useBranches). */
               availableBranchIds: (i.availableBranchIds ?? []).map(String),
@@ -741,9 +743,15 @@ export default function AdminInstructors() {
                   <tr className="hover:bg-muted/30 transition-colors">
                     <td className="px-4 py-3.5 w-14 align-middle">
                       <img
-                        src={ins.imageSrc}
+                        src={(ins.imageSrc ?? "").trim() || BRAND_LOGO_FALLBACK_SRC}
                         alt=""
                         className="w-10 h-10 rounded-full object-cover object-top border border-border bg-muted shrink-0"
+                        onError={(e) => {
+                          if (e.currentTarget.src.endsWith(BRAND_LOGO_FALLBACK_SRC)) return;
+                          e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
+                          e.currentTarget.classList.add("object-contain", "p-1");
+                          e.currentTarget.classList.remove("object-cover", "object-top");
+                        }}
                       />
                     </td>
                     <td className="px-4 py-3.5 min-w-[220px]">
@@ -864,7 +872,7 @@ export default function AdminInstructors() {
                       alt=""
                       className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover object-top border border-border bg-muted"
                       onError={(e) => {
-                        e.currentTarget.src = "/logo.svg";
+                        e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
                       }}
                     />
                     <input
@@ -1083,7 +1091,7 @@ export default function AdminInstructors() {
                       alt=""
                       className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover object-top border border-border bg-muted"
                       onError={(e) => {
-                        e.currentTarget.src = "/logo.svg";
+                        e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
                       }}
                     />
                     <input
