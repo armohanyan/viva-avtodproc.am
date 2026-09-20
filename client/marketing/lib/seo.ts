@@ -324,9 +324,12 @@ export function baseLayoutMetadata(lang: SeoLang = CRAWL_SEO_LANG): Metadata {
   return {
     metadataBase: siteUrl(),
     icons: {
-      icon: [{ url: "/favicon.png", type: "image/png" }],
-      shortcut: ["/favicon.png"],
-      apple: ["/favicon.png"],
+      icon: [
+        { url: "/favicon.ico", sizes: "any" },
+        { url: "/favicon.png", type: "image/png" },
+      ],
+      shortcut: ["/favicon.ico"],
+      apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },
     title: {
       default: BRAND_TITLE[lang],
