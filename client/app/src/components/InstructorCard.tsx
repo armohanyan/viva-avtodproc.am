@@ -42,7 +42,7 @@ export default function InstructorCard({
 }: Props) {
   const { t } = useLang();
   const { panelHref } = useAppNavigation();
-  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "aspect-[4/3] w-full");
+  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "aspect-square w-full");
   const frameBorder =
     pickerMode && isPicked
       ? "border-2 border-primary"
@@ -62,14 +62,14 @@ export default function InstructorCard({
           alt={instructor.name}
           className={
             usingFallback || imageObjectFit === "contain"
-              ? "h-full w-full object-contain p-4"
+              ? "h-full w-full object-contain"
               : "h-full w-full object-cover object-top"
           }
           loading="lazy"
           onError={(e) => {
             if (e.currentTarget.src.endsWith(BRAND_LOGO_FALLBACK_SRC)) return;
             e.currentTarget.src = BRAND_LOGO_FALLBACK_SRC;
-            e.currentTarget.className = "h-full w-full object-contain p-4";
+            e.currentTarget.className = "h-full w-full object-contain";
           }}
         />
       </div>
