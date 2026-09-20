@@ -1,12 +1,14 @@
 import { Op } from 'sequelize';
 import {
   InstructorProfile,
+  SalaryCardTransfer,
   SalaryPayment,
   TheoryCohort,
   TheoryCohortSession,
   User,
 } from '../models';
 import type { SalaryPaymentKind } from '../models/salary-payment.model';
+import type { SalaryCardTransfer as SalaryCardTransferRow } from '../models/salary-card-transfer.model';
 import { yerevanTodayIso } from '../utils/booking-slot.util';
 import { lessonEndUtcMs } from '../utils/lesson-datetime.util';
 import {
@@ -77,6 +79,11 @@ export type SalaryReportRowDto = {
   excludedLessonsCount: number;
   ratePerLessonAmd: number;
   totalAmd: number;
+  /**
+   * Configured monthly card transfer amount when autoMonthly is enabled for this instructor.
+   * Informational only - does not reduce totalAmd.
+   */
+  cardTransferAmd: number | null;
   /** Existing submitted payment whose period overlaps the requested range (already paid). */
   paid: {
     paymentId: number;
@@ -166,6 +173,25 @@ export type CreateOtherSalaryInput = {
   notes?: string | null;
 };
 
+export type SalaryCardTransferDto = {
+  id: number;
+  instructorUserId: number;
+  instructorName: string;
+  amountAmd: number;
+  autoMonthly: boolean;
+  notes: string | null;
+  createdAtIso: string;
+};
+
+export type CreateSalaryCardTransferInput = {
+  instructorUserId: number;
+  amountAmd: number;
+  autoMonthly?: boolean;
+  notes?: string | null;
+};
+
+export type UpdateSalaryCardTransferInput = CreateSalaryCardTransferInput;
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseDateRange(startDate?: string, endDate?: string): { start: string; end: string } {
@@ -178,6 +204,32 @@ function parseDateRange(startDate?: string, endDate?: string): { start: string; 
     end = tmp;
   }
   return { start, end };
+}
+
+/** Active auto-monthly card amounts keyed by instructor user id. */
+async function autoCardAmountsByInstructor(): Promise<Map<number, number>> {
+  const rows = await SalaryCardTransfer.findAll({
+    where: { autoMonthly: true },
+    attributes: ['instructorUserId', 'amountAmd'],
+  });
+  const map = new Map<number, number>();
+  for (const row of rows) {
+    if (row.amountAmd > 0) map.set(row.instructorUserId, row.amountAmd);
+  }
+  return map;
+}
+
+function cardTransferDto(row: SalaryCardTransferRow): SalaryCardTransferDto {
+  const createdAt = (row as SalaryCardTransferRow & { createdAt?: Date }).createdAt;
+  return {
+    id: row.id,
+    instructorUserId: row.instructorUserId,
+    instructorName: row.instructorName,
+    amountAmd: row.amountAmd,
+    autoMonthly: Boolean(row.autoMonthly),
+    notes: row.notes ?? null,
+    createdAtIso: createdAt?.toISOString() ?? new Date().toISOString(),
+  };
 }
 
 function sessionCountsForSalary(session: TheoryCohortSession, now: Date): boolean {
@@ -433,10 +485,11 @@ export default class AdminSalaryService {
   static async report(startDate?: string, endDate?: string): Promise<SalaryReportDto> {
     const { start, end } = parseDateRange(startDate, endDate);
 
-    const [practicalBreakdowns, theoryCounts, paidByKey] = await Promise.all([
+    const [practicalBreakdowns, theoryCounts, paidByKey, cardByInstructor] = await Promise.all([
       practicalLessonBreakdowns(start, end),
       theoryLessonCounts(start, end),
       overlappingPayments(start, end),
+      autoCardAmountsByInstructor(),
     ]);
 
     const userIds = [
@@ -458,6 +511,7 @@ export default class AdminSalaryService {
       }
       const rate = rateForKind(salaryRates, employeeUserId, 'instructor');
       const paidRow = paidByKey.get(`instructor:${employeeUserId}`) ?? null;
+      const cardAmt = cardByInstructor.get(employeeUserId) ?? null;
       rows.push({
         kind: 'instructor',
         employeeUserId,
@@ -468,6 +522,7 @@ export default class AdminSalaryService {
         excludedLessonsCount: 0,
         ratePerLessonAmd: rate,
         totalAmd: breakdown.graphic * rate,
+        cardTransferAmd: cardAmt != null && cardAmt > 0 ? cardAmt : null,
         paid: paidRow
           ? {
               paymentId: paidRow.id,
@@ -488,6 +543,7 @@ export default class AdminSalaryService {
       if (lessonsCount <= 0) continue;
       const rate = rateForKind(salaryRates, employeeUserId, 'theory_teacher');
       const paidRow = paidByKey.get(`theory_teacher:${employeeUserId}`) ?? null;
+      const cardAmt = cardByInstructor.get(employeeUserId) ?? null;
       rows.push({
         kind: 'theory_teacher',
         employeeUserId,
@@ -498,6 +554,7 @@ export default class AdminSalaryService {
         excludedLessonsCount: 0,
         ratePerLessonAmd: rate,
         totalAmd: lessonsCount * rate,
+        cardTransferAmd: cardAmt != null && cardAmt > 0 ? cardAmt : null,
         paid: paidRow
           ? {
               paymentId: paidRow.id,
@@ -644,6 +701,98 @@ export default class AdminSalaryService {
     const n = await SalaryPayment.destroy({ where: { id } });
     if (n === 0) {
       throw new ResourceNotFoundError('Salary payment not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+  }
+
+  static async listCardTransfers(): Promise<{ items: SalaryCardTransferDto[] }> {
+    const rows = await SalaryCardTransfer.findAll({
+      order: [
+        ['instructorName', 'ASC'],
+        ['id', 'ASC'],
+      ],
+    });
+    return { items: rows.map((row) => cardTransferDto(row)) };
+  }
+
+  static async createCardTransfer(
+    input: CreateSalaryCardTransferInput,
+    createdByUserId?: number,
+  ): Promise<SalaryCardTransferDto> {
+    const amount = Math.round(input.amountAmd);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new InputValidationError(
+        'Amount must be a positive number',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    const instructor = await User.findByPk(input.instructorUserId, { attributes: ['id', 'name'] });
+    if (!instructor) {
+      throw new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    const existing = await SalaryCardTransfer.findOne({
+      where: { instructorUserId: input.instructorUserId },
+    });
+    if (existing) {
+      throw new InputValidationError(
+        'This instructor already has a card transfer setting',
+        HttpStatusCodesUtil.CONFLICT,
+      );
+    }
+    const row = await SalaryCardTransfer.create({
+      instructorUserId: input.instructorUserId,
+      instructorName: instructor.name?.trim() || `Instructor #${instructor.id}`,
+      amountAmd: amount,
+      autoMonthly: input.autoMonthly !== false,
+      notes: input.notes?.trim() || null,
+      createdByUserId: createdByUserId ?? null,
+    });
+    return cardTransferDto(row);
+  }
+
+  static async updateCardTransfer(
+    id: number,
+    input: UpdateSalaryCardTransferInput,
+  ): Promise<SalaryCardTransferDto> {
+    const row = await SalaryCardTransfer.findByPk(id);
+    if (!row) {
+      throw new ResourceNotFoundError('Card transfer not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    const amount = Math.round(input.amountAmd);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new InputValidationError(
+        'Amount must be a positive number',
+        HttpStatusCodesUtil.BAD_REQUEST,
+      );
+    }
+    const instructor = await User.findByPk(input.instructorUserId, { attributes: ['id', 'name'] });
+    if (!instructor) {
+      throw new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND);
+    }
+    if (input.instructorUserId !== row.instructorUserId) {
+      const clash = await SalaryCardTransfer.findOne({
+        where: { instructorUserId: input.instructorUserId },
+      });
+      if (clash) {
+        throw new InputValidationError(
+          'This instructor already has a card transfer setting',
+          HttpStatusCodesUtil.CONFLICT,
+        );
+      }
+    }
+    await row.update({
+      instructorUserId: input.instructorUserId,
+      instructorName: instructor.name?.trim() || `Instructor #${instructor.id}`,
+      amountAmd: amount,
+      autoMonthly: input.autoMonthly !== false,
+      notes: input.notes?.trim() || null,
+    });
+    return cardTransferDto(row);
+  }
+
+  static async removeCardTransfer(id: number): Promise<void> {
+    const n = await SalaryCardTransfer.destroy({ where: { id } });
+    if (n === 0) {
+      throw new ResourceNotFoundError('Card transfer not found', HttpStatusCodesUtil.NOT_FOUND);
     }
   }
 }

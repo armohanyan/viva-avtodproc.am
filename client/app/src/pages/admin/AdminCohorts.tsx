@@ -4,7 +4,7 @@ import AdminTableRowActions, {
   AdminTableRowContextMenu,
   type AdminTableRowAction,
 } from "src/components/AdminTableRowActions";
-import { useLang } from "src/lib/i18n";
+import { translateAm, useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { formatCohortSessionTimeLabel, formatShortDateFromIso } from "src/lib/adminFormat";
 import { Badge } from "src/components/ui/badge";
@@ -18,7 +18,7 @@ import DataTableToolbar from "src/components/DataTableToolbar";
 import CsvExportButton from "src/components/CsvExportButton";
 import TableColumnFilter, { TableColumnHeaderWithFilter } from "src/components/TableColumnFilter";
 import PanelPageHeader from "src/components/PanelPageHeader";
-import { Plus, UserPlus, CalendarCheck, UsersRound, Video, Edit2, Trash2 } from "lucide-react";
+import { Plus, UserPlus, CalendarCheck, UsersRound, Video, Edit2, Trash2, Printer } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { activeTheoryInstructors } from "src/modules/admin/adminPeople";
@@ -30,6 +30,13 @@ import { formatAmd, parseAmdInput } from "src/pages/admin/finance/adminFinanceSh
 import CohortScheduleFields from "src/modules/admin/cohorts/CohortScheduleFields";
 import AttachStudentToCohortModal from "src/modules/admin/cohorts/AttachStudentToCohortModal";
 import CohortBookingsModal from "src/modules/admin/cohorts/CohortBookingsModal";
+import {
+  buildCohortGroupPrintHtml,
+  printCohortGroupDocument,
+  type CohortPrintLesson,
+  type CohortPrintStudent,
+  type CohortPrintTeacher,
+} from "src/modules/admin/cohorts/printCohortGroup";
 
 type Cohort = {
   id: string;
@@ -69,10 +76,151 @@ export default function AdminCohorts() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
 
   const [attachCohort, setAttachCohort] = useState<Cohort | null>(null);
+  const [printingCohortId, setPrintingCohortId] = useState<string | null>(null);
 
   const openAttachStudent = useCallback((c: Cohort) => {
     setAttachCohort(c);
   }, []);
+
+  const sessionStatusLabelAm = useCallback((status: string) => {
+    const key = status.trim().toLowerCase();
+    if (key === "scheduled") return translateAm("cohortPrintSessionStatusScheduled");
+    if (key === "cancelled" || key === "canceled") return translateAm("cohortPrintSessionStatusCancelled");
+    if (key === "completed") return translateAm("cohortPrintSessionStatusCompleted");
+    return status || "-";
+  }, []);
+
+  const handlePrintCohort = useCallback(
+    async (c: Cohort) => {
+      if (printingCohortId) return;
+      setPrintingCohortId(c.id);
+      const tAm = translateAm;
+      try {
+        const [sessions, enrollments] = await Promise.all([
+          vivaApiJson<
+            {
+              id: number;
+              dateIso: string;
+              startTime: string;
+              endTime: string;
+              lessonIndex: number;
+              status: string;
+            }[]
+          >(`/theory-cohorts/${encodeURIComponent(c.id)}/sessions`),
+          vivaApiJson<
+            {
+              userId: number;
+              name: string;
+              phone: string | null;
+              phone2: string | null;
+            }[]
+          >(`/theory-cohorts/${encodeURIComponent(c.id)}/enrollments`),
+        ]);
+
+        const teacherIds =
+          c.instructorUserIds.length > 0
+            ? c.instructorUserIds
+            : c.instructorUserId
+              ? [c.instructorUserId]
+              : [];
+        const teachers: CohortPrintTeacher[] =
+          teacherIds.length > 0
+            ? teacherIds.map((id) => {
+                const instructor = instructors.find((i) => i.id === id);
+                return {
+                  name: instructor?.name?.trim() || c.instructorName || "-",
+                  phone: instructor?.phone?.trim() || "-",
+                };
+              })
+            : [{ name: c.instructorName?.trim() || "-", phone: "-" }];
+
+        const lessons: CohortPrintLesson[] = (Array.isArray(sessions) ? sessions : [])
+          .slice()
+          .sort((a, b) => a.lessonIndex - b.lessonIndex || a.dateIso.localeCompare(b.dateIso))
+          .map((row) => ({
+            lessonIndex: row.lessonIndex,
+            dateLabel: formatShortDateFromIso(String(row.dateIso ?? "").slice(0, 10), "hy"),
+            startTime: String(row.startTime ?? "").slice(0, 5),
+            endTime: String(row.endTime ?? "").slice(0, 5),
+            statusLabel: sessionStatusLabelAm(String(row.status ?? "")),
+          }));
+
+        const students: CohortPrintStudent[] = (Array.isArray(enrollments) ? enrollments : []).map((row) => ({
+          name: row.name?.trim() || "-",
+          phone: row.phone?.trim() || "-",
+          phone2: row.phone2?.trim() || "-",
+        }));
+
+        const periodDates = `${formatShortDateFromIso(c.startDateIso, "hy")} - ${formatShortDateFromIso(c.endDateIso, "hy")}`;
+        const sessionTime =
+          formatCohortSessionTimeLabel(c.sessionStartTime, c.sessionEndTime) || "-";
+        const statusLabel =
+          c.status === "active"
+            ? tAm("active")
+            : c.status === "upcoming"
+              ? tAm("cohortStatusLabelUpcoming")
+              : c.status === "completed"
+                ? tAm("cohortStatusLabelCompleted")
+                : c.status;
+        const priceLabel =
+          c.priceAmd != null && Number.isFinite(c.priceAmd) ? formatAmd(Math.round(c.priceAmd)) : "-";
+
+        const html = buildCohortGroupPrintHtml(
+          {
+            documentTitle: tAm("cohortPrintDocumentTitle"),
+            schoolName: tAm("adminClassSchedulePrintSchoolName"),
+            sectionGroup: tAm("cohortPrintSectionGroup"),
+            sectionTeacher: tAm("cohortPrintSectionTeacher"),
+            sectionLessons: tAm("cohortPrintSectionLessons"),
+            sectionStudents: tAm("cohortPrintSectionStudents"),
+            labelGroupName: tAm("cohortPrintLabelGroupName"),
+            labelBranch: tAm("adminClassSchedulePrintHeaderBranch"),
+            labelPeriod: tAm("cohortPrintLabelPeriod"),
+            labelStatus: tAm("status"),
+            labelEnrollment: tAm("cohortPrintLabelEnrollment"),
+            labelSessionTime: tAm("cohortPrintLabelSessionTime"),
+            labelPrice: tAm("cohortPrintLabelPrice"),
+            labelTeacherName: tAm("cohortPrintLabelTeacherName"),
+            labelTeacherPhone: tAm("cohortPrintLabelTeacherPhone"),
+            colNo: tAm("adminClassSchedulePrintColNo"),
+            colLesson: tAm("cohortPrintColLesson"),
+            colDate: tAm("cohortPrintColDate"),
+            colTime: tAm("cohortPrintColTime"),
+            colStatus: tAm("cohortPrintColStatus"),
+            colStudent: tAm("cohortPrintColStudent"),
+            colPhone: tAm("phone"),
+            colPhone2: tAm("phone2"),
+            emptyLessons: tAm("cohortPrintEmptyLessons"),
+            emptyStudents: tAm("cohortPrintEmptyStudents"),
+            generatedAt: tAm("adminClassSchedulePrintGeneratedAt"),
+          },
+          {
+            groupName: c.name,
+            branchName: branchNameById(branches, c.branchId) || "-",
+            periodLabel: periodDates,
+            statusLabel,
+            enrollmentLabel: `${c.enrolled} / ${c.seats}`,
+            sessionTimeLabel: sessionTime,
+            priceLabel,
+            teachers,
+            lessons,
+            students,
+            generatedAtLabel: new Date().toLocaleString("hy-AM"),
+          },
+          "hy",
+        );
+
+        if (!printCohortGroupDocument(html)) {
+          showToast(t("cohortPrintBlocked"), "error");
+        }
+      } catch (e) {
+        showToast(getApiErrorMessage(e), "error");
+      } finally {
+        setPrintingCohortId(null);
+      }
+    },
+    [branches, instructors, printingCohortId, sessionStatusLabelAm, showToast, t],
+  );
 
   const refreshCohorts = useCallback(async () => {
     try {
@@ -461,6 +609,14 @@ export default function AdminCohorts() {
                     ariaLabel: t("cohortAriaViewStudents"),
                     icon: CalendarCheck,
                     onClick: () => setBookingsDialogCohort(c),
+                  },
+                  {
+                    kind: "item",
+                    id: "print",
+                    label: t("cohortAriaPrintGroup"),
+                    ariaLabel: t("cohortAriaPrintGroup"),
+                    icon: Printer,
+                    onClick: () => void handlePrintCohort(c),
                   },
                   ...(isTheoryCohortBookableStatus(c.status) && c.enrolled < c.seats
                     ? [

@@ -12,6 +12,7 @@ import DirectorDataTable from "src/modules/director/components/DirectorDataTable
 import PanelPageHeader from "src/components/PanelPageHeader";
 import TableSkeletonRows from "src/components/TableSkeletonRows";
 import AdminTableScroll from "src/components/AdminTableScroll";
+import DataTableToolbar from "src/components/DataTableToolbar";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import {
   DirectorButton,
   DirectorField,
   DirectorInput,
+  DirectorSelect,
   DirectorStatCard,
   DirectorStatGrid,
   DirectorTableBody,
@@ -36,14 +38,18 @@ import {
 } from "src/modules/director/components/DirectorUi";
 import {
   createDirectorSalary,
+  createDirectorSalaryCardTransfer,
   createDirectorSalaryPayment,
   deleteDirectorSalary,
+  deleteDirectorSalaryCardTransfer,
   deleteDirectorSalaryPayment,
   fetchDirectorSalaries,
+  fetchDirectorSalaryCardTransfers,
   fetchDirectorSalaryLessons,
   fetchDirectorSalaryPayments,
   fetchDirectorSalaryReport,
   updateDirectorSalary,
+  updateDirectorSalaryCardTransfer,
 } from "src/modules/director/director.api";
 import {
   defaultDirectorSalaryPeriod,
@@ -53,6 +59,7 @@ import {
 } from "src/modules/director/director.consts";
 import type {
   DirectorSalary,
+  DirectorSalaryCardTransfer,
   DirectorSalaryEmployeeKind,
   DirectorSalaryLessonPaymentBucket,
   DirectorSalaryLessons,
@@ -77,9 +84,18 @@ import { Banknote } from "lucide-react";
 import { cn } from "src/lib/utils";
 import type { Instructor } from "src/data/instructors";
 import { useBranches, type Branch } from "src/modules/branches";
-import { directorInstructorLabelById } from "src/modules/director/directorInstructorLabels";
+import {
+  directorInstructorLabelById,
+  formatDirectorInstructorLabel,
+} from "src/modules/director/directorInstructorLabels";
 
 const BASE_PATH = "/admin/director/salary";
+
+const SALARY_TABS = [
+  { suffix: "", label: "Հաշվետվություն" },
+  { suffix: "/card", label: "Քարտով փոխանցում" },
+  { suffix: "/records", label: "Տվյալներ" },
+];
 
 const KIND_LABEL: Record<DirectorSalaryEmployeeKind, string> = {
   instructor: "Հրահանգիչ",
@@ -183,6 +199,7 @@ function SalaryReportView({
   const [payRow, setPayRow] = useState<DirectorSalaryReportRow | null>(null);
   const [payNotes, setPayNotes] = useState("");
   const [paying, setPaying] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -198,6 +215,33 @@ function SalaryReportView({
   }, [query, showToast]);
 
   useDirectorReload(load, [query, reloadKey]);
+
+  const filteredRows = useMemo(() => {
+    const rows = report?.rows ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => {
+      const name = employeeDisplayName(
+        row.employeeUserId,
+        row.employeeName,
+        instructors,
+        branches,
+      );
+      const hay = [
+        name,
+        row.employeeName,
+        kindLabel(row.kind),
+        String(row.lessonsCount),
+        String(row.unpaidLessonsCount),
+        formatAmd(row.ratePerLessonAmd),
+        formatAmd(row.totalAmd),
+        row.paid ? "Վճարված" : "Չվճարված",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [report, search, instructors, branches]);
 
   const totals = useMemo(() => {
     const rows = report?.rows ?? [];
@@ -248,7 +292,7 @@ function SalaryReportView({
   return (
     <>
       <DirectorStatGrid>
-        <DirectorStatCard label="Ընդամենը կելուկ" value={loading ? "…" : formatAmd(totals.totalDue)} />
+        <DirectorStatCard label="Ընդամենը գումար" value={loading ? "…" : formatAmd(totals.totalDue)} />
         <DirectorStatCard label="Վճարված" value={loading ? "…" : formatAmd(totals.totalPaid)} />
         <DirectorStatCard label="Մնացորդ" value={loading ? "…" : formatAmd(totals.outstanding)} />
         <DirectorStatCard label="Շրջան" value={`${start} — ${end}`} />
@@ -256,77 +300,92 @@ function SalaryReportView({
 
       <p className="text-xs text-muted-foreground mt-4 mb-2">
         Դասեր = հրահանգչի ժամերը գրաֆիկից։ Գումար = դասեր × դրույք։ Եթե կա չվճարված սլոթ,
-        այն երևում է դեղինով (աշխատավարձից չի հանվում)։ Դրույք՝{" "}
+        այն երևում է դեղինով (աշխատավարձից չի հանվում)։ Եթե հրահանգիչը ունի ամսական քարտով
+        փոխանցում, այն նույնպես երևում է դեղինով Գումարի տակ (չի հանվում)։ Դրույք՝{" "}
         {formatAmd(report?.instructorRateAmd ?? 1500)} / տեսություն{" "}
         {formatAmd(report?.theoryTeacherRateAmd ?? 3000)}.
       </p>
 
-      <DirectorTableWrap className="mt-4">
-        <DirectorTableHead>
-          <tr>
-            {["Աշխատակից", "Տեսակ", "Դասեր", "Դրույք", "Գումար", "Կարգավիճակ", ""].map((h) => (
-              <DirectorTableTh key={h}>{h}</DirectorTableTh>
+      <div className="mt-4 rounded-lg border border-border overflow-hidden bg-card">
+        <DataTableToolbar
+          value={search}
+          onChange={setSearch}
+          placeholder="Որոնել աշխատակցով…"
+        />
+        <DirectorTableWrap className="mt-0 border-0 rounded-none">
+          <DirectorTableHead>
+            {["Աշխատակից", "Տեսակ", "Դասեր", "Դրույք", "Գումար", "Կարգավիճակ", ""].map((h, i) => (
+              <DirectorTableTh key={i}>{h}</DirectorTableTh>
             ))}
-          </tr>
-        </DirectorTableHead>
-        <DirectorTableBody>
-          {loading ? (
-            <TableSkeletonRows cols={7} cellClassName="py-2.5 px-3" />
-          ) : (report?.rows.length ?? 0) === 0 ? (
-            <DirectorTableRow>
-              <DirectorTableTd colSpan={7} className="text-center text-muted-foreground py-8">
-                Այս ժամանակահատվածում դասեր չկան
-              </DirectorTableTd>
-            </DirectorTableRow>
-          ) : (
-            report?.rows.map((row) => {
-              const unpaidNote = formatUnpaidSlots(row.unpaidLessonsCount);
-              return (
-              <DirectorTableRow key={`${row.kind}:${row.employeeUserId}`}>
-                <DirectorTableTd>
-                  {employeeDisplayName(row.employeeUserId, row.employeeName, instructors, branches)}
-                </DirectorTableTd>
-                <DirectorTableTd>{kindLabel(row.kind)}</DirectorTableTd>
-                <DirectorTableTd>
-                  <button
-                    type="button"
-                    className="text-left text-primary underline-offset-2 hover:underline tabular-nums"
-                    onClick={() => void openLessons(row)}
-                  >
-                    <span className="font-medium">{row.lessonsCount}</span>
-                    {unpaidNote ? (
-                      <span className="block text-xs font-normal text-amber-700 dark:text-amber-400 no-underline">
-                        {unpaidNote}
-                      </span>
-                    ) : null}
-                  </button>
-                </DirectorTableTd>
-                <DirectorTableTd className="tabular-nums">{formatAmd(row.ratePerLessonAmd)}</DirectorTableTd>
-                <DirectorTableTd className="tabular-nums font-medium">{formatAmd(row.totalAmd)}</DirectorTableTd>
-                <DirectorTableTd>
-                  {row.paid ? (
-                    <span className="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
-                      Վճարված
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-400 px-2 py-0.5 text-xs font-medium">
-                      Չվճարված
-                    </span>
-                  )}
-                </DirectorTableTd>
-                <DirectorTableTd className="text-right">
-                  {!row.paid && row.lessonsCount > 0 ? (
-                    <DirectorButton className="h-8 text-xs" onClick={() => setPayRow(row)}>
-                      Վճարել
-                    </DirectorButton>
-                  ) : null}
+          </DirectorTableHead>
+          <DirectorTableBody>
+            {loading ? (
+              <TableSkeletonRows cols={7} cellClassName="py-2.5 px-3" />
+            ) : filteredRows.length === 0 ? (
+              <DirectorTableRow>
+                <DirectorTableTd colSpan={7} className="text-center text-muted-foreground py-8">
+                  {search.trim()
+                    ? "Որոնման արդյունք չկա"
+                    : "Այս ժամանակահատվածում դասեր չկան"}
                 </DirectorTableTd>
               </DirectorTableRow>
-              );
-            })
-          )}
-        </DirectorTableBody>
-      </DirectorTableWrap>
+            ) : (
+              filteredRows.map((row) => {
+                const unpaidNote = formatUnpaidSlots(row.unpaidLessonsCount);
+                return (
+                <DirectorTableRow key={`${row.kind}:${row.employeeUserId}`}>
+                  <DirectorTableTd>
+                    {employeeDisplayName(row.employeeUserId, row.employeeName, instructors, branches)}
+                  </DirectorTableTd>
+                  <DirectorTableTd>{kindLabel(row.kind)}</DirectorTableTd>
+                  <DirectorTableTd>
+                    <button
+                      type="button"
+                      className="text-left text-primary underline-offset-2 hover:underline tabular-nums"
+                      onClick={() => void openLessons(row)}
+                    >
+                      <span className="font-medium">{row.lessonsCount}</span>
+                      {unpaidNote ? (
+                        <span className="block text-xs font-normal text-amber-700 dark:text-amber-400 no-underline">
+                          {unpaidNote}
+                        </span>
+                      ) : null}
+                    </button>
+                  </DirectorTableTd>
+                  <DirectorTableTd className="tabular-nums">{formatAmd(row.ratePerLessonAmd)}</DirectorTableTd>
+                  <DirectorTableTd className="tabular-nums font-medium">
+                    <span>{formatAmd(row.totalAmd)}</span>
+                    {row.cardTransferAmd != null && row.cardTransferAmd > 0 ? (
+                      <span className="block text-xs font-normal text-amber-700 dark:text-amber-400">
+                        Ամսական քարտով՝ {formatAmd(row.cardTransferAmd)}
+                      </span>
+                    ) : null}
+                  </DirectorTableTd>
+                  <DirectorTableTd>
+                    {row.paid ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
+                        Վճարված
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-400 px-2 py-0.5 text-xs font-medium">
+                        Չվճարված
+                      </span>
+                    )}
+                  </DirectorTableTd>
+                  <DirectorTableTd className="text-right">
+                    {!row.paid && row.lessonsCount > 0 ? (
+                      <DirectorButton className="h-8 text-xs" onClick={() => setPayRow(row)}>
+                        Վճարել
+                      </DirectorButton>
+                    ) : null}
+                  </DirectorTableTd>
+                </DirectorTableRow>
+                );
+              })
+            )}
+          </DirectorTableBody>
+        </DirectorTableWrap>
+      </div>
 
       <Dialog open={lessonsOpen} onOpenChange={setLessonsOpen}>
         <DialogContent className="w-full max-w-[calc(100%-2rem)] sm:max-w-[min(96vw,56rem)] max-h-[85vh] overflow-hidden flex flex-col gap-4">
@@ -441,6 +500,7 @@ function SalaryRecordsView({
   const { showToast } = useToast();
   const [payments, setPayments] = useState<DirectorSalaryPayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentsSearch, setPaymentsSearch] = useState("");
   const [rows, setRows] = useState<DirectorSalary[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -481,6 +541,33 @@ function SalaryRecordsView({
   }, [loadPayments, loadManual]);
 
   const reload = useDirectorReload(load, [query, reloadKey]);
+
+  const filteredPayments = useMemo(() => {
+    const q = paymentsSearch.trim().toLowerCase();
+    if (!q) return payments;
+    return payments.filter((p) => {
+      const name = employeeDisplayName(p.employeeUserId, p.employeeName, instructors, branches);
+      const kind =
+        p.kind === "instructor"
+          ? "Հրահանգիչ"
+          : p.kind === "theory_teacher"
+            ? "Տեսության դասախոս"
+            : "Այլ";
+      const hay = [
+        p.createdAtIso.slice(0, 10),
+        name,
+        p.employeeName,
+        kind,
+        p.periodStartIso,
+        p.periodEndIso,
+        String(p.lessonsCount ?? ""),
+        formatAmd(p.totalAmd),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [payments, paymentsSearch, instructors, branches]);
 
   const computedTotal = useMemo(() => {
     const h = directorDecimal(form.hours);
@@ -617,56 +704,61 @@ function SalaryRecordsView({
   return (
     <>
       <h2 className="text-sm font-semibold text-foreground mb-3">Վճարումների պատմություն ({start} — {end})</h2>
-      <DirectorTableWrap>
-        <DirectorTableHead>
-          <tr>
-            {["Ամսաթիվ", "Աշխատակից", "Տեսակ", "Ժամանակահատված", "Դասեր", "Գումար", ""].map((h) => (
-              <DirectorTableTh key={h}>{h}</DirectorTableTh>
+      <div className="rounded-lg border border-border overflow-hidden bg-card">
+        <DataTableToolbar
+          value={paymentsSearch}
+          onChange={setPaymentsSearch}
+          placeholder="Որոնել վճարում…"
+        />
+        <DirectorTableWrap className="mt-0 border-0 rounded-none">
+          <DirectorTableHead>
+            {["Ամսաթիվ", "Աշխատակից", "Տեսակ", "Ժամանակահատված", "Դասեր", "Գումար", ""].map((h, i) => (
+              <DirectorTableTh key={i}>{h}</DirectorTableTh>
             ))}
-          </tr>
-        </DirectorTableHead>
-        <DirectorTableBody>
-          {paymentsLoading ? (
-            <TableSkeletonRows cols={7} cellClassName="py-2.5 px-3" />
-          ) : payments.length === 0 ? (
-            <DirectorTableRow>
-              <DirectorTableTd colSpan={7} className="text-center text-muted-foreground py-8">
-                Վճարումներ չկան
-              </DirectorTableTd>
-            </DirectorTableRow>
-          ) : (
-            payments.map((p) => (
-              <DirectorTableRow key={p.id}>
-                <DirectorTableTd className="tabular-nums whitespace-nowrap">{p.createdAtIso.slice(0, 10)}</DirectorTableTd>
-                <DirectorTableTd>
-                  {employeeDisplayName(p.employeeUserId, p.employeeName, instructors, branches)}
-                </DirectorTableTd>
-                <DirectorTableTd>
-                  {p.kind === "instructor"
-                    ? "Հրահանգիչ"
-                    : p.kind === "theory_teacher"
-                      ? "Տեսության դասախոս"
-                      : "Այլ"}
-                </DirectorTableTd>
-                <DirectorTableTd className="tabular-nums whitespace-nowrap text-muted-foreground">
-                  {p.periodStartIso} — {p.periodEndIso}
-                </DirectorTableTd>
-                <DirectorTableTd className="tabular-nums">{p.lessonsCount ?? "—"}</DirectorTableTd>
-                <DirectorTableTd className="tabular-nums font-medium">{formatAmd(p.totalAmd)}</DirectorTableTd>
-                <DirectorTableTd className="text-right">
-                  <DirectorButton
-                    variant="ghost"
-                    className="h-8 text-xs text-destructive"
-                    onClick={() => void deleteDirectorSalaryPayment(p.id).then(reload)}
-                  >
-                    Ջնջել
-                  </DirectorButton>
+          </DirectorTableHead>
+          <DirectorTableBody>
+            {paymentsLoading ? (
+              <TableSkeletonRows cols={7} cellClassName="py-2.5 px-3" />
+            ) : filteredPayments.length === 0 ? (
+              <DirectorTableRow>
+                <DirectorTableTd colSpan={7} className="text-center text-muted-foreground py-8">
+                  {paymentsSearch.trim() ? "Որոնման արդյունք չկա" : "Վճարումներ չկան"}
                 </DirectorTableTd>
               </DirectorTableRow>
-            ))
-          )}
-        </DirectorTableBody>
-      </DirectorTableWrap>
+            ) : (
+              filteredPayments.map((p) => (
+                <DirectorTableRow key={p.id}>
+                  <DirectorTableTd className="tabular-nums whitespace-nowrap">{p.createdAtIso.slice(0, 10)}</DirectorTableTd>
+                  <DirectorTableTd>
+                    {employeeDisplayName(p.employeeUserId, p.employeeName, instructors, branches)}
+                  </DirectorTableTd>
+                  <DirectorTableTd>
+                    {p.kind === "instructor"
+                      ? "Հրահանգիչ"
+                      : p.kind === "theory_teacher"
+                        ? "Տեսության դասախոս"
+                        : "Այլ"}
+                  </DirectorTableTd>
+                  <DirectorTableTd className="tabular-nums whitespace-nowrap text-muted-foreground">
+                    {p.periodStartIso} - {p.periodEndIso}
+                  </DirectorTableTd>
+                  <DirectorTableTd className="tabular-nums">{p.lessonsCount ?? "—"}</DirectorTableTd>
+                  <DirectorTableTd className="tabular-nums font-medium">{formatAmd(p.totalAmd)}</DirectorTableTd>
+                  <DirectorTableTd className="text-right">
+                    <DirectorButton
+                      variant="ghost"
+                      className="h-8 text-xs text-destructive"
+                      onClick={() => void deleteDirectorSalaryPayment(p.id).then(reload)}
+                    >
+                      Ջնջել
+                    </DirectorButton>
+                  </DirectorTableTd>
+                </DirectorTableRow>
+              ))
+            )}
+          </DirectorTableBody>
+        </DirectorTableWrap>
+      </div>
 
       <h2 className="text-sm font-semibold text-foreground mt-8 mb-3">Ձեռքով գրանցումներ</h2>
       <DirectorDataTable
@@ -714,6 +806,252 @@ function SalaryRecordsView({
   );
 }
 
+function SalaryCardTransfersView({
+  reloadKey,
+  instructors,
+  branches,
+}: {
+  reloadKey: number;
+  instructors: readonly Instructor[];
+  branches: readonly Branch[];
+}) {
+  const { showToast } = useToast();
+  const [rows, setRows] = useState<DirectorSalaryCardTransfer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState({
+    instructorUserId: "",
+    amount: "",
+    autoMonthly: true,
+    notes: "",
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await fetchDirectorSalaryCardTransfers();
+      setRows(Array.isArray(data.items) ? data.items : []);
+    } catch (e) {
+      setRows([]);
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useDirectorReload(load, [reloadKey]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({ instructorUserId: "", amount: "", autoMonthly: true, notes: "" });
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setFormOpen(false);
+  };
+
+  const openCreate = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
+  const openEdit = (row: DirectorSalaryCardTransfer) => {
+    setEditingId(row.id);
+    setForm({
+      instructorUserId: String(row.instructorUserId),
+      amount: String(row.amountAmd),
+      autoMonthly: row.autoMonthly,
+      notes: row.notes ?? "",
+    });
+    setFormOpen(true);
+  };
+
+  const submit = async () => {
+    const instructorUserId = Number(form.instructorUserId);
+    const amountAmd = directorAmd(form.amount);
+    if (!Number.isFinite(instructorUserId) || instructorUserId <= 0) {
+      showToast("Ընտրեք հրահանգիչ", "error");
+      return;
+    }
+    if (amountAmd <= 0) {
+      showToast("Գումարը պետք է լինի դրական", "error");
+      return;
+    }
+    const body = {
+      instructorUserId,
+      amountAmd,
+      autoMonthly: form.autoMonthly,
+      notes: directorOptionalComment(form.notes),
+    };
+    try {
+      if (editingId != null) {
+        await updateDirectorSalaryCardTransfer(editingId, body);
+        showToast("Պահված է", "success");
+      } else {
+        await createDirectorSalaryCardTransfer(body);
+        showToast("Ավելացված է", "success");
+      }
+      closeForm();
+      await load();
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  };
+
+  const remove = async (id: number) => {
+    try {
+      await deleteDirectorSalaryCardTransfer(id);
+      showToast("Ջնջված է", "success");
+      await load();
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    }
+  };
+
+  const tableColumns = useMemo(
+    () => [
+      {
+        id: "instructor",
+        header: "Հրահանգիչ",
+        sortable: true,
+        filterable: true,
+        sortValue: (r: DirectorSalaryCardTransfer) =>
+          employeeDisplayName(r.instructorUserId, r.instructorName, instructors, branches),
+        filterValue: (r: DirectorSalaryCardTransfer) =>
+          employeeDisplayName(r.instructorUserId, r.instructorName, instructors, branches),
+        searchValue: (r: DirectorSalaryCardTransfer) =>
+          `${employeeDisplayName(r.instructorUserId, r.instructorName, instructors, branches)} ${r.instructorName}`,
+        render: (r: DirectorSalaryCardTransfer) =>
+          employeeDisplayName(r.instructorUserId, r.instructorName, instructors, branches),
+      },
+      {
+        id: "amount",
+        header: "Գումար",
+        sortable: true,
+        sortValue: (r: DirectorSalaryCardTransfer) => r.amountAmd,
+        searchValue: (r: DirectorSalaryCardTransfer) => formatAmd(r.amountAmd),
+        render: (r: DirectorSalaryCardTransfer) => formatAmd(r.amountAmd),
+      },
+      {
+        id: "auto",
+        header: "Ավտոմատ",
+        sortable: true,
+        filterable: true,
+        sortValue: (r: DirectorSalaryCardTransfer) => (r.autoMonthly ? 1 : 0),
+        filterValue: (r: DirectorSalaryCardTransfer) => (r.autoMonthly ? "Այո" : "Ոչ"),
+        searchValue: (r: DirectorSalaryCardTransfer) => (r.autoMonthly ? "ավտոմատ այո" : "ավտոմատ ոչ"),
+        render: (r: DirectorSalaryCardTransfer) =>
+          r.autoMonthly ? (
+            <span className="inline-flex items-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 text-xs font-medium">
+              Այո
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full bg-muted text-muted-foreground px-2 py-0.5 text-xs font-medium">
+              Ոչ
+            </span>
+          ),
+      },
+      {
+        id: "notes",
+        header: "Մեկնաբանություն",
+        searchValue: (r: DirectorSalaryCardTransfer) => r.notes ?? "",
+        render: (r: DirectorSalaryCardTransfer) => r.notes || "—",
+      },
+      {
+        id: "actions",
+        header: "",
+        align: "end" as const,
+        render: (r: DirectorSalaryCardTransfer) => (
+          <DirectorRecordActions onEdit={() => openEdit(r)} onDelete={() => void remove(r.id)} />
+        ),
+      },
+    ],
+    [instructors, branches],
+  );
+
+  const table = useDirectorTable({ rows, columns: tableColumns, defaultSortKey: "instructor" });
+
+  return (
+    <>
+      <p className="text-xs text-muted-foreground mb-4">
+        Մեկ անգամ ավելացրեք հրահանգիչին և ամսական գումարը։ Եթե «Ամսական ավտոմատ»-ը միացված է,
+        Հաշվետվությունում Գումարի տակ ամեն ամիս կերևա դեղին հիշեցում (գումարից չի հանվում)։
+        Կարող եք ցանկացած պահի անջատել կամ ջնջել։
+      </p>
+      {loading ? (
+        <div className="rounded-lg border border-border overflow-hidden bg-card">
+          <DirectorTableWrap className="mt-0 border-0 rounded-none">
+            <DirectorTableHead>
+              {["Հրահանգիչ", "Գումար", "Ավտոմատ", "Մեկնաբանություն", ""].map((h, i) => (
+                <DirectorTableTh key={i}>{h}</DirectorTableTh>
+              ))}
+            </DirectorTableHead>
+            <DirectorTableBody>
+              <TableSkeletonRows cols={5} cellClassName="py-2.5 px-3" />
+            </DirectorTableBody>
+          </DirectorTableWrap>
+        </div>
+      ) : (
+        <DirectorDataTable
+          table={table}
+          columns={tableColumns}
+          rowKey={(r) => r.id}
+          searchPlaceholder="Որոնել հրահանգչով կամ գումարով…"
+          toolbarActions={<DirectorAddRecordButton onClick={openCreate} />}
+        />
+      )}
+      <DirectorRecordFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        title={editingId != null ? "Խմբագրել քարտով փոխանցում" : "Նոր քարտով փոխանցում"}
+        editing={editingId != null}
+        createLabel="Պահել"
+        onSubmit={() => void submit()}
+        onCancel={closeForm}
+      >
+        <DirectorField label="Հրահանգիչ">
+          <DirectorSelect
+            value={form.instructorUserId}
+            onChange={(e) => setForm((f) => ({ ...f, instructorUserId: e.target.value }))}
+          >
+            <option value="">—</option>
+            {instructors.map((i) => (
+              <option key={i.id} value={String(i.id)}>
+                {formatDirectorInstructorLabel(i, branches)}
+              </option>
+            ))}
+          </DirectorSelect>
+        </DirectorField>
+        <DirectorField label="Ամսական գումար (քարտ)">
+          <DirectorInput
+            value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            placeholder="100000"
+          />
+        </DirectorField>
+        <label className="flex items-center gap-2.5 cursor-pointer text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={form.autoMonthly}
+            onChange={(e) => setForm((f) => ({ ...f, autoMonthly: e.target.checked }))}
+            className="h-4 w-4 rounded border-input accent-primary"
+          />
+          Ամսական ավտոմատ (Հաշվետվությունում ցույց տալ)
+        </label>
+        <DirectorField label="Մեկնաբանություն">
+          <DirectorTextarea
+            rows={3}
+            value={form.notes}
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+          />
+        </DirectorField>
+      </DirectorRecordFormDialog>
+    </>
+  );
+}
+
 export default function DirectorSalaryPage() {
   const view = useDirectorSectionView(BASE_PATH);
   const { branches } = useBranches();
@@ -743,13 +1081,19 @@ export default function DirectorSalaryPage() {
         onEndChange={setEnd}
         onRefresh={handleRefresh}
       />
-      <DirectorSectionNav basePath={BASE_PATH} />
+      <DirectorSectionNav basePath={BASE_PATH} tabs={SALARY_TABS} />
 
       {view === "report" ? (
         <SalaryReportView
           start={start}
           end={end}
           query={query}
+          reloadKey={reloadKey}
+          instructors={instructors}
+          branches={branches}
+        />
+      ) : view === "card" ? (
+        <SalaryCardTransfersView
           reloadKey={reloadKey}
           instructors={instructors}
           branches={branches}

@@ -23,7 +23,7 @@ import {
   sortSlotEntriesChrono,
 } from "src/modules/admin/booking/adminAvailabilityGrid";
 import AdminDrivingFilters, {
-  filterInstructorsBySearch,
+  filterInstructorsBySearchOrStudentBooking,
 } from "src/modules/admin/driving/AdminDrivingFilters";
 import { useBranches } from "src/modules/branches";
 import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
@@ -347,24 +347,6 @@ export default function AdminDrivingDayModal({
     setMultiSelection(null);
   }, [reloadKey]);
 
-  const filteredInstructors = useMemo(
-    () => filterInstructorsBySearch(instructors, search),
-    [instructors, search],
-  );
-
-  const dayColumns = useMemo(
-    () => buildInstructorBranchColumns(branches, filteredInstructors, branchFilterId),
-    [branches, filteredInstructors, branchFilterId],
-  );
-
-  const primaryBranchId = useMemo(() => {
-    const filtered = branchFilterId.trim();
-    if (filtered) return filtered;
-    return dayColumns[0]?.bookingBranchId ?? "";
-  }, [branchFilterId, dayColumns]);
-
-  const { rows: planRows, loading: planLoading } = usePracticalSlotPlan(primaryBranchId, open);
-
   const [items, setItems] = useState<ClassScheduleItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -383,6 +365,24 @@ export default function AdminDrivingDayModal({
   const [planTimesByInstructor, setPlanTimesByInstructor] = useState<Map<string, InstructorPlanGate>>(
     () => new Map(),
   );
+
+  const filteredInstructors = useMemo(() => {
+    const dayBookings = items.filter((item) => item.date.slice(0, 10) === day);
+    return filterInstructorsBySearchOrStudentBooking(instructors, search, dayBookings);
+  }, [instructors, search, items, day]);
+
+  const dayColumns = useMemo(
+    () => buildInstructorBranchColumns(branches, filteredInstructors, branchFilterId),
+    [branches, filteredInstructors, branchFilterId],
+  );
+
+  const primaryBranchId = useMemo(() => {
+    const filtered = branchFilterId.trim();
+    if (filtered) return filtered;
+    return dayColumns[0]?.bookingBranchId ?? "";
+  }, [branchFilterId, dayColumns]);
+
+  const { rows: planRows, loading: planLoading } = usePracticalSlotPlan(primaryBranchId, open);
 
   const gridInstructorIds = useMemo(() => {
     const ids = new Set<string>();
@@ -754,6 +754,39 @@ export default function AdminDrivingDayModal({
     );
   };
 
+  /** Booked practical slots per instructor column (matches monthly busy-slot counts). */
+  const bookedSlotCountByColumn = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const col of dayColumns) {
+      counts.set(`${col.instructor.id}-${col.bookingBranchId}`, 0);
+    }
+    for (const item of items) {
+      if (item.date.slice(0, 10) !== day) continue;
+      const branchId = String(item.branch?.id ?? "").trim();
+      if (!branchId) continue;
+      const instructorId =
+        item.instructor.id != null && item.instructor.id > 0 ? String(item.instructor.id) : "";
+      if (instructorId) {
+        const key = `${instructorId}-${branchId}`;
+        if (counts.has(key)) {
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+        continue;
+      }
+      // Name-only fallback when the schedule row has no instructor id.
+      const nameNorm = (item.instructor.name ?? "").trim().toLowerCase();
+      if (!nameNorm) continue;
+      for (const col of dayColumns) {
+        if (String(col.bookingBranchId) !== branchId) continue;
+        if ((col.instructor.name ?? "").trim().toLowerCase() !== nameNorm) continue;
+        const key = `${col.instructor.id}-${col.bookingBranchId}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        break;
+      }
+    }
+    return counts;
+  }, [items, day, dayColumns]);
+
   return (
     <AppModal
       open={open}
@@ -888,7 +921,12 @@ export default function AdminDrivingDayModal({
                   <th className="sticky top-0 left-0 z-40 bg-card text-left text-primary font-semibold px-3 py-2 border-r border-b border-primary/20 min-w-[4.5rem] shadow-[1px_0_0_0_hsl(var(--primary)/0.15)]">
                     {t("adminDrivingDayModalTimeCol")}
                   </th>
-                  {dayColumns.map((col) => (
+                  {dayColumns.map((col) => {
+                    const columnSlotCount =
+                      bookedSlotCountByColumn.get(
+                        `${col.instructor.id}-${col.bookingBranchId}`,
+                      ) ?? 0;
+                    return (
                     <th
                       key={`${col.instructor.id}-${col.bookingBranchId}`}
                       className="sticky top-0 z-30 bg-card text-center text-xs font-medium text-primary/90 px-1.5 py-1.5 border-r border-b border-primary/10 last:border-r-0 min-w-[8.5rem] max-w-[13rem] shadow-[0_1px_0_0_hsl(var(--primary)/0.2)]"
@@ -906,6 +944,13 @@ export default function AdminDrivingDayModal({
                           {col.showBranchCode ? (
                             <span className="ml-1 font-semibold text-primary/80">{col.branchCode}</span>
                           ) : null}
+                        </span>
+                        <span
+                          className="shrink-0 tabular-nums text-[11px] font-semibold text-primary/70"
+                          title={`${columnSlotCount} ${t("adminDrivingCellLessonsSuffix")}`}
+                          aria-label={`${columnSlotCount} ${t("adminDrivingCellLessonsSuffix")}`}
+                        >
+                          {columnSlotCount}
                         </span>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -930,7 +975,8 @@ export default function AdminDrivingDayModal({
                         </Tooltip>
                       </div>
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>

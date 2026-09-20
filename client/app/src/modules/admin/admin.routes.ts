@@ -97,6 +97,7 @@ export const adminRoutes: readonly AppRoute[] = [
   { path: "/admin/director/km/records", component: DirectorKmPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/km", component: DirectorKmPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/salary/records", component: DirectorSalaryPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
+  { path: "/admin/director/salary/card", component: DirectorSalaryPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/salary", component: DirectorSalaryPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/repair/records", component: DirectorRepairPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/director/repair", component: DirectorRepairPage, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },

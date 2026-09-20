@@ -8,6 +8,11 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
   const { t } = useLang();
   const titleId = useId();
   const [open, setOpen] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
 
   useEffect(() => {
     if (!open) return;
@@ -23,6 +28,18 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
     };
   }, [open]);
 
+  if (failed) {
+    return (
+      <div
+        className="mb-5 flex min-h-32 w-full items-center justify-center rounded-md border border-dashed border-border bg-muted/40 px-4 py-8 text-center text-sm text-muted-foreground"
+        role="img"
+        aria-label={alt}
+      >
+        {t("examQuizImageUnavailable")}
+      </div>
+    );
+  }
+
   return (
     <>
       <button
@@ -37,6 +54,7 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
           className="max-h-64 sm:max-h-80 max-w-full w-auto object-contain pointer-events-none"
           loading="lazy"
           decoding="async"
+          onError={() => setFailed(true)}
         />
       </button>
 
@@ -68,6 +86,10 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
                   src={url}
                   alt={alt}
                   className="h-full w-full max-h-full max-w-full object-contain rounded-md shadow-2xl"
+                  onError={() => {
+                    setFailed(true);
+                    setOpen(false);
+                  }}
                 />
               </div>
             </div>,

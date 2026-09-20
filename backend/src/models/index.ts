@@ -42,6 +42,7 @@ import { PetrolConsumption } from './petrol-consumption.model';
 import { PetrolExpense } from './petrol-expense.model';
 import { PetrolExpenseRequest } from './petrol-expense-request.model';
 import { SalaryPayment } from './salary-payment.model';
+import { SalaryCardTransfer } from './salary-card-transfer.model';
 import { DirectorOption } from './director-option.model';
 import { DirectorCashEntry } from './director-cash-entry.model';
 import { DirectorExpense } from './director-expense.model';
@@ -192,6 +193,19 @@ User.hasMany(SalaryPayment, {
 });
 SalaryPayment.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
+User.hasMany(SalaryCardTransfer, {
+  foreignKey: 'instructorUserId',
+  sourceKey: 'id',
+  as: 'salaryCardTransfersAsInstructor',
+});
+SalaryCardTransfer.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+User.hasMany(SalaryCardTransfer, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'salaryCardTransfersCreated',
+});
+SalaryCardTransfer.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
 User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -280,6 +294,7 @@ export {
   PetrolExpense,
   PetrolExpenseRequest,
   SalaryPayment,
+  SalaryCardTransfer,
   DirectorOption,
   DirectorCashEntry,
   DirectorExpense,
@@ -1046,6 +1061,112 @@ async function ensureSalaryPaymentsTable(): Promise<void> {
         ON UPDATE CASCADE ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+}
+
+async function ensureSalaryCardTransfersTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_card_transfers'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length === 0) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] Creating table salary_card_transfers …');
+    await sequelize.query(`
+      CREATE TABLE \`salary_card_transfers\` (
+        \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`instructor_user_id\` INT UNSIGNED NOT NULL,
+        \`instructor_name\` VARCHAR(255) NOT NULL,
+        \`amount_amd\` INT UNSIGNED NOT NULL,
+        \`auto_monthly\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`notes\` TEXT NULL,
+        \`created_by_user_id\` INT UNSIGNED NULL,
+        \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`salary_card_transfers_instructor_uidx\` (\`instructor_user_id\`),
+        CONSTRAINT \`salary_card_transfers_instructor_fk\` FOREIGN KEY (\`instructor_user_id\`) REFERENCES \`users\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE RESTRICT,
+        CONSTRAINT \`salary_card_transfers_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    return;
+  }
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_card_transfers'`,
+    { type: QueryTypes.SELECT },
+  );
+  const colSet = new Set(cols.map((c) => c.COLUMN_NAME));
+
+  if (!colSet.has('auto_monthly')) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] salary_card_transfers: add auto_monthly …');
+    await sequelize.query(`
+      ALTER TABLE \`salary_card_transfers\`
+        ADD COLUMN \`auto_monthly\` TINYINT(1) NOT NULL DEFAULT 1 AFTER \`amount_amd\`
+    `);
+  }
+
+  if (colSet.has('date')) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] salary_card_transfers: drop legacy date column …');
+    // Keep one row per instructor (latest id) before unique index.
+    await sequelize.query(`
+      DELETE t1 FROM \`salary_card_transfers\` t1
+      INNER JOIN \`salary_card_transfers\` t2
+        ON t1.\`instructor_user_id\` = t2.\`instructor_user_id\` AND t1.\`id\` < t2.\`id\`
+    `);
+    await sequelize.query(`ALTER TABLE \`salary_card_transfers\` DROP COLUMN \`date\``);
+  }
+
+  const idx = await sequelize.query<{ INDEX_NAME: string }>(
+    `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'salary_card_transfers'
+       AND INDEX_NAME = 'salary_card_transfers_instructor_uidx'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (idx.length === 0) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] salary_card_transfers: unique instructor index …');
+    await sequelize.query(`
+      DELETE t1 FROM \`salary_card_transfers\` t1
+      INNER JOIN \`salary_card_transfers\` t2
+        ON t1.\`instructor_user_id\` = t2.\`instructor_user_id\` AND t1.\`id\` < t2.\`id\`
+    `);
+    await sequelize.query(`
+      ALTER TABLE \`salary_card_transfers\`
+        ADD UNIQUE KEY \`salary_card_transfers_instructor_uidx\` (\`instructor_user_id\`)
+    `);
+  }
+
+  // Drop old composite date index if present.
+  const oldIdx = await sequelize.query<{ INDEX_NAME: string }>(
+    `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'salary_card_transfers'
+       AND INDEX_NAME = 'salary_card_transfers_instructor_date_idx'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (oldIdx.length > 0) {
+    await sequelize.query(
+      `ALTER TABLE \`salary_card_transfers\` DROP INDEX \`salary_card_transfers_instructor_date_idx\``,
+    );
+  }
+  const dateIdx = await sequelize.query<{ INDEX_NAME: string }>(
+    `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'salary_card_transfers'
+       AND INDEX_NAME = 'salary_card_transfers_date_idx'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (dateIdx.length > 0) {
+    await sequelize.query(`ALTER TABLE \`salary_card_transfers\` DROP INDEX \`salary_card_transfers_date_idx\``);
+  }
 }
 
 async function ensurePetrolConsumptionsTable(): Promise<void> {
@@ -2741,6 +2862,7 @@ export async function syncModels(): Promise<void> {
   await ensurePetrolConsumptionsNullableCarAndInstructor();
   await ensureInstructorKmLogsTable();
   await ensureSalaryPaymentsTable();
+  await ensureSalaryCardTransfersTable();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
   await ensureBookingsPaymentNotesAndReminderAtColumns();

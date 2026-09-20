@@ -140,6 +140,8 @@ export type DirectorSalaryReportRow = {
   excludedLessonsCount: number;
   ratePerLessonAmd: number;
   totalAmd: number;
+  /** Configured monthly card amount when auto-monthly is on. Note only - not deducted. */
+  cardTransferAmd: number | null;
   paid: {
     paymentId: number;
     title: string;
@@ -199,6 +201,16 @@ export type DirectorSalaryPayment = {
   notes: string | null;
   createdAtIso: string;
   createdByName: string | null;
+};
+
+export type DirectorSalaryCardTransfer = {
+  id: number;
+  instructorUserId: number;
+  instructorName: string;
+  amountAmd: number;
+  autoMonthly: boolean;
+  notes: string | null;
+  createdAtIso: string;
 };
 
 export type DirectorRevenue = {

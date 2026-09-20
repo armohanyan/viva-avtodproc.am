@@ -1,0 +1,23 @@
+---
+description: Every new admin/director data table must include search by default
+alwaysApply: true
+---
+
+# Tables always include search
+
+When adding a **new table** (admin list, director report, modal grid, or custom `DirectorTable*`), ship **search in the first version**. Do not leave search as a follow-up.
+
+## Required
+
+- Add a search input above the table (prefer `DataTableToolbar`, or the page’s existing filter bar like `AdminDrivingFilters`).
+- Wire it so typing filters visible rows/columns immediately.
+- Cover the fields users look up (name, phone, date, status, etc.).
+- Prefer empty query = show all; non-empty = case-insensitive substring match.
+- For `DirectorDataTable` / `useDirectorTable`, set `searchValue` on searchable columns (toolbar is already built in).
+- For custom tables, add local `search` state + filtered rows before render.
+
+## Do not
+
+- Ship a new data table without a search box.
+- Rely only on browser Find (Ctrl+F).
+- Hide search behind an extra toggle or settings panel.

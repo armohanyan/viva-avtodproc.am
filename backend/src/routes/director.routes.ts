@@ -55,6 +55,11 @@ router.get('/salary-payments', AdminSalaryController.listPayments);
 router.post('/salary-payments', AdminSalaryController.createPayment);
 router.delete('/salary-payments/:id', AdminSalaryController.removePayment);
 
+router.get('/salary-card-transfers', AdminSalaryController.listCardTransfers);
+router.post('/salary-card-transfers', AdminSalaryController.createCardTransfer);
+router.patch('/salary-card-transfers/:id', AdminSalaryController.updateCardTransfer);
+router.delete('/salary-card-transfers/:id', AdminSalaryController.removeCardTransfer);
+
 router.get('/revenues', DirectorController.listRevenues);
 router.get('/revenues/chart', DirectorController.revenueChart);
 router.post('/revenues', DirectorController.createRevenue);

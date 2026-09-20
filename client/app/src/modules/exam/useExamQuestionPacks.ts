@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ExamQuestion, ExamQuizMode } from "src/data/examSampleQuestions";
 import { subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
+import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { vivaApiJson } from "src/lib/vivaApi";
 
 type ExamDto = {
@@ -15,6 +16,7 @@ type ExamDto = {
 };
 
 function mapDto(q: ExamDto): ExamQuestion {
+  const image = sameOriginStaffUploadUrl(q.imageUrl ?? null);
   return {
     id: q.id,
     text: q.text,
@@ -23,7 +25,7 @@ function mapDto(q: ExamDto): ExamQuestion {
     correctIndex: q.correctIndex,
     category: q.category,
     topicId: q.topicId,
-    imageUrl: q.imageUrl ?? undefined,
+    imageUrl: image ?? undefined,
   };
 }
 

@@ -101,3 +101,48 @@ export function filterInstructorsBySearch<T extends { name: string }>(
   if (!q) return [...instructors];
   return instructors.filter((i) => (i.name ?? "").toLowerCase().includes(q));
 }
+
+/**
+ * Instructor name match, plus instructors who have a same-day booking whose
+ * student name/phone matches the query (day graphic search).
+ */
+export function filterInstructorsBySearchOrStudentBooking<
+  T extends { id: string | number; name: string },
+>(
+  instructors: readonly T[],
+  search: string,
+  bookings: readonly {
+    instructor: { id: number | null; name: string };
+    student: { name: string; phone: string | null; phone2?: string | null };
+  }[],
+): T[] {
+  const q = search.trim().toLowerCase();
+  if (!q) return [...instructors];
+
+  const matchedIds = new Set<string>();
+  const matchedNames = new Set<string>();
+  for (const ins of instructors) {
+    if ((ins.name ?? "").toLowerCase().includes(q)) {
+      matchedIds.add(String(ins.id));
+      matchedNames.add((ins.name ?? "").trim().toLowerCase());
+    }
+  }
+  for (const b of bookings) {
+    const hay = [b.student.name, b.student.phone, b.student.phone2]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    if (!hay.includes(q)) continue;
+    if (b.instructor.id != null && b.instructor.id > 0) {
+      matchedIds.add(String(b.instructor.id));
+    } else {
+      const n = (b.instructor.name ?? "").trim().toLowerCase();
+      if (n) matchedNames.add(n);
+    }
+  }
+
+  return instructors.filter((ins) => {
+    if (matchedIds.has(String(ins.id))) return true;
+    return matchedNames.has((ins.name ?? "").trim().toLowerCase());
+  });
+}

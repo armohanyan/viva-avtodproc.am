@@ -232,10 +232,21 @@ export default class ExamQuestionService {
     const raw = topicId.trim();
     if (!raw) return [];
     const slot = Number.parseInt(raw, 10);
-    const slug =
-      Number.isInteger(slot) && slot >= 1 && slot <= SIGN_SLOT_TO_CATEGORY_SLUG.length
-        ? SIGN_SLOT_TO_CATEGORY_SLUG[slot - 1]
-        : raw;
+    const slotIndex =
+      Number.isInteger(slot) && slot >= 1 && slot <= SIGN_SLOT_TO_CATEGORY_SLUG.length ? slot - 1 : -1;
+    const slug = slotIndex >= 0 ? SIGN_SLOT_TO_CATEGORY_SLUG[slotIndex] : raw;
+
+    // Prefer meta card order (natural sign codes: 1.1, 1.2, …) over numeric id sort.
+    const meta = await this.getMeta();
+    const metaIndex =
+      slotIndex >= 0 ? slotIndex : SIGN_CATEGORY_SLUGS.findIndex((s) => s === slug);
+    if (metaIndex >= 0) {
+      const orderedIds = meta.signsCardQuestionIds[metaIndex] ?? [];
+      if (orderedIds.length) {
+        return this.listPackByIdsOrdered(orderedIds);
+      }
+    }
+
     const store = await readStore();
     return store.questions.filter((q) => q.category === 'signs' && (q.topicId ?? '') === slug);
   }
@@ -245,10 +256,21 @@ export default class ExamQuestionService {
     const raw = topicId.trim();
     if (!raw) return [];
     const slot = Number.parseInt(raw, 10);
-    const tid =
-      Number.isInteger(slot) && slot >= 1 && slot <= THEMATIC_SLOT_TO_TOPIC_ID.length
-        ? THEMATIC_SLOT_TO_TOPIC_ID[slot - 1]
-        : raw;
+    const slotIndex =
+      Number.isInteger(slot) && slot >= 1 && slot <= THEMATIC_SLOT_TO_TOPIC_ID.length ? slot - 1 : -1;
+    const tid = slotIndex >= 0 ? THEMATIC_SLOT_TO_TOPIC_ID[slotIndex] : raw;
+
+    // Prefer meta card order (1, 2, 3, …) over store-wide numeric id sort (1, 10, 100, …).
+    const meta = await this.getMeta();
+    const metaIndex =
+      slotIndex >= 0 ? slotIndex : THEMATIC_TOPIC_IDS.findIndex((id) => id === tid);
+    if (metaIndex >= 0) {
+      const orderedIds = meta.thematicCardQuestionIds[metaIndex] ?? [];
+      if (orderedIds.length) {
+        return this.listPackByIdsOrdered(orderedIds);
+      }
+    }
+
     const store = await readStore();
     return store.questions.filter(
       (q) => (q.topicId ?? '') === tid && (q.category === 'rules' || q.category === 'safety'),

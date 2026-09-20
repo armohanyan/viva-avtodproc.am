@@ -14,6 +14,7 @@ import type {
   DirectorRepair,
   DirectorRevenue,
   DirectorSalary,
+  DirectorSalaryCardTransfer,
   DirectorSalaryEmployeeKind,
   DirectorSalaryLessons,
   DirectorSalaryPayment,
@@ -305,6 +306,43 @@ export async function createDirectorSalaryPayment(body: {
 
 export async function deleteDirectorSalaryPayment(id: number): Promise<void> {
   await vivaApiJson(`${BASE}/salary-payments/${id}`, { method: "DELETE" });
+}
+
+export async function fetchDirectorSalaryCardTransfers(): Promise<{
+  items: DirectorSalaryCardTransfer[];
+}> {
+  return vivaApiJson<{ items: DirectorSalaryCardTransfer[] }>(`${BASE}/salary-card-transfers`);
+}
+
+export async function createDirectorSalaryCardTransfer(body: {
+  instructorUserId: number;
+  amountAmd: number;
+  autoMonthly?: boolean;
+  notes?: string | null;
+}): Promise<DirectorSalaryCardTransfer> {
+  return vivaApiJson<DirectorSalaryCardTransfer>(`${BASE}/salary-card-transfers`, {
+    method: "POST",
+    body,
+  });
+}
+
+export async function updateDirectorSalaryCardTransfer(
+  id: number,
+  body: {
+    instructorUserId: number;
+    amountAmd: number;
+    autoMonthly?: boolean;
+    notes?: string | null;
+  },
+): Promise<DirectorSalaryCardTransfer> {
+  return vivaApiJson<DirectorSalaryCardTransfer>(`${BASE}/salary-card-transfers/${id}`, {
+    method: "PATCH",
+    body,
+  });
+}
+
+export async function deleteDirectorSalaryCardTransfer(id: number): Promise<void> {
+  await vivaApiJson(`${BASE}/salary-card-transfers/${id}`, { method: "DELETE" });
 }
 
 export async function fetchDirectorRevenues(q: string, isLegacy: boolean): Promise<DirectorRevenue[]> {

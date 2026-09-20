@@ -28,6 +28,13 @@ const otherSchema = z.object({
 
 const createSchema = z.discriminatedUnion('kind', [calculatedSchema, otherSchema]);
 
+const cardTransferSchema = z.object({
+  instructorUserId: z.coerce.number().int().positive(),
+  amountAmd: z.coerce.number().int().positive(),
+  autoMonthly: z.boolean().optional().default(true),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
 function staffUserId(req: StaffRequest): number | undefined {
   const id = req.staff?.sub != null ? Number(req.staff.sub) : undefined;
   return Number.isFinite(id) && id! > 0 ? id : undefined;
@@ -95,6 +102,44 @@ export default class AdminSalaryController {
   static async removePayment(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       await AdminSalaryService.removePayment(Number(req.params.id));
+      res.sendStatus(204);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async listCardTransfers(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const data = await AdminSalaryService.listCardTransfers();
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async createCardTransfer(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(cardTransferSchema, req.body);
+      const created = await AdminSalaryService.createCardTransfer(body, staffUserId(req));
+      SuccessHandlerUtil.handleAdd(res, next, created);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async updateCardTransfer(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const body = parseBody(cardTransferSchema, req.body);
+      const updated = await AdminSalaryService.updateCardTransfer(Number(req.params.id), body);
+      SuccessHandlerUtil.handleUpdate(res, next, updated);
+    } catch (e) {
+      next(e);
+    }
+  }
+
+  static async removeCardTransfer(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      await AdminSalaryService.removeCardTransfer(Number(req.params.id));
       res.sendStatus(204);
     } catch (e) {
       next(e);
