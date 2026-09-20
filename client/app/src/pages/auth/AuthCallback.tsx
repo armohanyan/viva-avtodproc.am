@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { tryRefreshAccessToken } from "src/lib/authSession";
 import { loadAccountSession } from "src/modules/accounts/account.session";
+import { absWouterHref } from "src/lib/wouterFullPath";
 
 type CallbackStatus = "loading" | "success" | "error";
 
@@ -26,12 +27,8 @@ function resolveDest(
   return fallback;
 }
 
-/** Hard navigation so nested wouter bases / Strict Mode cleanups cannot cancel the redirect. */
-function goToPanel(dest: string): void {
-  window.location.replace(dest);
-}
-
 export default function AuthCallback() {
+  const [, setLocation] = useLocation();
   const { t } = useLang();
   const { showToast } = useToast();
   const { signIn } = useAccount();
@@ -42,7 +39,6 @@ export default function AuthCallback() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
 
   useEffect(() => {
-    // OAuth returns via full page load; Strict Mode double-invoke must not run twice.
     if (ranRef.current) return;
     ranRef.current = true;
 
@@ -96,7 +92,7 @@ export default function AuthCallback() {
         setStatus("success");
         showToast(t("socialAuthSuccess"), "success");
         const dest = resolveDest(session.accountType, safeRedirectCandidate);
-        window.setTimeout(() => goToPanel(dest), 400);
+        window.setTimeout(() => setLocation(absWouterHref(dest)), 400);
       })();
       return;
     }
@@ -115,14 +111,14 @@ export default function AuthCallback() {
       setStatus("success");
       showToast(t("socialAuthSuccess"), "success");
       const dest = resolveDest(accountType, safeRedirectCandidate);
-      window.setTimeout(() => goToPanel(dest), 400);
+      window.setTimeout(() => setLocation(absWouterHref(dest)), 400);
       return;
     }
 
     setStatus("error");
     setMessage(t("socialAuthMissingPayload"));
     showToast(t("socialAuthFailed"), "error");
-  }, [params, showToast, signIn, t]);
+  }, [params, setLocation, showToast, signIn, t]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">

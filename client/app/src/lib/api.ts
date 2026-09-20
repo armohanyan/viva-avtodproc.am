@@ -1,5 +1,6 @@
 import { API_V1_PREFIX } from "src/constants/api.constants";
 import { getApiBaseUrl } from "src/lib/apiBaseUrl";
+import { memoryAccessTokenLooksValid } from "src/lib/accessTokenMemory";
 import { tryRefreshAccessToken } from "src/lib/authSession";
 import { revokeClientSessionAfterAuthorizationFailure } from "src/lib/authUnauthorizedRecovery";
 import { beginGlobalApiRequest, endGlobalApiRequest } from "src/lib/globalApiRequestLoading";
@@ -331,13 +332,16 @@ export async function apiFetch(path: string, init: ApiJsonInit = {}): Promise<Re
 					return apiFetch(path, { ...init, _authRetry: true, headers: retryHeaders });
 				}
 			}
-			// Do not wipe a brand-new login if this 401 belonged to a stale pre-login request
-			// (missing/old bearer). Only revoke when the failing token is still the current one.
+			// Keep a fresher login token. Do not call /auth/logout here (that was killing new cookies).
 			const latest = loadAccountSession()?.accessToken;
 			const failedAuth = hdrs.get("Authorization");
 			const failedToken =
 				failedAuth?.startsWith("Bearer ") ? failedAuth.slice("Bearer ".length).trim() : null;
-			if (latest && latest !== failedToken) {
+			if (
+				latest &&
+				memoryAccessTokenLooksValid(10) &&
+				(!failedToken || latest !== failedToken)
+			) {
 				return res;
 			}
 			revokeClientSessionAfterAuthorizationFailure();

@@ -114,59 +114,84 @@ export default function AdminBranches() {
     }
   };
 
-  const handleEditBranch = async (e: React.FormEvent) => {
+  const readBranchFormValues = (form: HTMLFormElement) => {
+    const fd = new FormData(form);
+    const str = (key: string) => String(fd.get(key) ?? "").trim();
+    return {
+      cityId: str("cityId"),
+      name: str("name"),
+      label: str("label"),
+      mapUrl: str("mapUrl"),
+      phone: str("phone"),
+      email: str("email"),
+      workHours: str("workHours"),
+    };
+  };
+
+  const handleEditBranch = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!editBranch) return;
 
-    if (!editBranch.name.trim() || !editBranch.mapUrl.trim()) {
+    // Form fields all have `name` attrs - FormData is the source of truth (including clears).
+    const values = readBranchFormValues(e.currentTarget);
+    const cityId = values.cityId || editBranch.cityId;
+    const name = values.name;
+    const mapUrl = values.mapUrl;
+
+    if (!name || !mapUrl) {
       showToast(t("fillRequired"), "error");
       return;
     }
 
-    if (!cities.some((c) => c.id === editBranch.cityId)) {
+    if (!cities.some((c) => c.id === cityId)) {
       showToast(t("branchCityInvalidToast"), "error");
       return;
     }
 
     try {
       await updateBranch(editBranch.id, {
-        name: editBranch.name.trim(),
-        cityId: editBranch.cityId,
-        mapUrl: editBranch.mapUrl.trim(),
-        label: editBranch.label?.trim() ?? "",
-        phone: editBranch.phone?.trim() || undefined,
-        email: editBranch.email?.trim() || undefined,
-        workHours: editBranch.workHours?.trim() || undefined,
+        name,
+        cityId,
+        mapUrl,
+        label: values.label,
+        phone: values.phone,
+        email: values.email,
+        workHours: values.workHours,
       });
 
       setEditBranch(null);
       showToast(t("branchUpdatedToast"), "success");
-    } catch (e) {
-      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
+    } catch (err) {
+      showToast(getApiErrorMessage(err) || t("fillRequired"), "error");
     }
   };
 
-  const handleAddBranch = async (e: React.FormEvent) => {
+  const handleAddBranch = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!newBranch.name.trim() || !newBranch.mapUrl.trim()) {
+    const values = readBranchFormValues(e.currentTarget);
+    const cityId = values.cityId || newBranch.cityId;
+    const name = values.name;
+    const mapUrl = values.mapUrl;
+
+    if (!name || !mapUrl) {
       showToast(t("fillRequired"), "error");
       return;
     }
-    if (!cities.some((c) => c.id === newBranch.cityId)) {
+    if (!cities.some((c) => c.id === cityId)) {
       showToast(t("branchCityInvalidToast"), "error");
       return;
     }
     try {
       await addBranch({
-        name: newBranch.name.trim(),
-        cityId: newBranch.cityId,
-        mapUrl: newBranch.mapUrl.trim(),
-        label: newBranch.label.trim() || undefined,
-        phone: newBranch.phone.trim() || undefined,
-        email: newBranch.email.trim() || undefined,
-        workHours: newBranch.workHours.trim() || undefined,
+        name,
+        cityId,
+        mapUrl,
+        label: values.label,
+        phone: values.phone,
+        email: values.email,
+        workHours: values.workHours,
       });
       setAddBranchOpen(false);
       setNewBranch({
@@ -179,8 +204,8 @@ export default function AdminBranches() {
         workHours: "",
       });
       showToast(t("branchCreatedToast"), "success");
-    } catch (e) {
-      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
+    } catch (err) {
+      showToast(getApiErrorMessage(err) || t("fillRequired"), "error");
     }
   };
 
@@ -580,10 +605,11 @@ export default function AdminBranches() {
         }
       >
         {editBranch && (
-          <form id={editBranchFormId} onSubmit={handleEditBranch} className="space-y-3">
+          <form id={editBranchFormId} onSubmit={handleEditBranch} className="space-y-3" autoComplete="off">
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchCityLabel")} *</label>
                 <select
+                  name="cityId"
                   value={editBranch.cityId}
                   onChange={(e) => setEditBranch({ ...editBranch, cityId: e.target.value })}
                   className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -599,6 +625,7 @@ export default function AdminBranches() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchAddressLabel")} *</label>
                 <Input
+                  name="name"
                   value={editBranch.name}
                   onChange={(e) => setEditBranch({ ...editBranch, name: e.target.value })}
                   className="h-10"
@@ -608,6 +635,7 @@ export default function AdminBranches() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchLabelField")}</label>
                 <Input
+                  name="label"
                   value={editBranch.label ?? ""}
                   onChange={(e) => setEditBranch({ ...editBranch, label: e.target.value })}
                   className="h-10"
@@ -617,6 +645,7 @@ export default function AdminBranches() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchMapEmbedUrl")} *</label>
                 <Input
+                  name="mapUrl"
                   value={editBranch.mapUrl}
                   onChange={(e) => setEditBranch({ ...editBranch, mapUrl: e.target.value })}
                   placeholder={t("placeholderMapEmbedUrl")}
@@ -626,6 +655,9 @@ export default function AdminBranches() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phone")}</label>
                 <Input
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
                   value={editBranch.phone ?? ""}
                   onChange={(e) => setEditBranch({ ...editBranch, phone: e.target.value })}
                   className="h-10"
@@ -634,6 +666,9 @@ export default function AdminBranches() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("email")}</label>
                 <Input
+                  name="email"
+                  type="email"
+                  autoComplete="email"
                   value={editBranch.email ?? ""}
                   onChange={(e) => setEditBranch({ ...editBranch, email: e.target.value })}
                   className="h-10"
@@ -642,6 +677,7 @@ export default function AdminBranches() {
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("workHours")}</label>
                 <Input
+                  name="workHours"
                   value={editBranch.workHours ?? ""}
                   onChange={(e) => setEditBranch({ ...editBranch, workHours: e.target.value })}
                   className="h-10"
@@ -667,10 +703,11 @@ export default function AdminBranches() {
           </div>
         }
       >
-        <form id={addBranchFormId} onSubmit={handleAddBranch} className="space-y-3">
+        <form id={addBranchFormId} onSubmit={handleAddBranch} className="space-y-3" autoComplete="off">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchCityLabel")} *</label>
               <select
+                name="cityId"
                 value={newBranch.cityId}
                 onChange={(e) => setNewBranch({ ...newBranch, cityId: e.target.value })}
                 className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -686,6 +723,7 @@ export default function AdminBranches() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchAddressLabel")} *</label>
               <Input
+                name="name"
                 value={newBranch.name}
                 onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
                 className="h-10"
@@ -695,6 +733,7 @@ export default function AdminBranches() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchLabelField")}</label>
               <Input
+                name="label"
                 value={newBranch.label}
                 onChange={(e) => setNewBranch({ ...newBranch, label: e.target.value })}
                 className="h-10"
@@ -704,6 +743,7 @@ export default function AdminBranches() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("branchMapEmbedUrl")} *</label>
               <Input
+                name="mapUrl"
                 value={newBranch.mapUrl}
                 onChange={(e) => setNewBranch({ ...newBranch, mapUrl: e.target.value })}
                 placeholder={t("placeholderMapEmbedUrl")}
@@ -712,15 +752,34 @@ export default function AdminBranches() {
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("phone")}</label>
-              <Input value={newBranch.phone} onChange={(e) => setNewBranch({ ...newBranch, phone: e.target.value })} className="h-10" />
+              <Input
+                name="phone"
+                type="tel"
+                autoComplete="tel"
+                value={newBranch.phone}
+                onChange={(e) => setNewBranch({ ...newBranch, phone: e.target.value })}
+                className="h-10"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("email")}</label>
-              <Input value={newBranch.email} onChange={(e) => setNewBranch({ ...newBranch, email: e.target.value })} className="h-10" />
+              <Input
+                name="email"
+                type="email"
+                autoComplete="email"
+                value={newBranch.email}
+                onChange={(e) => setNewBranch({ ...newBranch, email: e.target.value })}
+                className="h-10"
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">{t("workHours")}</label>
-              <Input value={newBranch.workHours} onChange={(e) => setNewBranch({ ...newBranch, workHours: e.target.value })} className="h-10" />
+              <Input
+                name="workHours"
+                value={newBranch.workHours}
+                onChange={(e) => setNewBranch({ ...newBranch, workHours: e.target.value })}
+                className="h-10"
+              />
             </div>
         </form>
       </AppModal>
