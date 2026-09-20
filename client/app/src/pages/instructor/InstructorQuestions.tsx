@@ -143,7 +143,7 @@ export default function InstructorQuestions() {
 											href={`/instructor/questions/signs/${category.slotId}`}
 											className="flex items-center gap-3 p-4"
 										>
-											<div className="w-9 h-9 rounded-lg border border-border bg-muted/40 flex items-center justify-center shrink-0 text-foreground/70">
+											<div className="w-9 h-9 rounded-lg border border-primary/30 bg-primary/10 flex items-center justify-center shrink-0 text-foreground">
 												<Signpost className="w-5 h-5" aria-hidden />
 											</div>
 											<div className="min-w-0 flex-1">

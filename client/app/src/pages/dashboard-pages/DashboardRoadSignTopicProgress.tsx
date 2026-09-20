@@ -149,7 +149,7 @@ export default function DashboardRoadSignTopicProgress() {
 
               <div className="h-1.5 w-full rounded-full bg-accent mb-2">
                 <div
-                  className="h-1.5 rounded-full bg-blue-400 transition-all"
+                  className="h-1.5 rounded-full bg-primary transition-all"
                   style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }}
                 />
               </div>

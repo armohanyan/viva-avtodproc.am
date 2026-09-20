@@ -129,7 +129,7 @@ export default function DashboardRoadSigns() {
                 <Card className="group rounded-2xl border border-primary/30 bg-card transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5">
                   <Link href={href} className="block p-3.5 sm:p-4">
                     <div className="flex items-start gap-3 sm:gap-4">
-                      <div className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 bg-blue-50 border-blue-200 text-blue-700">
+                      <div className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 bg-primary/10 border-primary/30 text-foreground">
                         <Signpost className="w-5 h-5" aria-hidden />
                       </div>
 
@@ -142,7 +142,7 @@ export default function DashboardRoadSigns() {
                         </div>
 
                         <div className="mt-2.5 h-1.5 w-full rounded-full bg-accent overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-500 bg-blue-400/90" style={{ width: `${topicPct}%` }} />
+                          <div className="h-full rounded-full transition-all duration-500 bg-primary" style={{ width: `${topicPct}%` }} />
                         </div>
 
                         <div className="mt-2.5 flex items-center justify-between">
