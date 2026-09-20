@@ -10,17 +10,27 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { ResourceNotFoundError } = ErrorsUtil;
 
+/** Optional contact fields: allow clearing with null / empty string. */
+const optionalContactField = z.union([z.string(), z.null()]).optional();
+
 const createSchema = z.object({
   cityId: z.coerce.number().int().positive(),
   name: z.string().min(1),
   mapUrl: z.string().min(1),
-  label: z.string().optional(),
-  phone: z.string().optional(),
-  email: z.string().optional(),
-  workHours: z.string().optional(),
+  label: optionalContactField,
+  phone: optionalContactField,
+  email: optionalContactField,
+  workHours: optionalContactField,
 });
 
 const updateSchema = createSchema.partial();
+
+function normalizeContactField(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
 
 function toBranchJson(b: Awaited<ReturnType<typeof BranchService.list>>[number]) {
   return {
@@ -86,10 +96,10 @@ export default class BranchController {
       const body = parseBody(createSchema, req.body);
       const row = await BranchService.create({
         ...body,
-        label: body.label?.trim() ? body.label.trim() : null,
-        phone: body.phone ?? null,
-        email: body.email ?? null,
-        workHours: body.workHours ?? null,
+        label: normalizeContactField(body.label) ?? null,
+        phone: normalizeContactField(body.phone) ?? null,
+        email: normalizeContactField(body.email) ?? null,
+        workHours: normalizeContactField(body.workHours) ?? null,
       });
       SuccessHandlerUtil.handleAdd(res, next, toBranchJson(row));
     } catch (e) {
@@ -102,10 +112,10 @@ export default class BranchController {
       const body = parseBody(updateSchema, req.body);
       const row = await BranchService.update(Number(req.params.id), {
         ...body,
-        label: body.label === undefined ? undefined : body.label.trim() || null,
-        phone: body.phone === undefined ? undefined : body.phone ?? null,
-        email: body.email === undefined ? undefined : body.email ?? null,
-        workHours: body.workHours === undefined ? undefined : body.workHours ?? null,
+        label: normalizeContactField(body.label),
+        phone: normalizeContactField(body.phone),
+        email: normalizeContactField(body.email),
+        workHours: normalizeContactField(body.workHours),
       });
       if (!row) {
         return next(new ResourceNotFoundError('Branch not found', HttpStatusCodesUtil.NOT_FOUND));

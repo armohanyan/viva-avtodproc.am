@@ -177,18 +177,18 @@ export default class AuthService {
   }
 
   /**
-   * Returns new access + rotated refresh.
-   * `conflict` means a concurrent refresh already rotated the cookie - do not clear the browser cookie.
+   * Returns a new access token for a valid refresh cookie.
+   * Refresh tokens are not rotated (avoids multi-tab / parallel-refresh logout storms).
    */
   static async refreshWithPlain(
     refreshPlain: string,
-  ): Promise<{ status: 'ok'; tokens: AuthTokensDto } | { status: 'conflict' } | { status: 'invalid' }> {
-    const rotated = await RefreshTokenService.rotate(refreshPlain);
-    if (rotated.status !== 'ok') {
-      return rotated;
+  ): Promise<{ status: 'ok'; tokens: AuthTokensDto } | { status: 'invalid' }> {
+    const redeemed = await RefreshTokenService.redeem(refreshPlain);
+    if (redeemed.status !== 'ok') {
+      return redeemed;
     }
 
-    const user = await User.findByPk(rotated.userId);
+    const user = await User.findByPk(redeemed.userId);
     if (!user) {
       return { status: 'invalid' };
     }
@@ -207,7 +207,7 @@ export default class AuthService {
 
     return {
       status: 'ok',
-      tokens: { accessToken, user: toDto(user), refreshPlain: rotated.plain },
+      tokens: { accessToken, user: toDto(user), refreshPlain: redeemed.plain },
     };
   }
 

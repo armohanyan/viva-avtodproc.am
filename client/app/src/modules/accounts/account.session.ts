@@ -3,19 +3,52 @@ import type { AccountSessionUser, AccountType } from "./account.types";
 
 export const ACCOUNT_SESSION_STORAGE_KEY = "viva-account-session-v1";
 const STORAGE_KEY = ACCOUNT_SESSION_STORAGE_KEY;
+/** Access JWT only in sessionStorage (survives reload, cleared when the tab closes). */
+const ACCESS_TOKEN_SESSION_KEY = "viva-access-token-v1";
 
 function isAccountType(v: unknown): v is AccountType {
   return v === "super_admin" || v === "admin" || v === "instructor" || v === "student";
+}
+
+function readAccessTokenSession(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const t = sessionStorage.getItem(ACCESS_TOKEN_SESSION_KEY);
+    return t && t.length > 0 ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeAccessTokenSession(token: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (token) {
+      sessionStorage.setItem(ACCESS_TOKEN_SESSION_KEY, token);
+    } else {
+      sessionStorage.removeItem(ACCESS_TOKEN_SESSION_KEY);
+    }
+  } catch {
+    /* private mode / quota */
+  }
 }
 
 export function loadAccountSession(): AccountSessionUser | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const mem = getAccessTokenInMemory();
+    let mem = getAccessTokenInMemory();
+    if (!mem) {
+      const fromSession = readAccessTokenSession();
+      if (fromSession) {
+        setAccessTokenInMemory(fromSession);
+        mem = fromSession;
+      }
+    }
     if (!raw) {
       if (mem) {
         setAccessTokenInMemory(null);
+        writeAccessTokenSession(null);
       }
       return null;
     }
@@ -30,8 +63,9 @@ export function loadAccountSession(): AccountSessionUser | null {
     const hasPassword = typeof o.hasPassword === "boolean" ? o.hasPassword : undefined;
     const legacyStored =
       typeof o.accessToken === "string" && o.accessToken.length > 0 ? o.accessToken : undefined;
-    if (legacyStored && !mem) {
+    if (legacyStored && !getAccessTokenInMemory()) {
       setAccessTokenInMemory(legacyStored);
+      writeAccessTokenSession(legacyStored);
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -39,6 +73,7 @@ export function loadAccountSession(): AccountSessionUser | null {
           email,
           name: name || email.split("@")[0] || "User",
           accountType,
+          ...(hasPassword !== undefined ? { hasPassword } : {}),
         }),
       );
     }
@@ -60,6 +95,7 @@ export function saveAccountSession(user: AccountSessionUser) {
   if (typeof window === "undefined") return;
   if (user.accessToken) {
     setAccessTokenInMemory(user.accessToken);
+    writeAccessTokenSession(user.accessToken);
   }
   const persisted = {
     id: user.id,
@@ -75,6 +111,7 @@ export function saveAccountSession(user: AccountSessionUser) {
 export function clearAccountSession() {
   if (typeof window === "undefined") return;
   setAccessTokenInMemory(null);
+  writeAccessTokenSession(null);
   localStorage.removeItem(STORAGE_KEY);
   window.dispatchEvent(new CustomEvent("viva-account-session-updated"));
 }

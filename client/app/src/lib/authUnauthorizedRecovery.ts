@@ -1,4 +1,3 @@
-import { clearRefreshCookieBestEffort } from "src/lib/authSession";
 import { clearAccountSession } from "src/modules/accounts/account.session";
 
 let onSessionRevoked: (() => void) | null = null;
@@ -17,11 +16,13 @@ export function registerAuthSessionRevokedHandler(handler: () => void): () => vo
 }
 
 /**
- * Clears persisted auth and user data, clears the server refresh cookie, then notifies the app (navigation).
- * Call when the API returns 401 and refresh/retry cannot recover the session.
+ * Clears local auth state and notifies the app (navigation).
+ *
+ * Important: does NOT call `/auth/logout`. A parallel/stale 401 recovery must not revoke the
+ * browser's current refresh cookie (that was wiping brand-new logins). Explicit sign-out still
+ * clears the cookie via `signOut`.
  */
 export function revokeClientSessionAfterAuthorizationFailure(): void {
 	clearAccountSession();
-	clearRefreshCookieBestEffort();
 	onSessionRevoked?.();
 }
