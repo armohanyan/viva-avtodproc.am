@@ -440,7 +440,7 @@ export default function Home() {
                   key={i}
                   instructor={ins}
                   showBookButton={true}
-                  imageObjectFit="contain"
+                  imageObjectFit="cover"
                 />
               ))}
             </div>

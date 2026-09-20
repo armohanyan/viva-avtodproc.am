@@ -35,7 +35,7 @@ export default function Instructors() {
                 <InstructorCard
                   instructor={ins}
                   showBookButton={true}
-                  imageObjectFit="contain"
+                  imageObjectFit="cover"
                 />
               </Reveal>
             ))}

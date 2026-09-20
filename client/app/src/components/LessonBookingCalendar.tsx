@@ -1608,7 +1608,7 @@ export default function LessonBookingCalendar({
                         key={ins.id}
                         instructor={ins}
                         pickerMode
-                        imageObjectFit="contain"
+                        imageObjectFit="cover"
                         onPick={() => openInstructorBookingModal(ins.id)}
                       />
                     ))}
