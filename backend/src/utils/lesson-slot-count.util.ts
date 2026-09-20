@@ -278,6 +278,40 @@ export function salarySlotOccupiesGraphic(
 }
 
 /**
+ * Simple payment label for salary UI (only paid vs unpaid).
+ * Graphic hours always count; this only answers "did the student pay for this slot?".
+ */
+export function salaryGraphicPaymentStanding(
+  booking: PayableLessonBookingRow,
+  slot: PayableLessonSlotRow = {},
+): 'payable' | 'unpaid' {
+  if (isApprovedGiftBooking(booking)) return 'payable';
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return 'payable';
+
+  const resolved = resolveBookingPayment(booking);
+  const ps = resolved.paymentStatus;
+  if (ps === 'paid') return 'payable';
+  if (ps === 'partial') {
+    return Boolean(slot.paymentCovered) ? 'payable' : 'unpaid';
+  }
+  // unpaid / pending / failed / unknown
+  return 'unpaid';
+}
+
+export function legacyGraphicPaymentStanding(booking: PayableLessonBookingRow): 'payable' | 'unpaid' {
+  if (isApprovedGiftBooking(booking)) return 'payable';
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return 'payable';
+
+  const resolved = resolveBookingPayment(booking);
+  const ps = resolved.paymentStatus;
+  if (ps === 'paid') return 'payable';
+  if (ps === 'partial') {
+    return resolved.paidAmountAmd > 0 ? 'payable' : 'unpaid';
+  }
+  return 'unpaid';
+}
+
+/**
  * Slot counts toward director reports (salary, instructor-hours): payment-covered slots,
  * approved gifts, and prepaid/package lessons. Archived / cancelled / refunded are excluded.
  */

@@ -12,13 +12,11 @@ import { lessonEndUtcMs } from '../utils/lesson-datetime.util';
 import {
   findLegacyBookingsWithoutSlots,
   findSlotsInDateRange,
-  legacySalaryStanding,
+  legacyGraphicPaymentStanding,
+  salaryGraphicPaymentStanding,
   salarySlotOccupiesGraphic,
-  salarySlotStanding,
   slotCountFromTimeRange,
   SLOT_RESERVING_BOOKING_STATUSES,
-  type SalaryLessonStandingBucket,
-  type SalarySlotExcludeReason,
 } from '../utils/lesson-slot-count.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -68,17 +66,14 @@ export type SalaryReportRowDto = {
   employeeName: string;
   /**
    * Practical slots that occupy the driving graphic in this period.
-   * Salary total uses this count (same rule as Admin Driving daily cells).
+   * Salary total = this count × rate (same as Admin Driving daily cells).
    */
   lessonsCount: number;
-  /** Of those graphic slots: still unpaid (informational - does not reduce salary). */
+  /** Of those hours: student payment not complete. Does not reduce salary. */
   unpaidLessonsCount: number;
-  /** Of those graphic slots: partial and not paymentCovered (informational). */
+  /** Always 0 - kept for API compatibility. */
   partialUnpaidLessonsCount: number;
-  /**
-   * Of those graphic slots: flagged (cancelled/missed completion, zero price, …).
-   * Informational only - still included in lessonsCount / salary total.
-   */
+  /** Always 0 - kept for API compatibility. */
   excludedLessonsCount: number;
   ratePerLessonAmd: number;
   totalAmd: number;
@@ -129,10 +124,8 @@ export type SalaryLessonRowDto = {
   units: number;
   /** Student name for practical lessons; theory group name for sessions. */
   label: string;
-  /** Payment standing for practical slots; theory sessions are always payable. */
-  paymentBucket: SalaryLessonStandingBucket;
-  /** Present when paymentBucket is `excluded`. */
-  excludeReason?: SalarySlotExcludeReason | null;
+  /** Only paid vs unpaid for the salary UI. */
+  paymentBucket: 'payable' | 'unpaid';
 };
 
 export type SalaryLessonsDto = {
@@ -148,11 +141,10 @@ export type SalaryLessonsDto = {
 };
 
 type PracticalLessonBreakdown = {
-  /** All graphic-occupying practical slots (= salary units). */
+  /** All graphic-occupying practical slots (= salary hours). */
   graphic: number;
+  /** Of those hours: student has not fully paid. */
   unpaid: number;
-  partialUncovered: number;
-  flagged: number;
 };
 
 export type CreateCalculatedSalaryInput = {
@@ -215,19 +207,17 @@ function paymentRowToDto(row: SalaryPayment, createdBy?: User | null): SalaryPay
 }
 
 function emptyBreakdown(): PracticalLessonBreakdown {
-  return { graphic: 0, unpaid: 0, partialUncovered: 0, flagged: 0 };
+  return { graphic: 0, unpaid: 0 };
 }
 
 function addGraphicStanding(
   breakdown: PracticalLessonBreakdown,
-  bucket: SalaryLessonStandingBucket,
+  payment: 'payable' | 'unpaid',
   units: number,
 ): void {
   if (units <= 0) return;
   breakdown.graphic += units;
-  if (bucket === 'unpaid') breakdown.unpaid += units;
-  else if (bucket === 'partial_uncovered') breakdown.partialUncovered += units;
-  else if (bucket === 'excluded') breakdown.flagged += units;
+  if (payment === 'unpaid') breakdown.unpaid += units;
 }
 
 /** Practical lesson slot breakdown per instructor in the date range. */
@@ -248,19 +238,19 @@ async function practicalLessonBreakdowns(
   const counts = new Map<number, PracticalLessonBreakdown>();
   for (const slot of slots) {
     if (!salarySlotOccupiesGraphic(slot.booking)) continue;
-    const { bucket } = salarySlotStanding(slot.booking, slot);
+    const payment = salaryGraphicPaymentStanding(slot.booking, slot);
     const row = counts.get(slot.instructorUserId) ?? emptyBreakdown();
-    addGraphicStanding(row, bucket, 1);
+    addGraphicStanding(row, payment, 1);
     counts.set(slot.instructorUserId, row);
   }
   for (const row of legacyBookings) {
     if (!salarySlotOccupiesGraphic(row)) continue;
-    const { bucket } = legacySalaryStanding(row);
+    const payment = legacyGraphicPaymentStanding(row);
     const iid = row.instructorUserId as number;
     const d = String(row.dateIso).slice(0, 10);
     const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
     const entry = counts.get(iid) ?? emptyBreakdown();
-    addGraphicStanding(entry, bucket, units);
+    addGraphicStanding(entry, payment, units);
     counts.set(iid, entry);
   }
   return counts;
@@ -347,7 +337,7 @@ async function practicalLessonRows(
 
   for (const slot of slots) {
     if (!salarySlotOccupiesGraphic(slot.booking)) continue;
-    const { bucket, excludeReason } = salarySlotStanding(slot.booking, slot);
+    const paymentBucket = salaryGraphicPaymentStanding(slot.booking, slot);
     items.push({
       id: slot.slotId,
       bookingId: slot.bookingId,
@@ -356,14 +346,13 @@ async function practicalLessonRows(
       endTime: null,
       units: 1,
       label: studentNameById.get(slot.booking.studentUserId) ?? `Student #${slot.booking.studentUserId}`,
-      paymentBucket: bucket,
-      excludeReason,
+      paymentBucket,
     });
   }
 
   for (const row of legacyBookings) {
     if (!salarySlotOccupiesGraphic(row)) continue;
-    const { bucket, excludeReason } = legacySalaryStanding(row);
+    const paymentBucket = legacyGraphicPaymentStanding(row);
     const d = String(row.dateIso).slice(0, 10);
     const units = slotCountFromTimeRange(d, String(row.time), row.endTime);
     items.push({
@@ -374,8 +363,7 @@ async function practicalLessonRows(
       endTime: row.endTime ?? null,
       units,
       label: studentNameById.get(row.studentUserId) ?? `Student #${row.studentUserId}`,
-      paymentBucket: bucket,
-      excludeReason,
+      paymentBucket,
     });
   }
 
@@ -436,11 +424,8 @@ export default class AdminSalaryService {
       endDate: end,
       totalUnits: items.reduce((s, r) => s + r.units, 0),
       unpaidUnits: items.reduce((s, r) => s + (r.paymentBucket === 'unpaid' ? r.units : 0), 0),
-      partialUnpaidUnits: items.reduce(
-        (s, r) => s + (r.paymentBucket === 'partial_uncovered' ? r.units : 0),
-        0,
-      ),
-      excludedUnits: items.reduce((s, r) => s + (r.paymentBucket === 'excluded' ? r.units : 0), 0),
+      partialUnpaidUnits: 0,
+      excludedUnits: 0,
       items,
     };
   }
@@ -479,8 +464,8 @@ export default class AdminSalaryService {
         employeeName: nameById.get(employeeUserId) ?? `Instructor #${employeeUserId}`,
         lessonsCount: breakdown.graphic,
         unpaidLessonsCount: breakdown.unpaid,
-        partialUnpaidLessonsCount: breakdown.partialUncovered,
-        excludedLessonsCount: breakdown.flagged,
+        partialUnpaidLessonsCount: 0,
+        excludedLessonsCount: 0,
         ratePerLessonAmd: rate,
         totalAmd: breakdown.graphic * rate,
         paid: paidRow

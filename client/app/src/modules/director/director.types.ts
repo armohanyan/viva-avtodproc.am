@@ -159,17 +159,7 @@ export type DirectorSalaryReport = {
   rows: DirectorSalaryReportRow[];
 };
 
-export type DirectorSalaryLessonPaymentBucket = "payable" | "unpaid" | "partial_uncovered" | "excluded";
-
-export type DirectorSalaryExcludeReason =
-  | "completion_cancelled"
-  | "completion_cancelled_no_refund"
-  | "completion_missed"
-  | "completion_refunded"
-  | "lesson_not_passed"
-  | "zero_price"
-  | "booking_closed"
-  | "unknown";
+export type DirectorSalaryLessonPaymentBucket = "payable" | "unpaid";
 
 export type DirectorSalaryLessonRow = {
   id: number;
@@ -181,7 +171,6 @@ export type DirectorSalaryLessonRow = {
   units: number;
   label: string;
   paymentBucket: DirectorSalaryLessonPaymentBucket;
-  excludeReason?: DirectorSalaryExcludeReason | null;
 };
 
 export type DirectorSalaryLessons = {
