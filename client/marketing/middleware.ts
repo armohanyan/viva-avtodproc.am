@@ -4,13 +4,21 @@ import type { NextRequest } from "next/server";
 function panelOrigin(): string {
   const raw = process.env.NEXT_PUBLIC_PANEL_URL?.trim();
   if (raw) return raw.replace(/\/+$/, "");
-  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
+  // Match NextAppNavigationProvider: Vite panel defaults to :5173 in local next+vite.
+  if (process.env.NODE_ENV === "development") return "http://localhost:5173";
   return "";
+}
+
+/** True when `path` is `prefix` or continues under it (`/instructor/...`), not `/instructors`. */
+function pathHasSegmentPrefix(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
 }
 
 /**
  * - Canonical host: www → apex (avoid duplicate indexing).
  * - Panel routes on the marketing origin redirect to the Vite panel app.
+ *
+ * Important: `/instructor` (panel) must not match `/instructors` (marketing directory).
  */
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
@@ -26,15 +34,15 @@ export function middleware(request: NextRequest) {
   if (!panel) return NextResponse.next();
 
   const isPanelPath =
-    pathname.startsWith("/admin") ||
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/instructor") ||
+    pathHasSegmentPrefix(pathname, "/admin") ||
+    pathHasSegmentPrefix(pathname, "/dashboard") ||
+    pathHasSegmentPrefix(pathname, "/instructor") ||
     pathname === "/login" ||
     pathname === "/register" ||
-    pathname.startsWith("/forgot-password") ||
-    pathname.startsWith("/reset-password") ||
-    pathname.startsWith("/setup-password") ||
-    pathname.startsWith("/auth/");
+    pathHasSegmentPrefix(pathname, "/forgot-password") ||
+    pathHasSegmentPrefix(pathname, "/reset-password") ||
+    pathHasSegmentPrefix(pathname, "/setup-password") ||
+    pathHasSegmentPrefix(pathname, "/auth");
 
   if (!isPanelPath) return NextResponse.next();
 

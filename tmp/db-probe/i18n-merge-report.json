@@ -1,0 +1,23 @@
+{
+  "sourceStorePath": "C:\\Users\\ASUS\\Desktop\\viva-avtodproc.am\\backend\\data\\exam-questions.store.backup-before-i18n-merge.json",
+  "portalKeys": 1172,
+  "alignedCount": 665,
+  "hyOnlyCount": 505,
+  "rejectedMisaligned": 445,
+  "matched": 2132,
+  "withEnRu": 1263,
+  "hyOnlyMatched": 869,
+  "unmatched": 238,
+  "textUpdated": 1263,
+  "optionsUpdated": 1193,
+  "imagesAdded": 26,
+  "theoryAfter": {
+    "theory": 2370,
+    "enDiff": 1263,
+    "enSame": 1107,
+    "ruDiff": 1263,
+    "ruSame": 1107,
+    "theoryWithImg": 1523,
+    "theoryImgOk": 1523
+  }
+}

@@ -42,9 +42,6 @@ function telHrefFromListedPhone(phone: string): string {
   return compact ? `tel:${compact}` : "tel:";
 }
 
-const DEFAULT_HOME_INTRO_DESCRIPTION =
-  "Viva ավտոդպրոցը օգնում է ուսանողներին սովորել անվտանգ, վստահ և ժամանակակից մեթոդներով։ Մեր նպատակն է պատրաստել պատասխանատու վարորդներ՝ ապահովելով որակյալ տեսական և գործնական ուսուցում։";
-
 export default function Home() {
   const { t, lang } = useLang();
   const { MarketingLink, panelHref } = useAppNavigation();
@@ -81,11 +78,6 @@ export default function Home() {
   }, [mkt, lang]);
   const siteContent = mkt?.siteContent;
   const heroBackgroundImage = sameOriginStaffUploadUrl(siteContent?.homeHeroBackgroundImage) ?? "/home-hero-2.svg";
-  const ownerPhoto = sameOriginStaffUploadUrl(siteContent?.ownerPhoto);
-  const introTitle = siteContent?.homeIntroTitle?.[lang]?.trim() || t("homeIntroDefaultTitle");
-  const introDescription = siteContent?.homeIntroDescription?.[lang]?.trim() || DEFAULT_HOME_INTRO_DESCRIPTION;
-  const ownerName = siteContent?.ownerName?.[lang]?.trim() || "";
-  const ownerPosition = siteContent?.ownerPosition?.[lang]?.trim() || "";
 
   const heroContact = useMemo(() => {
     const contactPhones = (mkt?.contact?.phones ?? []).map((p) => p.trim()).filter(Boolean);
@@ -315,38 +307,6 @@ export default function Home() {
             </div>
           </div>
         ) : null}
-      </section>
-
-      <section className="py-14 bg-accent/35 border-y border-border/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 lg:items-start">
-            <div className="lg:col-span-7">
-              <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-3">{introTitle}</h2>
-              <p className="text-muted-foreground leading-relaxed">{introDescription}</p>
-            </div>
-            <div className="lg:col-span-5 max-w-md mx-auto lg:max-w-none lg:mx-0 w-full">
-              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-                <div className="relative aspect-[4/5] sm:aspect-[3/4] lg:aspect-auto lg:min-h-[22rem] xl:min-h-[26rem] w-full bg-muted">
-                  {ownerPhoto ? (
-                    <img
-                      src={ownerPhoto}
-                      alt={ownerName || "Owner"}
-                      className="absolute inset-0 w-full h-full object-cover object-top"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center border-b border-dashed border-border bg-muted/40 text-xs text-muted-foreground text-center px-4">
-                      Owner photo
-                    </div>
-                  )}
-                </div>
-                <div className="p-5 sm:p-6">
-                  <p className="font-semibold text-lg text-foreground">{ownerName || "Viva Autoschool"}</p>
-                  {ownerPosition ? <p className="text-sm text-muted-foreground mt-1">{ownerPosition}</p> : null}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section className="py-20 bg-background">
