@@ -45,7 +45,8 @@ function roundAmd(n: number): number {
 
 /**
  * True when `prepaidMeta` means package/credit coverage (treat as fully prepaid).
- * Cohort linkage alone (`theoryCohortId`) is not payment coverage - group theory still bills cash.
+ * Includes packageOrderId / pkgTheory from package theory group enrollments.
+ * Cohort linkage alone (`theoryCohortId` without package fields) is not payment coverage.
  */
 export function isPackageCreditPrepaidMeta(meta: unknown): boolean {
   if (meta == null || typeof meta !== 'object') return false;

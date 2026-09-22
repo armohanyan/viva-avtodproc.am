@@ -208,9 +208,15 @@ export default function CohortBookingsModal({ cohort, open, onOpenChange, onChan
                                 </Badge>
                                 {pay.totalAmd > 0 ? (
                                   <div className="text-xs text-muted-foreground tabular-nums">
-                                    <span className="text-foreground">{formatAmd(pay.paidAmd)}</span>
-                                    <span className="mx-0.5">/</span>
-                                    <span>{formatAmd(pay.totalAmd)}</span>
+                                    {pay.status === "partial" ? (
+                                      <>
+                                        <span className="text-foreground">{formatAmd(pay.paidAmd)}</span>
+                                        <span className="mx-0.5">/</span>
+                                        <span>{formatAmd(pay.totalAmd)}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-foreground">{formatAmd(pay.totalAmd)}</span>
+                                    )}
                                   </div>
                                 ) : null}
                               </div>

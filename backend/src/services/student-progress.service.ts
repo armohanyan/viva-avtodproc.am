@@ -260,7 +260,8 @@ export default class StudentProgressService {
     if (entitlements) {
       for (const p of entitlements.packages) {
         entitlementPracticalTotal += Number(p.practicalTotal ?? 0);
-        entitlementPersonalTheoryTotal += Number(p.personalTheoryTotal ?? p.theoryTotal ?? 0);
+        // Package theory is group theory; do not count it as 1:1 personal theory.
+        entitlementPersonalTheoryTotal += Number(p.personalTheoryTotal ?? 0);
       }
       for (const e of entitlements.extras) {
         entitlementPracticalTotal += Number(e.practicalTotal ?? 0);

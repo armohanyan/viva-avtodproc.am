@@ -199,6 +199,8 @@ export type BookingListPaymentRow = {
   paidAmd: number;
   remainingAmd: number;
   status: AdminBookingPaymentStatus | "pending" | "failed" | "na";
+  /** Catalog package name when the lesson is covered by a package order. */
+  packageName?: string | null;
 };
 
 /** Cash-like income from booking payment fields (paid or partial only). */
@@ -207,9 +209,11 @@ export function recognizedBookingIncomeAmd(booking: {
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
   totalPriceAmd?: number | null;
+  coveredByPackage?: boolean;
 }): number {
   const lifecycle = String(booking.status ?? "").trim().toLowerCase();
   if (lifecycle === "cancelled" || lifecycle === "refunded") return 0;
+  if (booking.coveredByPackage) return 0;
   const row = bookingListPaymentRow(booking);
   if (row.status === "paid" || row.status === "partial") return row.paidAmd;
   return 0;
@@ -219,14 +223,22 @@ export function bookingListPaymentRow(booking: {
   paymentStatus?: string | null;
   paidAmountAmd?: number | null;
   totalPriceAmd?: number | null;
+  coveredByPackage?: boolean;
+  packageName?: string | null;
+  isGift?: boolean;
 }): BookingListPaymentRow {
+  const packageName = booking.packageName?.trim() || null;
+  // Package-credit lessons are prepaid — always show as paid (type column carries "Package").
+  if (booking.coveredByPackage) {
+    return { totalAmd: 0, paidAmd: 0, remainingAmd: 0, status: "paid", packageName };
+  }
   const totalAmd = Math.max(0, Math.round(booking.totalPriceAmd ?? 0));
   const ps = String(booking.paymentStatus ?? "").trim().toLowerCase();
   if (totalAmd <= 0) {
-    return { totalAmd: 0, paidAmd: 0, remainingAmd: 0, status: "na" };
+    return { totalAmd: 0, paidAmd: 0, remainingAmd: 0, status: "na", packageName };
   }
-  if (ps === "pending") return { totalAmd, paidAmd: 0, remainingAmd: totalAmd, status: "pending" };
-  if (ps === "failed") return { totalAmd, paidAmd: 0, remainingAmd: totalAmd, status: "failed" };
+  if (ps === "pending") return { totalAmd, paidAmd: 0, remainingAmd: totalAmd, status: "pending", packageName };
+  if (ps === "failed") return { totalAmd, paidAmd: 0, remainingAmd: totalAmd, status: "failed", packageName };
   let paidAmd =
     booking.paidAmountAmd != null && Number.isFinite(Number(booking.paidAmountAmd))
       ? Math.round(Number(booking.paidAmountAmd))
@@ -237,7 +249,7 @@ export function bookingListPaymentRow(booking: {
   if (ps === "paid" || remainingAmd === 0) status = "paid";
   else if (ps === "partial" || (paidAmd > 0 && paidAmd < totalAmd)) status = "partial";
   else if (paidAmd > 0) status = "partial";
-  return { totalAmd, paidAmd, remainingAmd, status };
+  return { totalAmd, paidAmd, remainingAmd, status, packageName };
 }
 
 export function bookingListPaymentLabelKey(status: BookingListPaymentRow["status"]): TranslationKey {
@@ -272,17 +284,32 @@ export function bookingOccursOnDateIso(
 export type BookingPaymentFilter = "all" | "paid" | "partial" | "unpaid" | "outstanding";
 
 export function bookingHasDebtPaymentStatus(
-  booking: { paymentStatus?: string | null; paidAmountAmd?: number | null; totalPriceAmd?: number | null },
+  booking: {
+    paymentStatus?: string | null;
+    paidAmountAmd?: number | null;
+    totalPriceAmd?: number | null;
+    coveredByPackage?: boolean;
+  },
 ): boolean {
+  if (booking.coveredByPackage) return false;
   const row = bookingListPaymentRow(booking);
   return row.status === "partial" || row.status === "unpaid";
 }
 
 export function bookingMatchesPaymentFilter(
-  booking: { paymentStatus?: string | null; paidAmountAmd?: number | null; totalPriceAmd?: number | null },
+  booking: {
+    paymentStatus?: string | null;
+    paidAmountAmd?: number | null;
+    totalPriceAmd?: number | null;
+    coveredByPackage?: boolean;
+  },
   filter: BookingPaymentFilter,
 ): boolean {
   if (filter === "all") return true;
+  if (booking.coveredByPackage) {
+    // Package-covered lessons are prepaid - treat as paid for payment filters.
+    return filter === "paid";
+  }
   const row = bookingListPaymentRow(booking);
   if (filter === "outstanding") return row.remainingAmd > 0 && row.totalAmd > 0;
   if (filter === "paid") return row.status === "paid";

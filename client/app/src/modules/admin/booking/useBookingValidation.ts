@@ -18,7 +18,8 @@ export type BookingValidationInput = {
   calendarInstructorId: string;
   selectedPackage: AdminPackageOption | null;
   packagePracticalSlots: LessonBookingPayload | null;
-  packageTheorySlots: LessonBookingPayload | null;
+  /** Optional theory group selected in package flow (not required). */
+  packageTheoryCohortId: string;
   practicalLessonType: PracticalLessonType | "";
   theoryThemeTitles: readonly string[];
 };
@@ -92,25 +93,13 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
     return { ok: keys.length === 0, messageKeys: keys };
   }
 
-  // package
+  // package — purchase / assign only; slots and theory group are booked afterwards
   if (!input.selectedPackage) {
     keys.push("adminBookingValSelectPackage");
   } else {
     const pkg = input.selectedPackage;
     const nPrac = pkg.lessons ?? 0;
     const nTheory = pkg.theoryLessons ?? 0;
-    if (nPrac > 0) {
-      const got = slotCount(input.packagePracticalSlots);
-      if (got > nPrac) {
-        keys.push("adminBookingValPackagePracticalCount");
-      }
-    }
-    if (nTheory > 0) {
-      const gotTheory = slotCount(input.packageTheorySlots);
-      if (gotTheory > nTheory) {
-        keys.push("adminBookingValPackageTheoryCount");
-      }
-    }
     if (nPrac <= 0 && nTheory <= 0) {
       keys.push("adminBookingValPackageNoServices");
     }

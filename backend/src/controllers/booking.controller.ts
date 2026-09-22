@@ -180,6 +180,8 @@ const adminPackageAtomicSchema = z.object({
       slotEntries: z.array(z.object({ dateIso: z.string().min(1), time: z.string().min(4) })).optional(),
     })
     .optional(),
+  theoryCohortId: z.coerce.number().int().positive().optional().nullable(),
+  /** @deprecated Prefer theoryCohortId; ignored by server. */
   theoryPersonal: z
     .object({
       instructorName: z.string().min(1),
@@ -281,7 +283,7 @@ export default class BookingController {
         packageOrderId: body.packageOrderId,
         createdByUserId: readStaffUserIdFromToken(req),
         practical: body.practical,
-        theoryPersonal: body.theoryPersonal,
+        theoryCohortId: body.theoryCohortId ?? null,
       });
       SuccessHandlerUtil.handleAdd(res, next, data);
     } catch (e) {

@@ -15,7 +15,6 @@ export type BookingPriceInput = {
   theoryCohorts: readonly TheoryCohortOption[];
   selectedPackage: AdminPackageOption | null;
   packagePracticalSlots: LessonBookingPayload | null;
-  packageTheorySlots: LessonBookingPayload | null;
 };
 
 export { billablePracticalLessonCount };
@@ -78,7 +77,6 @@ export function useBookingPriceCalculator(input: BookingPriceInput): number {
       input.theoryCohortId,
       input.slotPick,
       input.packagePracticalSlots,
-      input.packageTheorySlots,
       input.selectedPackage,
       input.instructors,
       input.theoryCohorts,

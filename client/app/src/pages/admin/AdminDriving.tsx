@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Car } from "lucide-react";
+import { useLocation, useSearch } from "wouter";
 import AdminLayout from "src/components/AdminLayout";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import AdminInstructorAvailabilityTable from "src/modules/admin/booking/AdminInstructorAvailabilityTable";
@@ -15,6 +16,7 @@ import { useInstructors } from "src/modules/instructors/useInstructors";
 import { useBranches } from "src/modules/branches";
 import { useAdminStudentsMini, type AdminStudentMini } from "src/modules/admin/useAdminStudents";
 import { useLang } from "src/lib/i18n";
+import { absWouterHref } from "src/lib/wouterFullPath";
 import type { Instructor } from "src/data/instructors";
 
 type CellTarget = {
@@ -44,6 +46,8 @@ export default function AdminDriving() {
 
 function AdminDrivingContent() {
   const { t } = useLang();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { instructors, loading } = useInstructors();
   const { branches } = useBranches();
   const { branchId: adminBranchId } = useAdminBranchFilter();
@@ -64,6 +68,29 @@ function AdminDrivingContent() {
   useEffect(() => {
     setBranchFilterId(adminBranchId ?? "");
   }, [adminBranchId]);
+
+  /** Prefill from `/admin/driving?q=&student=&branch=` when admin is sent here to book practical. */
+  useEffect(() => {
+    const raw = (searchString || (typeof window !== "undefined" ? window.location.search : "")).replace(/^\?/, "");
+    if (!raw) return;
+    const p = new URLSearchParams(raw);
+    const q = (p.get("q") ?? "").trim();
+    const studentId = (p.get("student") ?? "").trim();
+    const branch = (p.get("branch") ?? "").trim();
+    if (!q && !studentId && !branch) return;
+
+    if (branch && branches.some((b) => String(b.id) === branch)) {
+      setBranchFilterId(branch);
+    }
+    if (q) {
+      setSearch(q);
+    } else if (studentId) {
+      if (students.length === 0) return;
+      const stu = students.find((s) => String(s.id) === studentId);
+      if (stu?.name?.trim()) setSearch(stu.name.trim());
+    }
+    setLocation(absWouterHref("/admin/driving"), { replace: true });
+  }, [searchString, students, branches, setLocation]);
 
   const activePracticalInstructors = useMemo(
     () => instructors.filter((i) => i.status === "active" && i.teachesPractical),

@@ -48,6 +48,10 @@ export type AdminBookingListItem = {
   giftStatus?: "pending" | "approved" | "rejected" | null;
   giftNote?: string | null;
   meetLink?: string | null;
+  /** Lesson paid via package / prepaid credits (no cash due on this row). */
+  coveredByPackage?: boolean;
+  packageName?: string | null;
+  packageOrderId?: number | null;
   manualFinanceTx: AdminBookingFinanceLink | null;
   systemFinanceTx: AdminBookingFinanceLink | null;
 };

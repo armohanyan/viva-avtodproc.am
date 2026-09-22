@@ -30,6 +30,12 @@ export type OwnedPackage = {
   practicalUsed: number;
   theoryTotal: number;
   theoryUsed: number;
+  practicalRemaining?: number;
+  theoryRemaining?: number;
+  theoryIncluded?: boolean;
+  theoryConsumed?: boolean;
+  packageName?: string;
+  status?: string;
 };
 
 export type OwnedExtraPractical = {

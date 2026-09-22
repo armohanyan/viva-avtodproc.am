@@ -22,22 +22,22 @@ export function takeStashedAdminBookingIntentQuery(): string {
   }
 }
 
-/** Build admin bookings URL that opens the add modal with a student (and branch) pre-selected. */
+/** Build admin driving URL for practical booking (optionally prefill student search / branch). */
 export function adminBookingsHrefFromStudent(opts: {
   studentId: string | number;
   branchId?: string | number | null;
   instructorName?: string | null;
+  studentName?: string | null;
 }): string {
-  const p = new URLSearchParams({
-    new: "1",
-    flow: "practical",
-    student: String(opts.studentId),
-  });
+  const p = new URLSearchParams();
+  const student = String(opts.studentId ?? "").trim();
+  if (student) p.set("student", student);
+  const name = String(opts.studentName ?? "").trim();
+  if (name) p.set("q", name);
   const branch = String(opts.branchId ?? "").trim();
   if (branch) p.set("branch", branch);
-  const instructorName = String(opts.instructorName ?? "").trim();
-  if (instructorName) p.set("instructorName", instructorName);
-  return `/admin/bookings?${p.toString()}`;
+  const qs = p.toString();
+  return qs ? `/admin/driving?${qs}` : "/admin/driving";
 }
 
 /** Build admin bookings URL that opens the add modal prefilled from a theory-personal lesson request. */

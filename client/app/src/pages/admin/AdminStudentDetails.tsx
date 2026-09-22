@@ -95,20 +95,51 @@ type StudentPaymentSummary = {
   }>;
 };
 
+type StudentPackageEntitlement = {
+  purchaseId: number;
+  packageId: number;
+  packageName: string;
+  status: string;
+  practicalTotal: number;
+  practicalUsed: number;
+  practicalRemaining: number;
+  theoryTotal: number;
+  theoryUsed: number;
+  theoryRemaining: number;
+  theoryIncluded: boolean;
+  theoryConsumed: boolean;
+};
+
 const statusColor: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700",
   completed: "bg-blue-100 text-blue-700",
   inactive: "bg-slate-100 text-slate-500",
 };
 
-function studentBookingHref(s: Pick<StudentRow, "id" | "branchId" | "instructor">): string {
+function studentBookingHref(s: Pick<StudentRow, "id" | "branchId" | "instructor" | "name">): string {
   return absWouterHref(
     adminBookingsHrefFromStudent({
       studentId: s.id,
       branchId: s.branchId,
       instructorName: s.instructor,
+      studentName: s.name,
     }),
   );
+}
+
+function studentPackageBookingHref(s: Pick<StudentRow, "id" | "branchId" | "name">): string {
+  return studentBookingHref(s);
+}
+
+function studentTheoryGroupBookingHref(s: Pick<StudentRow, "id" | "branchId">): string {
+  const p = new URLSearchParams({
+    new: "1",
+    flow: "theory_group",
+    student: String(s.id),
+  });
+  const branch = String(s.branchId ?? "").trim();
+  if (branch) p.set("branch", branch);
+  return absWouterHref(`/admin/bookings?${p.toString()}`);
 }
 
 function bookingRemainingAmd(b: StudentBookingRow): number {
@@ -152,13 +183,14 @@ export default function AdminStudentDetails() {
   const [bookings, setBookings] = useState<StudentBookingRow[]>([]);
   const [paymentSummary, setPaymentSummary] = useState<StudentPaymentSummary | null>(null);
   const [transactions, setTransactions] = useState<FinanceTx[]>([]);
+  const [activePackage, setActivePackage] = useState<StudentPackageEntitlement | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!studentId) return;
     try {
-      const [students, bks, summary, txs] = await Promise.all([
+      const [students, bks, summary, txs, entitlements] = await Promise.all([
         vivaApiJson<StudentRow[]>("/students"),
         vivaApiJson<StudentBookingRow[]>(
           `/bookings?studentUserId=${encodeURIComponent(studentId)}`,
@@ -169,6 +201,10 @@ export default function AdminStudentDetails() {
         vivaApiJson<FinanceTx[]>(
           `/finance/student-transactions?studentUserId=${encodeURIComponent(studentId)}`,
         ),
+        vivaApiJson<{
+          hasActivePackage?: boolean;
+          packages?: StudentPackageEntitlement[];
+        }>(`/students/${encodeURIComponent(studentId)}/entitlements`).catch(() => null),
       ]);
       const all = Array.isArray(students) ? students : [];
       const found =
@@ -192,8 +228,36 @@ export default function AdminStudentDetails() {
           entryType: tx.entryType ?? "income",
         })),
       );
+      const pkgs = Array.isArray(entitlements?.packages) ? entitlements.packages : [];
+      const primary =
+        pkgs.find((p) => ["active", "paid", "confirmed"].includes(String(p.status ?? "").toLowerCase())) ??
+        pkgs[0] ??
+        null;
+      if (primary) {
+        const practicalTotal = Number(primary.practicalTotal ?? 0);
+        const practicalUsed = Number(primary.practicalUsed ?? 0);
+        const theoryTotal = Number(primary.theoryTotal ?? 0);
+        const theoryUsed = Number(primary.theoryUsed ?? 0);
+        setActivePackage({
+          ...primary,
+          practicalRemaining:
+            primary.practicalRemaining != null
+              ? Number(primary.practicalRemaining)
+              : Math.max(0, practicalTotal - practicalUsed),
+          theoryRemaining:
+            primary.theoryRemaining != null
+              ? Number(primary.theoryRemaining)
+              : Math.max(0, theoryTotal - theoryUsed),
+          theoryIncluded: primary.theoryIncluded ?? theoryTotal > 0,
+          theoryConsumed:
+            primary.theoryConsumed ?? (theoryTotal > 0 && theoryUsed >= theoryTotal),
+        });
+      } else {
+        setActivePackage(null);
+      }
     } catch (e) {
       setStudent(null);
+      setActivePackage(null);
       showToast(getApiErrorMessage(e), "error");
     }
   }, [studentId, showToast]);
@@ -423,6 +487,67 @@ export default function AdminStudentDetails() {
               </dl>
             </div>
           </div>
+        </Card>
+
+        <Card className="border-border p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-primary" />
+              {t("adminStudentActivePackageHeading")}
+            </h3>
+            {activePackage ? (
+              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                {activePackage.status}
+              </Badge>
+            ) : null}
+          </div>
+          {activePackage ? (
+            <>
+              <p className="text-base font-medium text-foreground">{activePackage.packageName}</p>
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                <div className="rounded-md bg-muted/30 px-3 py-2">
+                  <dt className="text-xs text-muted-foreground">{t("dashboardProgressPracticalHeading")}</dt>
+                  <dd className="font-semibold tabular-nums text-foreground">
+                    {activePackage.practicalUsed} / {activePackage.practicalTotal}
+                  </dd>
+                  <dd className="text-xs text-muted-foreground">
+                    {t("adminStudentPackagePracticalRemaining")}: {activePackage.practicalRemaining}
+                  </dd>
+                </div>
+                <div className="rounded-md bg-muted/30 px-3 py-2">
+                  <dt className="text-xs text-muted-foreground">{t("adminStudentPackageTheoryStatus")}</dt>
+                  {activePackage.theoryIncluded ? (
+                    <>
+                      <dd className="font-semibold text-foreground">
+                        {activePackage.theoryConsumed
+                          ? t("adminStudentPackageTheoryConsumed")
+                          : t("adminStudentPackageTheoryRemaining")}
+                      </dd>
+                      <dd className="text-xs text-muted-foreground tabular-nums">
+                        {activePackage.theoryUsed} / {activePackage.theoryTotal}
+                      </dd>
+                    </>
+                  ) : (
+                    <dd className="font-semibold text-muted-foreground">{t("no")}</dd>
+                  )}
+                </div>
+              </dl>
+              <div className="flex flex-wrap gap-2">
+                {activePackage.practicalRemaining > 0 ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={studentPackageBookingHref(student)}>{t("adminStudentPackageBookPractical")}</Link>
+                  </Button>
+                ) : null}
+                {activePackage.theoryIncluded && !activePackage.theoryConsumed ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={studentTheoryGroupBookingHref(student)}>{t("adminStudentPackageAttachTheory")}</Link>
+                  </Button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t("adminStudentActivePackageNone")}</p>
+          )}
         </Card>
 
         <AdminStudentProgressBlock studentUserId={Number(student.id)} />

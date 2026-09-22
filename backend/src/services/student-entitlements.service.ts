@@ -11,22 +11,61 @@ import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
 const { InputValidationError } = ErrorsUtil;
 
-/** Fallback when legacy rows have `theory_lessons_total` = 0 but package defines theory. */
-function legacyTheorySessionsFromPackageName(pkg: Package): number {
-  const name = pkg.name.toLowerCase();
-  if (name.includes('premium')) return 16;
-  if (name.includes('standard')) return 12;
-  if (name.includes('basic') || name.includes('refresher')) return 8;
-  return 10;
+/** Theory sessions included in a package catalog row (0 when practical-only). */
+function theoryTotalFromPackage(pkg: Package | null | undefined): number {
+  return Math.max(0, Number(pkg?.theoryLessons ?? 0));
 }
 
 function effectiveTheoryTotal(pkg: Package | null, profile: StudentProfile): number {
   const fromProfile = Number(profile.theoryLessonsTotal ?? 0);
   if (fromProfile > 0) return fromProfile;
-  const fromPkg = pkg ? Number(pkg.theoryLessons ?? 0) : 0;
-  if (fromPkg > 0) return fromPkg;
-  if (pkg) return legacyTheorySessionsFromPackageName(pkg);
-  return 0;
+  return theoryTotalFromPackage(pkg);
+}
+
+/** Prefer group `theory` balance; fall back to legacy `theory_personal` rows. */
+function theoryBalanceFromRows(rows: PackageLessonBalance[]): {
+  total: number;
+  used: number;
+} {
+  const byType = new Map(rows.map((r) => [r.lessonType, r] as const));
+  const theory = byType.get('theory');
+  const personal = byType.get('theory_personal');
+  const row = theory ?? personal;
+  return {
+    total: Number(row?.totalIncluded ?? 0),
+    used: Number(row?.bookedCount ?? 0),
+  };
+}
+
+function packageDtoFromBalances(
+  o: PackageOrder,
+  pkg: Package,
+  rows: PackageLessonBalance[],
+): StudentEntitlementsDto['packages'][number] {
+  const byType = new Map(rows.map((r) => [r.lessonType, r] as const));
+  const practical = byType.get('practical');
+  const practicalTotal = Number(practical?.totalIncluded ?? 0);
+  const practicalUsed = Number(practical?.bookedCount ?? 0);
+  const theory = theoryBalanceFromRows(rows);
+  return {
+    purchaseId: o.id,
+    packageId: pkg.id,
+    packageName: pkg.name,
+    tier: tierFromPackage(pkg),
+    purchasedAt: dateIso(o.paidAt ?? (o as PackageOrder & { createdAt?: Date | null }).createdAt),
+    status: String(o.status ?? 'active'),
+    practicalTotal,
+    practicalUsed,
+    practicalRemaining: Math.max(0, practicalTotal - practicalUsed),
+    theoryTotal: theory.total,
+    theoryUsed: theory.used,
+    theoryRemaining: Math.max(0, theory.total - theory.used),
+    theoryIncluded: theory.total > 0,
+    theoryConsumed: theory.total > 0 && theory.used >= theory.total,
+    // Legacy aliases: package theory is group theory, not 1:1.
+    personalTheoryTotal: 0,
+    personalTheoryUsed: 0,
+  };
 }
 
 export type PackageTierId = 'basic' | 'standard' | 'premium';
@@ -39,6 +78,7 @@ function tierFromPackage(pkg: Package): PackageTierId {
 }
 
 export type StudentEntitlementsDto = {
+  hasActivePackage: boolean;
   packages: Array<{
     purchaseId: number;
     packageId: number;
@@ -48,9 +88,15 @@ export type StudentEntitlementsDto = {
     status: string;
     practicalTotal: number;
     practicalUsed: number;
+    practicalRemaining: number;
     theoryTotal: number;
     theoryUsed: number;
+    theoryRemaining: number;
+    theoryIncluded: boolean;
+    theoryConsumed: boolean;
+    /** @deprecated Package theory is group theory; kept for older clients (always 0 for new rows). */
     personalTheoryTotal: number;
+    /** @deprecated */
     personalTheoryUsed: number;
   }>;
   extras: Array<{
@@ -90,54 +136,43 @@ export default class StudentEntitlementsService {
         byOrder.set(b.packageOrderId, list);
       }
 
+      const packages = orders.map((o) => {
+        const pkg = (o as PackageOrder & { package: Package }).package;
+        return packageDtoFromBalances(o, pkg, byOrder.get(o.id) ?? []);
+      });
+      const hasActivePackage = packages.some((p) =>
+        ['active', 'paid', 'confirmed'].includes(String(p.status ?? '').toLowerCase()),
+      );
+
       return {
-        packages: orders.map((o) => {
-          const pkg = (o as PackageOrder & { package: Package }).package;
-          const rows = byOrder.get(o.id) ?? [];
-          const byType = new Map(rows.map((r) => [r.lessonType, r] as const));
-          const practical = byType.get('practical');
-          const theory = byType.get('theory');
-          const personalTheory = byType.get('theory_personal');
-          const theoryTotal = Number(personalTheory?.totalIncluded ?? theory?.totalIncluded ?? 0);
-          const theoryUsed = Number(personalTheory?.bookedCount ?? theory?.bookedCount ?? 0);
-          return {
-            purchaseId: o.id,
-            packageId: pkg.id,
-            packageName: pkg.name,
-            tier: tierFromPackage(pkg),
-            purchasedAt: dateIso(o.paidAt ?? (o as PackageOrder & { createdAt?: Date | null }).createdAt),
-            status: String(o.status ?? 'active'),
-            practicalTotal: Number(practical?.totalIncluded ?? 0),
-            practicalUsed: Number(practical?.bookedCount ?? 0),
-            theoryTotal,
-            theoryUsed,
-            personalTheoryTotal: theoryTotal,
-            personalTheoryUsed: theoryUsed,
-          };
-        }),
+        hasActivePackage,
+        packages,
         extras: await this.listExtras(userId),
       };
     }
     const profile = await StudentProfile.findOne({ where: { userId } });
 
     if (!profile) {
-      return { packages: [], extras: await this.listExtras(userId) };
+      return { hasActivePackage: false, packages: [], extras: await this.listExtras(userId) };
     }
 
     if (profile.packageId == null) {
-      return { packages: [], extras: await this.listExtras(userId) };
+      return { hasActivePackage: false, packages: [], extras: await this.listExtras(userId) };
     }
 
     const pkg = await Package.findByPk(profile.packageId);
     if (!pkg) {
-      return { packages: [], extras: await this.listExtras(userId) };
+      return { hasActivePackage: false, packages: [], extras: await this.listExtras(userId) };
     }
 
     const joined = typeof profile.joinedAt === 'string' ? profile.joinedAt.slice(0, 10) : String(profile.joinedAt).slice(0, 10);
     const theoryTotal = effectiveTheoryTotal(pkg, profile);
     const theoryUsed = Math.min(theoryTotal, Number(profile.theoryLessonsCompleted ?? 0));
+    const practicalTotal = Number(profile.lessonsTotal ?? 0);
+    const practicalUsed = Number(profile.lessonsCompleted ?? 0);
 
     return {
+      hasActivePackage: true,
       packages: [
         {
           purchaseId: profile.packageId,
@@ -146,10 +181,14 @@ export default class StudentEntitlementsService {
           tier: tierFromPackage(pkg),
           purchasedAt: joined,
           status: 'active',
-          practicalTotal: profile.lessonsTotal,
-          practicalUsed: profile.lessonsCompleted,
+          practicalTotal,
+          practicalUsed,
+          practicalRemaining: Math.max(0, practicalTotal - practicalUsed),
           theoryTotal,
           theoryUsed,
+          theoryRemaining: Math.max(0, theoryTotal - theoryUsed),
+          theoryIncluded: theoryTotal > 0,
+          theoryConsumed: theoryTotal > 0 && theoryUsed >= theoryTotal,
           personalTheoryTotal: 0,
           personalTheoryUsed: 0,
         },
@@ -171,19 +210,59 @@ export default class StudentEntitlementsService {
 
   /**
    * Applies package enrollment (profile rows). Used both for admin-style assigns and paid checkout.
+   * Reuses an existing active order for the same package instead of creating duplicates.
    */
   private static async applyPackageAssignment(
     userId: number,
     packageId: number,
     orderStatus: 'active' | 'paid' = 'active',
     transaction?: Transaction,
-  ): Promise<{ branchId: number } | null> {
+  ): Promise<{ branchId: number; packageOrderId: number; createdNewOrder: boolean } | null> {
     const user = await User.findByPk(userId, { transaction });
     if (!user || user.accountType !== 'student') return null;
     const pkg = await Package.findByPk(packageId, { transaction });
     if (!pkg) return null;
-    const theoryTotal =
-      Number(pkg.theoryLessons ?? 0) > 0 ? Number(pkg.theoryLessons) : legacyTheorySessionsFromPackageName(pkg);
+    const theoryTotal = theoryTotalFromPackage(pkg);
+
+    const existingSamePackage = await PackageOrder.findOne({
+      where: {
+        studentUserId: userId,
+        packageId: pkg.id,
+        status: { [Op.in]: ['active', 'paid', 'confirmed'] },
+      },
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      transaction,
+    });
+    if (existingSamePackage) {
+      if (orderStatus === 'paid' && existingSamePackage.status !== 'paid') {
+        await existingSamePackage.update(
+          { status: 'paid', paidAt: existingSamePackage.paidAt ?? new Date() },
+          { transaction },
+        );
+      }
+      const profile = await StudentProfile.findOne({ where: { userId }, transaction });
+      if (profile) {
+        await profile.update(
+          {
+            packageId: pkg.id,
+            lessonsTotal: Number(pkg.lessons ?? 0),
+            theoryLessonsTotal: theoryTotal,
+            enrollmentStatus: 'active',
+          },
+          { transaction },
+        );
+        await this.syncProfileCountersFromOrderBalances(userId, existingSamePackage.id, transaction);
+        return { branchId: profile.branchId, packageOrderId: existingSamePackage.id, createdNewOrder: false };
+      }
+      const branch = await Branch.findOne({ order: [['id', 'ASC']], transaction });
+      if (!branch) return null;
+      return { branchId: branch.id, packageOrderId: existingSamePackage.id, createdNewOrder: false };
+    }
+
+    // Switching packages: leave prior orders intact but point profile at the new package.
     const order = await PackageOrder.create(
       {
         studentUserId: userId,
@@ -194,27 +273,34 @@ export default class StudentEntitlementsService {
       },
       { transaction },
     );
-    await PackageLessonBalance.bulkCreate(
-      [
-        {
-          packageOrderId: order.id,
-          studentUserId: userId,
-          packageId: pkg.id,
-          lessonType: 'practical',
-          totalIncluded: Number(pkg.lessons ?? 0),
-          bookedCount: 0,
-        },
-        {
-          packageOrderId: order.id,
-          studentUserId: userId,
-          packageId: pkg.id,
-          lessonType: 'theory_personal',
-          totalIncluded: theoryTotal,
-          bookedCount: 0,
-        },
-      ],
-      { transaction },
-    );
+    const balanceRows: Array<{
+      packageOrderId: number;
+      studentUserId: number;
+      packageId: number;
+      lessonType: 'practical' | 'theory';
+      totalIncluded: number;
+      bookedCount: number;
+    }> = [
+      {
+        packageOrderId: order.id,
+        studentUserId: userId,
+        packageId: pkg.id,
+        lessonType: 'practical',
+        totalIncluded: Number(pkg.lessons ?? 0),
+        bookedCount: 0,
+      },
+    ];
+    if (theoryTotal > 0) {
+      balanceRows.push({
+        packageOrderId: order.id,
+        studentUserId: userId,
+        packageId: pkg.id,
+        lessonType: 'theory',
+        totalIncluded: theoryTotal,
+        bookedCount: 0,
+      });
+    }
+    await PackageLessonBalance.bulkCreate(balanceRows, { transaction });
     let profile = await StudentProfile.findOne({ where: { userId }, transaction });
     if (!profile) {
       const branch = await Branch.findOne({ order: [['id', 'ASC']], transaction });
@@ -236,7 +322,7 @@ export default class StudentEntitlementsService {
         },
         { transaction },
       );
-      return { branchId: branch.id };
+      return { branchId: branch.id, packageOrderId: order.id, createdNewOrder: true };
     }
     await profile.update(
       {
@@ -249,7 +335,38 @@ export default class StudentEntitlementsService {
       },
       { transaction },
     );
-    return { branchId: profile.branchId };
+    return { branchId: profile.branchId, packageOrderId: order.id, createdNewOrder: true };
+  }
+
+  /** Keep student_profiles lesson counters aligned with package_lesson_balances for an order. */
+  static async syncProfileCountersFromOrderBalances(
+    userId: number,
+    packageOrderId: number,
+    transaction?: Transaction,
+  ): Promise<void> {
+    const rows = await PackageLessonBalance.findAll({
+      where: { packageOrderId, studentUserId: userId },
+      transaction,
+    });
+    if (rows.length === 0) return;
+    const byType = new Map(rows.map((r) => [r.lessonType, r] as const));
+    const practical = byType.get('practical');
+    const theory = theoryBalanceFromRows(rows);
+    const profile = await StudentProfile.findOne({ where: { userId }, transaction });
+    if (!profile) return;
+    await profile.update(
+      {
+        ...(practical
+          ? {
+              lessonsTotal: Number(practical.totalIncluded ?? 0),
+              lessonsCompleted: Number(practical.bookedCount ?? 0),
+            }
+          : {}),
+        theoryLessonsTotal: theory.total,
+        theoryLessonsCompleted: theory.used,
+      },
+      { transaction },
+    );
   }
 
   /** vPOS checkout: records package payment then enrolls the student in the package. */
@@ -359,15 +476,16 @@ export default class StudentEntitlementsService {
 
       const profile = await StudentProfile.findOne({ where: { userId }, transaction: tx });
       const theoryTotal =
-        profile && Number(profile.theoryLessonsTotal ?? 0) > 0
-          ? Number(profile.theoryLessonsTotal)
-          : Number(pkg.theoryLessons ?? 0) > 0
-            ? Number(pkg.theoryLessons)
-            : legacyTheorySessionsFromPackageName(pkg);
+        Number(pkg.theoryLessons ?? 0) > 0
+          ? Number(pkg.theoryLessons)
+          : profile && Number(profile.theoryLessonsTotal ?? 0) > 0
+            ? Number(profile.theoryLessonsTotal)
+            : 0;
       const practicalTotal =
         profile && Number(profile.lessonsTotal ?? 0) > 0 ? Number(profile.lessonsTotal) : Number(pkg.lessons ?? 0);
       const practicalBooked = profile ? Math.max(0, Number(profile.lessonsCompleted ?? 0)) : 0;
-      const theoryBooked = profile ? Math.max(0, Number(profile.theoryLessonsCompleted ?? 0)) : 0;
+      const theoryBooked =
+        theoryTotal > 0 && profile ? Math.min(theoryTotal, Math.max(0, Number(profile.theoryLessonsCompleted ?? 0))) : 0;
 
       const order = await PackageOrder.create(
         {
@@ -380,27 +498,35 @@ export default class StudentEntitlementsService {
         },
         { transaction: tx },
       );
-      await PackageLessonBalance.bulkCreate(
-        [
-          {
-            packageOrderId: order.id,
-            studentUserId: userId,
-            packageId: pkg.id,
-            lessonType: 'practical',
-            totalIncluded: Math.max(0, practicalTotal),
-            bookedCount: practicalBooked,
-          },
-          {
-            packageOrderId: order.id,
-            studentUserId: userId,
-            packageId: pkg.id,
-            lessonType: 'theory_personal',
-            totalIncluded: Math.max(0, theoryTotal),
-            bookedCount: theoryBooked,
-          },
-        ],
-        { transaction: tx },
-      );
+      const balanceRows: Array<{
+        packageOrderId: number;
+        studentUserId: number;
+        packageId: number;
+        lessonType: 'practical' | 'theory';
+        totalIncluded: number;
+        bookedCount: number;
+      }> = [
+        {
+          packageOrderId: order.id,
+          studentUserId: userId,
+          packageId: pkg.id,
+          lessonType: 'practical',
+          totalIncluded: Math.max(0, practicalTotal),
+          bookedCount: practicalBooked,
+        },
+      ];
+      if (theoryTotal > 0) {
+        balanceRows.push({
+          packageOrderId: order.id,
+          studentUserId: userId,
+          packageId: pkg.id,
+          lessonType: 'theory',
+          totalIncluded: Math.max(0, theoryTotal),
+          bookedCount: theoryBooked,
+        });
+      }
+      await PackageLessonBalance.bulkCreate(balanceRows, { transaction: tx });
+      await this.syncProfileCountersFromOrderBalances(userId, order.id, tx);
       return order.id;
     };
 

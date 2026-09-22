@@ -149,8 +149,12 @@ type StudentPackageOrderBalance = {
   status: string;
   practicalTotal: number;
   practicalUsed: number;
+  practicalRemaining?: number;
   theoryTotal: number;
   theoryUsed: number;
+  theoryRemaining?: number;
+  theoryIncluded?: boolean;
+  theoryConsumed?: boolean;
   personalTheoryTotal?: number;
   personalTheoryUsed?: number;
 };
@@ -159,13 +163,14 @@ type AddInlineErrors = {
   general: string | null;
   slots: string | null;
   packagePracticalSlots: string | null;
-  packageTheorySlots: string | null;
+  packageTheoryCohort: string | null;
 };
 
 const typeColor: Record<string, string> = {
   practical: "bg-blue-100 text-blue-700",
   theory: "bg-purple-100 text-purple-700",
   theory_personal: "bg-amber-100 text-amber-800",
+  package: "bg-violet-100 text-violet-800",
 };
 
 const BOOKING_SOURCE_BADGE_CLASS: Record<string, string> = {
@@ -184,6 +189,20 @@ function bookingLessonTypeTKey(type: Booking["type"]): TranslationKey {
   if (type === "theory") return "lessonTypeTheory";
   if (type === "theory_personal") return "lessonTypeTheoryPersonal";
   return "lessonTypePractical";
+}
+
+/** Table type badge: package-covered lessons show as Package, otherwise the lesson type. */
+function bookingTableTypeDisplay(b: Pick<Booking, "type" | "coveredByPackage">): {
+  labelKey: TranslationKey;
+  colorClass: string;
+} {
+  if (b.coveredByPackage) {
+    return { labelKey: "adminBookingFlowPackage", colorClass: typeColor.package };
+  }
+  return {
+    labelKey: bookingLessonTypeTKey(b.type),
+    colorClass: typeColor[b.type] ?? typeColor.practical,
+  };
 }
 
 type BookingPaymentFields = {
@@ -217,7 +236,7 @@ function paymentDescriptionLine(b: Pick<Booking, "type" | "dateIso" | "id">): st
 function packagePaymentDescriptionLine(pkgName: string, studentId: string, students: StudentRow[]): string {
   const { name } = studentContact(students, studentId);
   const label = pkgName.trim() || "Package";
-  return name.trim() ? `Package: ${label} — ${name.trim()}` : `Package: ${label}`;
+  return name.trim() ? `Package: ${label} - ${name.trim()}` : `Package: ${label}`;
 }
 
 function studentContact(students: StudentRow[], studentId: string): { name: string; email: string } {
@@ -453,6 +472,7 @@ export default function AdminBookings() {
     (items: Booking[]) =>
       items.map((b) => {
         const pay = bookingListPaymentRow(b);
+        const typeDisp = bookingTableTypeDisplay(b);
         return [
           b.id,
           studentLabel(b.studentId, b),
@@ -460,7 +480,7 @@ export default function AdminBookings() {
           b.instructorName,
           formatShortDateFromIso(b.dateIso, lang),
           formatBookingSlotRangeLabel(b.time, b.endTime),
-          t(bookingLessonTypeTKey(b.type)),
+          t(typeDisp.labelKey),
           t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
           t(toCanonicalBookingStatus(b.status) as TranslationKey),
           t(bookingListPaymentLabelKey(pay.status)),
@@ -499,7 +519,7 @@ export default function AdminBookings() {
     general: null,
     slots: null,
     packagePracticalSlots: null,
-    packageTheorySlots: null,
+    packageTheoryCohort: null,
   });
   const [bookingModalTab, setBookingModalTab] = useState<"booking" | "payment">("booking");
   const [addBookingPayment, setAddBookingPayment] = useState<AdminBookingPaymentState>(() =>
@@ -553,8 +573,7 @@ export default function AdminBookings() {
   const [addFlowKind, setAddFlowKind] = useState<AdminBookingFlowKind>("practical");
   const [addPackageId, setAddPackageId] = useState("");
   const [addPackagePracticalSlotPick, setAddPackagePracticalSlotPick] = useState<LessonBookingPayload | null>(null);
-  const [addPackageTheoryInstructorName, setAddPackageTheoryInstructorName] = useState("");
-  const [addPackageTheorySlotPick, setAddPackageTheorySlotPick] = useState<LessonBookingPayload | null>(null);
+  const [addPackageTheoryCohortId, setAddPackageTheoryCohortId] = useState("");
   const [addStudentPackageOrders, setAddStudentPackageOrders] = useState<StudentPackageOrderBalance[]>([]);
   const [addSelectedPackageOrderId, setAddSelectedPackageOrderId] = useState<number | null>(null);
   const [packagesList, setPackagesList] = useState<AdminPackageOption[]>([]);
@@ -659,17 +678,6 @@ export default function AdminBookings() {
     return "";
   }, [editBooking, instructors, editTheoryCohortId, bookableTheoryCohorts]);
 
-  const packageTheoryCalendarInstructors = theoryPersonalInstructorsForAdd;
-
-  const packageTheoryCalendarInstructorId = useMemo(() => {
-    if (addPackageTheorySlotPick?.instructorUserId) {
-      return String(addPackageTheorySlotPick.instructorUserId);
-    }
-    const name = addPackageTheorySlotPick?.instructor || addPackageTheoryInstructorName || "";
-    const m = instructors.find((i) => i.name === name);
-    return m?.id ?? packageTheoryCalendarInstructors[0]?.id ?? "";
-  }, [addPackageTheorySlotPick, addPackageTheoryInstructorName, instructors, packageTheoryCalendarInstructors]);
-
   const theoryPersonalCalendarInstructors = theoryPersonalInstructorsForAdd;
 
   const theoryPersonalCalendarInstructorId = useMemo(() => {
@@ -686,6 +694,11 @@ export default function AdminBookings() {
     const m = instructors.find((i) => i.name === name);
     return m?.id ?? practicalInstructorsForCalendar[0]?.id ?? "";
   }, [addPackagePracticalSlotPick, draft?.instructorName, instructors, practicalInstructorsForCalendar]);
+
+  const packageTheoryCohorts = useMemo(
+    () => filterTheoryCohortsByBranchId(bookableTheoryCohorts, draft?.branchId),
+    [bookableTheoryCohorts, draft?.branchId],
+  );
 
   const needsTheoryCohortsFetch =
     (addOpen && addFlowKind === "theory_group") || editBooking?.type === "theory";
@@ -902,7 +915,9 @@ export default function AdminBookings() {
   }, [addOpen]);
 
   useEffect(() => {
-    if (!addOpen || addFlowKind !== "package") return;
+    if (!addOpen || (addFlowKind !== "package" && addFlowKind !== "theory_group" && addFlowKind !== "practical")) {
+      return;
+    }
     const studentId = Number(draft?.studentId ?? 0);
     if (!Number.isFinite(studentId) || studentId <= 0) {
       setAddStudentPackageOrders([]);
@@ -1068,8 +1083,7 @@ export default function AdminBookings() {
       setAddFlowKind(flow);
       setAddPackageId("");
       setAddPackagePracticalSlotPick(null);
-      setAddPackageTheoryInstructorName("");
-      setAddPackageTheorySlotPick(null);
+      setAddPackageTheoryCohortId("");
       setAddPracticalLessonType("");
       setAddTheoryThemeTitles(opts?.theoryThemeTitles?.length ? [...opts.theoryThemeTitles] : []);
       setSlotPick(null);
@@ -1089,6 +1103,13 @@ export default function AdminBookings() {
 
   const consumedBookingIntentSearch = useRef<string | null>(null);
   const pendingTheoryRequestIdRef = useRef<string | null>(null);
+  const [packageFollowUp, setPackageFollowUp] = useState<{
+    studentId: string;
+    branchId: string;
+    packageName: string;
+    hasPractical: boolean;
+    hasTheory: boolean;
+  } | null>(null);
 
   /** Read intent query from wouter or the browser (needed for `~/admin/bookings?…` navigations). */
   const readBookingIntentSearch = useCallback((): string => {
@@ -1300,11 +1321,6 @@ export default function AdminBookings() {
     if (!selectedStudentPackageOrder || !selectedAddPackage) return false;
     return packageOrderHasRemainingCredits(selectedStudentPackageOrder, selectedAddPackage);
   }, [selectedStudentPackageOrder, selectedAddPackage, packageOrderHasRemainingCredits]);
-  const packageSelectedSlotsCount = useMemo(
-    () => slotPickCount(addPackagePracticalSlotPick) + slotPickCount(addPackageTheorySlotPick),
-    [addPackagePracticalSlotPick, addPackageTheorySlotPick],
-  );
-
   const packageSelectionStats = useMemo(() => {
     const practicalTotal = Math.max(
       0,
@@ -1317,7 +1333,7 @@ export default function AdminBookings() {
     );
     const theoryBooked = Math.max(0, Number(selectedStudentPackageOrder?.theoryUsed ?? 0));
     const practicalSelected = slotPickCount(addPackagePracticalSlotPick);
-    const theorySelected = slotPickCount(addPackageTheorySlotPick);
+    const theorySelected = addPackageTheoryCohortId.trim() ? 1 : 0;
     const practicalRemainingBefore = Math.max(0, practicalTotal - practicalBooked);
     const theoryRemainingBefore = Math.max(0, theoryTotal - theoryBooked);
     return {
@@ -1334,9 +1350,10 @@ export default function AdminBookings() {
         total: theoryTotal,
         remaining: Math.max(0, theoryRemainingBefore - theorySelected),
         remainingBeforeSelection: theoryRemainingBefore,
+        alreadyConsumed: theoryTotal > 0 && theoryBooked >= theoryTotal,
       },
     };
-  }, [selectedAddPackage, selectedStudentPackageOrder, addPackagePracticalSlotPick, addPackageTheorySlotPick]);
+  }, [selectedAddPackage, selectedStudentPackageOrder, addPackagePracticalSlotPick, addPackageTheoryCohortId]);
 
   const addPriceInput: BookingPriceInput = useMemo(
     () => ({
@@ -1348,7 +1365,6 @@ export default function AdminBookings() {
       theoryCohorts: addTheoryCohorts,
       selectedPackage: selectedAddPackage,
       packagePracticalSlots: addPackagePracticalSlotPick,
-      packageTheorySlots: addPackageTheorySlotPick,
     }),
     [
       addFlowKind,
@@ -1359,16 +1375,70 @@ export default function AdminBookings() {
       addTheoryCohorts,
       selectedAddPackage,
       addPackagePracticalSlotPick,
-      addPackageTheorySlotPick,
     ],
   );
 
   const addTotalAmd = useBookingPriceCalculator(addPriceInput);
+  const theoryGroupPackageCovered = useMemo(() => {
+    if (addFlowKind !== "theory_group") return false;
+    return addStudentPackageOrders.some((o) => {
+      if (!["active", "paid", "confirmed"].includes(String(o.status ?? "").toLowerCase())) return false;
+      const remaining =
+        o.theoryRemaining != null
+          ? Number(o.theoryRemaining)
+          : Math.max(0, Number(o.theoryTotal ?? 0) - Number(o.theoryUsed ?? 0));
+      return remaining > 0;
+    });
+  }, [addFlowKind, addStudentPackageOrders]);
+
+  const practicalPackageCredits = useMemo(() => {
+    if (addFlowKind !== "practical") {
+      return { remaining: 0, packageName: null as string | null, coversPayment: false };
+    }
+    const slotCount = slotPickCount(slotPick);
+    let remaining = 0;
+    let packageName: string | null = null;
+    let best = -1;
+    for (const o of addStudentPackageOrders) {
+      if (!["active", "paid", "confirmed"].includes(String(o.status ?? "").toLowerCase())) continue;
+      const rem =
+        o.practicalRemaining != null
+          ? Math.max(0, Number(o.practicalRemaining))
+          : Math.max(0, Number(o.practicalTotal ?? 0) - Number(o.practicalUsed ?? 0));
+      remaining += rem;
+      const name = String(o.packageName ?? "").trim();
+      if (rem > best && name) {
+        best = rem;
+        packageName = name;
+      }
+    }
+    const need = Math.max(1, slotCount);
+    return { remaining, packageName, coversPayment: remaining >= need };
+  }, [addFlowKind, addStudentPackageOrders, slotPick]);
+
+  useEffect(() => {
+    if (addFlowKind !== "practical" || !practicalPackageCredits.coversPayment) return;
+    setAddBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
+    setDraft((d) => (d ? { ...d, status: "confirmed" } : d));
+    setAddIsGift(false);
+  }, [addFlowKind, practicalPackageCredits.coversPayment]);
+
   const addEffectiveTotalAmd = useMemo(() => {
-    if (addFlowKind !== "package") return addTotalAmd;
-    // Show package price on package selection; switch to zero only when actually scheduling from existing balance.
-    return hasReusableSelectedPackageOrder && packageSelectedSlotsCount > 0 ? 0 : addTotalAmd;
-  }, [addFlowKind, hasReusableSelectedPackageOrder, packageSelectedSlotsCount, addTotalAmd]);
+    if (addFlowKind === "package") {
+      // Reusing remaining package credits: never charge the catalog package price again.
+      if (hasReusableSelectedPackageOrder) return 0;
+      return addTotalAmd;
+    }
+    if (addFlowKind === "theory_group" && theoryGroupPackageCovered) return 0;
+    if (addFlowKind === "practical" && practicalPackageCredits.coversPayment) return 0;
+    return addTotalAmd;
+  }, [
+    addFlowKind,
+    hasReusableSelectedPackageOrder,
+    addTotalAmd,
+    theoryGroupPackageCovered,
+    practicalPackageCredits.coversPayment,
+  ]);
 
   const addValidation = useMemo(
     () =>
@@ -1378,16 +1448,16 @@ export default function AdminBookings() {
         instructorName: draft?.instructorName ?? "",
         slotPick,
         theoryCohortId,
-        theoryCohorts: addTheoryCohorts,
+        theoryCohorts: addFlowKind === "package" ? packageTheoryCohorts : addTheoryCohorts,
         calendarInstructorId:
           addFlowKind === "theory_group"
             ? calendarInstructorId
             : addFlowKind === "theory_personal"
               ? theoryPersonalCalendarInstructorId
-              : "",
+              : packagePracticalCalendarInstructorId,
         selectedPackage: selectedAddPackage,
         packagePracticalSlots: addPackagePracticalSlotPick,
-        packageTheorySlots: addPackageTheorySlotPick,
+        packageTheoryCohortId: addPackageTheoryCohortId,
         practicalLessonType: addPracticalLessonType,
         theoryThemeTitles: addTheoryThemeTitles,
       }),
@@ -1398,11 +1468,13 @@ export default function AdminBookings() {
       slotPick,
       theoryCohortId,
       addTheoryCohorts,
+      packageTheoryCohorts,
       calendarInstructorId,
       theoryPersonalCalendarInstructorId,
+      packagePracticalCalendarInstructorId,
       selectedAddPackage,
       addPackagePracticalSlotPick,
-      addPackageTheorySlotPick,
+      addPackageTheoryCohortId,
       addPracticalLessonType,
       addTheoryThemeTitles,
     ],
@@ -1634,7 +1706,9 @@ export default function AdminBookings() {
       return;
     }
     const editTotal = editBooking.totalPriceAmd ?? 0;
-    const payErr = validateAdminBookingPayment(editBookingPayment, editTotal);
+    const payErr = editBooking.coveredByPackage
+      ? null
+      : validateAdminBookingPayment(editBookingPayment, editTotal);
     if (payErr) {
       setBookingModalTab("payment");
       setEditPaymentErrorKey(payErr);
@@ -1672,7 +1746,9 @@ export default function AdminBookings() {
       const useArbitrarySlots =
         (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
         (pick.slotEntries?.length ?? 0) > 0;
-      const paymentBody = adminPaymentApiPayload(editBookingPayment, editTotal);
+      const paymentBody = editBooking.coveredByPackage
+        ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0 }
+        : adminPaymentApiPayload(editBookingPayment, editTotal);
       const bookingLifecycleStatus = bookingStatusFromAdminPayment(
         paymentBody.adminPaymentStatus,
         editBooking.status,
@@ -1769,7 +1845,14 @@ export default function AdminBookings() {
       return;
     }
     const addGiftActive = addIsGift && addFlowKind === "practical";
-    const payErr = addGiftActive ? null : validateAdminBookingPayment(addBookingPayment, addEffectiveTotalAmd);
+    const packageCreditCoversPayment =
+      (addFlowKind === "package" && hasReusableSelectedPackageOrder) ||
+      (addFlowKind === "theory_group" && theoryGroupPackageCovered) ||
+      (addFlowKind === "practical" && practicalPackageCredits.coversPayment);
+    const payErr =
+      addGiftActive || packageCreditCoversPayment
+        ? null
+        : validateAdminBookingPayment(addBookingPayment, addEffectiveTotalAmd);
     if (payErr) {
       setBookingModalTab("payment");
       setAddPaymentErrorKey(payErr);
@@ -1777,24 +1860,34 @@ export default function AdminBookings() {
       return;
     }
     setAddPaymentErrorKey(null);
-    const addPaid = addGiftActive ? 0 : paidAmountFromState(addBookingPayment);
+    const addPaid =
+      addGiftActive || packageCreditCoversPayment ? 0 : paidAmountFromState(addBookingPayment);
     if (addPaid > 0) {
       const ok = validatePaymentForSubmit(addBookingPayment, draft.studentId, true);
       if (!ok) return;
     }
     const paymentBody = addGiftActive
       ? { isGift: true, ...(addGiftNote.trim() ? { giftNote: addGiftNote.trim() } : {}) }
-      : adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd);
+      : packageCreditCoversPayment
+        ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0 }
+        : adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd);
     const addBookingLifecycleStatus =
       addGiftActive || !("adminPaymentStatus" in paymentBody)
         ? draft.status
         : bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, draft.status);
     try {
+      let packageFollowUpAfterSave: {
+        studentId: string;
+        branchId: string;
+        packageName: string;
+        hasPractical: boolean;
+        hasTheory: boolean;
+      } | null = null;
       setAddInlineErrors({
         general: null,
         slots: null,
         packagePracticalSlots: null,
-        packageTheorySlots: null,
+        packageTheoryCohort: null,
       });
       if (addFlowKind === "package") {
         const pkg = selectedAddPackage!;
@@ -1808,66 +1901,34 @@ export default function AdminBookings() {
             branchId: Number(draft.branchId),
           },
         });
-        const practicalCount = slotPickCount(addPackagePracticalSlotPick);
-        const theoryCount = slotPickCount(addPackageTheorySlotPick);
-        const hasSlotsToBook = practicalCount > 0 || theoryCount > 0;
-        let anchorBookingId: number | null = null;
-        if (hasSlotsToBook) {
-          const packageResult = await vivaApiJson<{ bookingIds?: number[] }>("/bookings/package-atomic", {
-            method: "POST",
-            body: {
-              studentId: studentNum,
-              packageId: Number(pkg.id),
-              branchId: Number(draft.branchId),
-              status: addBookingLifecycleStatus,
-              ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
-              ...(pkg.lessons > 0 && practicalCount > 0 && addPackagePracticalSlotPick
-                ? {
-                    practical: {
-                      instructorName: addPackagePracticalSlotPick.instructor || draft.instructorName,
-                      ...(addPackagePracticalSlotPick.instructorUserId &&
-                      Number.isFinite(Number(addPackagePracticalSlotPick.instructorUserId))
-                        ? { instructorUserId: Number(addPackagePracticalSlotPick.instructorUserId) }
-                        : {}),
-                      dateIso: addPackagePracticalSlotPick.dateIso,
-                      slots: addPackagePracticalSlotPick.times,
-                      ...(addPackagePracticalSlotPick.slotEntries && addPackagePracticalSlotPick.slotEntries.length > 0
-                        ? { slotEntries: addPackagePracticalSlotPick.slotEntries }
-                        : {}),
-                    },
-                  }
-                : {}),
-              ...(pkg.theoryLessons > 0 && theoryCount > 0 && addPackageTheorySlotPick
-                ? {
-                    theoryPersonal: {
-                      instructorName:
-                        addPackageTheorySlotPick.instructor || addPackageTheoryInstructorName || draft.instructorName,
-                      ...(addPackageTheorySlotPick.instructorUserId &&
-                      Number.isFinite(Number(addPackageTheorySlotPick.instructorUserId))
-                        ? { instructorUserId: Number(addPackageTheorySlotPick.instructorUserId) }
-                        : {}),
-                      dateIso: addPackageTheorySlotPick.dateIso,
-                      slots: addPackageTheorySlotPick.times,
-                      ...(addPackageTheorySlotPick.slotEntries && addPackageTheorySlotPick.slotEntries.length > 0
-                        ? { slotEntries: addPackageTheorySlotPick.slotEntries }
-                        : {}),
-                    },
-                  }
-                : {}),
-            },
-          });
-          const bookingIds = Array.isArray(packageResult?.bookingIds) ? packageResult.bookingIds : [];
-          anchorBookingId = bookingIds.length > 0 ? Number(bookingIds[0]) : null;
-        }
-        if (addPaid > 0) {
+        // Ensure package order / credits exist. Practical slots and theory group are booked afterwards.
+        await vivaApiJson<{ bookingIds?: number[] }>("/bookings/package-atomic", {
+          method: "POST",
+          body: {
+            studentId: studentNum,
+            packageId: Number(pkg.id),
+            branchId: Number(draft.branchId),
+            status: addBookingLifecycleStatus,
+            ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
+          },
+        });
+        // Only post package payment on first purchase / new order — never when reusing credits.
+        if (addPaid > 0 && !hasReusableSelectedPackageOrder) {
           await postManualFinance(bookingPaymentToFinanceFields(addBookingPayment), {
             studentId: draft.studentId,
             branchId: draft.branchId,
-            bookingIdNum: anchorBookingId,
+            bookingIdNum: null,
             bookingStatus: addBookingLifecycleStatus,
             financeDescription: packagePaymentDescriptionLine(pkg.name, draft.studentId, studentsMini),
           });
         }
+        packageFollowUpAfterSave = {
+          studentId: String(draft.studentId),
+          branchId: String(draft.branchId),
+          packageName: pkg.name,
+          hasPractical: pkg.lessons > 0,
+          hasTheory: pkg.theoryLessons > 0,
+        };
       } else {
         const theoryCohort = addTheoryCohorts.find((x) => x.id === theoryCohortId);
         const theoryPlan =
@@ -1909,8 +1970,12 @@ export default function AdminBookings() {
                       ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
                         ? { instructorUserId: Number(pick.instructorUserId) }
                         : {}),
+                      ...(practicalPackageCredits.coversPayment ? { consumePackageCredits: true } : {}),
                     }
-                  : { theoryCohortId: Number(theoryCohortId) }),
+                  : {
+                      theoryCohortId: Number(theoryCohortId),
+                      consumePackageCredits: true,
+                    }),
                 ...(!theoryPlan ? arbitrary : {}),
                 ...paymentBody,
               };
@@ -1950,23 +2015,26 @@ export default function AdminBookings() {
       setBookingModalTab("booking");
       await refresh();
       showToast(t("bookingCreatedToast"), "success");
+      if (packageFollowUpAfterSave) {
+        setPackageFollowUp(packageFollowUpAfterSave);
+      }
     } catch (err) {
       const ui = getApiErrorMessage(err);
       const raw = err instanceof ApiRequestError ? String(err.message ?? "").toLowerCase() : "";
       if (addFlowKind === "package") {
         if (raw.includes("practical") && raw.includes("slot")) {
-          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: ui, packageTheorySlots: null });
-        } else if ((raw.includes("theory_personal") || raw.includes("theory")) && raw.includes("slot")) {
-          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheorySlots: ui });
+          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: ui, packageTheoryCohort: null });
+        } else if (raw.includes("theory") || raw.includes("cohort")) {
+          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheoryCohort: ui });
         } else if (raw.includes("slot")) {
-          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: ui, packageTheorySlots: ui });
+          setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: ui, packageTheoryCohort: null });
         } else {
-          setAddInlineErrors({ general: ui, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
+          setAddInlineErrors({ general: ui, slots: null, packagePracticalSlots: null, packageTheoryCohort: null });
         }
       } else if (raw.includes("slot")) {
-        setAddInlineErrors({ general: null, slots: ui, packagePracticalSlots: null, packageTheorySlots: null });
+        setAddInlineErrors({ general: null, slots: ui, packagePracticalSlots: null, packageTheoryCohort: null });
       } else {
-        setAddInlineErrors({ general: ui, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
+        setAddInlineErrors({ general: ui, slots: null, packagePracticalSlots: null, packageTheoryCohort: null });
       }
       showToast(ui, "error");
     }
@@ -2334,7 +2402,12 @@ export default function AdminBookings() {
                       {formatBookingSlotRangeLabel(b.time, b.endTime)}
                     </td>
                     <td className="px-4 py-3.5">
-                      <Badge className={`text-xs ${typeColor[b.type] ?? typeColor.practical}`}>{t(bookingLessonTypeTKey(b.type))}</Badge>
+                      {(() => {
+                        const typeDisp = bookingTableTypeDisplay(b);
+                        return (
+                          <Badge className={`text-xs ${typeDisp.colorClass}`}>{t(typeDisp.labelKey)}</Badge>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3.5">
                       <Badge
@@ -2375,14 +2448,20 @@ export default function AdminBookings() {
                             </Badge>
                             {pay.totalAmd > 0 ? (
                               <div className="text-xs text-muted-foreground tabular-nums leading-snug">
-                                <span className="text-foreground">{formatAmd(pay.paidAmd)}</span>
-                                <span className="mx-0.5">/</span>
-                                <span>{formatAmd(pay.totalAmd)}</span>
-                                {pay.remainingAmd > 0 ? (
-                                  <div className="text-amber-700 font-medium">
-                                    {t("adminBookingPaymentRemaining")}: {formatAmd(pay.remainingAmd)}
-                                  </div>
-                                ) : null}
+                                {pay.status === "partial" ? (
+                                  <>
+                                    <span className="text-foreground">{formatAmd(pay.paidAmd)}</span>
+                                    <span className="mx-0.5">/</span>
+                                    <span>{formatAmd(pay.totalAmd)}</span>
+                                    {pay.remainingAmd > 0 ? (
+                                      <div className="text-amber-700 font-medium">
+                                        {t("adminBookingPaymentRemaining")}: {formatAmd(pay.remainingAmd)}
+                                      </div>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <span className="text-foreground">{formatAmd(pay.totalAmd)}</span>
+                                )}
                               </div>
                             ) : null}
                           </div>
@@ -2581,27 +2660,42 @@ export default function AdminBookings() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
-                  <select
-                    value={editBooking.type}
-                    onChange={(e) => {
-                      const type = e.target.value as Booking["type"];
-                      const next: Booking = { ...editBooking, type };
-                      lastEditSlotInitKey.current = "";
-                      if (type !== "theory") setEditTheoryCohortId("");
-                      if (type === "practical") {
-                        next.instructorName = defaultPracticalInstructorName || next.instructorName;
-                      }
-                      if (type === "theory_personal") {
-                        next.instructorName = theoryPersonalInstructorNames[0] ?? next.instructorName;
-                      }
-                      setEditBooking(next);
-                    }}
-                    className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="practical">{t("lessonTypePractical")}</option>
-                    <option value="theory">{t("lessonTypeTheory")}</option>
-                    <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
-                  </select>
+                  {editBooking.coveredByPackage ? (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={`text-xs ${typeColor.package}`}>{t("adminBookingFlowPackage")}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          ({t(bookingLessonTypeTKey(editBooking.type))})
+                        </span>
+                      </div>
+                      {editBooking.packageName ? (
+                        <p className="text-sm text-foreground">{editBooking.packageName}</p>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                    </div>
+                  ) : (
+                    <select
+                      value={editBooking.type}
+                      onChange={(e) => {
+                        const type = e.target.value as Booking["type"];
+                        const next: Booking = { ...editBooking, type };
+                        lastEditSlotInitKey.current = "";
+                        if (type !== "theory") setEditTheoryCohortId("");
+                        if (type === "practical") {
+                          next.instructorName = defaultPracticalInstructorName || next.instructorName;
+                        }
+                        if (type === "theory_personal") {
+                          next.instructorName = theoryPersonalInstructorNames[0] ?? next.instructorName;
+                        }
+                        setEditBooking(next);
+                      }}
+                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="practical">{t("lessonTypePractical")}</option>
+                      <option value="theory">{t("lessonTypeTheory")}</option>
+                      <option value="theory_personal">{t("lessonTypeTheoryPersonal")}</option>
+                    </select>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
@@ -2791,7 +2885,20 @@ export default function AdminBookings() {
                 )}
               </TabsContent>
               <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
-                {editSystemPayment ? (
+                {editBooking.coveredByPackage ? (
+                  <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-foreground space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={`text-xs ${BOOKING_LIST_PAYMENT_BADGE_CLASS.paid}`}>
+                        {t("adminBookingPaymentStatusPaid")}
+                      </Badge>
+                      <Badge className={`text-xs ${typeColor.package}`}>{t("adminBookingFlowPackage")}</Badge>
+                    </div>
+                    {editBooking.packageName ? (
+                      <p className="font-medium">{editBooking.packageName}</p>
+                    ) : null}
+                    <p className="text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                  </div>
+                ) : editSystemPayment ? (
                   <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-foreground">
                     <p>{t("adminBookingPaymentSystemLinked")}</p>
                     <p className="text-xs text-muted-foreground mt-2 tabular-nums">
@@ -2871,11 +2978,10 @@ export default function AdminBookings() {
             setAddFlowKind("practical");
             setAddPackageId("");
             setAddPackagePracticalSlotPick(null);
-            setAddPackageTheoryInstructorName("");
-            setAddPackageTheorySlotPick(null);
+            setAddPackageTheoryCohortId("");
             setAddPracticalLessonType("");
             setAddTheoryThemeTitles([]);
-            setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
+            setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheoryCohort: null });
           }
         }}
         title={t("bookingDialogAddTitle")}
@@ -2931,6 +3037,32 @@ export default function AdminBookings() {
                       />
                       {addFieldInvalid.student ? (
                         <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectStudent")}</p>
+                      ) : null}
+                      {addFlowKind === "practical" &&
+                      draft.studentId &&
+                      practicalPackageCredits.remaining > 0 ? (
+                        <div
+                          className={`mt-2 rounded-lg border px-3 py-2 text-sm ${
+                            practicalPackageCredits.coversPayment
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+                              : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+                          }`}
+                        >
+                          <p className="font-medium">
+                            {practicalPackageCredits.coversPayment
+                              ? t("adminBookingPracticalCreditsNotice")
+                              : t("adminBookingPracticalCreditsInsufficient")}
+                          </p>
+                          <p className="mt-1 text-xs opacity-90">
+                            {t("adminBookingPracticalCreditsRemainingLabel").replace(
+                              "%n",
+                              String(practicalPackageCredits.remaining),
+                            )}
+                            {practicalPackageCredits.packageName
+                              ? ` · ${practicalPackageCredits.packageName}`
+                              : ""}
+                          </p>
+                        </div>
                       ) : null}
                     </div>
                     <BookingTypeSelector
@@ -3076,9 +3208,13 @@ export default function AdminBookings() {
                           onChangeId={(id) => {
                             setAddPackageId(id);
                             setAddPackagePracticalSlotPick(null);
-                            setAddPackageTheoryInstructorName("");
-                            setAddPackageTheorySlotPick(null);
-                            setAddInlineErrors({ general: null, slots: null, packagePracticalSlots: null, packageTheorySlots: null });
+                            setAddPackageTheoryCohortId("");
+                            setAddInlineErrors({
+                              general: null,
+                              slots: null,
+                              packagePracticalSlots: null,
+                              packageTheoryCohort: null,
+                            });
                           }}
                           loading={packagesLoading}
                           error={packagesFetchError}
@@ -3086,131 +3222,45 @@ export default function AdminBookings() {
                           t={t}
                         />
                         {selectedAddPackage ? (
-                          <>
-                          <p className="text-sm text-muted-foreground">{t("adminBookingPackageSlotsOptionalHint")}</p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {selectedAddPackage.lessons > 0 ? (
-                              <Card className="border-border p-3">
-                                <p className="text-xs text-muted-foreground">{t("lessonTypePractical")}</p>
-                                <p className="text-sm font-semibold text-foreground">
-                                  {packageSelectionStats.practical.selected} / {packageSelectionStats.practical.total}{" "}
-                                  {t("selected")}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {t("booked")}: {packageSelectionStats.practical.booked}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {t("dashboardProgressPracticalRemaining")}: {packageSelectionStats.practical.remaining}
-                                </p>
-                              </Card>
-                            ) : null}
-                            {selectedAddPackage.theoryLessons > 0 ? (
-                              <Card className="border-border p-3">
-                                <p className="text-xs text-muted-foreground">{t("lessonTypeTheoryPersonal")}</p>
-                                <p className="text-sm font-semibold text-foreground">
-                                  {packageSelectionStats.theory.selected} / {packageSelectionStats.theory.total}{" "}
-                                  {t("selected")}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {t("booked")}: {packageSelectionStats.theory.booked}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {t("dashboardLessonsTheoryCredits")}: {packageSelectionStats.theory.remaining}
-                                </p>
-                              </Card>
+                          <div className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                            <p className="text-sm text-muted-foreground">{t("adminBookingPackagePurchaseHint")}</p>
+                            <p className="text-xs font-medium text-foreground">
+                              {t("adminBookingPackageIncludesLabel")}
+                            </p>
+                            <ul className="text-sm text-foreground space-y-1">
+                              {selectedAddPackage.lessons > 0 ? (
+                                <li>
+                                  {t("lessonTypePractical")}: {selectedAddPackage.lessons}
+                                </li>
+                              ) : null}
+                              {selectedAddPackage.theoryLessons > 0 ? (
+                                <li>
+                                  {t("lessonTypeTheory")}: {t("yes")}
+                                </li>
+                              ) : null}
+                            </ul>
+                            {hasReusableSelectedPackageOrder ? (
+                              <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                {t("adminBookingPracticalCreditsRemainingLabel").replace(
+                                  "%n",
+                                  String(
+                                    Math.max(
+                                      0,
+                                      Number(selectedStudentPackageOrder?.practicalRemaining ?? 0) ||
+                                        Math.max(
+                                          0,
+                                          Number(selectedStudentPackageOrder?.practicalTotal ?? 0) -
+                                            Number(selectedStudentPackageOrder?.practicalUsed ?? 0),
+                                        ),
+                                    ),
+                                  ),
+                                )}
+                                {selectedStudentPackageOrder?.packageName
+                                  ? ` · ${selectedStudentPackageOrder.packageName}`
+                                  : ""}
+                              </p>
                             ) : null}
                           </div>
-                          </>
-                        ) : null}
-                        {selectedAddPackage && selectedAddPackage.lessons > 0 ? (
-                          <>
-                            <p className="text-sm font-semibold text-foreground">Գործնական դասեր</p>
-                            <SlotSelector
-                              slotSource="practical"
-                              hint={t("adminBookingPackagePracticalSlotsHint").replace(
-                                /%n/g,
-                                String(selectedAddPackage.lessons),
-                              )}
-                              selectedInstructorId={packagePracticalCalendarInstructorId}
-                              instructors={practicalInstructorsForGrid}
-                              onInstructorChange={(id, opts) => {
-                                const ins = instructors.find((i) => i.id === id);
-                                if (ins) {
-                                  setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                                  if (!opts?.fromGridPick) {
-                                    setAddPackagePracticalSlotPick(null);
-                                    setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
-                                  }
-                                }
-                              }}
-                              onBranchPicked={(bid, opts) => {
-                                setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                                if (!opts?.fromGridPick) setAddPackagePracticalSlotPick(null);
-                              }}
-                              branchId={draft.branchId}
-                              studentName={studentLabel(draft.studentId)}
-                              showInstructorPicker
-                              onBookingConfirmed={(p) => {
-                                setAddPackagePracticalSlotPick(p);
-                                setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
-                              }}
-                              onAdminSelectionCleared={() => {
-                                setAddPackagePracticalSlotPick(null);
-                                setAddInlineErrors((prev) => ({ ...prev, packagePracticalSlots: null }));
-                              }}
-                              calendarKey={`add-pkg-prac-${addSlotSessionId}-${addPackageId}`}
-                              maxSelectableSlots={packageSelectionStats.practical.remainingBeforeSelection}
-                              maxSelectableSlotsErrorKey="adminBookingValPackagePracticalCount"
-                              reloadKey={busyGridReloadKey}
-                              t={t}
-                            />
-                            {addInlineErrors.packagePracticalSlots ? (
-                              <p className="mt-1 text-xs text-red-600">{addInlineErrors.packagePracticalSlots}</p>
-                            ) : null}
-                          </>
-                        ) : null}
-                        {selectedAddPackage && selectedAddPackage.theoryLessons > 0 ? (
-                          <>
-                            <p className="text-sm font-semibold text-foreground">Տեսական անհատական դասեր</p>
-                            <SlotSelector
-                              hint="Կարող եք ժամերը ընտրել հիմա կամ ավելի ուշ"
-                              selectedInstructorId={packageTheoryCalendarInstructorId}
-                              instructors={theoryInstructorsForGrid}
-                              onInstructorChange={(id, opts) => {
-                                const ins = instructors.find((i) => i.id === id);
-                                if (ins) {
-                                  setAddPackageTheoryInstructorName(ins.name);
-                                  if (!opts?.fromGridPick) {
-                                    setAddPackageTheorySlotPick(null);
-                                    setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
-                                  }
-                                }
-                              }}
-                              onBranchPicked={(bid, opts) => {
-                                setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                                if (!opts?.fromGridPick) setAddPackageTheorySlotPick(null);
-                              }}
-                              branchId={draft.branchId}
-                              studentName={studentLabel(draft.studentId)}
-                              showInstructorPicker
-                              onBookingConfirmed={(p) => {
-                                setAddPackageTheorySlotPick(p);
-                                setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
-                              }}
-                              onAdminSelectionCleared={() => {
-                                setAddPackageTheorySlotPick(null);
-                                setAddInlineErrors((prev) => ({ ...prev, packageTheorySlots: null }));
-                              }}
-                              calendarKey={`add-pkg-th-${addSlotSessionId}-${addPackageId}`}
-                              maxSelectableSlots={packageSelectionStats.theory.remainingBeforeSelection}
-                              maxSelectableSlotsErrorKey="adminBookingValPackageTheoryCount"
-                              reloadKey={busyGridReloadKey}
-                              t={t}
-                            />
-                            {addInlineErrors.packageTheorySlots ? (
-                              <p className="mt-1 text-xs text-red-600">{addInlineErrors.packageTheorySlots}</p>
-                            ) : null}
-                          </>
                         ) : null}
                       </>
                     ) : null}
@@ -3323,23 +3373,41 @@ export default function AdminBookings() {
                 </div>
               </TabsContent>
               <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
-                <AdminBookingPaymentSection
-                  totalPriceAmd={addEffectiveTotalAmd}
-                  value={addBookingPayment}
-                  onChange={(next) => {
-                    setAddBookingPayment(next);
-                    setDraft((d) =>
-                      d ? { ...d, status: bookingStatusFromAdminPayment(next.status, d.status) } : d,
-                    );
-                  }}
-                  errorKey={addPaymentErrorKey}
-                  giftEnabled={addFlowKind === "practical"}
-                  giftAutoApproved={isSuperAdminUser}
-                  isGift={addIsGift}
-                  onIsGiftChange={setAddIsGift}
-                  giftNote={addGiftNote}
-                  onGiftNoteChange={setAddGiftNote}
-                />
+                {(addFlowKind === "theory_group" && theoryGroupPackageCovered) ||
+                (addFlowKind === "practical" && practicalPackageCredits.coversPayment) ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100 space-y-1">
+                    <p className="font-medium">{t("adminBookingPackageIncludedInPackage")}</p>
+                    {addFlowKind === "practical" && practicalPackageCredits.remaining > 0 ? (
+                      <p className="text-xs opacity-90">
+                        {t("adminBookingPracticalCreditsRemainingLabel").replace(
+                          "%n",
+                          String(practicalPackageCredits.remaining),
+                        )}
+                        {practicalPackageCredits.packageName
+                          ? ` · ${practicalPackageCredits.packageName}`
+                          : ""}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <AdminBookingPaymentSection
+                    totalPriceAmd={addEffectiveTotalAmd}
+                    value={addBookingPayment}
+                    onChange={(next) => {
+                      setAddBookingPayment(next);
+                      setDraft((d) =>
+                        d ? { ...d, status: bookingStatusFromAdminPayment(next.status, d.status) } : d,
+                      );
+                    }}
+                    errorKey={addPaymentErrorKey}
+                    giftEnabled={addFlowKind === "practical"}
+                    giftAutoApproved={isSuperAdminUser}
+                    isGift={addIsGift}
+                    onIsGiftChange={setAddIsGift}
+                    giftNote={addGiftNote}
+                    onGiftNoteChange={setAddGiftNote}
+                  />
+                )}
               </TabsContent>
             </Tabs>
           </form>
@@ -3377,6 +3445,73 @@ export default function AdminBookings() {
         }
         danger={staffCancellationDialog?.kind === "reject"}
       />
+
+      <AppModal
+        open={packageFollowUp != null}
+        onOpenChange={(o) => {
+          if (!o) setPackageFollowUp(null);
+        }}
+        title={t("adminBookingPackageFollowUpTitle")}
+        description={
+          packageFollowUp?.packageName
+            ? `${packageFollowUp.packageName}. ${t("adminBookingPackageFollowUpDesc")}`
+            : t("adminBookingPackageFollowUpDesc")
+        }
+        footer={
+          <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setPackageFollowUp(null)}
+            >
+              {t("adminBookingPackageFollowUpLater")}
+            </Button>
+            {packageFollowUp?.hasTheory ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  const follow = packageFollowUp;
+                  setPackageFollowUp(null);
+                  if (!follow) return;
+                  openAdd({
+                    flow: "theory_group",
+                    studentId: follow.studentId,
+                    branchId: follow.branchId,
+                  });
+                }}
+              >
+                {t("adminBookingPackageFollowUpTheory")}
+              </Button>
+            ) : null}
+            {packageFollowUp?.hasPractical ? (
+              <Button
+                type="button"
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
+                onClick={() => {
+                  const follow = packageFollowUp;
+                  setPackageFollowUp(null);
+                  if (!follow) return;
+                  const p = new URLSearchParams();
+                  if (follow.studentId) p.set("student", follow.studentId);
+                  if (follow.branchId) p.set("branch", follow.branchId);
+                  const stu = studentsMini.find((s) => studentIdMatches(s.id, follow.studentId));
+                  const name = (stu?.name ?? "").trim();
+                  if (name) p.set("q", name);
+                  const qs = p.toString();
+                  setLocation(absWouterHref(qs ? `/admin/driving?${qs}` : "/admin/driving"));
+                }}
+              >
+                {t("adminBookingPackageFollowUpPractical")}
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        <p className="text-sm text-muted-foreground">{t("adminBookingPackageFollowUpDesc")}</p>
+      </AppModal>
 
       <ExcelBookingImportModal
         open={importOpen}

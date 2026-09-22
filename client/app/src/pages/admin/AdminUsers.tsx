@@ -63,12 +63,13 @@ const statusColor: Record<string, string> = {
   inactive: "bg-slate-100 text-slate-500",
 };
 
-function studentBookingHref(u: Pick<User, "id" | "branchId" | "instructor">): string {
+function studentBookingHref(u: Pick<User, "id" | "branchId" | "instructor" | "name">): string {
   return absWouterHref(
     adminBookingsHrefFromStudent({
       studentId: u.id,
       branchId: u.branchId,
       instructorName: u.instructor,
+      studentName: u.name,
     }),
   );
 }

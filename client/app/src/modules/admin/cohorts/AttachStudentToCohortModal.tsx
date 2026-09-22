@@ -95,6 +95,8 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
   const [studentInvalid, setStudentInvalid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [extraStudents, setExtraStudents] = useState<AdminStudentMini[]>([]);
+  const [packageTheoryCovered, setPackageTheoryCovered] = useState(false);
+  const [packageCoverLoading, setPackageCoverLoading] = useState(false);
 
   const studentsForPicker = useMemo(() => {
     const byId = new Map<string, AdminStudentMini>();
@@ -108,10 +110,11 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
     () => (theoryOption ? theoryGroupSlotPlanFromCohort(theoryOption) : null),
     [theoryOption],
   );
-  const totalPriceAmd = useMemo(
+  const catalogTotalAmd = useMemo(
     () => (cohort ? totalAmdForCohort(cohort, instructors) : 0),
     [cohort, instructors],
   );
+  const totalPriceAmd = packageTheoryCovered ? 0 : catalogTotalAmd;
 
   useEffect(() => {
     if (!open) return;
@@ -124,7 +127,52 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
     setStudentInvalid(false);
     setSubmitting(false);
     setExtraStudents([]);
+    setPackageTheoryCovered(false);
+    setPackageCoverLoading(false);
   }, [open, cohort?.id]);
+
+  useEffect(() => {
+    if (!open || !studentId.trim()) {
+      setPackageTheoryCovered(false);
+      return;
+    }
+    let cancelled = false;
+    setPackageCoverLoading(true);
+    void (async () => {
+      try {
+        const data = await vivaApiJson<{
+          packages?: Array<{ theoryTotal?: number; theoryUsed?: number; theoryRemaining?: number; status?: string }>;
+        }>(`/students/${encodeURIComponent(studentId)}/entitlements`);
+        if (cancelled) return;
+        const pkgs = Array.isArray(data?.packages) ? data.packages : [];
+        const covered = pkgs.some((p) => {
+          const status = String(p.status ?? "").toLowerCase();
+          if (!["active", "paid", "confirmed"].includes(status)) return false;
+          const remaining =
+            p.theoryRemaining != null
+              ? Number(p.theoryRemaining)
+              : Math.max(0, Number(p.theoryTotal ?? 0) - Number(p.theoryUsed ?? 0));
+          return remaining > 0;
+        });
+        setPackageTheoryCovered(covered);
+        if (covered) {
+          setPayment((prev) => ({
+            ...prev,
+            status: "paid",
+            paidStr: "0",
+          }));
+          setStatus("confirmed");
+        }
+      } catch {
+        if (!cancelled) setPackageTheoryCovered(false);
+      } finally {
+        if (!cancelled) setPackageCoverLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, studentId]);
 
   const close = () => onOpenChange(false);
 
@@ -146,7 +194,8 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
       return;
     }
 
-    const payErr = validateAdminBookingPayment(payment, totalPriceAmd);
+    const effectiveTotal = packageTheoryCovered ? 0 : totalPriceAmd;
+    const payErr = packageTheoryCovered ? null : validateAdminBookingPayment(payment, effectiveTotal);
     if (payErr) {
       setModalTab("payment");
       setPaymentErrorKey(payErr);
@@ -155,8 +204,10 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
     }
     setPaymentErrorKey(null);
 
-    const paid = paidAmountFromState(payment);
-    const paymentBody = adminPaymentApiPayload(payment, totalPriceAmd);
+    const paid = packageTheoryCovered ? 0 : paidAmountFromState(payment);
+    const paymentBody = packageTheoryCovered
+      ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0, consumePackageCredits: true }
+      : { ...adminPaymentApiPayload(payment, effectiveTotal), consumePackageCredits: true };
 
     setSubmitting(true);
     try {
@@ -165,7 +216,7 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
         body: {
           studentId: Number(studentId),
           branchId: Number(cohort.branchId),
-          status,
+          status: packageTheoryCovered ? "confirmed" : status,
           type: "theory",
           dateIso: slotPlan.dateIso,
           slots: slotPlan.times,
@@ -236,8 +287,15 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
             <p className="font-medium text-foreground">{cohort.name}</p>
             <p className="mt-0.5 text-muted-foreground">
               {cohort.instructorName}
-              {totalPriceAmd > 0 ? ` · ${formatAmd(totalPriceAmd)}` : ""}
+              {packageTheoryCovered
+                ? ` · ${t("adminBookingPackageIncludedInPackage")}`
+                : totalPriceAmd > 0
+                  ? ` · ${formatAmd(totalPriceAmd)}`
+                  : ""}
             </p>
+            {packageCoverLoading ? (
+              <p className="mt-1 text-xs text-muted-foreground">{t("loading")}</p>
+            ) : null}
           </div>
 
           <Tabs value={modalTab} onValueChange={(v) => setModalTab(v as "booking" | "payment")}>
@@ -294,13 +352,19 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
             </TabsContent>
 
             <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
-              <AdminBookingPaymentSection
-                totalPriceAmd={totalPriceAmd}
-                value={payment}
-                onChange={setPayment}
-                errorKey={paymentErrorKey}
-                giftEnabled={false}
-              />
+              {packageTheoryCovered ? (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+                  {t("adminBookingPackageIncludedInPackage")}
+                </p>
+              ) : (
+                <AdminBookingPaymentSection
+                  totalPriceAmd={totalPriceAmd}
+                  value={payment}
+                  onChange={setPayment}
+                  errorKey={paymentErrorKey}
+                  giftEnabled={false}
+                />
+              )}
             </TabsContent>
           </Tabs>
         </form>

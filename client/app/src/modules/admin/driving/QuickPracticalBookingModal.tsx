@@ -36,6 +36,10 @@ import {
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
 import {
+  fetchStudentPracticalCredits,
+  type StudentPracticalCreditsSummary,
+} from "src/modules/admin/booking/studentPracticalCredits";
+import {
   minutesToHHMM,
   normalizeTimeHHMM,
   parseTimeToMinutes,
@@ -140,6 +144,8 @@ export default function QuickPracticalBookingModal({
   const [setDelayedRest, setSetDelayedRest] = useState(false);
   const [delayedRestStart, setDelayedRestStart] = useState("15:10");
   const [delayedRestEnd, setDelayedRestEnd] = useState("16:10");
+  const [practicalCredits, setPracticalCredits] = useState<StudentPracticalCreditsSummary | null>(null);
+  const [practicalCreditsLoading, setPracticalCreditsLoading] = useState(false);
 
   const dateIso = slotEntries[0]?.dateIso?.slice(0, 10) ?? "";
 
@@ -168,6 +174,11 @@ export default function QuickPracticalBookingModal({
     [totalPriceStr, suggestedTotalAmd],
   );
 
+  const slotCountForCredits = Math.max(1, sortedEntries.length);
+  const creditsCoverPayment =
+    !isGift && Boolean(practicalCredits?.coversPayment) && (practicalCredits?.packagePracticalRemaining ?? 0) >= slotCountForCredits;
+  const effectiveTotalAmd = creditsCoverPayment || isGift ? 0 : totalPriceAmd;
+
   useEffect(() => {
     if (!open) return;
     setStudentId("");
@@ -181,6 +192,8 @@ export default function QuickPracticalBookingModal({
     setPaidSlotKeys(new Set());
     setIsGift(false);
     setGiftNote("");
+    setPracticalCredits(null);
+    setPracticalCreditsLoading(false);
     const start = normalizeUiTime(slotEntries[0]?.time ?? "") ?? "14:00";
     const suggestedEnd = normalizeUiTime(customSlotEndTime ?? "");
     const end =
@@ -195,6 +208,35 @@ export default function QuickPracticalBookingModal({
   }, [open, initialBranchId, customSlot, customSlotEndTime]);
 
   useEffect(() => {
+    if (!open || !studentId.trim()) {
+      setPracticalCredits(null);
+      setPracticalCreditsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPracticalCreditsLoading(true);
+    void (async () => {
+      try {
+        const summary = await fetchStudentPracticalCredits(studentId, slotCountForCredits);
+        if (cancelled) return;
+        setPracticalCredits(summary);
+        if (summary.coversPayment && summary.packagePracticalRemaining >= slotCountForCredits) {
+          setBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
+          setStatus("confirmed");
+          setIsGift(false);
+        }
+      } catch {
+        if (!cancelled) setPracticalCredits(null);
+      } finally {
+        if (!cancelled) setPracticalCreditsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, studentId, slotCountForCredits]);
+
+  useEffect(() => {
     if (!open) return;
     setTotalPriceStr(String(suggestedTotalAmd));
     setBookingPayment((prev) => {
@@ -206,7 +248,8 @@ export default function QuickPracticalBookingModal({
   }, [open, suggestedTotalAmd]);
 
   const firstEntry = sortedEntries[0];
-  const showPaidSlotPickers = !isGift && bookingPayment.status === "partial" && sortedEntries.length > 1;
+  const showPaidSlotPickers =
+    !isGift && !creditsCoverPayment && bookingPayment.status === "partial" && sortedEntries.length > 1;
   const dateLabel = useMemo(() => {
     const dates = Array.from(new Set(sortedEntries.map((e) => e.dateIso)));
     if (dates.length === 0) return formatGridDateLabel(dateIso);
@@ -292,7 +335,8 @@ export default function QuickPracticalBookingModal({
       }
     }
 
-    const payErr = isGift ? null : validateAdminBookingPayment(bookingPayment, totalPriceAmd);
+    const payErr =
+      isGift || creditsCoverPayment ? null : validateAdminBookingPayment(bookingPayment, effectiveTotalAmd);
     if (payErr) {
       setPaymentErrorKey(payErr);
       showToast(t(payErr), "error");
@@ -307,15 +351,17 @@ export default function QuickPracticalBookingModal({
 
     const paymentBody = isGift
       ? { isGift: true, ...(giftNote.trim() ? { giftNote: giftNote.trim() } : {}) }
-      : adminPaymentApiPayload(bookingPayment, totalPriceAmd);
+      : creditsCoverPayment
+        ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0, consumePackageCredits: true }
+        : { ...adminPaymentApiPayload(bookingPayment, effectiveTotalAmd), consumePackageCredits: false };
     const lifecycleStatus =
       isGift || !("adminPaymentStatus" in paymentBody)
         ? status
         : bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, status);
-    const paid = isGift
+    const paid = isGift || creditsCoverPayment
       ? 0
       : "adminPaymentStatus" in paymentBody && paymentBody.adminPaymentStatus === "paid"
-        ? totalPriceAmd
+        ? effectiveTotalAmd
         : ("paidAmountAmd" in paymentBody ? paymentBody.paidAmountAmd : undefined) ??
           paidAmountFromState(bookingPayment);
 
@@ -345,7 +391,7 @@ export default function QuickPracticalBookingModal({
         ...(sortedEntries.length > 0
           ? { slotEntries: sortedEntries.map((e) => ({ dateIso: e.dateIso, time: e.time })) }
           : {}),
-        totalPriceAmd,
+        totalPriceAmd: creditsCoverPayment || isGift ? 0 : totalPriceAmd,
         ...(customSlot && customEndNorm
           ? { allowCustomPracticalTime: true, customSlotEndTime: customEndNorm }
           : {}),
@@ -619,6 +665,32 @@ export default function QuickPracticalBookingModal({
               onStudentCreated(s);
             }}
           />
+          {studentId && practicalCreditsLoading ? (
+            <p className="mt-2 text-xs text-muted-foreground">{t("loading")}…</p>
+          ) : null}
+          {studentId && !practicalCreditsLoading && practicalCredits && practicalCredits.packagePracticalRemaining > 0 ? (
+            <div
+              className={cn(
+                "mt-2 rounded-lg border px-3 py-2 text-sm",
+                creditsCoverPayment
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+                  : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
+              )}
+            >
+              <p className="font-medium">
+                {creditsCoverPayment
+                  ? t("adminBookingPracticalCreditsNotice")
+                  : t("adminBookingPracticalCreditsInsufficient")}
+              </p>
+              <p className="mt-1 text-xs opacity-90">
+                {t("adminBookingPracticalCreditsRemainingLabel").replace(
+                  "%n",
+                  String(practicalCredits.packagePracticalRemaining),
+                )}
+                {practicalCredits.packageName ? ` · ${practicalCredits.packageName}` : ""}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div>
@@ -673,24 +745,37 @@ export default function QuickPracticalBookingModal({
           </div>
         </div>
 
-        <AdminBookingPaymentSection
-          totalPriceAmd={totalPriceAmd}
-          totalPriceStr={totalPriceStr}
-          onTotalPriceStrChange={setTotalPriceStr}
-          totalPriceEditable
-          value={bookingPayment}
-          onChange={(next) => {
-            setBookingPayment(next);
-            setStatus(bookingStatusFromAdminPayment(next.status, status));
-          }}
-          errorKey={paymentErrorKey}
-          giftEnabled
-          giftAutoApproved={isSuperAdminUser}
-          isGift={isGift}
-          onIsGiftChange={setIsGift}
-          giftNote={giftNote}
-          onGiftNoteChange={setGiftNote}
-        />
+        {creditsCoverPayment ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+            <p className="font-medium">{t("adminBookingPackageIncludedInPackage")}</p>
+            <p className="mt-1 text-xs opacity-90">
+              {t("adminBookingPracticalCreditsRemainingLabel").replace(
+                "%n",
+                String(practicalCredits?.packagePracticalRemaining ?? 0),
+              )}
+              {practicalCredits?.packageName ? ` · ${practicalCredits.packageName}` : ""}
+            </p>
+          </div>
+        ) : (
+          <AdminBookingPaymentSection
+            totalPriceAmd={effectiveTotalAmd}
+            totalPriceStr={totalPriceStr}
+            onTotalPriceStrChange={setTotalPriceStr}
+            totalPriceEditable
+            value={bookingPayment}
+            onChange={(next) => {
+              setBookingPayment(next);
+              setStatus(bookingStatusFromAdminPayment(next.status, status));
+            }}
+            errorKey={paymentErrorKey}
+            giftEnabled
+            giftAutoApproved={isSuperAdminUser}
+            isGift={isGift}
+            onIsGiftChange={setIsGift}
+            giftNote={giftNote}
+            onGiftNoteChange={setGiftNote}
+          />
+        )}
       </form>
     </AppModal>
   );
