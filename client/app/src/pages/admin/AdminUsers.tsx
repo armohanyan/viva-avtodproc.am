@@ -23,39 +23,15 @@ import AdminUsersAnalyticsPanel from "src/pages/admin/AdminUsersAnalyticsPanel";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { formatStudentPhones } from "src/lib/studentPhones";
-import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
 import { branchNameById, useBranches } from "src/modules/branches";
 import { allInstructorNames } from "src/modules/admin/adminPeople";
+import { type AdminStudentListItem } from "src/modules/admin/adminStudents.api";
+import { useAdminStudentsList } from "src/modules/admin/useAdminStudentsList";
 import { useInstructors } from "src/modules/instructors/useInstructors";
 
-const INTERNAL_NO_LOGIN_EMAIL_DOMAIN = "no-login.local";
+type User = AdminStudentListItem;
 
 type NewUserDraft = Partial<User> & { inviteToSystem: boolean };
-
-function displayStudentEmail(email: string): string {
-  const value = (email ?? "").trim();
-  return value.toLowerCase().endsWith(`@${INTERNAL_NO_LOGIN_EMAIL_DOMAIN}`) ? "" : value;
-}
-
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  phone2: string;
-  instructor: string;
-  package: string;
-  lessons: string;
-  status: string;
-  /** YYYY-MM-DD */
-  joinedIso: string;
-  branchId: string;
-  /** 0-10, where 0 means complete beginner */
-  skillRating: number;
-  licenseAchieved: boolean;
-  /** From GET /students: show "Invite student" only when true (no password / OAuth yet, real email). */
-  inviteEligible?: boolean;
-};
 
 const statusColor: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700",
@@ -79,7 +55,6 @@ function studentDetailsHref(u: Pick<User, "id">): string {
 }
 
 export default function AdminUsers() {
-  const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const addUserFormId = useId();
   const [, setLocation] = useLocation();
   const urlSearch = (useSearch() ?? "").replace(/^\?/, "");
@@ -88,8 +63,20 @@ export default function AdminUsers() {
   const { branches } = useBranches();
   const { instructors } = useInstructors();
   const instructorOptions = useMemo(() => allInstructorNames(instructors), [instructors]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [listLoading, setListLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [instructorFilter, setInstructorFilter] = useState("all");
+  const {
+    students: users,
+    loading: listLoading,
+    error: listError,
+    page,
+    pageSize,
+    total,
+    totalPages,
+    setPage,
+    refresh,
+    fetchAll,
+  } = useAdminStudentsList(search, instructorFilter);
   const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const inviteStudent = useCallback(
@@ -97,7 +84,7 @@ export default function AdminUsers() {
       if (invitingId) {
         return;
       }
-      if (!displayStudentEmail(email ?? "").trim()) {
+      if (!(email ?? "").trim()) {
         showToast(t("inviteStudentEmailRequired"), "error");
         return;
       }
@@ -117,30 +104,10 @@ export default function AdminUsers() {
     [invitingId, showToast, t],
   );
 
-  const refresh = useCallback(async () => {
-    try {
-      const stu = await vivaApiJson<User[]>("/students");
-      setUsers(
-        Array.isArray(stu)
-          ? stu.map((u) => ({
-              ...u,
-              id: String(u.id),
-              email: displayStudentEmail(u.email),
-              phone: u.phone ?? "",
-              phone2: u.phone2 ?? "",
-            }))
-          : [],
-      );
-    } catch (e) {
-      showToast(getApiErrorMessage(e) || t("fillRequired"), "error");
-    } finally {
-      setListLoading(false);
-    }
-  }, [showToast, t]);
-
   useEffect(() => {
-    void refresh();
-  }, [refresh, branchFilterRevision]);
+    if (!listError) return;
+    showToast(listError || t("fillRequired"), "error");
+  }, [listError, showToast, t]);
 
   useEffect(() => {
     const p = new URLSearchParams(urlSearch);
@@ -148,8 +115,6 @@ export default function AdminUsers() {
     setAnalyticsOpen(true);
     setLocation("/admin/students", { replace: true });
   }, [urlSearch, setLocation]);
-  const [search, setSearch] = useState("");
-  const [instructorFilter, setInstructorFilter] = useState("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
@@ -163,15 +128,6 @@ export default function AdminUsers() {
     branchId: "",
     skillRating: 0,
     licenseAchieved: false,
-  });
-
-  const filtered = users.filter((u) => {
-    const q = search.trim().toLowerCase();
-    const branchLabel = branchNameById(branches, u.branchId);
-    const hay = [u.id, u.name, u.email, u.phone, u.phone2, u.instructor, u.package, u.lessons, u.status, u.joinedIso, formatShortDateFromIso(u.joinedIso, lang), branchLabel, String(u.skillRating), u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet")].join(" ").toLowerCase();
-    const matchesSearch = !q || hay.includes(q);
-    const matchesInstructor = instructorFilter === "all" || u.instructor === instructorFilter;
-    return matchesSearch && matchesInstructor;
   });
 
   const userStatusLabel = (s: string) => {
@@ -277,6 +233,24 @@ export default function AdminUsers() {
         <DataTableToolbar value={search} onChange={setSearch} placeholder={`${t("search")}…`}>
           <CsvExportButton
             filename="admin-students.csv"
+            exportRowCount={total}
+            getRowsForExportAsync={async () => {
+              const rows = await fetchAll();
+              return rows.map((u) => [
+                u.name,
+                u.email,
+                u.phone,
+                u.phone2,
+                branchNameById(branches, u.branchId),
+                u.instructor,
+                u.package,
+                u.lessons,
+                String(u.skillRating),
+                userStatusLabel(u.status),
+                u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet"),
+                displayJoined(u.joinedIso),
+              ]);
+            }}
             headers={[
               t("name"),
               t("email"),
@@ -291,20 +265,6 @@ export default function AdminUsers() {
               t("studentLicense"),
               t("adminColJoined"),
             ]}
-            rows={filtered.map((u) => [
-              u.name,
-              u.email,
-              u.phone,
-              u.phone2,
-              branchNameById(branches, u.branchId),
-              u.instructor,
-              u.package,
-              u.lessons,
-              String(u.skillRating),
-              userStatusLabel(u.status),
-              u.licenseAchieved ? t("studentLicenseAchieved") : t("studentLicenseNotYet"),
-              displayJoined(u.joinedIso),
-            ])}
           />
         </DataTableToolbar>
 
@@ -339,13 +299,19 @@ export default function AdminUsers() {
                 <TableColumnHeaderWithFilter title={t("actions")} align="end" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {listLoading ? (
+            <tbody className={`divide-y divide-border ${listLoading && users.length > 0 ? "opacity-60" : ""}`}>
+              {listLoading && users.length === 0 ? (
                 <TableSkeletonRows cols={12} />
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    {t("tableNoMatches")}
+                  </td>
+                </tr>
               ) : (
-              filtered.map((u, i) => (
+              users.map((u) => (
                 <AdminTableRowContextMenu
-                  key={i}
+                  key={u.id}
                   actions={[
                     {
                       kind: "link",
@@ -468,8 +434,35 @@ export default function AdminUsers() {
             </tbody>
           </table>
         </AdminTableScroll>
-        <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
-          {t("panelShowingLabel")} {filtered.length} / {users.length} {t("adminTableUsersFooter")}
+        <div className="px-4 py-3 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            {t("panelShowingLabel")}{" "}
+            {total === 0 ? "0" : `${(page - 1) * pageSize + 1}-${Math.min(total, page * pageSize)}`} / {total}{" "}
+            {t("adminTableUsersFooter")}
+          </p>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={page <= 1 || listLoading}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              ‹
+            </Button>
+            <span className="text-xs text-muted-foreground px-2">
+              {page} / {totalPages}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={page >= totalPages || listLoading}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              ›
+            </Button>
+          </div>
         </div>
       </Card>
 

@@ -2000,6 +2000,42 @@ async function ensureBookingsAdminListIndexes(): Promise<void> {
   }
 }
 
+/** Indexes for the admin students list (branch filter, sort, and missing-profile backfill). */
+async function ensureStudentAdminListIndexes(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const specs: Array<{ table: string; name: string; sql: string }> = [
+    {
+      table: 'student_profiles',
+      name: 'student_profiles_branch_joined_idx',
+      sql: 'CREATE INDEX `student_profiles_branch_joined_idx` ON `student_profiles` (`branch_id`, `joined_at` DESC, `user_id` DESC)',
+    },
+    {
+      table: 'users',
+      name: 'users_account_type_idx',
+      sql: 'CREATE INDEX `users_account_type_idx` ON `users` (`account_type`)',
+    },
+  ];
+  for (const spec of specs) {
+    const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table
+       LIMIT 1`,
+      { type: QueryTypes.SELECT, replacements: { table: spec.table } },
+    );
+    if (tableRows.length === 0) continue;
+    const existing = await sequelize.query<{ INDEX_NAME: string }>(
+      `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table AND INDEX_NAME = :name
+       LIMIT 1`,
+      { type: QueryTypes.SELECT, replacements: { table: spec.table, name: spec.name } },
+    );
+    if (existing.length > 0) continue;
+    await sequelize.query(spec.sql);
+  }
+}
+
 /**
  * Lets staff delete an instructor user while keeping booking rows: null `instructor_user_id` and
  * `ON DELETE SET NULL` on the FK to `users`.
@@ -2883,6 +2919,7 @@ export async function syncModels(): Promise<void> {
   await ensureBookingsCreatedByColumns();
   await ensureBookingsGiftColumns();
   await ensureBookingsAdminListIndexes();
+  await ensureStudentAdminListIndexes();
   await ensureNotificationsTable();
   await ensureNotificationsTypeEnumValues();
   await ensureStudentProfilesPackageIdOnDeleteSetNull();

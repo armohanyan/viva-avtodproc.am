@@ -1,6 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import { parseBody, parseParams, resolveBranchIdFilter, verifyAccessToken } from '../helpers';
+import {
+  paginationRequested,
+  parseBody,
+  parsePaginationQuery,
+  parseParams,
+  resolveBranchIdFilter,
+  verifyAccessToken,
+} from '../helpers';
 import { assertStudentSelfServiceBookingEnabled } from '../constants/booking.constants';
 import InstructorStudentRatingService from '../services/instructor-student-rating.service';
 import StudentAdminService from '../services/student-admin.service';
@@ -199,6 +206,26 @@ export default class StudentController {
       }
 
       const branchId = await resolveBranchIdFilter(req);
+      if (paginationRequested(req)) {
+        const { page, pageSize } = parsePaginationQuery(req);
+        const readQuery = (key: string): string => {
+          const raw = req.query[key];
+          if (typeof raw === 'string') return raw.trim();
+          if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0].trim();
+          return '';
+        };
+        const search = readQuery('search').slice(0, 100);
+        const instructor = readQuery('instructor').slice(0, 255);
+        const data = await StudentAdminService.listPaginated({
+          page,
+          pageSize,
+          branchId,
+          ...(search ? { search } : {}),
+          ...(instructor && instructor.toLowerCase() !== 'all' ? { instructor } : {}),
+        });
+        SuccessHandlerUtil.handleGet(res, next, data);
+        return;
+      }
       const data = await StudentAdminService.list(branchId);
       SuccessHandlerUtil.handleList(res, next, data);
     } catch (e) {

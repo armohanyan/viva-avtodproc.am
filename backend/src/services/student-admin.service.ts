@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes, type Includeable, type WhereOptions } from 'sequelize';
 import { sequelize } from '../database/sequelize';
 import {
   AdminMfaChallenge,
@@ -78,40 +78,154 @@ function studentInviteEligible(stu: User, oauthUserIds: Set<number>): boolean {
   return true;
 }
 
+export type AdminStudentListQuery = {
+  page: number;
+  pageSize: number;
+  branchId?: number;
+  search?: string;
+  /** Exact instructor display name from the students table filter. */
+  instructor?: string;
+};
+
+export type AdminStudentListResult = {
+  items: AdminStudentRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+const STUDENT_ACCOUNT_LIST_ATTRIBUTES = ['id', 'name', 'email', 'phone', 'phone2', 'passwordHash'] as const;
+
 export default class StudentAdminService {
+  /** Skip repeat full-table backfills while an admin pages through the list. */
+  private static profilesEnsuredAt = 0;
+  private static readonly PROFILES_ENSURE_TTL_MS = 20_000;
+
+  /**
+   * Create missing student profiles in one query + one insert.
+   * Previously this loaded every student and inserted one row at a time on each list request.
+   */
   private static async ensureProfilesForStudents(userIds?: number[]): Promise<void> {
-    const branch = await Branch.findOne({ order: [['id', 'ASC']] });
+    const scoped = userIds != null;
+    const scopedIds = scoped ? userIds.filter((id) => Number.isFinite(id) && id > 0) : [];
+    if (scoped && scopedIds.length === 0) return;
+    if (!scoped && Date.now() - this.profilesEnsuredAt < this.PROFILES_ENSURE_TTL_MS) return;
+
+    const branch = await Branch.findOne({ order: [['id', 'ASC']], attributes: ['id'] });
     if (!branch) return;
 
-    const where = userIds?.length
-      ? { id: { [Op.in]: userIds }, accountType: 'student' as const }
-      : { accountType: 'student' as const };
-    const students = await User.findAll({ where, attributes: ['id'] });
-    if (students.length === 0) return;
+    const missing = await sequelize.query<{ id: number }>(
+      `SELECT u.id AS id
+       FROM users u
+       LEFT JOIN student_profiles sp ON sp.user_id = u.id
+       WHERE u.account_type = 'student'
+         AND sp.user_id IS NULL
+         ${scoped ? 'AND u.id IN (:userIds)' : ''}`,
+      {
+        type: QueryTypes.SELECT,
+        ...(scoped ? { replacements: { userIds: scopedIds } } : {}),
+      },
+    );
 
-    const existingProfiles = await StudentProfile.findAll({
-      where: { userId: { [Op.in]: students.map((s) => s.id) } },
-      attributes: ['userId'],
-    });
-    const existingUserIds = new Set(existingProfiles.map((p) => p.userId));
+    if (missing.length > 0) {
+      const joinedAt = new Date().toISOString().slice(0, 10);
+      await StudentProfile.bulkCreate(
+        missing.map((student) => ({
+          userId: student.id,
+          branchId: branch.id,
+          packageId: null,
+          instructorUserId: null,
+          lessonsCompleted: 0,
+          lessonsTotal: 0,
+          theoryLessonsCompleted: 0,
+          theoryLessonsTotal: 0,
+          enrollmentStatus: 'active',
+          skillRating: 0,
+          licenseAchieved: false,
+          joinedAt,
+        })),
+        { ignoreDuplicates: true },
+      );
+    }
 
-    for (const student of students) {
-      if (existingUserIds.has(student.id)) continue;
-      await StudentProfile.create({
-        userId: student.id,
-        branchId: branch.id,
-        packageId: null,
-        instructorUserId: null,
-        lessonsCompleted: 0,
-        lessonsTotal: 0,
-        theoryLessonsCompleted: 0,
-        theoryLessonsTotal: 0,
-        enrollmentStatus: 'active',
-        skillRating: 0,
-        licenseAchieved: false,
-        joinedAt: new Date().toISOString().slice(0, 10),
+    if (!scoped) this.profilesEnsuredAt = Date.now();
+  }
+
+  private static profileListInclude(opts?: { instructorName?: string; includeBranch?: boolean }): Includeable[] {
+    const instructor = opts?.instructorName?.trim();
+    const include: Includeable[] = [
+      {
+        model: User,
+        as: 'studentAccount' as const,
+        required: true,
+        attributes: [...STUDENT_ACCOUNT_LIST_ATTRIBUTES],
+      },
+      {
+        model: Package,
+        as: 'package' as const,
+        required: false,
+        attributes: ['id', 'name'],
+      },
+      {
+        model: User,
+        as: 'assignedInstructor' as const,
+        required: Boolean(instructor),
+        attributes: ['id', 'name'],
+        ...(instructor ? { where: { name: instructor } } : {}),
+      },
+    ];
+    if (opts?.includeBranch) {
+      include.push({
+        model: Branch,
+        required: false,
+        attributes: ['id', 'name'],
       });
     }
+    return include;
+  }
+
+  private static escapeLike(value: string): string {
+    return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  }
+
+  private static buildListWhere(query: { branchId?: number; search?: string }): WhereOptions {
+    const andParts: WhereOptions[] = [];
+    if (query.branchId !== undefined) {
+      andParts.push({ branchId: query.branchId });
+    }
+    const search = query.search?.trim().slice(0, 100) ?? '';
+    if (search) {
+      const like = { [Op.like]: `%${this.escapeLike(search)}%` };
+      const orParts: WhereOptions[] = [
+        { '$studentAccount.name$': like },
+        { '$studentAccount.email$': like },
+        { '$studentAccount.phone$': like },
+        { '$studentAccount.phone2$': like },
+        { '$package.name$': like },
+        { '$assignedInstructor.name$': like },
+        { '$Branch.name$': like },
+        { enrollmentStatus: like },
+        sequelize.where(sequelize.cast(sequelize.col('StudentProfile.joined_at'), 'CHAR'), like),
+        sequelize.where(
+          sequelize.fn(
+            'CONCAT',
+            sequelize.col('StudentProfile.lessons_completed'),
+            '/',
+            sequelize.col('StudentProfile.lessons_total'),
+          ),
+          like,
+        ),
+      ];
+      if (/^\d+$/.test(search)) {
+        const n = Number(search);
+        if (Number.isFinite(n) && n > 0) orParts.push({ userId: n });
+        if (Number.isFinite(n) && n >= 0 && n <= 10) orParts.push({ skillRating: n });
+      }
+      andParts.push({ [Op.or]: orParts });
+    }
+    if (andParts.length === 0) return {};
+    if (andParts.length === 1) return andParts[0]!;
+    return { [Op.and]: andParts };
   }
 
   private static async oauthUserIdSetFor(userIds: number[]): Promise<Set<number>> {
@@ -155,11 +269,7 @@ export default class StudentAdminService {
     await this.ensureProfilesForStudents();
     const rows = await StudentProfile.findAll({
       ...(branchId !== undefined ? { where: { branchId } } : {}),
-      include: [
-        { model: User, as: 'studentAccount', required: true },
-        { model: Package, as: 'package', required: false },
-        { model: User, as: 'assignedInstructor', required: false },
-      ],
+      include: this.profileListInclude(),
       order: [['joinedAt', 'DESC']],
     });
     const userIds = rows
@@ -167,6 +277,41 @@ export default class StudentAdminService {
       .filter((id): id is number => typeof id === 'number');
     const oauthUserIds = await this.oauthUserIdSetFor(userIds);
     return this.mapProfileRows(rows, oauthUserIds);
+  }
+
+  static async listPaginated(query: AdminStudentListQuery): Promise<AdminStudentListResult> {
+    const page = Math.max(1, Math.floor(query.page));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(query.pageSize)));
+    const search = query.search?.trim() ?? '';
+    const instructor = query.instructor?.trim() ?? '';
+    await this.ensureProfilesForStudents();
+    const result = await StudentProfile.findAndCountAll({
+      where: this.buildListWhere({ branchId: query.branchId, search }),
+      include: this.profileListInclude({
+        ...(instructor ? { instructorName: instructor } : {}),
+        includeBranch: search.length > 0,
+      }),
+      order: [
+        ['joinedAt', 'DESC'],
+        ['userId', 'DESC'],
+      ],
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+      distinct: true,
+      subQuery: false,
+    });
+    const rows = result.rows;
+    const userIds = rows
+      .map((sp) => (sp as ProfileJoined).studentAccount?.id)
+      .filter((id): id is number => typeof id === 'number');
+    const oauthUserIds = await this.oauthUserIdSetFor(userIds);
+    const total = typeof result.count === 'number' ? result.count : rows.length;
+    return {
+      items: this.mapProfileRows(rows, oauthUserIds),
+      page,
+      pageSize,
+      total,
+    };
   }
 
   /** Students assigned to this instructor (`student_profiles.instructor_user_id`). */
@@ -178,11 +323,7 @@ export default class StudentAdminService {
     await this.ensureProfilesForStudents(assignedStudentProfiles.map((p) => p.userId));
     const rows = await StudentProfile.findAll({
       where: { instructorUserId },
-      include: [
-        { model: User, as: 'studentAccount', required: true },
-        { model: Package, as: 'package', required: false },
-        { model: User, as: 'assignedInstructor', required: false },
-      ],
+      include: this.profileListInclude(),
       order: [['joinedAt', 'DESC']],
     });
     const userIds = rows
