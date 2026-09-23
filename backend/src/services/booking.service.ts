@@ -591,6 +591,10 @@ export type StudentBookingDto = {
   /** True when the lesson is within the pay-horizon and payment has not been captured yet. */
   paymentRequiredNow?: boolean;
   meetLink?: string | null;
+  /** Lesson used package credits. */
+  coveredByPackage?: boolean;
+  /** Catalog package those credits came from. */
+  packageName?: string | null;
 };
 
 /** Result of POST /bookings/:id/cancel-student for student bookings. */
@@ -2274,6 +2278,27 @@ export default class BookingService {
     };
   }
 
+  private static async packageNamesByOrderIds(orderIds: readonly number[]): Promise<Map<number, string>> {
+    const ids = [...new Set(orderIds.map((id) => Math.floor(Number(id))).filter((id) => id > 0))];
+    const out = new Map<number, string>();
+    if (ids.length === 0) return out;
+    const packageOrders = await PackageOrder.findAll({
+      where: { id: { [Op.in]: ids } },
+      attributes: ['id', 'packageId'],
+    });
+    const packageIds = [...new Set(packageOrders.map((o) => o.packageId).filter((id) => id > 0))];
+    const packages =
+      packageIds.length > 0
+        ? await Package.findAll({ where: { id: { [Op.in]: packageIds } }, attributes: ['id', 'name'] })
+        : [];
+    const pkgNameById = new Map(packages.map((p) => [p.id, String(p.name ?? '').trim()]));
+    for (const o of packageOrders) {
+      const name = pkgNameById.get(o.packageId) ?? '';
+      if (name) out.set(o.id, name);
+    }
+    return out;
+  }
+
   private static async attachSlotsAndFinance(items: BookingAdminListItemDto[]): Promise<BookingAdminListItemDto[]> {
     const bookingIds = items.map((b) => b.id);
     if (bookingIds.length === 0) return items;
@@ -2285,7 +2310,7 @@ export default class BookingService {
           .filter((id) => id > 0),
       ),
     ];
-    const [slotRows, financeRows, packageOrders] = await Promise.all([
+    const [slotRows, financeRows, packageNameByOrderId] = await Promise.all([
       BookingSlot.findAll({
         where: { bookingId: { [Op.in]: bookingIds } },
         order: [
@@ -2297,24 +2322,8 @@ export default class BookingService {
         where: { bookingId: { [Op.in]: bookingIds }, entryType: 'income' },
         order: [['createdAt', 'DESC']],
       }),
-      packageOrderIds.length > 0
-        ? PackageOrder.findAll({
-            where: { id: { [Op.in]: packageOrderIds } },
-            attributes: ['id', 'packageId'],
-          })
-        : Promise.resolve([] as PackageOrder[]),
+      BookingService.packageNamesByOrderIds(packageOrderIds),
     ]);
-    const packageIds = [...new Set(packageOrders.map((o) => o.packageId).filter((id) => id > 0))];
-    const packages =
-      packageIds.length > 0
-        ? await Package.findAll({ where: { id: { [Op.in]: packageIds } }, attributes: ['id', 'name'] })
-        : [];
-    const pkgNameById = new Map(packages.map((p) => [p.id, String(p.name ?? '').trim()]));
-    const packageNameByOrderId = new Map<number, string>();
-    for (const o of packageOrders) {
-      const name = pkgNameById.get(o.packageId) ?? '';
-      if (name) packageNameByOrderId.set(o.id, name);
-    }
     for (const s of slotRows) {
       const list = slotByBooking.get(s.bookingId) ?? [];
       list.push({
@@ -2798,9 +2807,21 @@ export default class BookingService {
         ['time', 'DESC'],
       ],
     });
-    return rows.filter((b) => !isPackagePurchaseMeta(b.prepaidMeta)).map((b) => {
+    const lessonRows = rows.filter((b) => !isPackagePurchaseMeta(b.prepaidMeta));
+    const packageNameByOrderId = await BookingService.packageNamesByOrderIds(
+      lessonRows.map((b) => {
+        const meta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
+        return Math.floor(Number(meta?.packageOrderId) || 0);
+      }),
+    );
+    return lessonRows.map((b) => {
       const row = b as BookingWithInstructor;
       const inst = row.instructor;
+      const meta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
+      const coveredByPackage = isPackageCreditPrepaidMeta(b.prepaidMeta);
+      const orderId = Math.floor(Number(meta?.packageOrderId) || 0);
+      const packageName =
+        coveredByPackage && orderId > 0 ? packageNameByOrderId.get(orderId) ?? null : null;
       const st = normalizeStudentBookingStatus(b.status);
       const today = todayIsoUtc();
       const dIso = dateIsoString(b.dateIso);
@@ -2844,6 +2865,8 @@ export default class BookingService {
         paymentRequiredAt: paymentReqRaw,
         paymentRequiredNow,
         meetLink: b.lessonType === 'theory_personal' ? meetLinkOrNull(b.meetLink) : null,
+        coveredByPackage,
+        packageName,
       };
     });
   }
@@ -4113,18 +4136,32 @@ export default class BookingService {
           if (peek.remaining > 0) {
             shouldConsumePackage = true;
             if (packageOrderId == null) packageOrderId = peek.packageOrderId ?? undefined;
+          } else {
+            // No theory credits: enroll as a normal paid booking instead of rejecting.
+            shouldConsumePackage = false;
           }
         }
         let prepaidMeta: Record<string, unknown> | null = null;
         if (shouldConsumePackage) {
-          prepaidMeta = await consumePackageLessonCreditsInTx({
-            studentUserId: input.studentId,
-            lessonType: input.lessonType,
-            slotCount: sorted.length,
-            packageOrderId,
-            consumeAll: input.lessonType === 'theory',
-            transaction,
-          });
+          try {
+            prepaidMeta = await consumePackageLessonCreditsInTx({
+              studentUserId: input.studentId,
+              lessonType: input.lessonType,
+              slotCount: sorted.length,
+              packageOrderId,
+              consumeAll: input.lessonType === 'theory',
+              transaction,
+            });
+          } catch (e) {
+            // Theory group enrollment does not require package credits. Missing or
+            // unusable theory credits fall through to a normal paid booking.
+            if (input.lessonType === 'theory' && isPackageCoverageUnavailableError(e)) {
+              shouldConsumePackage = false;
+              prepaidMeta = null;
+            } else {
+              throw e;
+            }
+          }
         }
         if (input.lessonType === 'theory' && input.theoryCohortId != null && Number.isFinite(input.theoryCohortId)) {
           prepaidMeta = { ...(prepaidMeta ?? {}), theoryCohortId: input.theoryCohortId };
@@ -4405,6 +4442,7 @@ export default class BookingService {
         if (lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)) {
           await TheoryCohortService.ensureEnrolledInTx(patch.theoryCohortId, nextStudentId, transaction);
         }
+        await FinanceService.syncBookingCollectedIncome(id, transaction);
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -4575,6 +4613,7 @@ export default class BookingService {
           nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
+        await FinanceService.syncBookingCollectedIncome(id, transaction);
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -4686,6 +4725,7 @@ export default class BookingService {
         nextStatusRaw: lifecycleStatus ?? patch.status,
         transaction,
       });
+      await FinanceService.syncBookingCollectedIncome(id, transaction);
     });
 
     BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
@@ -4951,6 +4991,7 @@ export default class BookingService {
           nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
+        await FinanceService.syncBookingCollectedIncome(row.id, transaction);
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -5162,6 +5203,7 @@ export default class BookingService {
       } else {
         await replaceBookingSlotRowsFromEntries(id, instructorUserId, remaining, transaction);
       }
+      await FinanceService.syncBookingCollectedIncome(id, transaction);
     });
 
     void BookingNotificationService.notifyAdminSlotRemovedPaymentReview({

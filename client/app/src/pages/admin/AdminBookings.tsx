@@ -28,6 +28,7 @@ import {
   isTheoryCohortBookableStatus,
 } from "src/modules/admin/booking/adminTheoryCohort";
 import BookingTypeSelector from "src/modules/admin/booking/BookingTypeSelector";
+import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import GroupLessonSelector from "src/modules/admin/booking/GroupLessonSelector";
 import PackageSelector from "src/modules/admin/booking/PackageSelector";
 import SlotSelector from "src/modules/admin/booking/SlotSelector";
@@ -482,7 +483,9 @@ export default function AdminBookings() {
           b.packagePurchase ? "-" : b.instructorName,
           formatShortDateFromIso(b.dateIso, lang),
           b.packagePurchase ? "-" : formatBookingSlotRangeLabel(b.time, b.endTime),
-          t(typeDisp.labelKey),
+          b.packageName?.trim()
+            ? `${t(typeDisp.labelKey)} · ${b.packageName.trim()}`
+            : t(typeDisp.labelKey),
           t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
           t(toCanonicalBookingStatus(b.status) as TranslationKey),
           t(bookingListPaymentLabelKey(pay.status)),
@@ -1814,10 +1817,17 @@ export default function AdminBookings() {
       });
       const bookingIdNum = Number(editBooking.id);
       const financeDateIso = editSlotPick?.dateIso ?? editBooking.dateIso;
-      if (!editSystemPayment) {
-        const paid = paidAmountFromState(editBookingPayment);
-        if (paid > 0) {
-          const financeFields = bookingPaymentToFinanceFields(editBookingPayment);
+      const collectedAmd =
+        paymentBody.adminPaymentStatus === "paid"
+          ? Math.max(0, Math.round(editTotal))
+          : paymentBody.adminPaymentStatus === "partial"
+            ? Math.max(0, Math.round(paymentBody.paidAmountAmd ?? 0))
+            : 0;
+      if (!editSystemPayment && collectedAmd > 0) {
+        const financeFields = {
+          ...bookingPaymentToFinanceFields(editBookingPayment),
+          grossStr: String(collectedAmd),
+        };
           const ok = validatePaymentForSubmit(editBookingPayment, editBooking.studentId, true);
           if (!ok) return;
           if (editManualTxId != null) {
@@ -1846,7 +1856,6 @@ export default function AdminBookings() {
               bookingStatus: bookingLifecycleStatus,
             });
           }
-        }
       }
       setEditBooking(null);
       lastEditSlotInitKey.current = "";
@@ -1996,7 +2005,8 @@ export default function AdminBookings() {
                     }
                   : {
                       theoryCohortId: Number(theoryCohortId),
-                      consumePackageCredits: true,
+                      // Spend theory credits only when the student has them. Otherwise this is a normal paid enrollment.
+                      consumePackageCredits: theoryGroupPackageCovered,
                     }),
                 ...(!theoryPlan ? arbitrary : {}),
                 ...paymentBody,
@@ -2428,6 +2438,10 @@ export default function AdminBookings() {
                     <td className="px-4 py-3.5">
                       {(() => {
                         const typeDisp = bookingTableTypeDisplay(b);
+                        const packageName = b.packageName?.trim() ?? "";
+                        if (b.packagePurchase || b.coveredByPackage) {
+                          return <PackageCreditMark packageName={packageName} />;
+                        }
                         return (
                           <Badge className={`text-xs ${typeDisp.colorClass}`}>{t(typeDisp.labelKey)}</Badge>
                         );
@@ -3089,10 +3103,14 @@ export default function AdminBookings() {
                               "%n",
                               String(practicalPackageCredits.remaining),
                             )}
-                            {practicalPackageCredits.packageName
-                              ? ` · ${practicalPackageCredits.packageName}`
-                              : ""}
                           </p>
+                          {usePracticalPackageCredits && practicalPackageCredits.coversPayment ? (
+                            <div className="mt-2">
+                              <PackageCreditMark packageName={practicalPackageCredits.packageName} />
+                            </div>
+                          ) : practicalPackageCredits.packageName ? (
+                            <p className="mt-1 text-xs font-medium">{practicalPackageCredits.packageName}</p>
+                          ) : null}
                           <label className="mt-2 flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
                             <input
                               type="checkbox"
@@ -3423,17 +3441,30 @@ export default function AdminBookings() {
               </TabsContent>
               <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
                 {(addFlowKind === "theory_group" && theoryGroupPackageCovered) || practicalCreditsApply ? (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100 space-y-1">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100 space-y-2">
                     <p className="font-medium">{t("adminBookingPackageIncludedInPackage")}</p>
+                    <PackageCreditMark
+                      packageName={
+                        addFlowKind === "practical"
+                          ? practicalPackageCredits.packageName
+                          : addStudentPackageOrders.find((o) => {
+                              if (!["active", "paid", "confirmed"].includes(String(o.status ?? "").toLowerCase())) {
+                                return false;
+                              }
+                              const remaining =
+                                o.theoryRemaining != null
+                                  ? Number(o.theoryRemaining)
+                                  : Math.max(0, Number(o.theoryTotal ?? 0) - Number(o.theoryUsed ?? 0));
+                              return remaining > 0;
+                            })?.packageName
+                      }
+                    />
                     {addFlowKind === "practical" && practicalPackageCredits.remaining > 0 ? (
                       <p className="text-xs opacity-90">
                         {t("adminBookingPracticalCreditsRemainingLabel").replace(
                           "%n",
                           String(practicalPackageCredits.remaining),
                         )}
-                        {practicalPackageCredits.packageName
-                          ? ` · ${practicalPackageCredits.packageName}`
-                          : ""}
                       </p>
                     ) : null}
                   </div>

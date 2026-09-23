@@ -13,6 +13,10 @@ import BookingNotificationService from './booking-notification.service';
 import MailService from './mail.service';
 import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
+import {
+  isPackageCreditPrepaidMeta,
+  resolveBookingPayment,
+} from '../utils/booking-admin-payment.util';
 
 /** English line for manual/system finance rows tied to a booking (matches admin booking payment wording). */
 export function financeDescriptionForBooking(booking: Booking): string {
@@ -48,11 +52,31 @@ function normalizeBookingStatus(
 
 function financeStatusFromBooking(booking: Booking): FinanceTxStatus {
   const st = normalizeBookingStatus(String(booking.status ?? ''));
-  if (st === 'confirmed') return 'completed';
   if (st === 'refunded') return 'refunded';
   // Archived / cancelled bookings are not real open receivables - void linked income.
   if (st === 'cancelled' || st === 'archived') return 'failed';
+  // Money already collected (including a partial payment) is cash in kassa, even while the
+  // booking stays pending until the rest is paid.
+  const collected = collectedIncomeTargetAmd(booking);
+  if (collected != null && collected > 0) return 'completed';
+  if (st === 'confirmed') return 'completed';
   return 'pending';
+}
+
+/**
+ * Cash already taken for this booking. `null` means leave the ledger alone
+ * (package-credit lessons, closed bookings).
+ */
+function collectedIncomeTargetAmd(booking: Booking): number | null {
+  const st = normalizeBookingStatus(String(booking.status ?? ''));
+  if (st === 'cancelled' || st === 'refunded' || st === 'archived') return null;
+  if (isPackageCreditPrepaidMeta(booking.prepaidMeta)) return null;
+  const resolved = resolveBookingPayment(booking);
+  if (resolved.paymentStatus === 'paid' || resolved.paymentStatus === 'partial') {
+    return Math.max(0, Math.round(resolved.paidAmountAmd));
+  }
+  if (resolved.paymentStatus === 'unpaid') return 0;
+  return null;
 }
 
 const BOOKING_SLOT_TZ_OFFSET = '+04:00';
@@ -148,6 +172,101 @@ export default class FinanceService {
       statusLabel: row.status,
       actionLabel,
     });
+  }
+
+  /**
+   * Kassa income for a booking is the total collected so far (`paidAmountAmd`), not the latest
+   * installment. A 10,000 partial followed by the remaining 10,000 must show +20,000, not +10,000.
+   * Extra income rows for the same booking are voided so they are not added on top of that total.
+   */
+  static async syncBookingCollectedIncome(
+    bookingId: number,
+    transaction?: SequelizeTransaction,
+  ): Promise<void> {
+    const id = Math.floor(Number(bookingId));
+    if (!Number.isFinite(id) || id <= 0) return;
+
+    const booking = await Booking.findByPk(id, { transaction });
+    if (!booking) return;
+    const target = collectedIncomeTargetAmd(booking);
+    if (target == null) return;
+
+    const rows = await FinanceTransaction.findAll({
+      where: {
+        bookingId: id,
+        entryType: 'income',
+        status: { [Op.notIn]: ['failed', 'refunded'] },
+      },
+      order: [['id', 'ASC']],
+      transaction,
+      lock: transaction ? Transaction.LOCK.UPDATE : undefined,
+    });
+    if (rows.length === 0) return;
+
+    const canonical = rows[0]!;
+    const already =
+      rows.length === 1 &&
+      Number(canonical.grossAmd) === target &&
+      (target <= 0 || canonical.status === 'completed') &&
+      (target > 0 || canonical.status === 'failed');
+    if (already) return;
+
+    if (target > 0) {
+      const fee = Math.min(Math.max(0, Number(canonical.feeAmd) || 0), target);
+      await canonical.update(
+        { grossAmd: target, feeAmd: fee, status: 'completed' },
+        { transaction },
+      );
+    } else {
+      await canonical.update({ status: 'failed' }, { transaction });
+    }
+
+    const suffix = ' · folded into booking total';
+    for (const extra of rows.slice(1)) {
+      const desc = String(extra.description ?? '').trim();
+      const nextDesc = desc.includes('folded into booking total') ? desc : `${desc || 'Payment'}${suffix}`;
+      await extra.update(
+        { status: 'failed', description: nextDesc.slice(0, 512) },
+        { transaction },
+      );
+    }
+  }
+
+  /** Repair kassa rows where a later installment replaced the total already collected. */
+  static async reconcileCollectedIncomeShortfalls(): Promise<void> {
+    const rows = await FinanceTransaction.findAll({
+      where: {
+        entryType: 'income',
+        bookingId: { [Op.ne]: null },
+        status: { [Op.in]: ['completed', 'pending'] },
+      },
+      attributes: ['id', 'bookingId', 'grossAmd', 'status'],
+    });
+    const byBooking = new Map<number, { sum: number; count: number; pending: boolean }>();
+    for (const row of rows) {
+      const bookingId = row.bookingId != null ? Number(row.bookingId) : 0;
+      if (!Number.isFinite(bookingId) || bookingId <= 0) continue;
+      const cur = byBooking.get(bookingId) ?? { sum: 0, count: 0, pending: false };
+      cur.sum += Math.max(0, Math.round(Number(row.grossAmd) || 0));
+      cur.count += 1;
+      if (row.status === 'pending') cur.pending = true;
+      byBooking.set(bookingId, cur);
+    }
+    if (byBooking.size === 0) return;
+
+    const bookings = await Booking.findAll({
+      where: { id: { [Op.in]: [...byBooking.keys()] } },
+    });
+    for (const booking of bookings) {
+      const target = collectedIncomeTargetAmd(booking);
+      if (target == null) continue;
+      const agg = byBooking.get(booking.id);
+      if (!agg) continue;
+      const amountOk = agg.count === 1 && agg.sum === target;
+      const statusOk = target > 0 ? !agg.pending : true;
+      if (amountOk && statusOk) continue;
+      await FinanceService.syncBookingCollectedIncome(booking.id);
+    }
   }
 
   static async list(branchId?: number): Promise<FinanceTxDto[]> {
@@ -349,6 +468,38 @@ export default class FinanceService {
       createdByUserIdRaw != null && Number.isFinite(createdByUserIdRaw) && createdByUserIdRaw > 0
         ? createdByUserIdRaw
         : null;
+
+    // A second payment on the same booking updates the existing kassa line to the full
+    // amount collected, instead of adding another line for only the latest installment.
+    if (linkedBooking && entryType === 'income' && bookingIdNorm != null) {
+      const existing = await FinanceTransaction.findOne({
+        where: {
+          bookingId: bookingIdNorm,
+          entryType: 'income',
+          status: { [Op.notIn]: ['failed', 'refunded'] },
+        },
+        order: [['id', 'ASC']],
+        transaction: input.transaction,
+        lock: input.transaction ? Transaction.LOCK.UPDATE : undefined,
+      });
+      if (existing) {
+        if (existing.source === 'manual') {
+          await existing.update(
+            {
+              method: input.method,
+              channel,
+              ...(input.createdAt ? { createdAt } : {}),
+              ...(createdByUserId != null ? { createdByUserId } : {}),
+            },
+            { transaction: input.transaction },
+          );
+        }
+        await FinanceService.syncBookingCollectedIncome(bookingIdNorm, input.transaction);
+        await existing.reload({ transaction: input.transaction });
+        return toDto(existing);
+      }
+    }
+
     const row = await FinanceTransaction.create(
       {
         customer,
@@ -381,6 +532,10 @@ export default class FinanceService {
         'created',
         'Ձեր գործարքը գրանցվել է։ Նոր կարգավիճակի դեպքում կուղարկենք հաջորդ թարմացումը։',
       ).catch(() => {});
+    }
+    if (linkedBooking && entryType === 'income' && bookingIdNorm != null) {
+      await FinanceService.syncBookingCollectedIncome(bookingIdNorm, input.transaction);
+      await row.reload({ transaction: input.transaction });
     }
     return toDto(row);
   }
@@ -512,6 +667,10 @@ export default class FinanceService {
     } as never);
 
     await row.reload();
+    if (row.entryType === 'income' && row.bookingId != null) {
+      await FinanceService.syncBookingCollectedIncome(Number(row.bookingId));
+      await row.reload();
+    }
     return toDto(row);
   }
 

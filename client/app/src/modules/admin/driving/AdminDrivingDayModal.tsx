@@ -38,6 +38,7 @@ import {
   type PracticalWorkWindow,
 } from "src/modules/booking/practical-slot-plan";
 import { parseTimeToMinutes } from "src/modules/booking/booking-slot.util";
+import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import {
   isSlotBlockedByAvailabilityRules,
   isSlotOutsideInstructorWorkHours,
@@ -50,6 +51,8 @@ export type DrivingDayCellBooking = {
   studentName: string;
   studentPhone: string | null;
   paymentNotes: string | null;
+  /** Set when this hour was booked from package credits. */
+  packageName: string | null;
   paymentStatus: "paid" | "free" | "pending" | "not_required";
   instructorId: number | null;
   instructorName: string;
@@ -69,6 +72,7 @@ type ClassScheduleItem = {
   branch: { id: number; name: string };
   payment: { status: "paid" | "free" | "pending" | "not_required" };
   paymentNotes?: string | null;
+  package?: { id: number; name: string; isIncludedLesson: boolean } | null;
 };
 
 type ClassScheduleResponse = {
@@ -557,6 +561,10 @@ export default function AdminDrivingDayModal({
         studentName: item.student.name,
         studentPhone: item.student.phone || item.student.phone2,
         paymentNotes: item.paymentNotes?.trim() ? item.paymentNotes.trim() : null,
+        packageName:
+          item.package?.isIncludedLesson && item.package.name?.trim()
+            ? item.package.name.trim()
+            : null,
         paymentStatus: item.payment.status,
         instructorId: item.instructor.id,
         instructorName: item.instructor.name,
@@ -1116,6 +1124,9 @@ export default function AdminDrivingDayModal({
                                           {booking.studentPhone}
                                         </span>
                                       ) : null}
+                                      {booking.packageName ? (
+                                        <PackageCreditMark tone="onColor" packageName={booking.packageName} />
+                                      ) : null}
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent
@@ -1128,6 +1139,11 @@ export default function AdminDrivingDayModal({
                                     ) : null}
                                     {booking.studentPhone ? (
                                       <p className="opacity-90 tabular-nums">{booking.studentPhone}</p>
+                                    ) : null}
+                                    {booking.packageName ? (
+                                      <p className="opacity-90">
+                                        {t("adminBookingFlowPackage")}: {booking.packageName}
+                                      </p>
                                     ) : null}
                                     {booking.paymentNotes ? (
                                       <p className="border-t border-background/25 pt-1 whitespace-pre-wrap break-words">

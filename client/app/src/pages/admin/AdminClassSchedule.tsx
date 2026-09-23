@@ -4,6 +4,7 @@ import { AppModal } from "src/components/AppModal";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import PanelPageHeader from "src/components/PanelPageHeader";
 import { Badge } from "src/components/ui/badge";
+import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
 import { Input } from "src/components/ui/input";
@@ -103,6 +104,21 @@ function bookingTypeKey(type: ClassScheduleItem["bookingType"]): TranslationKey 
 	if (type === "group") return "adminClassScheduleBookingTypeGroup";
 	if (type === "personal_theory") return "adminClassScheduleBookingTypePersonalTheory";
 	return "adminClassScheduleBookingTypeSingle";
+}
+
+function ScheduleTypeCell({ item }: { item: ClassScheduleItem }) {
+	const { t } = useLang();
+	const packageName = item.package?.isIncludedLesson ? item.package.name?.trim() ?? "" : "";
+	return (
+		<div className="flex flex-col items-start gap-1">
+			<Badge className={cn("font-normal", LESSON_TYPE_COLORS[item.lessonType])}>
+				{t(lessonTypeKey(item.lessonType))}
+			</Badge>
+			{packageName || item.bookingType === "package" ? (
+				<PackageCreditMark packageName={packageName} />
+			) : null}
+		</div>
+	);
 }
 
 function paymentKey(status: ClassScheduleItem["payment"]["status"]): TranslationKey {
@@ -475,9 +491,7 @@ export default function AdminClassSchedule() {
 													<td className="py-2.5 pr-3">{item.student.name}</td>
 													<td className="py-2.5 pr-3">{item.instructor.name || "—"}</td>
 													<td className="py-2.5 pr-3">
-														<Badge className={cn("font-normal", LESSON_TYPE_COLORS[item.lessonType])}>
-															{t(lessonTypeKey(item.lessonType))}
-														</Badge>
+														<ScheduleTypeCell item={item} />
 													</td>
 													<td className="py-2.5 pr-3">{item.branch.name}</td>
 													<td className="py-2.5 pr-3">
@@ -527,9 +541,7 @@ export default function AdminClassSchedule() {
 													<td className="py-2.5 pr-3">{item.student.name}</td>
 													<td className="py-2.5 pr-3">{item.instructor.name || "—"}</td>
 													<td className="py-2.5 pr-3">
-														<Badge className={cn("font-normal", LESSON_TYPE_COLORS[item.lessonType])}>
-															{t(lessonTypeKey(item.lessonType))}
-														</Badge>
+														<ScheduleTypeCell item={item} />
 													</td>
 													<td className="py-2.5">
 														<Badge className={cn("font-normal", BOOKING_STATUS_BADGE_CLASS[canon])}>
@@ -593,9 +605,7 @@ export default function AdminClassSchedule() {
 							<dd>{detail.instructor.name || "—"}</dd>
 							<dt className="text-muted-foreground">{t("adminClassScheduleColType")}</dt>
 							<dd>
-								<Badge className={cn("font-normal", LESSON_TYPE_COLORS[detail.lessonType])}>
-									{t(lessonTypeKey(detail.lessonType))}
-								</Badge>
+								<ScheduleTypeCell item={detail} />
 							</dd>
 							<dt className="text-muted-foreground">{t("bookings")}</dt>
 							<dd>{t(bookingTypeKey(detail.bookingType))}</dd>

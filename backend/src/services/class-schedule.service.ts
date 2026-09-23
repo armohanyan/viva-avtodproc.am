@@ -20,6 +20,7 @@ import {
 import { occupiedRangesMinutes } from './booking-slot-validation.service';
 import { minutesToHHMM, parseTimeToMinutes } from '../utils/booking-slot.util';
 import { isImmediatePaymentRequired } from '../utils/booking-payment-schedule.util';
+import { isPackagePurchaseMeta, resolveBookingPayment } from '../utils/booking-admin-payment.util';
 import { todayIsoUtc } from '../utils/calendar-month.util';
 
 const YEREVAN_TZ = 'Asia/Yerevan';
@@ -290,12 +291,95 @@ function inferBookingType(
   return 'single';
 }
 
+function bookingLifecycleOccupiesSchedule(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase();
+  return !(SCHEDULE_NON_OCCUPYING_STATUSES as readonly string[]).includes(s);
+}
+
+/** Fully paid package sale. Partial and unpaid sales stay open so credit lessons show as unpaid. */
+function packagePurchaseIsFullyPaid(row: Booking): boolean {
+  const resolved = resolveBookingPayment({
+    status: String(row.status ?? ''),
+    totalPriceAmd: row.totalPriceAmd,
+    paidAmountAmd: row.paidAmountAmd,
+    paymentStatus: row.paymentStatus,
+    paidAt: row.paidAt,
+    prepaidMeta: (row.prepaidMeta as Record<string, unknown> | null) ?? null,
+  });
+  return resolved.paymentStatus === 'paid';
+}
+
+/**
+ * Package-credit lessons store `prepaidMeta.packageOrderId`, not the sale's cash status.
+ * Day graphic color follows the package purchase booking for that order.
+ * `true` = sale is fully paid (green). `false` = unpaid, partial, or no paid sale (red).
+ */
+async function loadPackagePurchasePaidByOrderId(orderIds: readonly number[]): Promise<Map<number, boolean>> {
+  const ids = [...new Set(orderIds.map((id) => Math.floor(Number(id))).filter((id) => id > 0))];
+  const out = new Map<number, boolean>();
+  if (ids.length === 0) return out;
+
+  const purchases = await Booking.findAll({
+    attributes: ['id', 'status', 'paymentStatus', 'paidAt', 'paidAmountAmd', 'totalPriceAmd', 'prepaidMeta'],
+    where: literal(
+      `JSON_CONTAINS(COALESCE(\`Booking\`.\`prepaid_meta\`, CAST('{}' AS JSON)), 'true', '$.packagePurchase')
+       AND CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageOrderId')) AS UNSIGNED) IN (${ids.join(',')})`,
+    ),
+  });
+
+  const byOrder = new Map<number, Booking[]>();
+  for (const row of purchases) {
+    const meta = (row.prepaidMeta as Record<string, unknown> | null) ?? null;
+    if (!isPackagePurchaseMeta(meta)) continue;
+    const oid = Math.floor(Number(meta?.packageOrderId) || 0);
+    if (oid <= 0 || !ids.includes(oid)) continue;
+    const list = byOrder.get(oid) ?? [];
+    list.push(row);
+    byOrder.set(oid, list);
+  }
+
+  const missingOrderIds: number[] = [];
+  for (const id of ids) {
+    const rowsForOrder = byOrder.get(id) ?? [];
+    const active = rowsForOrder.filter((r) => bookingLifecycleOccupiesSchedule(r.status));
+    if (active.length > 0) {
+      out.set(id, active.every(packagePurchaseIsFullyPaid));
+      continue;
+    }
+    if (rowsForOrder.length > 0) {
+      out.set(id, false);
+      continue;
+    }
+    missingOrderIds.push(id);
+  }
+
+  if (missingOrderIds.length > 0) {
+    const orders = await PackageOrder.findAll({
+      where: { id: { [Op.in]: missingOrderIds } },
+      attributes: ['id', 'paidAt', 'status'],
+    });
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    for (const id of missingOrderIds) {
+      const order = orderById.get(id);
+      const status = String(order?.status ?? '').trim().toLowerCase();
+      out.set(id, order?.paidAt != null || status === 'paid');
+    }
+  }
+
+  return out;
+}
+
 function resolvePaymentStatusForOccurrence(
   row: Booking,
   slot: BookingSlot | null | undefined,
+  packagePurchasePaidByOrderId: ReadonlyMap<number, boolean>,
 ): ClassSchedulePaymentStatus {
   const prepaid = row.prepaidMeta as Record<string, unknown> | null;
-  if (prepaid && (Number(prepaid.packageOrderId) > 0 || Number(prepaid.extraPracticalUnits) > 0)) {
+  const packageOrderId = Math.floor(Number(prepaid?.packageOrderId) || 0);
+  if (prepaid && !isPackagePurchaseMeta(prepaid) && packageOrderId > 0) {
+    return packagePurchasePaidByOrderId.get(packageOrderId) === true ? 'free' : 'pending';
+  }
+  if (prepaid && Number(prepaid.extraPracticalUnits) > 0) {
     return 'free';
   }
   const ps = String(row.paymentStatus ?? '')
@@ -493,6 +577,8 @@ export default class ClassScheduleService {
       }
     }
 
+    const packagePurchasePaidByOrderId = await loadPackagePurchasePaidByOrderId([...packageOrderIds]);
+
     const instructorIdFilter = Math.floor(Number(query.instructorId) || 0);
     const studentIdFilter = Math.floor(Number(query.studentId) || 0);
     const statusFilter = (query.status ?? '').trim().toLowerCase();
@@ -626,7 +712,9 @@ export default class ClassScheduleService {
             address: branchRow?.mapUrl?.trim() || branchRow?.phone?.trim() || '',
           },
           package: packageBlock,
-          payment: { status: resolvePaymentStatusForOccurrence(row, occ.slot) },
+          payment: {
+            status: resolvePaymentStatusForOccurrence(row, occ.slot, packagePurchasePaidByOrderId),
+          },
           notes,
           paymentNotes,
           cancellationRequestedAt,

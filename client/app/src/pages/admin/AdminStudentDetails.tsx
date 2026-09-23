@@ -21,6 +21,7 @@ import AdminStudentEditModal from "src/components/admin/AdminStudentEditModal";
 import ConfirmDialog from "src/components/ConfirmDialog";
 import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
+import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import { Button } from "src/components/ui/button";
 import { Skeleton } from "src/components/ui/skeleton";
 import { useLang, type TranslationKey } from "src/lib/i18n";
@@ -73,6 +74,8 @@ type StudentBookingRow = {
   paidAmountAmd?: number | null;
   paymentRequiredAt?: string | null;
   cancellationRequestedAt?: string | null;
+  coveredByPackage?: boolean;
+  packageName?: string | null;
 };
 
 type StudentPaymentSummary = {
@@ -688,7 +691,12 @@ export default function AdminStudentDetails() {
                             {b.endTime ? `–${b.endTime}` : ""}
                           </td>
                           <td className="px-4 py-3 text-foreground whitespace-nowrap">{b.instructor || "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{t(b.lessonTypeKey)}</td>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            <div className="flex flex-col items-start gap-1">
+                              <span>{t(b.lessonTypeKey)}</span>
+                              {b.coveredByPackage ? <PackageCreditMark packageName={b.packageName} /> : null}
+                            </div>
+                          </td>
                           <td className="px-4 py-3"><Badge className={`text-xs ${badgeClass}`}>{t(canonicalToBookingStatusLabelKey(canonical))}</Badge></td>
                           <td className="px-4 py-3"><Badge className={`text-xs ${pay.className}`}>{t(pay.labelKey)}</Badge></td>
                           <td className="px-4 py-3 text-foreground text-right whitespace-nowrap tabular-nums">

@@ -5,6 +5,7 @@ import { Button } from "src/components/ui/button";
 import { TimeSelectInput } from "src/components/ui/time-select-input";
 import AdminStudentPicker from "src/components/admin/AdminStudentPicker";
 import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
+import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import { cn } from "src/lib/utils";
 import { useLang } from "src/lib/i18n";
 import { useAccount } from "src/modules/accounts";
@@ -701,8 +702,14 @@ export default function QuickPracticalBookingModal({
                   "%n",
                   String(practicalCredits.packagePracticalRemaining),
                 )}
-                {practicalCredits.packageName ? ` · ${practicalCredits.packageName}` : ""}
               </p>
+              {usePackageCredits && practicalCredits.coversPayment ? (
+                <div className="mt-2">
+                  <PackageCreditMark packageName={practicalCredits.packageName} />
+                </div>
+              ) : practicalCredits.packageName ? (
+                <p className="mt-1 text-xs font-medium">{practicalCredits.packageName}</p>
+              ) : null}
               <label className="mt-2 flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -778,14 +785,14 @@ export default function QuickPracticalBookingModal({
         </div>
 
         {creditsCoverPayment ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100 space-y-2">
             <p className="font-medium">{t("adminBookingPackageIncludedInPackage")}</p>
-            <p className="mt-1 text-xs opacity-90">
+            <PackageCreditMark packageName={practicalCredits?.packageName} />
+            <p className="text-xs opacity-90">
               {t("adminBookingPracticalCreditsRemainingLabel").replace(
                 "%n",
                 String(practicalCredits?.packagePracticalRemaining ?? 0),
               )}
-              {practicalCredits?.packageName ? ` · ${practicalCredits.packageName}` : ""}
             </p>
           </div>
         ) : (

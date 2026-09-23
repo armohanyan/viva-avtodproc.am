@@ -31,6 +31,7 @@ import {
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
 import AdminInstructorDaySlotsModal from "src/modules/admin/booking/AdminInstructorDaySlotsModal";
+import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import type { Branch } from "src/modules/branches";
 
 type Status = "confirmed" | "pending" | "cancelled" | "refunded";
@@ -548,6 +549,14 @@ export default function PracticalBookingDetailModal({
               ) : null}
               {booking.studentPhone2 ? (
                 <p className="text-sm tabular-nums text-muted-foreground">{booking.studentPhone2}</p>
+              ) : null}
+              {booking.coveredByPackage || booking.packagePurchase ? (
+                <div className="pt-1">
+                  <PackageCreditMark packageName={booking.packageName} />
+                  {booking.coveredByPackage ? (
+                    <p className="mt-1 text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
 

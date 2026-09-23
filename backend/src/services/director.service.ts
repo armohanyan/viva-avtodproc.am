@@ -24,6 +24,7 @@ import { FinanceTransaction } from '../models/finance-transaction.model';
 import { FleetCar } from '../models/fleet-car.model';
 import { User } from '../models/user.model';
 import { Booking } from '../models/booking.model';
+import FinanceService from './finance.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 import {
@@ -524,6 +525,7 @@ export default class DirectorService {
   }
 
   static async listCash(range: DateRange) {
+    await FinanceService.reconcileCollectedIncomeShortfalls();
     const { startAt, endAt } = yerevanRangeBounds(range.startDate, range.endDate);
     const adminUserId =
       range.adminUserId != null && Number.isFinite(range.adminUserId) && range.adminUserId > 0

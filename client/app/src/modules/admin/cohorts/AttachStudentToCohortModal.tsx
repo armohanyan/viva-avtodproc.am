@@ -207,7 +207,7 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
     const paid = packageTheoryCovered ? 0 : paidAmountFromState(payment);
     const paymentBody = packageTheoryCovered
       ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0, consumePackageCredits: true }
-      : { ...adminPaymentApiPayload(payment, effectiveTotal), consumePackageCredits: true };
+      : { ...adminPaymentApiPayload(payment, effectiveTotal), consumePackageCredits: false };
 
     setSubmitting(true);
     try {
