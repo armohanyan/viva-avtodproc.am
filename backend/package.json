@@ -22,7 +22,8 @@
     "import:road-sign-questions": "tsx src/scripts/import-road-sign-questions.ts",
     "import:practical-xlsx": "tsx src/scripts/import-practical-from-ready-xlsx.ts",
     "mirror:exam-question-images": "tsx src/scripts/mirror-exam-question-images-local.ts",
-    "repair:package-purchases": "tsx src/scripts/repair-package-purchase-bookings.ts"
+    "repair:package-purchases": "tsx src/scripts/repair-package-purchase-bookings.ts",
+    "repair:package-attachments": "tsx src/scripts/repair-orphan-packages-and-credit-payments.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

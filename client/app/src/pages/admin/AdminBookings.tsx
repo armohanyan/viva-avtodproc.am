@@ -2484,6 +2484,11 @@ export default function AdminBookings() {
                             <Badge className={`text-xs ${BOOKING_LIST_PAYMENT_BADGE_CLASS[pay.status]}`}>
                               {t(bookingListPaymentLabelKey(pay.status))}
                             </Badge>
+                            {b.coveredByPackage && pay.status === "unpaid" ? (
+                              <span className="max-w-[14rem] text-[11px] leading-snug text-amber-800">
+                                {t("adminBookingUnpaidBecausePackage")}
+                              </span>
+                            ) : null}
                             {pay.totalAmd > 0 ? (
                               <div className="text-xs text-muted-foreground tabular-nums leading-snug">
                                 {pay.status === "partial" ? (

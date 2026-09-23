@@ -156,6 +156,9 @@ function bookingRemainingAmd(b: StudentBookingRow): number {
 
 function paymentStatusBadge(b: StudentBookingRow): { labelKey: TranslationKey; className: string } {
   const remaining = bookingRemainingAmd(b);
+  if (b.paymentStatus === "unpaid") {
+    return { labelKey: "studentDetailsPaymentUnpaid", className: "bg-amber-100 text-amber-700" };
+  }
   if (b.paymentStatus === "paid" || remaining === 0) {
     return { labelKey: "studentDetailsPaymentPaid", className: "bg-emerald-100 text-emerald-700" };
   }
@@ -234,7 +237,6 @@ export default function AdminStudentDetails() {
       const pkgs = Array.isArray(entitlements?.packages) ? entitlements.packages : [];
       const primary =
         pkgs.find((p) => ["active", "paid", "confirmed"].includes(String(p.status ?? "").toLowerCase())) ??
-        pkgs[0] ??
         null;
       if (primary) {
         const practicalTotal = Number(primary.practicalTotal ?? 0);
@@ -698,7 +700,16 @@ export default function AdminStudentDetails() {
                             </div>
                           </td>
                           <td className="px-4 py-3"><Badge className={`text-xs ${badgeClass}`}>{t(canonicalToBookingStatusLabelKey(canonical))}</Badge></td>
-                          <td className="px-4 py-3"><Badge className={`text-xs ${pay.className}`}>{t(pay.labelKey)}</Badge></td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col items-start gap-1">
+                              <Badge className={`text-xs ${pay.className}`}>{t(pay.labelKey)}</Badge>
+                              {b.coveredByPackage && b.paymentStatus === "unpaid" ? (
+                                <span className="max-w-[14rem] text-[11px] leading-snug text-amber-800">
+                                  {t("adminBookingUnpaidBecausePackage")}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-foreground text-right whitespace-nowrap tabular-nums">
                             {b.totalPriceAmd != null ? formatAmd(b.totalPriceAmd) : "—"}
                             {bookingRemainingAmd(b) > 0 ? (

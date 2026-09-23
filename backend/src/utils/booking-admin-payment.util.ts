@@ -128,6 +128,15 @@ export function resolveBookingPayment(row: BookingPaymentRow): ResolvedBookingPa
   const rawPs = String(row.paymentStatus ?? '').trim().toLowerCase();
 
   if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
+    const ps = String(row.paymentStatus ?? '').trim().toLowerCase();
+    if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') {
+      return {
+        paymentStatus: ps === 'failed' ? 'failed' : ps === 'pending' ? 'pending' : 'unpaid',
+        paidAmountAmd: 0,
+        totalPriceAmd: total,
+        remainingAmd: 0,
+      };
+    }
     return { paymentStatus: 'paid', paidAmountAmd: 0, totalPriceAmd: total, remainingAmd: 0 };
   }
 

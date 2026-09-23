@@ -1764,6 +1764,126 @@ async function finalizePracticalCancellationInTx(opts: {
   return { status: nextStatus, refundIssued };
 }
 
+const ACTIVE_PACKAGE_ORDER_STATUSES = ['active', 'paid', 'confirmed'] as const;
+
+/**
+ * Package purchase rows attach a package order and set the student profile package.
+ * Archiving that booking cancels the order and clears the profile when no other active package remains.
+ */
+async function detachStudentPackageForArchivedPurchaseInTx(
+  row: Booking,
+  transaction: Transaction,
+): Promise<{ packageOrderId: number; packageId: number } | null> {
+  if (!isPackagePurchaseMeta(row.prepaidMeta)) return null;
+  const meta = row.prepaidMeta as Record<string, unknown>;
+  const packageOrderId = Math.floor(Number(meta.packageOrderId) || 0);
+  const packageIdFromMeta = Math.floor(Number(meta.packageId) || 0);
+  const studentUserId = row.studentUserId;
+
+  if (packageOrderId > 0) {
+    const otherPurchase = await Booking.findOne({
+      where: {
+        id: { [Op.ne]: row.id },
+        studentUserId,
+        status: { [Op.notIn]: ['archived', 'cancelled', 'refunded'] },
+        [Op.and]: [
+          literal(`COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 1`),
+          literal(
+            `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageOrderId')) AS UNSIGNED) = ${packageOrderId}`,
+          ),
+        ],
+      },
+      transaction,
+      attributes: ['id'],
+    });
+    if (otherPurchase) return null;
+  }
+
+  let order: PackageOrder | null = null;
+  if (packageOrderId > 0) {
+    order = await PackageOrder.findOne({
+      where: { id: packageOrderId, studentUserId },
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+  } else if (packageIdFromMeta > 0) {
+    order = await PackageOrder.findOne({
+      where: {
+        studentUserId,
+        packageId: packageIdFromMeta,
+        status: { [Op.in]: [...ACTIVE_PACKAGE_ORDER_STATUSES] },
+      },
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      transaction,
+      lock: Transaction.LOCK.UPDATE,
+    });
+  }
+
+  const detachedPackageId = order?.packageId ?? packageIdFromMeta;
+  if ((!order || !ACTIVE_PACKAGE_ORDER_STATUSES.includes(order.status as (typeof ACTIVE_PACKAGE_ORDER_STATUSES)[number])) && detachedPackageId <= 0) {
+    return null;
+  }
+
+  if (order && ACTIVE_PACKAGE_ORDER_STATUSES.includes(order.status as (typeof ACTIVE_PACKAGE_ORDER_STATUSES)[number])) {
+    const suffix = `Cancelled when package booking ${row.id} was removed.`;
+    const base = String(order.note ?? '').trim();
+    const note = (base && !base.includes(suffix) ? `${base} | ${suffix}` : base || suffix).slice(0, 255);
+    await order.update({ status: 'cancelled', note }, { transaction });
+  }
+
+  const profile = await StudentProfile.findOne({
+    where: { userId: studentUserId },
+    transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+  if (!profile) {
+    return order || detachedPackageId > 0
+      ? { packageOrderId: order?.id ?? packageOrderId, packageId: detachedPackageId }
+      : null;
+  }
+
+  const remaining = await PackageOrder.findAll({
+    where: {
+      studentUserId,
+      status: { [Op.in]: [...ACTIVE_PACKAGE_ORDER_STATUSES] },
+      ...(order ? { id: { [Op.ne]: order.id } } : {}),
+    },
+    order: [
+      ['createdAt', 'DESC'],
+      ['id', 'DESC'],
+    ],
+    transaction,
+  });
+
+  const profilePointsAtDetached =
+    detachedPackageId > 0 && profile.packageId != null && Number(profile.packageId) === detachedPackageId;
+
+  if (profilePointsAtDetached) {
+    if (remaining.length === 0) {
+      await profile.update(
+        {
+          packageId: null,
+          lessonsTotal: 0,
+          lessonsCompleted: 0,
+          theoryLessonsTotal: 0,
+          theoryLessonsCompleted: 0,
+        },
+        { transaction },
+      );
+    } else {
+      const next = remaining[0]!;
+      await profile.update({ packageId: next.packageId }, { transaction });
+      await StudentEntitlementsService.syncProfileCountersFromOrderBalances(studentUserId, next.id, transaction);
+    }
+  }
+
+  if (!order && detachedPackageId <= 0) return null;
+  return { packageOrderId: order?.id ?? packageOrderId, packageId: detachedPackageId };
+}
+
 /** When admin explicitly sets status to `refunded`, record a `booking_refund` finance row (same as cancellation refund). */
 async function recordRefundLedgerWhenAdminMarksRefundedInTx(opts: {
   bookingId: number;
@@ -2021,7 +2141,7 @@ export default class BookingService {
       giftStatus: giftStatusFromRow(b),
       giftNote: b.isGift && b.giftNote?.trim() ? b.giftNote.trim() : null,
       lessonPassedSuccessfully: lessonPassedSuccessfullyFromRow(b),
-      paymentStatus: coveredByPackage ? 'paid' : pay.paymentStatus,
+      paymentStatus: pay.paymentStatus,
       paidAmountAmd: coveredByPackage ? 0 : pay.paidAmountAmd,
       paidAtIso: b.paidAt ? new Date(b.paidAt).toISOString() : null,
       paymentNotes: b.paymentNotes?.trim() ? b.paymentNotes.trim() : null,
@@ -5741,6 +5861,7 @@ export default class BookingService {
   /**
    * Staff archive of a booking: frees instructor slots (calendar can be rebooked), keeps the booking
    * row as `archived`, and writes a `booking_archives` audit row with the admin remark.
+   * A package purchase booking also detaches that package from the student.
    */
   static async archive(
     id: number,
@@ -5814,6 +5935,8 @@ export default class BookingService {
         { transaction },
       );
 
+      const detachedPackage = await detachStudentPackageForArchivedPurchaseInTx(row, transaction);
+
       if (st !== 'cancelled' && st !== 'refunded') {
         await finalizePracticalCancellationInTx({
           row,
@@ -5847,6 +5970,12 @@ export default class BookingService {
           time: row.time,
           remark,
           archivedByUserId,
+          ...(detachedPackage
+            ? {
+                packageOrderId: detachedPackage.packageOrderId,
+                packageId: detachedPackage.packageId,
+              }
+            : {}),
         },
       });
       return true;

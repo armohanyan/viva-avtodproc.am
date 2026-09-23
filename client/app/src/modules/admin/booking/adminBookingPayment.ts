@@ -228,8 +228,12 @@ export function bookingListPaymentRow(booking: {
   isGift?: boolean;
 }): BookingListPaymentRow {
   const packageName = booking.packageName?.trim() || null;
-  // Package-credit lessons are prepaid — always show as paid (type column carries "Package").
+  // Package-credit lessons follow the package payment. Unpaid package → unpaid lesson.
   if (booking.coveredByPackage) {
+    const ps = String(booking.paymentStatus ?? "").trim().toLowerCase();
+    if (ps === "unpaid" || ps === "pending" || ps === "failed") {
+      return { totalAmd: 0, paidAmd: 0, remainingAmd: 0, status: "unpaid", packageName };
+    }
     return { totalAmd: 0, paidAmd: 0, remainingAmd: 0, status: "paid", packageName };
   }
   const totalAmd = Math.max(0, Math.round(booking.totalPriceAmd ?? 0));
