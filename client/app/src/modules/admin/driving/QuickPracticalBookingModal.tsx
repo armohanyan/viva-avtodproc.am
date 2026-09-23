@@ -146,6 +146,7 @@ export default function QuickPracticalBookingModal({
   const [delayedRestEnd, setDelayedRestEnd] = useState("16:10");
   const [practicalCredits, setPracticalCredits] = useState<StudentPracticalCreditsSummary | null>(null);
   const [practicalCreditsLoading, setPracticalCreditsLoading] = useState(false);
+  const [usePackageCredits, setUsePackageCredits] = useState(true);
 
   const dateIso = slotEntries[0]?.dateIso?.slice(0, 10) ?? "";
 
@@ -176,7 +177,10 @@ export default function QuickPracticalBookingModal({
 
   const slotCountForCredits = Math.max(1, sortedEntries.length);
   const creditsCoverPayment =
-    !isGift && Boolean(practicalCredits?.coversPayment) && (practicalCredits?.packagePracticalRemaining ?? 0) >= slotCountForCredits;
+    usePackageCredits &&
+    !isGift &&
+    Boolean(practicalCredits?.coversPayment) &&
+    (practicalCredits?.packagePracticalRemaining ?? 0) >= slotCountForCredits;
   const effectiveTotalAmd = creditsCoverPayment || isGift ? 0 : totalPriceAmd;
 
   useEffect(() => {
@@ -194,6 +198,7 @@ export default function QuickPracticalBookingModal({
     setGiftNote("");
     setPracticalCredits(null);
     setPracticalCreditsLoading(false);
+    setUsePackageCredits(true);
     const start = normalizeUiTime(slotEntries[0]?.time ?? "") ?? "14:00";
     const suggestedEnd = normalizeUiTime(customSlotEndTime ?? "");
     const end =
@@ -220,11 +225,6 @@ export default function QuickPracticalBookingModal({
         const summary = await fetchStudentPracticalCredits(studentId, slotCountForCredits);
         if (cancelled) return;
         setPracticalCredits(summary);
-        if (summary.coversPayment && summary.packagePracticalRemaining >= slotCountForCredits) {
-          setBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
-          setStatus("confirmed");
-          setIsGift(false);
-        }
       } catch {
         if (!cancelled) setPracticalCredits(null);
       } finally {
@@ -235,6 +235,20 @@ export default function QuickPracticalBookingModal({
       cancelled = true;
     };
   }, [open, studentId, slotCountForCredits]);
+
+  useEffect(() => {
+    if (!open || !usePackageCredits || isGift || !practicalCredits?.coversPayment) return;
+    if ((practicalCredits.packagePracticalRemaining ?? 0) < slotCountForCredits) return;
+    setBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
+    setStatus("confirmed");
+    setIsGift(false);
+  }, [
+    open,
+    usePackageCredits,
+    isGift,
+    practicalCredits,
+    slotCountForCredits,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -672,13 +686,13 @@ export default function QuickPracticalBookingModal({
             <div
               className={cn(
                 "mt-2 rounded-lg border px-3 py-2 text-sm",
-                creditsCoverPayment
+                creditsCoverPayment || practicalCredits.coversPayment
                   ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
                   : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
               )}
             >
               <p className="font-medium">
-                {creditsCoverPayment
+                {practicalCredits.coversPayment
                   ? t("adminBookingPracticalCreditsNotice")
                   : t("adminBookingPracticalCreditsInsufficient")}
               </p>
@@ -689,6 +703,24 @@ export default function QuickPracticalBookingModal({
                 )}
                 {practicalCredits.packageName ? ` · ${practicalCredits.packageName}` : ""}
               </p>
+              <label className="mt-2 flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={usePackageCredits}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setUsePackageCredits(on);
+                    if (!on) {
+                      setBookingPayment((prev) => ({ ...prev, status: "unpaid", paidStr: "" }));
+                      setStatus("pending");
+                      setIsGift(false);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-input accent-primary"
+                />
+                {t("adminBookingUsePackageCredits")}
+              </label>
+              <p className="mt-1 text-xs opacity-90">{t("adminBookingUsePackageCreditsHint")}</p>
             </div>
           ) : null}
         </div>

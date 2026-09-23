@@ -35,6 +35,8 @@ import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil, LoggerUtil } from '../utils';
 import AuditLogService from './audit-log.service';
 import { todayIsoUtc } from '../utils/calendar-month.util';
+import { yerevanTodayIso } from '../utils/booking-slot.util';
+import { parseAmdFromPriceDisplay } from '../utils/price-display.util';
 import {
   getPaymentRequiredCalendarIso,
   isImmediatePaymentRequired,
@@ -46,6 +48,7 @@ import {
   bookingTotalPriceAmd,
   buildStudentPaymentSummary,
   isPackageCreditPrepaidMeta,
+  isPackagePurchaseMeta,
   resolveBookingPayment,
   type AdminBookingPaymentStatus,
   type StudentPaymentSummaryDto,
@@ -444,7 +447,9 @@ export type BookingAdminDto = {
   meetLink?: string | null;
   /** Lesson consumed package / prepaid credits (no cash due on this booking). */
   coveredByPackage?: boolean;
-  /** Catalog package name when {@link coveredByPackage}; resolved in list attach. */
+  /** Package sale (no lesson). Shown as type Package with a real payment. */
+  packagePurchase?: boolean;
+  /** Catalog package name when {@link coveredByPackage} or {@link packagePurchase}; resolved in list attach. */
   packageName?: string | null;
   /** Package order id used to resolve {@link packageName} (optional). */
   packageOrderId?: number | null;
@@ -1807,6 +1812,14 @@ async function recordRefundLedgerWhenAdminMarksRefundedInTx(opts: {
   });
 }
 
+/** MySQL: prepaid_meta.packagePurchase === true (JSON boolean, not a string). */
+const PACKAGE_PURCHASE_SQL =
+  "JSON_CONTAINS(COALESCE(`Booking`.`prepaid_meta`, CAST('{}' AS JSON)), 'true', '$.packagePurchase')";
+/** Cash sale, including a package purchase. Credit-covered lessons are excluded. */
+const CASH_BOOKING_SQL = `(\`Booking\`.\`prepaid_meta\` IS NULL OR COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 1)`;
+/** Package/credit coverage, not a package sale. */
+const CREDIT_PREPAID_SQL = `(\`Booking\`.\`prepaid_meta\` IS NOT NULL AND COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 0)`;
+
 export default class BookingService {
   /** Blocks creating another booking while the student already has one awaiting payment. */
   private static async assertStudentHasNoPendingBooking(studentUserId: number): Promise<void> {
@@ -1971,7 +1984,10 @@ export default class BookingService {
     const inst = row.instructor;
     const stu = row.student;
     const pay = resolveBookingPayment(b);
-    const coveredByPackage = isPackageCreditPrepaidMeta(b.prepaidMeta);
+    const packagePurchase = isPackagePurchaseMeta(b.prepaidMeta);
+    const coveredByPackage = !packagePurchase && isPackageCreditPrepaidMeta(b.prepaidMeta);
+    const purchaseMeta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
+    const purchaseName = packagePurchase ? String(purchaseMeta?.packageName ?? '').trim() : '';
     const createdByType = (b.createdByType ?? 'unknown') as BookingCreatedByType;
     const rowCreatedAt = (b as unknown as { createdAt?: Date | string }).createdAt;
     const createdAt =
@@ -2010,10 +2026,12 @@ export default class BookingService {
       cancellationReason: b.cancellationReason ?? null,
       meetLink: meetLinkOrNull(b.meetLink),
       coveredByPackage,
-      packageName: null,
-      packageOrderId: coveredByPackage
-        ? Math.floor(Number((b.prepaidMeta as Record<string, unknown> | null)?.packageOrderId) || 0) || null
-        : null,
+      packagePurchase,
+      packageName: purchaseName || null,
+      packageOrderId:
+        packagePurchase || coveredByPackage
+          ? Math.floor(Number(purchaseMeta?.packageOrderId) || 0) || null
+          : null,
     };
   }
 
@@ -2110,7 +2128,12 @@ export default class BookingService {
       [Op.and]: [
         { totalPriceAmd: { [Op.gt]: 0 } },
         { status: { [Op.notIn]: ['cancelled', 'refunded', 'archived'] } },
-        { prepaidMeta: null },
+        {
+          [Op.or]: [
+            { prepaidMeta: null },
+            literal(`COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 1`),
+          ],
+        },
         literal(`(
           LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) IN ('unpaid', 'partial')
           OR COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) < COALESCE(\`Booking\`.\`total_price_amd\`, 0)
@@ -2152,7 +2175,7 @@ export default class BookingService {
     if (payment === 'unpaid') {
       andParts.push(
         literal(`(
-          \`Booking\`.\`prepaid_meta\` IS NULL
+          ${CASH_BOOKING_SQL}
           AND COALESCE(\`Booking\`.\`total_price_amd\`, 0) > 0
           AND (
             LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) = 'unpaid'
@@ -2163,7 +2186,7 @@ export default class BookingService {
     } else if (payment === 'partial') {
       andParts.push(
         literal(`(
-          \`Booking\`.\`prepaid_meta\` IS NULL
+          ${CASH_BOOKING_SQL}
           AND COALESCE(\`Booking\`.\`total_price_amd\`, 0) > 0
           AND (
             LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) = 'partial'
@@ -2177,7 +2200,7 @@ export default class BookingService {
     } else if (payment === 'paid') {
       andParts.push(
         literal(`(
-          \`Booking\`.\`prepaid_meta\` IS NOT NULL
+          ${CREDIT_PREPAID_SQL}
           OR LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) = 'paid'
           OR COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) >= COALESCE(\`Booking\`.\`total_price_amd\`, 0)
         )`),
@@ -2185,7 +2208,7 @@ export default class BookingService {
     } else if (payment === 'outstanding') {
       andParts.push(
         literal(`(
-          \`Booking\`.\`prepaid_meta\` IS NULL
+          ${CASH_BOOKING_SQL}
           AND COALESCE(\`Booking\`.\`total_price_amd\`, 0) > 0
           AND COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) < COALESCE(\`Booking\`.\`total_price_amd\`, 0)
         )`),
@@ -2316,7 +2339,9 @@ export default class BookingService {
       const se = slotByBooking.get(dto.id);
       const orderId = Math.floor(Number(dto.packageOrderId) || 0);
       const packageName =
-        dto.coveredByPackage && orderId > 0 ? packageNameByOrderId.get(orderId) ?? null : null;
+        (dto.packageName && dto.packageName.trim()) ||
+        (orderId > 0 ? packageNameByOrderId.get(orderId) ?? null : null) ||
+        null;
       return {
         ...dto,
         ...(se && se.length > 0 ? { slotEntries: se } : {}),
@@ -2505,6 +2530,7 @@ export default class BookingService {
       giftNote: null,
       lessonPassedSuccessfully: null,
       coveredByPackage: false,
+      packagePurchase: false,
       packageName: null,
       packageOrderId: null,
       manualFinanceTx: null,
@@ -2772,7 +2798,7 @@ export default class BookingService {
         ['time', 'DESC'],
       ],
     });
-    return rows.map((b) => {
+    return rows.filter((b) => !isPackagePurchaseMeta(b.prepaidMeta)).map((b) => {
       const row = b as BookingWithInstructor;
       const inst = row.instructor;
       const st = normalizeStudentBookingStatus(b.status);
@@ -3671,6 +3697,14 @@ export default class BookingService {
     } | null;
     /** Optional theory group enrollment included in the package. */
     theoryCohortId?: number | null;
+    /** When false, only consume credits for included lessons (no sale row). Default: record a sale when no lessons are booked. */
+    recordPurchase?: boolean;
+    totalPriceAmd?: number;
+    adminPaymentStatus?: AdminBookingPaymentStatus;
+    paidAmountAmd?: number;
+    paymentNotes?: string | null;
+    paymentReminderDate?: string | null;
+    paymentMethod?: 'card' | 'idram' | 'cash' | 'transfer';
   }): Promise<AdminPackageAtomicCreateDto> {
     LoggerUtil.info(
       `[booking-package-atomic] start student=${input.studentId} package=${input.packageId} order=${input.packageOrderId ?? 'auto'} cohort=${input.theoryCohortId ?? 'none'}`,
@@ -3863,6 +3897,77 @@ export default class BookingService {
           );
           await TheoryCohortService.ensureEnrolledInTx(theoryCohort.id, input.studentId, transaction);
           bookingIds.push(created.id);
+        }
+
+        const recordPurchase = input.recordPurchase !== false;
+        if (recordPurchase && bookingIds.length === 0) {
+          const catalogPrice = parseAmdFromPriceDisplay(String(pkg.priceDisplay ?? ''));
+          const totalPriceAmd =
+            input.totalPriceAmd != null && Number.isFinite(input.totalPriceAmd)
+              ? Math.max(0, Math.round(input.totalPriceAmd))
+              : catalogPrice;
+          const payPatch = adminPaymentDbPatch(totalPriceAmd, {
+            adminPaymentStatus: input.adminPaymentStatus ?? (totalPriceAmd > 0 ? 'unpaid' : 'paid'),
+            paidAmountAmd: input.paidAmountAmd,
+          });
+          const payStatus =
+            payPatch.paymentStatus === 'paid' ||
+            payPatch.paymentStatus === 'partial' ||
+            payPatch.paymentStatus === 'unpaid'
+              ? payPatch.paymentStatus
+              : 'unpaid';
+          const paymentExtras = adminPaymentExtrasForCreateSafe(payStatus, {
+            paymentNotes: input.paymentNotes,
+            paymentReminderDate: input.paymentReminderDate,
+          });
+          const created = await Booking.create(
+            {
+              studentUserId: input.studentId,
+              instructorUserId: null,
+              branchId: input.branchId,
+              dateIso: yerevanTodayIso(),
+              time: '00:00',
+              endTime: null,
+              totalPriceAmd,
+              lessonType: 'practical',
+              status: adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
+              paidAt: payPatch.paidAt,
+              holdExpiresAt: null,
+              prepaidMeta: {
+                packagePurchase: true,
+                packageOrderId,
+                packageId: pkg.id,
+                packageName: pkg.name,
+              },
+              paymentStatus: payPatch.paymentStatus,
+              paidAmountAmd: payPatch.paidAmountAmd,
+              lessonCompletionStatus: null,
+              ...paymentExtras,
+              ...adminCreatedByPatch(input.createdByUserId),
+            },
+            { transaction },
+          );
+          bookingIds.push(created.id);
+
+          if (payPatch.paidAmountAmd > 0) {
+            const stu = await User.findByPk(input.studentId, {
+              attributes: ['name', 'email'],
+              transaction,
+            });
+            const customer = stu?.name?.trim() || `Student #${input.studentId}`;
+            await FinanceService.create({
+              customer,
+              email: (stu?.email ?? '').trim(),
+              description: `Package: ${pkg.name}`,
+              branchId: input.branchId,
+              method: input.paymentMethod ?? 'cash',
+              grossAmd: payPatch.paidAmountAmd,
+              source: 'manual',
+              bookingId: created.id,
+              createdByUserId: input.createdByUserId ?? null,
+              transaction,
+            });
+          }
         }
       });
     } catch (e) {

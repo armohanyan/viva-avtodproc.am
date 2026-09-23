@@ -11,6 +11,7 @@ import {
 } from '../models';
 import { normalizeBookingStatus } from './booking.service';
 import StudentEntitlementsService from './student-entitlements.service';
+import { isPackagePurchaseMeta } from '../utils/booking-admin-payment.util';
 import { bookingEndUtcMs, lessonEndUtcMs, lessonInstantUtcMs } from '../utils/lesson-datetime.util';
 
 export type ProgressLessonSnapshot = {
@@ -252,7 +253,9 @@ export default class StudentProgressService {
       },
     });
 
-    const activePractical = practicalBookings.filter(isBookingActiveForProgress);
+    const activePractical = practicalBookings.filter(
+      (b) => !isPackagePurchaseMeta(b.prepaidMeta) && isBookingActiveForProgress(b),
+    );
     const activePersonal = personalTheoryBookings.filter(isBookingActiveForProgress);
 
     let entitlementPracticalTotal = 0;

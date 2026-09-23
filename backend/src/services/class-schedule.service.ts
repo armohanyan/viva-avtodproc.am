@@ -435,7 +435,8 @@ export default class ClassScheduleService {
         ...(branchIdFilter > 0 ? { branchId: branchIdFilter } : {}),
         ...(statusWhere ?? {}),
         [Op.and]: literal(
-          'NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)',
+          `NOT EXISTS (SELECT 1 FROM \`booking_slots\` AS \`s\` WHERE s.\`booking_id\` = \`Booking\`.\`id\`)
+           AND COALESCE(JSON_CONTAINS(COALESCE(\`Booking\`.\`prepaid_meta\`, CAST('{}' AS JSON)), 'true', '$.packagePurchase'), 0) = 0`,
         ),
       },
       raw: true,

@@ -50,6 +50,8 @@ export type AdminBookingListItem = {
   meetLink?: string | null;
   /** Lesson paid via package / prepaid credits (no cash due on this row). */
   coveredByPackage?: boolean;
+  /** Package sale row (no lesson slots). Payment is the package price, not credit coverage. */
+  packagePurchase?: boolean;
   packageName?: string | null;
   packageOrderId?: number | null;
   manualFinanceTx: AdminBookingFinanceLink | null;

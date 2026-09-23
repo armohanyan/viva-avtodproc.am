@@ -8,6 +8,11 @@ import LoggerUtil from '../utils/logger.util';
 
 const BOOKING_LESSON_TYPES = ['practical', 'theory_personal'] as const;
 
+function isPackagePurchasePrepaid(meta: unknown): boolean {
+  if (meta == null || typeof meta !== 'object') return false;
+  return (meta as Record<string, unknown>).packagePurchase === true;
+}
+
 function completionStatusFromBookingRow(row: Booking, now: Date): LessonCompletionStatus | null {
   const bookingStatus = normalizeBookingStatus(String(row.status ?? ''));
   if (bookingStatus === 'cancelled') {
@@ -72,6 +77,7 @@ export default class LessonCompletionService {
         'lessonPassedSuccessfully',
         'lessonCompletionStatus',
         'lessonCompletedAt',
+        'prepaidMeta',
       ],
     });
 
@@ -80,6 +86,7 @@ export default class LessonCompletionService {
     let bookingsCompletionSynced = 0;
 
     for (const row of candidates) {
+      if (isPackagePurchasePrepaid(row.prepaidMeta)) continue;
       const target = completionStatusFromBookingRow(row, now);
       if (target == null) continue;
 

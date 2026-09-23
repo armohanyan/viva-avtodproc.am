@@ -192,11 +192,13 @@ function bookingLessonTypeTKey(type: Booking["type"]): TranslationKey {
 }
 
 /** Table type badge: package-covered lessons show as Package, otherwise the lesson type. */
-function bookingTableTypeDisplay(b: Pick<Booking, "type" | "coveredByPackage">): {
+function bookingTableTypeDisplay(
+  b: Pick<Booking, "type" | "coveredByPackage" | "packagePurchase">,
+): {
   labelKey: TranslationKey;
   colorClass: string;
 } {
-  if (b.coveredByPackage) {
+  if (b.packagePurchase || b.coveredByPackage) {
     return { labelKey: "adminBookingFlowPackage", colorClass: typeColor.package };
   }
   return {
@@ -477,9 +479,9 @@ export default function AdminBookings() {
           b.id,
           studentLabel(b.studentId, b),
           branchNameById(branches, b.branchId),
-          b.instructorName,
+          b.packagePurchase ? "-" : b.instructorName,
           formatShortDateFromIso(b.dateIso, lang),
-          formatBookingSlotRangeLabel(b.time, b.endTime),
+          b.packagePurchase ? "-" : formatBookingSlotRangeLabel(b.time, b.endTime),
           t(typeDisp.labelKey),
           t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
           t(toCanonicalBookingStatus(b.status) as TranslationKey),
@@ -531,6 +533,8 @@ export default function AdminBookings() {
   const [addPaymentErrorKey, setAddPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
   /** Gift lesson (free, super admin must approve). Offered in the add flow for practical lessons. */
   const [addIsGift, setAddIsGift] = useState(false);
+  /** Practical add: spend package credits when the student has them. Off keeps a normal paid lesson. */
+  const [usePracticalPackageCredits, setUsePracticalPackageCredits] = useState(true);
   const [addGiftNote, setAddGiftNote] = useState("");
   const [editPaymentErrorKey, setEditPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
   /** Manual finance row id when editing a booking that already has a manual payment. */
@@ -825,7 +829,7 @@ export default function AdminBookings() {
   ]);
 
   useEffect(() => {
-    if (!editBooking?.branchId) return;
+    if (!editBooking?.branchId || editBooking.packagePurchase) return;
     if (editBooking.type === "practical") {
       const stillValid = practicalInstructorsForEdit.some((i) => i.name === editBooking.instructorName);
       if (stillValid) return;
@@ -1094,6 +1098,7 @@ export default function AdminBookings() {
       setAddPaymentErrorKey(null);
       setAddIsGift(false);
       setAddGiftNote("");
+      setUsePracticalPackageCredits(true);
       setBookingModalTab("booking");
       setAddSlotSessionId((n) => n + 1);
       setAddOpen(true);
@@ -1245,8 +1250,7 @@ export default function AdminBookings() {
       setTheoryCohortId("");
       setAddPackageId("");
       setAddPackagePracticalSlotPick(null);
-      setAddPackageTheoryInstructorName("");
-      setAddPackageTheorySlotPick(null);
+      setAddPackageTheoryCohortId("");
       if (flow !== "practical") setAddPracticalLessonType("");
       if (flow !== "theory_personal") setAddTheoryThemeTitles([]);
       setDraft((d) => {
@@ -1416,12 +1420,15 @@ export default function AdminBookings() {
     return { remaining, packageName, coversPayment: remaining >= need };
   }, [addFlowKind, addStudentPackageOrders, slotPick]);
 
+  const practicalCreditsApply =
+    addFlowKind === "practical" && usePracticalPackageCredits && practicalPackageCredits.coversPayment;
+
   useEffect(() => {
-    if (addFlowKind !== "practical" || !practicalPackageCredits.coversPayment) return;
+    if (!practicalCreditsApply) return;
     setAddBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
     setDraft((d) => (d ? { ...d, status: "confirmed" } : d));
     setAddIsGift(false);
-  }, [addFlowKind, practicalPackageCredits.coversPayment]);
+  }, [practicalCreditsApply]);
 
   const addEffectiveTotalAmd = useMemo(() => {
     if (addFlowKind === "package") {
@@ -1430,14 +1437,14 @@ export default function AdminBookings() {
       return addTotalAmd;
     }
     if (addFlowKind === "theory_group" && theoryGroupPackageCovered) return 0;
-    if (addFlowKind === "practical" && practicalPackageCredits.coversPayment) return 0;
+    if (practicalCreditsApply) return 0;
     return addTotalAmd;
   }, [
     addFlowKind,
     hasReusableSelectedPackageOrder,
     addTotalAmd,
     theoryGroupPackageCovered,
-    practicalPackageCredits.coversPayment,
+    practicalCreditsApply,
   ]);
 
   const addValidation = useMemo(
@@ -1500,19 +1507,23 @@ export default function AdminBookings() {
   const filterSelectClass =
     "w-full h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring";
 
+  const editBookingPaymentSourceRef = useRef(editBooking);
+  editBookingPaymentSourceRef.current = editBooking;
+
   useEffect(() => {
-    if (!editBooking) {
+    const source = editBookingPaymentSourceRef.current;
+    if (!source) {
       setEditManualTxId(null);
       setEditSystemPayment(null);
       return;
     }
-    const manual = editBooking.manualFinanceTx;
-    const system = editBooking.systemFinanceTx;
+    const manual = source.manualFinanceTx;
+    const system = source.systemFinanceTx;
     if (manual) {
       setEditManualTxId(manual.id);
       setEditSystemPayment(null);
       setEditBookingPayment(
-        adminPaymentFromBooking(editBooking, {
+        adminPaymentFromBooking(source, {
           method: manual.method as TxMethod,
           createdAt: manual.createdAt,
         }),
@@ -1521,7 +1532,7 @@ export default function AdminBookings() {
       setEditManualTxId(null);
       setEditSystemPayment(system);
       setEditBookingPayment(
-        adminPaymentFromBooking(editBooking, {
+        adminPaymentFromBooking(source, {
           method: system.method as TxMethod,
           createdAt: system.createdAt,
         }),
@@ -1529,10 +1540,10 @@ export default function AdminBookings() {
     } else {
       setEditManualTxId(null);
       setEditSystemPayment(null);
-      setEditBookingPayment(adminPaymentFromBooking(editBooking));
+      setEditBookingPayment(adminPaymentFromBooking(source));
     }
     setEditPaymentErrorKey(null);
-  }, [editBooking]);
+  }, [editBooking?.id]);
 
   const handleDelete = async (remark: string) => {
     if (!deleteId) return;
@@ -1679,7 +1690,12 @@ export default function AdminBookings() {
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editBooking) return;
-    if (editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal") {
+    const isPackagePurchaseEdit = Boolean(editBooking.packagePurchase);
+    if (isPackagePurchaseEdit) {
+      // Package sales have no instructor or lesson slots. Only payment fields are required.
+    } else if (
+      editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
+    ) {
       if (editBooking.type === "practical" && !editPracticalLessonType) {
         showToast(t("fillRequired"), "error");
         return;
@@ -1742,10 +1758,11 @@ export default function AdminBookings() {
         : undefined;
 
     try {
-      const pick = editSlotPick!;
+      const pick = editSlotPick;
       const useArbitrarySlots =
+        !isPackagePurchaseEdit &&
         (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
-        (pick.slotEntries?.length ?? 0) > 0;
+        (pick?.slotEntries?.length ?? 0) > 0;
       const paymentBody = editBooking.coveredByPackage
         ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0 }
         : adminPaymentApiPayload(editBookingPayment, editTotal);
@@ -1753,7 +1770,7 @@ export default function AdminBookings() {
         paymentBody.adminPaymentStatus,
         editBooking.status,
       );
-      const body = paymentOnlySave
+      const body = paymentOnlySave || isPackagePurchaseEdit
         ? {
             studentId: editBooking.studentId,
             status: bookingLifecycleStatus,
@@ -1768,11 +1785,11 @@ export default function AdminBookings() {
               branchId: Number(editBooking.branchId),
               status: bookingLifecycleStatus,
               type: editBooking.type,
-              dateIso: pick.dateIso,
-              slots: pick.times,
-              ...(useArbitrarySlots ? { slotEntries: pick.slotEntries } : {}),
+              dateIso: editSlotPick!.dateIso,
+              slots: editSlotPick!.times,
+              ...(useArbitrarySlots ? { slotEntries: editSlotPick!.slotEntries } : {}),
               ...(editBooking.type === "practical" || editBooking.type === "theory_personal"
-                ? { instructorName: pick.instructor || editBooking.instructorName }
+                ? { instructorName: editSlotPick!.instructor || editBooking.instructorName }
                 : { theoryCohortId: Number(editTheoryCohortId) }),
               ...(editBooking.type === "theory_personal"
                 ? { meetLink: editBooking.meetLink?.trim() || null }
@@ -1809,11 +1826,17 @@ export default function AdminBookings() {
               branchId: editBooking.branchId,
               bookingIdNum,
               bookingStatus: bookingLifecycleStatus,
-              financeDescription: paymentDescriptionLine({
-                type: editBooking.type,
-                dateIso: financeDateIso,
-                id: editBooking.id,
-              }),
+              financeDescription: editBooking.packagePurchase
+                ? packagePaymentDescriptionLine(
+                    editBooking.packageName ?? "",
+                    editBooking.studentId,
+                    studentsMini,
+                  )
+                : paymentDescriptionLine({
+                    type: editBooking.type,
+                    dateIso: financeDateIso,
+                    id: editBooking.id,
+                  }),
             });
           } else {
             await postManualFinance(financeFields, {
@@ -1848,7 +1871,7 @@ export default function AdminBookings() {
     const packageCreditCoversPayment =
       (addFlowKind === "package" && hasReusableSelectedPackageOrder) ||
       (addFlowKind === "theory_group" && theoryGroupPackageCovered) ||
-      (addFlowKind === "practical" && practicalPackageCredits.coversPayment);
+      practicalCreditsApply;
     const payErr =
       addGiftActive || packageCreditCoversPayment
         ? null
@@ -1902,6 +1925,7 @@ export default function AdminBookings() {
           },
         });
         // Ensure package order / credits exist. Practical slots and theory group are booked afterwards.
+        const recordPurchase = !hasReusableSelectedPackageOrder;
         await vivaApiJson<{ bookingIds?: number[] }>("/bookings/package-atomic", {
           method: "POST",
           body: {
@@ -1909,19 +1933,17 @@ export default function AdminBookings() {
             packageId: Number(pkg.id),
             branchId: Number(draft.branchId),
             status: addBookingLifecycleStatus,
+            recordPurchase,
             ...(addSelectedPackageOrderId != null ? { packageOrderId: addSelectedPackageOrderId } : {}),
+            ...(recordPurchase
+              ? {
+                  totalPriceAmd: addEffectiveTotalAmd,
+                  ...adminPaymentApiPayload(addBookingPayment, addEffectiveTotalAmd),
+                  paymentMethod: addBookingPayment.method,
+                }
+              : {}),
           },
         });
-        // Only post package payment on first purchase / new order — never when reusing credits.
-        if (addPaid > 0 && !hasReusableSelectedPackageOrder) {
-          await postManualFinance(bookingPaymentToFinanceFields(addBookingPayment), {
-            studentId: draft.studentId,
-            branchId: draft.branchId,
-            bookingIdNum: null,
-            bookingStatus: addBookingLifecycleStatus,
-            financeDescription: packagePaymentDescriptionLine(pkg.name, draft.studentId, studentsMini),
-          });
-        }
         packageFollowUpAfterSave = {
           studentId: String(draft.studentId),
           branchId: String(draft.branchId),
@@ -1970,7 +1992,7 @@ export default function AdminBookings() {
                       ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
                         ? { instructorUserId: Number(pick.instructorUserId) }
                         : {}),
-                      ...(practicalPackageCredits.coversPayment ? { consumePackageCredits: true } : {}),
+                      consumePackageCredits: practicalCreditsApply,
                     }
                   : {
                       theoryCohortId: Number(theoryCohortId),
@@ -2396,10 +2418,12 @@ export default function AdminBookings() {
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[10rem] truncate" title={branchNameById(branches, b.branchId)}>
                       {branchNameById(branches, b.branchId)}
                     </td>
-                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{b.instructorName}</td>
+                    <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">
+                      {b.packagePurchase ? "-" : b.instructorName || "-"}
+                    </td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap">{formatShortDateFromIso(b.dateIso, lang)}</td>
                     <td className="px-4 py-3.5 text-muted-foreground whitespace-nowrap tabular-nums">
-                      {formatBookingSlotRangeLabel(b.time, b.endTime)}
+                      {b.packagePurchase ? "-" : formatBookingSlotRangeLabel(b.time, b.endTime)}
                     </td>
                     <td className="px-4 py-3.5">
                       {(() => {
@@ -2595,6 +2619,7 @@ export default function AdminBookings() {
         description={editBooking ? `#${editBooking.id}` : undefined}
         contentClassName={
           editBooking &&
+          !editBooking.packagePurchase &&
           (editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal")
             ? "w-full max-w-[min(100vw-2rem,90rem)] sm:max-w-[min(100vw-2rem,90rem)] h-[min(94vh,980px)]"
             : "w-full max-w-[calc(100%-2rem)] sm:max-w-3xl h-[min(92vh,900px)]"
@@ -2660,7 +2685,7 @@ export default function AdminBookings() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColType")}</label>
-                  {editBooking.coveredByPackage ? (
+                  {editBooking.packagePurchase || editBooking.coveredByPackage ? (
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge className={`text-xs ${typeColor.package}`}>{t("adminBookingFlowPackage")}</Badge>
@@ -2671,7 +2696,9 @@ export default function AdminBookings() {
                       {editBooking.packageName ? (
                         <p className="text-sm text-foreground">{editBooking.packageName}</p>
                       ) : null}
-                      <p className="text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                      {editBooking.coveredByPackage ? (
+                        <p className="text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                      ) : null}
                     </div>
                   ) : (
                     <select
@@ -2725,7 +2752,7 @@ export default function AdminBookings() {
                     ))}
                   </select>
                 </div>
-                {editBooking.type === "theory" ? (
+                {editBooking.type === "theory" && !editBooking.packagePurchase ? (
                   <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("adminBookingTheoryCohortLabel")}</label>
                     <select
@@ -2760,7 +2787,7 @@ export default function AdminBookings() {
                     </select>
                   </div>
                 ) : null}
-                {editBooking.type === "practical" ? (
+                {editBooking.type === "practical" && !editBooking.packagePurchase ? (
                   <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingStepLessonType")}</label>
                     <select
@@ -2777,7 +2804,7 @@ export default function AdminBookings() {
                     </select>
                   </div>
                 ) : null}
-                {editBooking.type === "practical" ? (
+                {editBooking.type === "practical" && !editBooking.packagePurchase ? (
                   <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
                     <select
@@ -2838,7 +2865,8 @@ export default function AdminBookings() {
                     </select>
                   </div>
                 ) : null}
-                {editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal" ? (
+                {(editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal") &&
+                !editBooking.packagePurchase ? (
                   <div className="space-y-2 pt-2 border-t border-border">
                     <p className="text-sm text-muted-foreground">{t("bookingColTime")}</p>
                     {editSlotPick && (editSlotPick.slotEntries?.length ?? 0) > 0 ? (
@@ -2859,7 +2887,7 @@ export default function AdminBookings() {
                       <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingSlotsNotSelected")}</p>
                     )}
                   </div>
-                ) : (
+                ) : editBooking.packagePurchase ? null : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
@@ -2912,9 +2940,12 @@ export default function AdminBookings() {
                       value={editBookingPayment}
                       onChange={(next) => {
                         setEditBookingPayment(next);
-                        setEditBooking((eb) =>
-                          eb ? { ...eb, status: bookingStatusFromAdminPayment(next.status, eb.status) } : eb,
-                        );
+                        setEditBooking((eb) => {
+                          if (!eb) return eb;
+                          const status = bookingStatusFromAdminPayment(next.status, eb.status);
+                          if (status === eb.status) return eb;
+                          return { ...eb, status };
+                        });
                       }}
                       errorKey={editPaymentErrorKey}
                     />
@@ -3062,6 +3093,24 @@ export default function AdminBookings() {
                               ? ` · ${practicalPackageCredits.packageName}`
                               : ""}
                           </p>
+                          <label className="mt-2 flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={usePracticalPackageCredits}
+                              onChange={(e) => {
+                                const on = e.target.checked;
+                                setUsePracticalPackageCredits(on);
+                                if (!on) {
+                                  setAddBookingPayment((prev) => ({ ...prev, status: "unpaid", paidStr: "" }));
+                                  setDraft((d) => (d ? { ...d, status: "pending" } : d));
+                                  setAddIsGift(false);
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-input accent-primary"
+                            />
+                            {t("adminBookingUsePackageCredits")}
+                          </label>
+                          <p className="mt-1 text-xs opacity-90">{t("adminBookingUsePackageCreditsHint")}</p>
                         </div>
                       ) : null}
                     </div>
@@ -3373,8 +3422,7 @@ export default function AdminBookings() {
                 </div>
               </TabsContent>
               <TabsContent value="payment" forceMount className="mt-4 data-[state=inactive]:hidden">
-                {(addFlowKind === "theory_group" && theoryGroupPackageCovered) ||
-                (addFlowKind === "practical" && practicalPackageCredits.coversPayment) ? (
+                {(addFlowKind === "theory_group" && theoryGroupPackageCovered) || practicalCreditsApply ? (
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100 space-y-1">
                     <p className="font-medium">{t("adminBookingPackageIncludedInPackage")}</p>
                     {addFlowKind === "practical" && practicalPackageCredits.remaining > 0 ? (

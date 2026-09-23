@@ -2285,8 +2285,10 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   adminBookingPackageFollowUpPractical: "Book practical",
   adminBookingPackageFollowUpTheory: "Book theory group",
   adminBookingPackageFollowUpLater: "Later",
-  adminBookingPracticalCreditsNotice:
-    "This student has practical package credits. Payment is not required - this lesson will use those credits.",
+  adminBookingPracticalCreditsNotice: "This student has practical package credits.",
+  adminBookingUsePackageCredits: "Use credits",
+  adminBookingUsePackageCreditsHint:
+    "On: this lesson uses package credits. Off: regular paid lesson, and the credits stay on the package.",
   adminBookingPracticalCreditsRemainingLabel: "%n credit(s) remaining",
   adminBookingPracticalCreditsInsufficient:
     "This student has package credits, but not enough for the selected hours. Record payment for the remaining hours.",
@@ -4686,8 +4688,10 @@ const ru: typeof en = {
   adminBookingPackageFollowUpPractical: "Записать практику",
   adminBookingPackageFollowUpTheory: "В группу теории",
   adminBookingPackageFollowUpLater: "Позже",
-  adminBookingPracticalCreditsNotice:
-    "У ученика есть кредиты практики по пакету. Оплата не требуется - урок спишет эти кредиты.",
+  adminBookingPracticalCreditsNotice: "У ученика есть кредиты практики по пакету.",
+  adminBookingUsePackageCredits: "Использовать кредиты",
+  adminBookingUsePackageCreditsHint:
+    "Включено: урок списывается с кредитов пакета. Выключено: обычный платный урок, кредиты остаются в пакете.",
   adminBookingPracticalCreditsRemainingLabel: "Осталось кредитов: %n",
   adminBookingPracticalCreditsInsufficient:
     "У ученика есть кредиты пакета, но их недостаточно для выбранных часов. Укажите оплату за оставшиеся часы.",
@@ -7062,8 +7066,10 @@ const am: typeof en = {
   adminBookingPackageFollowUpPractical: "Ամրագրել պրակտիկ",
   adminBookingPackageFollowUpTheory: "Տեսության խումբ",
   adminBookingPackageFollowUpLater: "Ավելի ուշ",
-  adminBookingPracticalCreditsNotice:
-    "Ուսանողն ունի փաթեթի պրակտիկ կրեդիտներ։ Վճարում չի պահանջվում - այս դասը կօգտագործի այդ կրեդիտները։",
+  adminBookingPracticalCreditsNotice: "Ուսանողն ունի փաթեթի պրակտիկ կրեդիտներ։",
+  adminBookingUsePackageCredits: "Օգտագործել կրեդիտները",
+  adminBookingUsePackageCreditsHint:
+    "Միացված է՝ դասը գրվում է փաթեթի կրեդիտներից։ Անջատված է՝ սովորական վճարովի դաս, կրեդիտները մնում են փաթեթում։",
   adminBookingPracticalCreditsRemainingLabel: "Մնացած կրեդիտներ՝ %n",
   adminBookingPracticalCreditsInsufficient:
     "Ուսանողն ունի փաթեթի կրեդիտներ, բայց ընտրված ժամերի համար բավարար չէ։ Գրանցեք վճարումը մնացած ժամերի համար։",

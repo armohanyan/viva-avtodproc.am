@@ -181,6 +181,15 @@ const adminPackageAtomicSchema = z.object({
     })
     .optional(),
   theoryCohortId: z.coerce.number().int().positive().optional().nullable(),
+  recordPurchase: z.boolean().optional(),
+  totalPriceAmd: z.coerce.number().int().nonnegative().optional(),
+  adminPaymentStatus: adminPaymentStatusSchema.optional(),
+  paidAmountAmd: z.coerce.number().int().nonnegative().optional(),
+  paymentNotes: z.string().max(2000).optional().nullable(),
+  paymentReminderDate: z
+    .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(''), z.null()])
+    .optional(),
+  paymentMethod: z.enum(['card', 'idram', 'cash', 'transfer']).optional(),
   /** @deprecated Prefer theoryCohortId; ignored by server. */
   theoryPersonal: z
     .object({
@@ -284,6 +293,13 @@ export default class BookingController {
         createdByUserId: readStaffUserIdFromToken(req),
         practical: body.practical,
         theoryCohortId: body.theoryCohortId ?? null,
+        recordPurchase: body.recordPurchase,
+        totalPriceAmd: body.totalPriceAmd,
+        adminPaymentStatus: body.adminPaymentStatus,
+        paidAmountAmd: body.paidAmountAmd,
+        paymentNotes: body.paymentNotes,
+        paymentReminderDate: body.paymentReminderDate,
+        paymentMethod: body.paymentMethod,
       });
       SuccessHandlerUtil.handleAdd(res, next, data);
     } catch (e) {

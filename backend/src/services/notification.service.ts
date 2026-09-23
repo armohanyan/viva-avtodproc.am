@@ -2,6 +2,7 @@ import { Op, type FindOptions, type Transaction } from 'sequelize';
 import { Booking, Notification, User } from '../models';
 import type { NotificationEntityType, NotificationType } from '../models/notification.model';
 import type { AccountType } from '../models/user.model';
+import { isPackagePurchaseMeta } from '../utils/booking-admin-payment.util';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
 
@@ -206,9 +207,10 @@ export default class NotificationService {
     let created = 0;
     const bookingRows = await Booking.findAll({
       where: { status: { [Op.in]: ['pending', 'confirmed'] } },
-      attributes: ['id', 'studentUserId', 'instructorUserId', 'dateIso', 'time', 'lessonType'],
+      attributes: ['id', 'studentUserId', 'instructorUserId', 'dateIso', 'time', 'lessonType', 'prepaidMeta'],
     });
     for (const b of bookingRows) {
+      if (isPackagePurchaseMeta(b.prepaidMeta)) continue;
       const t = String(b.time).slice(0, 5);
       const startMs = Date.parse(`${String(b.dateIso).slice(0, 10)}T${t}:00+04:00`);
       if (!Number.isFinite(startMs)) continue;

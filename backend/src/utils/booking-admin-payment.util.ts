@@ -43,13 +43,21 @@ function roundAmd(n: number): number {
   return Math.max(0, Math.round(n));
 }
 
+/** Package sale row (no lesson slots). Payment is real cash, not credit coverage. */
+export function isPackagePurchaseMeta(meta: unknown): boolean {
+  if (meta == null || typeof meta !== 'object') return false;
+  return (meta as Record<string, unknown>).packagePurchase === true;
+}
+
 /**
  * True when `prepaidMeta` means package/credit coverage (treat as fully prepaid).
  * Includes packageOrderId / pkgTheory from package theory group enrollments.
  * Cohort linkage alone (`theoryCohortId` without package fields) is not payment coverage.
+ * A package purchase (`packagePurchase`) is a sale, not a credit-covered lesson.
  */
 export function isPackageCreditPrepaidMeta(meta: unknown): boolean {
   if (meta == null || typeof meta !== 'object') return false;
+  if (isPackagePurchaseMeta(meta)) return false;
   const m = meta as Record<string, unknown>;
   if (Math.floor(Number(m.packageOrderId) || 0) > 0) return true;
   if (Math.max(0, Math.floor(Number(m.packageBalanceUnits) || 0)) > 0) return true;
