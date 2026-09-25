@@ -186,6 +186,16 @@ function bookingSourceLabelKey(source: Booking["createdByType"]): TranslationKey
   return "adminBookingSourceUnknown";
 }
 
+function bookingCreatedByLabel(b: Pick<Booking, "createdByName" | "createdByType" | "studentName">): string {
+  const name = b.createdByName?.trim();
+  if (name) return name;
+  if ((b.createdByType ?? "unknown") === "student") {
+    const studentName = b.studentName?.trim();
+    if (studentName) return studentName;
+  }
+  return "";
+}
+
 function bookingLessonTypeTKey(type: Booking["type"]): TranslationKey {
   if (type === "theory") return "lessonTypeTheory";
   if (type === "theory_personal") return "lessonTypeTheoryPersonal";
@@ -462,6 +472,7 @@ export default function AdminBookings() {
       t("bookingColTime"),
       t("bookingColType"),
       t("adminBookingsColSource"),
+      t("adminBookingsColBookedBy"),
       t("status"),
       t("adminBookingsColPayment"),
       t("adminBookingPaymentTotalPrice"),
@@ -476,6 +487,7 @@ export default function AdminBookings() {
       items.map((b) => {
         const pay = bookingListPaymentRow(b);
         const typeDisp = bookingTableTypeDisplay(b);
+        const bookedBy = bookingCreatedByLabel(b);
         return [
           b.id,
           studentLabel(b.studentId, b),
@@ -487,6 +499,7 @@ export default function AdminBookings() {
             ? `${t(typeDisp.labelKey)} · ${b.packageName.trim()}`
             : t(typeDisp.labelKey),
           t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
+          bookedBy || t(bookingSourceLabelKey(b.createdByType ?? "unknown")),
           t(toCanonicalBookingStatus(b.status) as TranslationKey),
           t(bookingListPaymentLabelKey(pay.status)),
           pay.totalAmd > 0 ? String(pay.totalAmd) : "",
@@ -1767,12 +1780,19 @@ export default function AdminBookings() {
         (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
         (pick?.slotEntries?.length ?? 0) > 0;
       const paymentBody = editBooking.coveredByPackage
-        ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0 }
+        ? {
+            adminPaymentStatus:
+              String(editBooking.paymentStatus ?? "").trim().toLowerCase() === "unpaid"
+                ? ("unpaid" as const)
+                : ("paid" as const),
+            paidAmountAmd: 0,
+          }
         : adminPaymentApiPayload(editBookingPayment, editTotal);
-      const bookingLifecycleStatus = bookingStatusFromAdminPayment(
-        paymentBody.adminPaymentStatus,
-        editBooking.status,
-      );
+      const bookingLifecycleStatus = editBooking.coveredByPackage
+        ? (editBooking.status === "cancelled" || editBooking.status === "refunded"
+            ? editBooking.status
+            : "confirmed")
+        : bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, editBooking.status);
       const body = paymentOnlySave || isPackagePurchaseEdit
         ? {
             studentId: editBooking.studentId,
@@ -1816,46 +1836,27 @@ export default function AdminBookings() {
         body,
       });
       const bookingIdNum = Number(editBooking.id);
-      const financeDateIso = editSlotPick?.dateIso ?? editBooking.dateIso;
       const collectedAmd =
         paymentBody.adminPaymentStatus === "paid"
           ? Math.max(0, Math.round(editTotal))
           : paymentBody.adminPaymentStatus === "partial"
             ? Math.max(0, Math.round(paymentBody.paidAmountAmd ?? 0))
             : 0;
-      if (!editSystemPayment && collectedAmd > 0) {
+      // First cash only. Completing a partial must not PATCH the old kassa line to the full
+      // total (that shows +30,000 today). The booking API adds a separate +delta installment.
+      if (!editSystemPayment && collectedAmd > 0 && editManualTxId == null) {
         const financeFields = {
           ...bookingPaymentToFinanceFields(editBookingPayment),
           grossStr: String(collectedAmd),
         };
-          const ok = validatePaymentForSubmit(editBookingPayment, editBooking.studentId, true);
-          if (!ok) return;
-          if (editManualTxId != null) {
-            await patchManualFinance(editManualTxId, financeFields, {
-              studentId: editBooking.studentId,
-              branchId: editBooking.branchId,
-              bookingIdNum,
-              bookingStatus: bookingLifecycleStatus,
-              financeDescription: editBooking.packagePurchase
-                ? packagePaymentDescriptionLine(
-                    editBooking.packageName ?? "",
-                    editBooking.studentId,
-                    studentsMini,
-                  )
-                : paymentDescriptionLine({
-                    type: editBooking.type,
-                    dateIso: financeDateIso,
-                    id: editBooking.id,
-                  }),
-            });
-          } else {
-            await postManualFinance(financeFields, {
-              studentId: editBooking.studentId,
-              branchId: editBooking.branchId,
-              bookingIdNum,
-              bookingStatus: bookingLifecycleStatus,
-            });
-          }
+        const ok = validatePaymentForSubmit(editBookingPayment, editBooking.studentId, true);
+        if (!ok) return;
+        await postManualFinance(financeFields, {
+          studentId: editBooking.studentId,
+          branchId: editBooking.branchId,
+          bookingIdNum,
+          bookingStatus: bookingLifecycleStatus,
+        });
       }
       setEditBooking(null);
       lastEditSlotInitKey.current = "";
@@ -2349,7 +2350,7 @@ export default function AdminBookings() {
         </div>
 
         <AdminTableScroll>
-          <table className="w-full text-sm min-w-[74rem]">
+          <table className="w-full text-sm min-w-[80rem]">
             <thead>
               <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground">
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("tableColId")}</th>
@@ -2360,6 +2361,7 @@ export default function AdminBookings() {
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColTime")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("bookingColType")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminBookingsColSource")}</th>
+                <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminBookingsColBookedBy")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("status")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap">{t("adminBookingsColPayment")}</th>
                 <th className="px-4 py-3 font-medium whitespace-nowrap text-right">{t("actions")}</th>
@@ -2368,13 +2370,13 @@ export default function AdminBookings() {
             <tbody className="divide-y divide-border">
               {bookingsLoading ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={12} className="px-4 py-10 text-center text-muted-foreground">
                     {t("loading")}…
                   </td>
                 </tr>
               ) : bookings.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={12} className="px-4 py-10 text-center text-muted-foreground">
                     {t(activeBookingsTab === "debts" ? "adminBookingsEmptyDebts" : "adminBookingsEmptyFiltered")}
                   </td>
                 </tr>
@@ -2453,6 +2455,12 @@ export default function AdminBookings() {
                       >
                         {t(bookingSourceLabelKey(b.createdByType ?? "unknown"))}
                       </Badge>
+                    </td>
+                    <td
+                      className="px-4 py-3.5 text-muted-foreground whitespace-nowrap max-w-[12rem] truncate"
+                      title={bookingCreatedByLabel(b) || undefined}
+                    >
+                      {bookingCreatedByLabel(b) || "—"}
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex flex-col gap-1.5 items-start">
@@ -2683,6 +2691,19 @@ export default function AdminBookings() {
                 forceMount
                 className="mt-4 space-y-3 data-[state=inactive]:hidden"
               >
+                <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">{t("adminBookingsColBookedBy")}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      {bookingCreatedByLabel(editBooking) || t(bookingSourceLabelKey(editBooking.createdByType ?? "unknown"))}
+                    </p>
+                    <Badge
+                      className={`text-xs ${BOOKING_SOURCE_BADGE_CLASS[editBooking.createdByType ?? "unknown"] ?? BOOKING_SOURCE_BADGE_CLASS.unknown}`}
+                    >
+                      {t(bookingSourceLabelKey(editBooking.createdByType ?? "unknown"))}
+                    </Badge>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("bookingColStudent")}</label>
                   <AdminStudentPicker
@@ -2935,15 +2956,24 @@ export default function AdminBookings() {
                 {editBooking.coveredByPackage ? (
                   <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-foreground space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge className={`text-xs ${BOOKING_LIST_PAYMENT_BADGE_CLASS.paid}`}>
-                        {t("adminBookingPaymentStatusPaid")}
-                      </Badge>
+                      {(() => {
+                        const pay = bookingListPaymentRow(editBooking);
+                        return (
+                          <Badge className={`text-xs ${BOOKING_LIST_PAYMENT_BADGE_CLASS[pay.status === "unpaid" ? "unpaid" : "paid"]}`}>
+                            {t(bookingListPaymentLabelKey(pay.status === "unpaid" ? "unpaid" : "paid"))}
+                          </Badge>
+                        );
+                      })()}
                       <Badge className={`text-xs ${typeColor.package}`}>{t("adminBookingFlowPackage")}</Badge>
                     </div>
                     {editBooking.packageName ? (
                       <p className="font-medium">{editBooking.packageName}</p>
                     ) : null}
-                    <p className="text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                    {String(editBooking.paymentStatus ?? "").trim().toLowerCase() === "unpaid" ? (
+                      <p className="text-xs text-amber-800">{t("adminBookingUnpaidBecausePackage")}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                    )}
                   </div>
                 ) : editSystemPayment ? (
                   <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-foreground">

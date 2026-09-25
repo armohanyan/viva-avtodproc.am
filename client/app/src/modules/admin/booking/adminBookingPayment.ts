@@ -311,8 +311,12 @@ export function bookingMatchesPaymentFilter(
 ): boolean {
   if (filter === "all") return true;
   if (booking.coveredByPackage) {
-    // Package-covered lessons are prepaid - treat as paid for payment filters.
-    return filter === "paid";
+    // Package-covered lessons follow the package payment status.
+    const row = bookingListPaymentRow(booking);
+    if (filter === "outstanding") return row.status === "unpaid";
+    if (filter === "paid") return row.status === "paid";
+    if (filter === "partial") return false;
+    return row.status === "unpaid";
   }
   const row = bookingListPaymentRow(booking);
   if (filter === "outstanding") return row.remainingAmd > 0 && row.totalAmd > 0;

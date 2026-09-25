@@ -304,19 +304,9 @@ export default function PracticalBookingDetailModal({
       const hasSystemTx = Boolean(booking.systemFinanceTx);
       if (!hasSystemTx && paid > 0) {
         const bookingIdNum = Number(booking.id);
-        if (booking.manualFinanceTx?.id) {
-          await vivaApiJson(`/finance/transactions/${booking.manualFinanceTx.id}`, {
-            method: "PATCH",
-            body: {
-              createdAt: new Date(bookingPayment.datetimeLocal).toISOString(),
-              method: bookingPayment.method,
-              grossAmd: paid,
-              status: financeStatusFromBookingStatus(status),
-              branchId: Number(branchId),
-              bookingId: bookingIdNum,
-            },
-          });
-        } else {
+        // Never inflate an existing kassa line to the new paid total — the booking PATCH
+        // sync adds a separate installment for the remaining cash.
+        if (!booking.manualFinanceTx?.id) {
           await vivaApiJson("/finance/transactions", {
             method: "POST",
             body: {
@@ -550,14 +540,38 @@ export default function PracticalBookingDetailModal({
               {booking.studentPhone2 ? (
                 <p className="text-sm tabular-nums text-muted-foreground">{booking.studentPhone2}</p>
               ) : null}
-              {booking.coveredByPackage || booking.packagePurchase ? (
+                  {booking.coveredByPackage || booking.packagePurchase ? (
                 <div className="pt-1">
                   <PackageCreditMark packageName={booking.packageName} />
                   {booking.coveredByPackage ? (
-                    <p className="mt-1 text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                    String(booking.paymentStatus ?? "").trim().toLowerCase() === "unpaid" ? (
+                      <p className="mt-1 text-xs text-amber-800">{t("adminBookingUnpaidBecausePackage")}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">{t("adminClassSchedulePackageIncluded")}</p>
+                    )
                   ) : null}
                 </div>
               ) : null}
+            </div>
+
+            <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">{t("adminBookingsColBookedBy")}</p>
+              <p className="text-sm font-semibold text-foreground">
+                {booking.createdByName?.trim() ||
+                  ((booking.createdByType ?? "unknown") === "student"
+                    ? booking.studentName?.trim() || ""
+                    : "") ||
+                  "—"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  (booking.createdByType === "admin"
+                    ? "adminBookingSourceAdmin"
+                    : booking.createdByType === "student"
+                      ? "adminBookingSourceStudent"
+                      : "adminBookingSourceUnknown") as TranslationKey,
+                )}
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

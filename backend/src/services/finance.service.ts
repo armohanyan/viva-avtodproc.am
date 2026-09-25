@@ -175,13 +175,15 @@ export default class FinanceService {
   }
 
   /**
-   * Kassa income for a booking is the total collected so far (`paidAmountAmd`), not the latest
-   * installment. A 10,000 partial followed by the remaining 10,000 must show +20,000, not +10,000.
-   * Extra income rows for the same booking are voided so they are not added on top of that total.
+   * Align booking-linked kassa income with `paidAmountAmd` using **installments**:
+   * - Extra cash collected → new income row for the delta only (keep prior rows/dates intact).
+   * - Over-recorded cash → shrink/void newest manual rows until the ledger sum matches.
+   * Never overwrite an older installment to the full booking total (that would inflate today's kassa).
    */
   static async syncBookingCollectedIncome(
     bookingId: number,
     transaction?: SequelizeTransaction,
+    opts?: { createdAt?: Date | string | null; method?: FinanceTxMethod; createdByUserId?: number | null },
   ): Promise<void> {
     const id = Math.floor(Number(bookingId));
     if (!Number.isFinite(id) || id <= 0) return;
@@ -201,38 +203,90 @@ export default class FinanceService {
       transaction,
       lock: transaction ? Transaction.LOCK.UPDATE : undefined,
     });
-    if (rows.length === 0) return;
 
-    const canonical = rows[0]!;
-    const already =
-      rows.length === 1 &&
-      Number(canonical.grossAmd) === target &&
-      (target <= 0 || canonical.status === 'completed') &&
-      (target > 0 || canonical.status === 'failed');
-    if (already) return;
-
-    if (target > 0) {
-      const fee = Math.min(Math.max(0, Number(canonical.feeAmd) || 0), target);
-      await canonical.update(
-        { grossAmd: target, feeAmd: fee, status: 'completed' },
-        { transaction },
-      );
-    } else {
-      await canonical.update({ status: 'failed' }, { transaction });
+    let sum = 0;
+    for (const row of rows) {
+      sum += Math.max(0, Math.round(Number(row.grossAmd) || 0));
+      if (target > 0 && row.status !== 'completed') {
+        await row.update({ status: 'completed' }, { transaction });
+      }
     }
 
-    const suffix = ' · folded into booking total';
-    for (const extra of rows.slice(1)) {
-      const desc = String(extra.description ?? '').trim();
-      const nextDesc = desc.includes('folded into booking total') ? desc : `${desc || 'Payment'}${suffix}`;
-      await extra.update(
-        { status: 'failed', description: nextDesc.slice(0, 512) },
+    if (sum < target) {
+      const delta = target - sum;
+      const stu = await User.findByPk(booking.studentUserId, {
+        attributes: ['name', 'email'],
+        transaction,
+      });
+      const customer = stu?.name?.trim() || `Student #${booking.studentUserId}`;
+      const email = (stu?.email ?? '').trim();
+      const method: FinanceTxMethod =
+        opts?.method ??
+        (rows[rows.length - 1]?.method as FinanceTxMethod | undefined) ??
+        'cash';
+      const createdAt = opts?.createdAt ? new Date(opts.createdAt) : new Date();
+      const createdByUserIdRaw = opts?.createdByUserId != null ? Number(opts.createdByUserId) : null;
+      const createdByUserId =
+        createdByUserIdRaw != null && Number.isFinite(createdByUserIdRaw) && createdByUserIdRaw > 0
+          ? createdByUserIdRaw
+          : null;
+      await FinanceTransaction.create(
+        {
+          customer,
+          email,
+          description: financeDescriptionForBooking(booking),
+          branchId: booking.branchId,
+          channel: 'office',
+          method,
+          grossAmd: delta,
+          feeAmd: 0,
+          status: 'completed',
+          providerRef: `booking-installment:${id}:${Date.now()}`,
+          source: 'manual',
+          entryType: 'income',
+          expenseKind: null,
+          employeeName: null,
+          units: null,
+          unitRateAmd: null,
+          createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+          bookingId: id,
+          relatedPaymentTransactionId: null,
+          createdByUserId,
+        } as never,
         { transaction },
       );
+      return;
+    }
+
+    if (sum > target) {
+      let excess = sum - target;
+      const newestFirst = [...rows].reverse();
+      for (const row of newestFirst) {
+        if (excess <= 0) break;
+        if (row.source !== 'manual') continue;
+        const amt = Math.max(0, Math.round(Number(row.grossAmd) || 0));
+        if (amt <= 0) continue;
+        if (amt <= excess) {
+          excess -= amt;
+          const desc = String(row.description ?? '').trim();
+          const suffix = ' · adjusted to booking paid total';
+          const nextDesc = desc.includes('adjusted to booking paid total') ? desc : `${desc || 'Payment'}${suffix}`;
+          await row.update(
+            { status: 'failed', description: nextDesc.slice(0, 512) },
+            { transaction },
+          );
+        } else {
+          await row.update({ grossAmd: amt - excess, status: target > 0 ? 'completed' : 'failed' }, { transaction });
+          excess = 0;
+        }
+      }
     }
   }
 
-  /** Repair kassa rows where a later installment replaced the total already collected. */
+  /**
+   * Repair bookings where ledger income is below (or above) `paidAmountAmd`.
+   * Missing cash → add installment row; overstated cash → shrink newest manual rows.
+   */
   static async reconcileCollectedIncomeShortfalls(): Promise<void> {
     const rows = await FinanceTransaction.findAll({
       where: {
@@ -242,29 +296,29 @@ export default class FinanceService {
       },
       attributes: ['id', 'bookingId', 'grossAmd', 'status'],
     });
-    const byBooking = new Map<number, { sum: number; count: number; pending: boolean }>();
+    const byBooking = new Map<number, { sum: number; pending: boolean }>();
     for (const row of rows) {
       const bookingId = row.bookingId != null ? Number(row.bookingId) : 0;
       if (!Number.isFinite(bookingId) || bookingId <= 0) continue;
-      const cur = byBooking.get(bookingId) ?? { sum: 0, count: 0, pending: false };
+      const cur = byBooking.get(bookingId) ?? { sum: 0, pending: false };
       cur.sum += Math.max(0, Math.round(Number(row.grossAmd) || 0));
-      cur.count += 1;
       if (row.status === 'pending') cur.pending = true;
       byBooking.set(bookingId, cur);
     }
-    if (byBooking.size === 0) return;
 
-    const bookings = await Booking.findAll({
-      where: { id: { [Op.in]: [...byBooking.keys()] } },
+    const paidBookings = await Booking.findAll({
+      where: {
+        [Op.or]: [{ paymentStatus: 'paid' }, { paymentStatus: 'partial' }],
+        status: { [Op.notIn]: ['cancelled', 'refunded', 'archived'] },
+      },
+      attributes: ['id', 'status', 'paymentStatus', 'paidAmountAmd', 'totalPriceAmd', 'prepaidMeta'],
     });
-    for (const booking of bookings) {
+
+    for (const booking of paidBookings) {
       const target = collectedIncomeTargetAmd(booking);
-      if (target == null) continue;
-      const agg = byBooking.get(booking.id);
-      if (!agg) continue;
-      const amountOk = agg.count === 1 && agg.sum === target;
-      const statusOk = target > 0 ? !agg.pending : true;
-      if (amountOk && statusOk) continue;
+      if (target == null || target <= 0) continue;
+      const agg = byBooking.get(booking.id) ?? { sum: 0, pending: false };
+      if (agg.sum === target && !agg.pending) continue;
       await FinanceService.syncBookingCollectedIncome(booking.id);
     }
   }
@@ -458,9 +512,6 @@ export default class FinanceService {
       }
       grossAmd = computed;
     }
-    if (feeAmd > grossAmd) {
-      throw new ErrorsUtil.InputValidationError('Fee cannot exceed gross.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
 
     const createdAt = input.createdAt ? new Date(input.createdAt) : new Date();
     const createdByUserIdRaw = input.createdByUserId != null ? Number(input.createdByUserId) : null;
@@ -469,35 +520,41 @@ export default class FinanceService {
         ? createdByUserIdRaw
         : null;
 
-    // A second payment on the same booking updates the existing kassa line to the full
-    // amount collected, instead of adding another line for only the latest installment.
+    // Booking-linked income is installment-based: only record cash not already on the ledger.
+    // If the client sends the full paid total after a prior partial, write only the remaining delta.
     if (linkedBooking && entryType === 'income' && bookingIdNorm != null) {
-      const existing = await FinanceTransaction.findOne({
-        where: {
-          bookingId: bookingIdNorm,
-          entryType: 'income',
-          status: { [Op.notIn]: ['failed', 'refunded'] },
-        },
-        order: [['id', 'ASC']],
-        transaction: input.transaction,
-        lock: input.transaction ? Transaction.LOCK.UPDATE : undefined,
-      });
-      if (existing) {
-        if (existing.source === 'manual') {
-          await existing.update(
-            {
-              method: input.method,
-              channel,
-              ...(input.createdAt ? { createdAt } : {}),
-              ...(createdByUserId != null ? { createdByUserId } : {}),
+      const target = collectedIncomeTargetAmd(linkedBooking);
+      if (target != null) {
+        const already = await FinanceService.sumActiveIncomeForBooking(bookingIdNorm, input.transaction);
+        const remaining = Math.max(0, target - already);
+        if (remaining <= 0) {
+          const existing = await FinanceTransaction.findOne({
+            where: {
+              bookingId: bookingIdNorm,
+              entryType: 'income',
+              status: { [Op.notIn]: ['failed', 'refunded'] },
             },
-            { transaction: input.transaction },
+            order: [['id', 'DESC']],
+            transaction: input.transaction,
+          });
+          if (existing) return toDto(existing);
+          throw new ErrorsUtil.InputValidationError(
+            'This booking already has its collected payment on the ledger.',
+            HttpStatusCodesUtil.BAD_REQUEST,
           );
         }
-        await FinanceService.syncBookingCollectedIncome(bookingIdNorm, input.transaction);
-        await existing.reload({ transaction: input.transaction });
-        return toDto(existing);
+        grossAmd = Math.min(Math.max(0, Math.round(Number(grossAmd) || 0)), remaining);
+        if (grossAmd <= 0) {
+          throw new ErrorsUtil.InputValidationError(
+            'Payment amount must be greater than zero.',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
+        }
       }
+    }
+
+    if (feeAmd > grossAmd) {
+      throw new ErrorsUtil.InputValidationError('Fee cannot exceed gross.', HttpStatusCodesUtil.BAD_REQUEST);
     }
 
     const row = await FinanceTransaction.create(
@@ -532,10 +589,6 @@ export default class FinanceService {
         'created',
         'Ձեր գործարքը գրանցվել է։ Նոր կարգավիճակի դեպքում կուղարկենք հաջորդ թարմացումը։',
       ).catch(() => {});
-    }
-    if (linkedBooking && entryType === 'income' && bookingIdNorm != null) {
-      await FinanceService.syncBookingCollectedIncome(bookingIdNorm, input.transaction);
-      await row.reload({ transaction: input.transaction });
     }
     return toDto(row);
   }
@@ -602,10 +655,23 @@ export default class FinanceService {
     const nextUnits = input.units !== undefined ? input.units : (row.units == null ? null : Number(row.units));
     const nextUnitRateAmd = input.unitRateAmd !== undefined ? input.unitRateAmd : row.unitRateAmd;
     const nextGrossRaw = input.grossAmd !== undefined ? input.grossAmd : row.grossAmd;
-    const nextGross =
+    let nextGross =
       nextEntryType === 'expense' && nextUnits != null && nextUnitRateAmd != null
         ? Math.round(Number(nextUnits) * Number(nextUnitRateAmd))
-        : nextGrossRaw;
+        : Math.round(Number(nextGrossRaw) || 0);
+
+    // Booking income rows are installments. Never inflate an existing row to the new paid total —
+    // that would show +30,000 today instead of +15,000 when completing a prior partial. Extra cash
+    // is added as a separate row in syncBookingCollectedIncome.
+    if (
+      linkedBooking &&
+      nextEntryType === 'income' &&
+      input.grossAmd !== undefined &&
+      nextGross > Math.round(Number(row.grossAmd) || 0)
+    ) {
+      nextGross = Math.round(Number(row.grossAmd) || 0);
+    }
+
     const nextFee = input.feeAmd !== undefined ? input.feeAmd : row.feeAmd;
     if (nextFee > nextGross) {
       throw new ErrorsUtil.InputValidationError('Fee cannot exceed gross.', HttpStatusCodesUtil.BAD_REQUEST);
@@ -634,7 +700,6 @@ export default class FinanceService {
         : {}),
       ...(input.channel !== undefined ? { channel: input.channel } : {}),
       ...(input.method !== undefined ? { method: input.method } : {}),
-      ...(input.grossAmd !== undefined ? { grossAmd: input.grossAmd } : {}),
       ...(input.feeAmd !== undefined ? { feeAmd: input.feeAmd } : {}),
       ...(linkedBooking && (input.entryType ?? row.entryType) === 'income'
         ? { status: financeStatusFromBooking(linkedBooking) }
@@ -659,7 +724,9 @@ export default class FinanceService {
             ...(input.units !== undefined ? { units: null } : {}),
             ...(input.unitRateAmd !== undefined ? { unitRateAmd: null } : {}),
           }),
-      ...(input.grossAmd !== undefined || (nextEntryType === 'expense' && nextUnits != null && nextUnitRateAmd != null)
+      ...(input.grossAmd !== undefined ||
+      (nextEntryType === 'expense' && nextUnits != null && nextUnitRateAmd != null) ||
+      nextGross !== Math.round(Number(row.grossAmd) || 0)
         ? { grossAmd: nextGross }
         : {}),
       ...(nextCreatedAt !== undefined ? { createdAt: nextCreatedAt } : {}),
@@ -668,7 +735,10 @@ export default class FinanceService {
 
     await row.reload();
     if (row.entryType === 'income' && row.bookingId != null) {
-      await FinanceService.syncBookingCollectedIncome(Number(row.bookingId));
+      await FinanceService.syncBookingCollectedIncome(Number(row.bookingId), undefined, {
+        createdAt: nextCreatedAt ?? undefined,
+        method: (input.method ?? row.method) as FinanceTxMethod,
+      });
       await row.reload();
     }
     return toDto(row);
@@ -734,6 +804,27 @@ export default class FinanceService {
     const row = await FinanceTransaction.findOne({
       attributes: [[fn('COALESCE', fn('SUM', col('gross_amd')), 0), 'total']],
       where: { bookingId, entryType: 'income', status: 'completed' },
+      transaction,
+      raw: true,
+    }) as { total?: unknown } | null;
+    const v = row?.total;
+    if (v == null) return 0;
+    const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /** Completed + pending income still counting toward kassa for a booking. */
+  private static async sumActiveIncomeForBooking(
+    bookingId: number,
+    transaction?: SequelizeTransaction,
+  ): Promise<number> {
+    const row = await FinanceTransaction.findOne({
+      attributes: [[fn('COALESCE', fn('SUM', col('gross_amd')), 0), 'total']],
+      where: {
+        bookingId,
+        entryType: 'income',
+        status: { [Op.notIn]: ['failed', 'refunded'] },
+      },
       transaction,
       raw: true,
     }) as { total?: unknown } | null;

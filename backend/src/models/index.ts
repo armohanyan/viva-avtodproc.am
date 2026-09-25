@@ -116,6 +116,8 @@ InstructorScheduleRule.belongsTo(User, { foreignKey: 'instructorUserId', targetK
 
 Booking.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });
 Booking.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id', as: 'instructor' });
+Booking.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+User.hasMany(Booking, { foreignKey: 'createdByUserId', sourceKey: 'id', as: 'bookingsCreated' });
 Booking.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
 PersonalTheoryLessonRequest.belongsTo(User, { foreignKey: 'studentUserId', targetKey: 'id', as: 'student' });

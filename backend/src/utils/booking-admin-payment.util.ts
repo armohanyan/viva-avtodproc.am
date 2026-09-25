@@ -105,8 +105,13 @@ export function bookingCountsTowardStudentDebt(row: BookingPaymentRow): boolean 
   return bookingTotalPriceAmd(row) > 0;
 }
 
+/** Admin-facing note when a credit lesson is unpaid because the package sale is unpaid. */
+export const PACKAGE_CREDIT_UNPAID_NOTE = 'Unpaid because the package was not paid.';
+
 function inferAdminStatusFromLegacy(row: BookingPaymentRow): AdminBookingPaymentStatus {
   if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
+    const ps = String(row.paymentStatus ?? '').trim().toLowerCase();
+    if (ps === 'unpaid' || ps === 'pending' || ps === 'failed') return 'unpaid';
     return 'paid';
   }
   const ps = String(row.paymentStatus ?? '').trim().toLowerCase();
@@ -120,6 +125,18 @@ function inferAdminStatusFromLegacy(row: BookingPaymentRow): AdminBookingPayment
     return 'paid';
   }
   return 'unpaid';
+}
+
+/** Payment fields for a lesson that consumed package credits — follows the package sale. */
+export function packageCreditPaymentFieldsForDb(packagePurchasePaid: boolean): {
+  paymentStatus: BookingPaymentStatusDb;
+  paidAmountAmd: number;
+  paidAt: Date | null;
+} {
+  if (packagePurchasePaid) {
+    return { paymentStatus: 'paid', paidAmountAmd: 0, paidAt: new Date() };
+  }
+  return { paymentStatus: 'unpaid', paidAmountAmd: 0, paidAt: null };
 }
 
 /** Resolve stored + legacy booking payment fields for display and debt math. */
@@ -233,10 +250,25 @@ export function adminPaymentFieldsForDb(
   totalPriceAmd: number,
   adminPaymentStatus: AdminBookingPaymentStatus | undefined,
   paidAmountAmd: number | undefined,
-  opts?: { prepaidMeta?: Record<string, unknown> | null },
+  opts?: {
+    prepaidMeta?: Record<string, unknown> | null;
+    /** When the row is a package-credit lesson, whether the package sale itself is fully paid. */
+    packagePurchasePaid?: boolean;
+  },
 ): { paymentStatus: BookingPaymentStatusDb; paidAmountAmd: number; paidAt: Date | null } {
   if (isPackageCreditPrepaidMeta(opts?.prepaidMeta)) {
-    return { paymentStatus: 'paid', paidAmountAmd: 0, paidAt: new Date() };
+    if (opts?.packagePurchasePaid !== undefined) {
+      return packageCreditPaymentFieldsForDb(opts.packagePurchasePaid);
+    }
+    // Explicit admin status without package flag (edit flows).
+    if (adminPaymentStatus === 'unpaid' || adminPaymentStatus === 'partial') {
+      return packageCreditPaymentFieldsForDb(false);
+    }
+    if (adminPaymentStatus === 'paid') {
+      return packageCreditPaymentFieldsForDb(true);
+    }
+    // Legacy callers that omit both — keep previous "credits = paid" behavior.
+    return packageCreditPaymentFieldsForDb(true);
   }
   const status = adminPaymentStatus ?? 'unpaid';
   const validated = validateAdminPaymentInput({

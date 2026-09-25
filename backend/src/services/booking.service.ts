@@ -49,6 +49,8 @@ import {
   buildStudentPaymentSummary,
   isPackageCreditPrepaidMeta,
   isPackagePurchaseMeta,
+  packageCreditPaymentFieldsForDb,
+  PACKAGE_CREDIT_UNPAID_NOTE,
   resolveBookingPayment,
   type AdminBookingPaymentStatus,
   type StudentPaymentSummaryDto,
@@ -204,12 +206,178 @@ function adminPaymentDbPatch(
   totalPriceAmd: number,
   input: { adminPaymentStatus?: AdminBookingPaymentStatus; paidAmountAmd?: number },
   prepaidMeta?: Record<string, unknown> | null,
+  packagePurchasePaid?: boolean,
 ): { paymentStatus: import('../utils/booking-admin-payment.util').BookingPaymentStatusDb; paidAmountAmd: number; paidAt: Date | null } {
   try {
-    return adminPaymentFieldsForDb(totalPriceAmd, input.adminPaymentStatus, input.paidAmountAmd, { prepaidMeta });
+    return adminPaymentFieldsForDb(totalPriceAmd, input.adminPaymentStatus, input.paidAmountAmd, {
+      prepaidMeta,
+      ...(packagePurchasePaid !== undefined ? { packagePurchasePaid } : {}),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Invalid payment';
     throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
+  }
+}
+
+const TERMINAL_PACKAGE_BOOKING_STATUSES = new Set(['cancelled', 'refunded', 'archived']);
+
+function packagePurchaseBookingIsFullyPaid(row: Booking): boolean {
+  const resolved = resolveBookingPayment({
+    status: String(row.status ?? ''),
+    totalPriceAmd: row.totalPriceAmd,
+    paidAmountAmd: row.paidAmountAmd,
+    paymentStatus: row.paymentStatus,
+    paidAt: row.paidAt,
+    prepaidMeta: (row.prepaidMeta as Record<string, unknown> | null) ?? null,
+  });
+  return resolved.paymentStatus === 'paid';
+}
+
+/** Whether the package sale for this order is fully paid (credit lessons inherit this). */
+async function isPackageOrderPurchaseFullyPaid(
+  packageOrderId: number,
+  transaction?: Transaction,
+): Promise<boolean> {
+  const oid = Math.floor(Number(packageOrderId));
+  if (!Number.isFinite(oid) || oid <= 0) return false;
+
+  const purchases = await Booking.findAll({
+    attributes: ['id', 'status', 'paymentStatus', 'paidAt', 'paidAmountAmd', 'totalPriceAmd', 'prepaidMeta'],
+    where: literal(
+      `JSON_CONTAINS(COALESCE(\`Booking\`.\`prepaid_meta\`, CAST('{}' AS JSON)), 'true', '$.packagePurchase')
+       AND CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageOrderId')) AS UNSIGNED) = ${oid}`,
+    ),
+    transaction,
+  });
+
+  const active = purchases.filter(
+    (r) => !TERMINAL_PACKAGE_BOOKING_STATUSES.has(String(r.status ?? '').trim().toLowerCase()),
+  );
+  if (active.length > 0) {
+    return active.every(packagePurchaseBookingIsFullyPaid);
+  }
+  if (purchases.length > 0) return false;
+
+  const order = await PackageOrder.findByPk(oid, {
+    attributes: ['id', 'paidAt', 'status'],
+    transaction,
+  });
+  if (!order) return false;
+  const status = String(order.status ?? '').trim().toLowerCase();
+  return order.paidAt != null || status === 'paid';
+}
+
+async function loadPackagePurchasePaidByOrderIds(
+  orderIds: readonly number[],
+): Promise<Map<number, boolean>> {
+  const ids = [...new Set(orderIds.map((id) => Math.floor(Number(id))).filter((id) => id > 0))];
+  const out = new Map<number, boolean>();
+  if (ids.length === 0) return out;
+
+  const purchases = await Booking.findAll({
+    attributes: ['id', 'status', 'paymentStatus', 'paidAt', 'paidAmountAmd', 'totalPriceAmd', 'prepaidMeta'],
+    where: literal(
+      `JSON_CONTAINS(COALESCE(\`Booking\`.\`prepaid_meta\`, CAST('{}' AS JSON)), 'true', '$.packagePurchase')
+       AND CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageOrderId')) AS UNSIGNED) IN (${ids.join(',')})`,
+    ),
+  });
+
+  const byOrder = new Map<number, Booking[]>();
+  for (const row of purchases) {
+    const meta = (row.prepaidMeta as Record<string, unknown> | null) ?? null;
+    if (!isPackagePurchaseMeta(meta)) continue;
+    const oid = Math.floor(Number(meta?.packageOrderId) || 0);
+    if (oid <= 0 || !ids.includes(oid)) continue;
+    const list = byOrder.get(oid) ?? [];
+    list.push(row);
+    byOrder.set(oid, list);
+  }
+
+  const missingOrderIds: number[] = [];
+  for (const id of ids) {
+    const rowsForOrder = byOrder.get(id) ?? [];
+    const active = rowsForOrder.filter(
+      (r) => !TERMINAL_PACKAGE_BOOKING_STATUSES.has(String(r.status ?? '').trim().toLowerCase()),
+    );
+    if (active.length > 0) {
+      out.set(id, active.every(packagePurchaseBookingIsFullyPaid));
+      continue;
+    }
+    if (rowsForOrder.length > 0) {
+      out.set(id, false);
+      continue;
+    }
+    missingOrderIds.push(id);
+  }
+
+  if (missingOrderIds.length > 0) {
+    const orders = await PackageOrder.findAll({
+      where: { id: { [Op.in]: missingOrderIds } },
+      attributes: ['id', 'paidAt', 'status'],
+    });
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    for (const id of missingOrderIds) {
+      const order = orderById.get(id);
+      const status = String(order?.status ?? '').trim().toLowerCase();
+      out.set(id, order?.paidAt != null || status === 'paid');
+    }
+  }
+
+  return out;
+}
+
+function notesWithPackageUnpaidReason(existing: string | null | undefined, unpaid: boolean): string | null {
+  const base = String(existing ?? '').trim();
+  const has = base.includes(PACKAGE_CREDIT_UNPAID_NOTE);
+  if (unpaid) {
+    if (has) return base.slice(0, 4000);
+    const next = base ? `${base}\n${PACKAGE_CREDIT_UNPAID_NOTE}` : PACKAGE_CREDIT_UNPAID_NOTE;
+    return next.slice(0, 4000);
+  }
+  if (!has) return base || null;
+  const next = base
+    .replace(PACKAGE_CREDIT_UNPAID_NOTE, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+  return next || null;
+}
+
+/** Align credit-lesson payment rows with the package sale for this order. */
+async function syncPackageCreditLessonPaymentsForOrder(
+  packageOrderId: number,
+  packagePurchasePaid: boolean,
+  transaction: Transaction,
+): Promise<void> {
+  const oid = Math.floor(Number(packageOrderId));
+  if (!Number.isFinite(oid) || oid <= 0) return;
+
+  const children = await Booking.findAll({
+    attributes: ['id', 'status', 'paymentStatus', 'paymentNotes', 'prepaidMeta', 'paidAt'],
+    where: literal(
+      `CAST(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageOrderId')) AS UNSIGNED) = ${oid}
+       AND COALESCE(JSON_CONTAINS(COALESCE(\`Booking\`.\`prepaid_meta\`, CAST('{}' AS JSON)), 'true', '$.packagePurchase'), 0) = 0`,
+    ),
+    transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+
+  const pay = packageCreditPaymentFieldsForDb(packagePurchasePaid);
+  for (const child of children) {
+    if (!isPackageCreditPrepaidMeta(child.prepaidMeta)) continue;
+    if (TERMINAL_PACKAGE_BOOKING_STATUSES.has(String(child.status ?? '').trim().toLowerCase())) continue;
+    const meta = { ...((child.prepaidMeta as Record<string, unknown> | null) ?? {}) };
+    if (packagePurchasePaid) delete meta.unpaidBecausePackageUnpaid;
+    else meta.unpaidBecausePackageUnpaid = true;
+    await child.update(
+      {
+        paymentStatus: pay.paymentStatus,
+        paidAmountAmd: 0,
+        paidAt: pay.paidAt,
+        paymentNotes: notesWithPackageUnpaidReason(child.paymentNotes, !packagePurchasePaid),
+        prepaidMeta: meta,
+      },
+      { transaction },
+    );
   }
 }
 
@@ -351,7 +519,11 @@ export const MAX_PAYMENT_HOLD_EXTENSIONS = 2;
 const BOOKING_SLOT_TZ_OFFSET = '+04:00';
 const CANCELLATION_REFUND_MIN_HOURS = 24;
 
-type BookingWithUsers = Booking & { instructor: User | null; student: User };
+type BookingWithUsers = Booking & {
+  instructor: User | null;
+  student: User;
+  createdBy?: User | null;
+};
 type BookingWithInstructor = Booking & { instructor: User | null };
 type BookingWithStudent = Booking & { student: User };
 
@@ -412,6 +584,8 @@ export type BookingAdminDto = {
   studentId: number;
   createdByType: BookingCreatedByType;
   createdByUserId: number | null;
+  /** Account name of whoever created the booking (admin or student). */
+  createdByName: string | null;
   instructorName: string;
   /** Stable instructor identity for edit flows (prefer over name matching). */
   instructorUserId: number | null;
@@ -1939,10 +2113,21 @@ async function recordRefundLedgerWhenAdminMarksRefundedInTx(opts: {
 /** MySQL: prepaid_meta.packagePurchase === true (JSON boolean, not a string). */
 const PACKAGE_PURCHASE_SQL =
   "JSON_CONTAINS(COALESCE(`Booking`.`prepaid_meta`, CAST('{}' AS JSON)), 'true', '$.packagePurchase')";
-/** Cash sale, including a package purchase. Credit-covered lessons are excluded. */
-const CASH_BOOKING_SQL = `(\`Booking\`.\`prepaid_meta\` IS NULL OR COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 1)`;
+/**
+ * Matches `isPackageCreditPrepaidMeta` (package/credit coverage, not a package sale).
+ * Cohort linkage alone (`theoryCohortId`) is not payment coverage — those rows still bill cash.
+ */
+const CREDIT_PREPAID_SIGNAL_SQL = `(
+  CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageOrderId')), '0') AS UNSIGNED) > 0
+  OR CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.packageBalanceUnits')), '0') AS UNSIGNED) > 0
+  OR CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.pkg')), '0') AS UNSIGNED) > 0
+  OR CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.pkgTheory')), '0') AS UNSIGNED) > 0
+  OR IFNULL(JSON_LENGTH(JSON_EXTRACT(\`Booking\`.\`prepaid_meta\`, '$.extras')), 0) > 0
+)`;
 /** Package/credit coverage, not a package sale. */
-const CREDIT_PREPAID_SQL = `(\`Booking\`.\`prepaid_meta\` IS NOT NULL AND COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 0)`;
+const CREDIT_PREPAID_SQL = `(\`Booking\`.\`prepaid_meta\` IS NOT NULL AND COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 0 AND ${CREDIT_PREPAID_SIGNAL_SQL})`;
+/** Cash sale (incl. package purchase + theoryCohortId-only rows). Credit-covered lessons excluded. */
+const CASH_BOOKING_SQL = `(NOT ${CREDIT_PREPAID_SQL})`;
 
 export default class BookingService {
   /** Blocks creating another booking while the student already has one awaiting payment. */
@@ -2042,6 +2227,25 @@ export default class BookingService {
         status = coveredByPrepaidCredits ? 'confirmed' : 'pending';
         holdExpiresAt = coveredByPrepaidCredits ? null : holdExp.toISOString();
         totalPriceAmd = coveredByPrepaidCredits ? 0 : input.totalPriceAmd;
+        let creditPay: {
+          paymentStatus: 'paid' | 'unpaid';
+          paidAt: Date | null;
+        } = {
+          paymentStatus: 'unpaid',
+          paidAt: null,
+        };
+        if (coveredByPrepaidCredits) {
+          const orderId = Math.floor(
+            Number((prepaidMeta as Record<string, unknown> | null)?.packageOrderId) || 0,
+          );
+          const packagePaid =
+            orderId > 0 ? await isPackageOrderPurchaseFullyPaid(orderId, transaction) : true;
+          const fields = packageCreditPaymentFieldsForDb(packagePaid);
+          creditPay = {
+            paymentStatus: fields.paymentStatus === 'paid' ? 'paid' : 'unpaid',
+            paidAt: fields.paidAt,
+          };
+        }
         const created = await Booking.create(
           {
             studentUserId: input.studentUserId,
@@ -2053,12 +2257,16 @@ export default class BookingService {
             totalPriceAmd,
             lessonType: input.lessonType,
             status,
-            paidAt: coveredByPrepaidCredits ? new Date() : null,
+            paidAt: creditPay.paidAt,
             holdExpiresAt: coveredByPrepaidCredits ? null : holdExp,
             holdExtensionCount: coveredByPrepaidCredits ? 0 : 0,
             prepaidMeta,
-            paymentStatus: coveredByPrepaidCredits ? 'paid' : 'unpaid',
+            paymentStatus: coveredByPrepaidCredits ? creditPay.paymentStatus : 'unpaid',
             paymentRequiredAt: null,
+            paymentNotes:
+              coveredByPrepaidCredits && creditPay.paymentStatus === 'unpaid'
+                ? PACKAGE_CREDIT_UNPAID_NOTE
+                : null,
             ...studentCreatedByPatch(input.studentUserId),
           },
           { transaction },
@@ -2113,6 +2321,11 @@ export default class BookingService {
     const purchaseMeta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
     const purchaseName = packagePurchase ? String(purchaseMeta?.packageName ?? '').trim() : '';
     const createdByType = (b.createdByType ?? 'unknown') as BookingCreatedByType;
+    const createdByNameRaw = row.createdBy?.name?.trim() || '';
+    const createdByName =
+      createdByNameRaw ||
+      (createdByType === 'student' ? stu?.name?.trim() || null : null) ||
+      null;
     const rowCreatedAt = (b as unknown as { createdAt?: Date | string }).createdAt;
     const createdAt =
       rowCreatedAt instanceof Date
@@ -2125,6 +2338,7 @@ export default class BookingService {
       studentId: stu.id,
       createdByType,
       createdByUserId: b.createdByUserId ?? null,
+      createdByName,
       instructorName: inst?.name ?? '',
       instructorUserId: b.instructorUserId ?? null,
       dateIso: dateIsoString(b.dateIso),
@@ -2192,6 +2406,7 @@ export default class BookingService {
       include: [
         { model: User, as: 'instructor', required: false, attributes: ['name'] },
         { model: User, as: 'student', required: true, attributes: ['id'] },
+        { model: User, as: 'createdBy', required: false, attributes: ['id', 'name'] },
       ],
       order: [
         ['createdAt', 'DESC'],
@@ -2247,17 +2462,23 @@ export default class BookingService {
     };
   }
 
+  private static adminListCreatedByInclude() {
+    return {
+      model: User,
+      as: 'createdBy' as const,
+      required: false,
+      attributes: ['id', 'name'],
+    };
+  }
+
   private static debtsBookingWhere(): WhereOptions {
     return {
       [Op.and]: [
         { totalPriceAmd: { [Op.gt]: 0 } },
         { status: { [Op.notIn]: ['cancelled', 'refunded', 'archived'] } },
-        {
-          [Op.or]: [
-            { prepaidMeta: null },
-            literal(`COALESCE(${PACKAGE_PURCHASE_SQL}, 0) = 1`),
-          ],
-        },
+        // Cash due only — keep unpaid + partial; exclude package-credit lessons.
+        // theoryCohortId-only prepaid_meta still bills cash and must appear here.
+        literal(CASH_BOOKING_SQL),
         literal(`(
           LOWER(COALESCE(\`Booking\`.\`payment_status\`, '')) IN ('unpaid', 'partial')
           OR COALESCE(\`Booking\`.\`paid_amount_amd\`, 0) < COALESCE(\`Booking\`.\`total_price_amd\`, 0)
@@ -2344,6 +2565,7 @@ export default class BookingService {
       const orParts: WhereOptions[] = [
         { '$student.name$': { [Op.like]: `%${search}%` } },
         { '$instructor.name$': { [Op.like]: `%${search}%` } },
+        { '$createdBy.name$': { [Op.like]: `%${search}%` } },
         { time: { [Op.like]: `%${search}%` } },
         literal(`DATE_FORMAT(\`Booking\`.\`date_iso\`, '%Y-%m-%d') LIKE ${sequelize.escape(`%${search}%`)}`),
       ];
@@ -2430,7 +2652,7 @@ export default class BookingService {
           .filter((id) => id > 0),
       ),
     ];
-    const [slotRows, financeRows, packageNameByOrderId] = await Promise.all([
+    const [slotRows, financeRows, packageNameByOrderId, packagePaidByOrderId] = await Promise.all([
       BookingSlot.findAll({
         where: { bookingId: { [Op.in]: bookingIds } },
         order: [
@@ -2443,6 +2665,9 @@ export default class BookingService {
         order: [['createdAt', 'DESC']],
       }),
       BookingService.packageNamesByOrderIds(packageOrderIds),
+      loadPackagePurchasePaidByOrderIds(
+        items.filter((b) => b.coveredByPackage).map((b) => Math.floor(Number(b.packageOrderId) || 0)),
+      ),
     ]);
     for (const s of slotRows) {
       const list = slotByBooking.get(s.bookingId) ?? [];
@@ -2471,10 +2696,24 @@ export default class BookingService {
         (dto.packageName && dto.packageName.trim()) ||
         (orderId > 0 ? packageNameByOrderId.get(orderId) ?? null : null) ||
         null;
+      // Credit lessons follow the live package sale payment (fixes stale "paid" child rows).
+      let paymentStatus = dto.paymentStatus;
+      let paidAtIso = dto.paidAtIso;
+      let paymentNotes = dto.paymentNotes;
+      if (dto.coveredByPackage && orderId > 0 && packagePaidByOrderId.has(orderId)) {
+        const packagePaid = packagePaidByOrderId.get(orderId) === true;
+        paymentStatus = packagePaid ? 'paid' : 'unpaid';
+        paidAtIso = packagePaid ? paidAtIso : null;
+        paymentNotes = notesWithPackageUnpaidReason(paymentNotes, !packagePaid);
+      }
       return {
         ...dto,
         ...(se && se.length > 0 ? { slotEntries: se } : {}),
         packageName,
+        paymentStatus,
+        paidAtIso,
+        paymentNotes,
+        paidAmountAmd: dto.coveredByPackage ? 0 : dto.paidAmountAmd,
         manualFinanceTx: manualByBooking.get(dto.id) ?? null,
         systemFinanceTx: systemByBooking.get(dto.id) ?? null,
       };
@@ -2513,7 +2752,11 @@ export default class BookingService {
       BookingService.countAdminDebts(query.branchId),
       Booking.findAndCountAll({
         where,
-        include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
+        include: [
+          BookingService.adminListStudentInclude(),
+          BookingService.adminListInstructorInclude(),
+          BookingService.adminListCreatedByInclude(),
+        ],
         order: [
           ['createdAt', 'DESC'],
           ['id', 'DESC'],
@@ -2538,7 +2781,11 @@ export default class BookingService {
 
   static async getAdminById(id: number): Promise<BookingAdminListItemDto | null> {
     const row = await Booking.findByPk(id, {
-      include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
+      include: [
+        BookingService.adminListStudentInclude(),
+        BookingService.adminListInstructorInclude(),
+        BookingService.adminListCreatedByInclude(),
+      ],
     });
     if (!row) return null;
     const [item] = await BookingService.attachSlotsAndFinance([
@@ -2594,7 +2841,11 @@ export default class BookingService {
         status: { [Op.ne]: 'archived' },
         ...(matchParts.length > 1 ? { [Op.or]: matchParts } : { [Op.and]: matchParts }),
       },
-      include: [BookingService.adminListStudentInclude(), BookingService.adminListInstructorInclude()],
+      include: [
+        BookingService.adminListStudentInclude(),
+        BookingService.adminListInstructorInclude(),
+        BookingService.adminListCreatedByInclude(),
+      ],
       order: [['id', 'DESC']],
     });
 
@@ -2643,6 +2894,7 @@ export default class BookingService {
       studentPhone2: student.phone2?.trim() ?? '',
       createdByType: 'unknown',
       createdByUserId: null,
+      createdByName: null,
       instructorName: cohort.instructorName?.trim() ?? '',
       instructorUserId: null,
       dateIso: startIso,
@@ -2928,12 +3180,21 @@ export default class BookingService {
       ],
     });
     const lessonRows = rows.filter((b) => !isPackagePurchaseMeta(b.prepaidMeta));
-    const packageNameByOrderId = await BookingService.packageNamesByOrderIds(
-      lessonRows.map((b) => {
-        const meta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
-        return Math.floor(Number(meta?.packageOrderId) || 0);
-      }),
-    );
+    const packageOrderIds = lessonRows.map((b) => {
+      const meta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
+      return Math.floor(Number(meta?.packageOrderId) || 0);
+    });
+    const [packageNameByOrderId, packagePaidByOrderId] = await Promise.all([
+      BookingService.packageNamesByOrderIds(packageOrderIds),
+      loadPackagePurchasePaidByOrderIds(
+        lessonRows
+          .filter((b) => isPackageCreditPrepaidMeta(b.prepaidMeta))
+          .map((b) => {
+            const meta = (b.prepaidMeta as Record<string, unknown> | null) ?? null;
+            return Math.floor(Number(meta?.packageOrderId) || 0);
+          }),
+      ),
+    ]);
     return lessonRows.map((b) => {
       const row = b as BookingWithInstructor;
       const inst = row.instructor;
@@ -2958,7 +3219,16 @@ export default class BookingService {
         b.paidAt == null &&
         (st === 'pending' || st === 'pending_payment') &&
         isImmediatePaymentRequired(dIso, today);
-      const resolvedPay = resolveBookingPayment(b);
+      let resolvedPay = resolveBookingPayment(b);
+      if (coveredByPackage && orderId > 0 && packagePaidByOrderId.has(orderId)) {
+        const packagePaid = packagePaidByOrderId.get(orderId) === true;
+        resolvedPay = {
+          paymentStatus: packagePaid ? 'paid' : 'unpaid',
+          paidAmountAmd: 0,
+          totalPriceAmd: 0,
+          remainingAmd: 0,
+        };
+      }
       return {
         id: b.id,
         dateIso: dateIsoString(b.dateIso),
@@ -3459,12 +3729,22 @@ export default class BookingService {
               })
             : null;
         const billableTotal = prepaidMeta ? 0 : totalPriceAmd;
+        const packageOrderIdForPay = Math.floor(Number(prepaidMeta?.packageOrderId) || 0);
+        const packagePurchasePaid = prepaidMeta
+          ? packageOrderIdForPay > 0
+            ? await isPackageOrderPurchaseFullyPaid(packageOrderIdForPay, transaction)
+            : true
+          : undefined;
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
           prepaidMeta,
+          packagePurchasePaid,
         );
-        createdLifecycleStatus = adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
+        // Credit lessons keep the slot confirmed even when the package sale is unpaid.
+        createdLifecycleStatus = prepaidMeta
+          ? 'confirmed'
+          : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatus =
           payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
             ? payPatch.paymentStatus
@@ -3473,6 +3753,9 @@ export default class BookingService {
           paymentNotes: input.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
         });
+        if (prepaidMeta && payStatus === 'unpaid') {
+          paymentExtras.paymentNotes = notesWithPackageUnpaidReason(paymentExtras.paymentNotes, true);
+        }
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -3483,7 +3766,9 @@ export default class BookingService {
             endTime,
             totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
-            status: adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
+            status: prepaidMeta
+              ? 'confirmed'
+              : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             holdExpiresAt: null,
             prepaidMeta,
             paymentStatus: payPatch.paymentStatus,
@@ -3981,6 +4266,8 @@ export default class BookingService {
             packageOrderId,
             transaction,
           });
+          const packagePaid = await isPackageOrderPurchaseFullyPaid(packageOrderId, transaction);
+          const creditPay = packageCreditPaymentFieldsForDb(packagePaid);
           const first = practicalEntries[0]!;
           const created = await Booking.create(
             {
@@ -3996,11 +4283,12 @@ export default class BookingService {
                 ) ?? endTimeExclusiveForSlotEntries(practicalEntries),
               totalPriceAmd: 0,
               lessonType: 'practical',
-              status: adminCreateLifecycleStatus('paid', input.status),
-              paidAt: null,
+              status: 'confirmed',
+              paidAt: creditPay.paidAt,
               holdExpiresAt: null,
               prepaidMeta,
-              paymentStatus: 'paid',
+              paymentStatus: creditPay.paymentStatus,
+              paymentNotes: packagePaid ? null : PACKAGE_CREDIT_UNPAID_NOTE,
               ...adminCreatedByPatch(input.createdByUserId),
             },
             { transaction },
@@ -4019,6 +4307,8 @@ export default class BookingService {
             consumeAll: true,
             transaction,
           });
+          const packagePaid = await isPackageOrderPurchaseFullyPaid(packageOrderId, transaction);
+          const creditPay = packageCreditPaymentFieldsForDb(packagePaid);
           const created = await Booking.create(
             {
               studentUserId: input.studentId,
@@ -4029,11 +4319,12 @@ export default class BookingService {
               endTime: exclusiveEnd,
               totalPriceAmd: 0,
               lessonType: 'theory',
-              status: adminCreateLifecycleStatus('paid', input.status),
-              paidAt: null,
+              status: 'confirmed',
+              paidAt: creditPay.paidAt,
               holdExpiresAt: null,
               prepaidMeta: { ...(prepaidMeta ?? {}), theoryCohortId: theoryCohort.id },
-              paymentStatus: 'paid',
+              paymentStatus: creditPay.paymentStatus,
+              paymentNotes: packagePaid ? null : PACKAGE_CREDIT_UNPAID_NOTE,
               ...adminCreatedByPatch(input.createdByUserId),
             },
             { transaction },
@@ -4291,15 +4582,28 @@ export default class BookingService {
           prepaidMeta != null &&
           (prepaidMeta.packageOrderId != null || prepaidMeta.packageBalanceUnits != null);
         const billableTotal = packagePrepaid ? 0 : totalPriceAmd;
+        const packageOrderIdForPay = Math.floor(Number(prepaidMeta?.packageOrderId) || 0);
+        const packagePurchasePaid = packagePrepaid
+          ? packageOrderIdForPay > 0
+            ? await isPackageOrderPurchaseFullyPaid(packageOrderIdForPay, transaction)
+            : true
+          : undefined;
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           {
-            adminPaymentStatus: packagePrepaid ? 'paid' : input.adminPaymentStatus,
+            adminPaymentStatus: packagePrepaid
+              ? packagePurchasePaid
+                ? 'paid'
+                : 'unpaid'
+              : input.adminPaymentStatus,
             paidAmountAmd: packagePrepaid ? 0 : input.paidAmountAmd,
           },
           packagePrepaid ? prepaidMeta : null,
+          packagePurchasePaid,
         );
-        createdLifecycleStatus = adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
+        createdLifecycleStatus = packagePrepaid
+          ? 'confirmed'
+          : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatusMulti =
           payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
             ? payPatch.paymentStatus
@@ -4308,6 +4612,9 @@ export default class BookingService {
           paymentNotes: input.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
         });
+        if (packagePrepaid && payStatusMulti === 'unpaid') {
+          paymentExtrasMulti.paymentNotes = notesWithPackageUnpaidReason(paymentExtrasMulti.paymentNotes, true);
+        }
         const created = await Booking.create(
           {
             studentUserId: input.studentId,
@@ -4318,7 +4625,9 @@ export default class BookingService {
             endTime: exclusiveEnd,
             totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
-            status: adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
+            status: packagePrepaid
+              ? 'confirmed'
+              : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             holdExpiresAt: null,
             prepaidMeta,
             paymentStatus: payPatch.paymentStatus,
@@ -4846,6 +5155,16 @@ export default class BookingService {
         transaction,
       });
       await FinanceService.syncBookingCollectedIncome(id, transaction);
+
+      // When a package sale payment changes, credit lessons follow.
+      if (isPackagePurchaseMeta(row.prepaidMeta) && payUpdate.paymentStatus !== undefined) {
+        const meta = (row.prepaidMeta as Record<string, unknown> | null) ?? null;
+        const orderId = Math.floor(Number(meta?.packageOrderId) || 0);
+        if (orderId > 0) {
+          const packagePaid = await isPackageOrderPurchaseFullyPaid(orderId, transaction);
+          await syncPackageCreditLessonPaymentsForOrder(orderId, packagePaid, transaction);
+        }
+      }
     });
 
     BookingService.maybeEmitBookingConfirmedAfterAdminPatch(id, prevBookingStatusNorm, lifecycleStatus ?? patch.status);
@@ -5229,7 +5548,8 @@ export default class BookingService {
     let nextPayStatus: AdminBookingPaymentStatus = 'unpaid';
     let nextPaidAmt: number | undefined;
     if (isPackageCreditPrepaidMeta(row.prepaidMeta)) {
-      nextPayStatus = 'paid';
+      const existingPs = String(row.paymentStatus ?? '').trim().toLowerCase();
+      nextPayStatus = existingPs === 'unpaid' || existingPs === 'pending' || existingPs === 'failed' ? 'unpaid' : 'paid';
     } else if (prevPayment.paymentStatus === 'unpaid' && previousPaid <= 0) {
       nextPayStatus = 'unpaid';
     } else if (previousPaid >= nextTotalAmd && nextTotalAmd > 0) {
@@ -5242,7 +5562,12 @@ export default class BookingService {
     }
 
     const payUpdate = isPackageCreditPrepaidMeta(row.prepaidMeta)
-      ? adminPaymentDbPatch(0, { adminPaymentStatus: 'paid' }, row.prepaidMeta)
+      ? adminPaymentDbPatch(
+          0,
+          { adminPaymentStatus: nextPayStatus },
+          row.prepaidMeta as Record<string, unknown>,
+          nextPayStatus === 'paid',
+        )
       : adminPaymentDbPatch(nextTotalAmd, {
           adminPaymentStatus: nextPayStatus,
           paidAmountAmd: nextPaidAmt,

@@ -21,6 +21,8 @@ export type AdminBookingListItem = {
   studentId: number;
   createdByType: BookingCreatedByType;
   createdByUserId?: number | null;
+  /** Account name of whoever created the booking (admin or student). */
+  createdByName?: string | null;
   studentName: string;
   studentEmail: string;
   studentPhone: string;
@@ -157,6 +159,7 @@ export function normalizeAdminBookingRow(row: AdminBookingListItem) {
     studentId: String(row.studentId),
     branchId: String(row.branchId),
     createdByType: row.createdByType ?? "unknown",
+    createdByName: row.createdByName?.trim() || null,
   };
 }
 
