@@ -16,6 +16,7 @@ import InstructorBranchService from './instructor-branch.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+import { syncCompensationRuleRate } from './admin-salary.service';
 
 const { ConflictError } = ErrorsUtil;
 
@@ -222,6 +223,24 @@ export default class InstructorService {
     if (input.fleetCarIds !== undefined) {
       await FleetService.syncInstructorCars(user.id, input.fleetCarIds);
     }
+    const practicalRate = input.practicalSalaryPerLessonAmd ?? 1500;
+    const theoryRate = input.theorySalaryPerLessonAmd ?? 3000;
+    if (input.teachesPractical) {
+      await syncCompensationRuleRate({
+        employeeUserId: user.id,
+        compensationType: 'hourly_practical',
+        rateAmd: practicalRate,
+        roleLabel: 'Հրահանգիչ',
+      });
+    }
+    if (input.teachesTheory) {
+      await syncCompensationRuleRate({
+        employeeUserId: user.id,
+        compensationType: 'per_theory_lesson',
+        rateAmd: theoryRate,
+        roleLabel: 'Տեսության դասախոս',
+      });
+    }
     return (await this.getById(user.id))!;
   }
 
@@ -270,6 +289,22 @@ export default class InstructorService {
     }
     if (patch.fleetCarIds !== undefined) {
       await FleetService.syncInstructorCars(id, patch.fleetCarIds);
+    }
+    if (patch.practicalSalaryPerLessonAmd !== undefined) {
+      await syncCompensationRuleRate({
+        employeeUserId: id,
+        compensationType: 'hourly_practical',
+        rateAmd: patch.practicalSalaryPerLessonAmd,
+        roleLabel: 'Հրահանգիչ',
+      });
+    }
+    if (patch.theorySalaryPerLessonAmd !== undefined) {
+      await syncCompensationRuleRate({
+        employeeUserId: id,
+        compensationType: 'per_theory_lesson',
+        rateAmd: patch.theorySalaryPerLessonAmd,
+        roleLabel: 'Տեսության դասախոս',
+      });
     }
     return this.getById(id);
   }

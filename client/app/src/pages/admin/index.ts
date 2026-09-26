@@ -42,6 +42,7 @@ export {
   DirectorKmPage,
   DirectorDriverProfilePage,
   DirectorSalaryPage,
+  DirectorEmployeesPage,
   DirectorStudentsPage,
   DirectorArchivePage,
   DirectorReportsPage,

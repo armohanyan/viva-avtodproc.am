@@ -1,4 +1,4 @@
-import { QueryTypes } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import config from '../config';
 import { PETROL_TYPES } from '../constants/petrol-type';
 import { sequelize } from '../database/sequelize';
@@ -43,6 +43,9 @@ import { PetrolExpense } from './petrol-expense.model';
 import { PetrolExpenseRequest } from './petrol-expense-request.model';
 import { SalaryPayment } from './salary-payment.model';
 import { SalaryCardTransfer } from './salary-card-transfer.model';
+import { EmployeeCompensationRule } from './employee-compensation-rule.model';
+import { SalaryAdjustment } from './salary-adjustment.model';
+import { StaffEmployee } from './staff-employee.model';
 import { DirectorOption } from './director-option.model';
 import { DirectorCashEntry } from './director-cash-entry.model';
 import { DirectorExpense } from './director-expense.model';
@@ -208,6 +211,62 @@ User.hasMany(SalaryCardTransfer, {
 });
 SalaryCardTransfer.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
 
+User.hasMany(EmployeeCompensationRule, {
+  foreignKey: 'employeeUserId',
+  sourceKey: 'id',
+  as: 'compensationRules',
+});
+EmployeeCompensationRule.belongsTo(User, {
+  foreignKey: 'employeeUserId',
+  targetKey: 'id',
+  as: 'employee',
+});
+User.hasMany(EmployeeCompensationRule, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'compensationRulesCreated',
+});
+EmployeeCompensationRule.belongsTo(User, {
+  foreignKey: 'createdByUserId',
+  targetKey: 'id',
+  as: 'createdBy',
+});
+StaffEmployee.hasMany(EmployeeCompensationRule, {
+  foreignKey: 'staffEmployeeId',
+  sourceKey: 'id',
+  as: 'compensationRules',
+});
+EmployeeCompensationRule.belongsTo(StaffEmployee, {
+  foreignKey: 'staffEmployeeId',
+  targetKey: 'id',
+  as: 'staffEmployee',
+});
+User.hasMany(StaffEmployee, {
+  foreignKey: 'userId',
+  sourceKey: 'id',
+  as: 'staffEmployeeProfiles',
+});
+StaffEmployee.belongsTo(User, { foreignKey: 'userId', targetKey: 'id', as: 'user' });
+User.hasMany(StaffEmployee, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'staffEmployeesCreated',
+});
+StaffEmployee.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
+User.hasMany(SalaryAdjustment, {
+  foreignKey: 'employeeUserId',
+  sourceKey: 'id',
+  as: 'salaryAdjustments',
+});
+SalaryAdjustment.belongsTo(User, { foreignKey: 'employeeUserId', targetKey: 'id', as: 'employee' });
+User.hasMany(SalaryAdjustment, {
+  foreignKey: 'createdByUserId',
+  sourceKey: 'id',
+  as: 'salaryAdjustmentsCreated',
+});
+SalaryAdjustment.belongsTo(User, { foreignKey: 'createdByUserId', targetKey: 'id', as: 'createdBy' });
+
 FleetCar.hasMany(FleetCarInstructor, { foreignKey: 'carId', sourceKey: 'id' });
 User.hasMany(FleetCarInstructor, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 FleetCarInstructor.belongsTo(FleetCar, { foreignKey: 'carId', targetKey: 'id' });
@@ -297,6 +356,9 @@ export {
   PetrolExpenseRequest,
   SalaryPayment,
   SalaryCardTransfer,
+  EmployeeCompensationRule,
+  SalaryAdjustment,
+  StaffEmployee,
   DirectorOption,
   DirectorCashEntry,
   DirectorExpense,
@@ -1168,6 +1230,398 @@ async function ensureSalaryCardTransfersTable(): Promise<void> {
   );
   if (dateIdx.length > 0) {
     await sequelize.query(`ALTER TABLE \`salary_card_transfers\` DROP INDEX \`salary_card_transfers_date_idx\``);
+  }
+}
+
+async function ensureSalaryPaymentsPayrollColumns(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_payments'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length === 0) return;
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_payments'`,
+    { type: QueryTypes.SELECT },
+  );
+  const colSet = new Set(cols.map((c) => c.COLUMN_NAME));
+
+  // Expand kind enum to include payroll.
+  const kindCol = await sequelize.query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_payments' AND COLUMN_NAME = 'kind'`,
+    { type: QueryTypes.SELECT },
+  );
+  const kindType = kindCol[0]?.COLUMN_TYPE ?? '';
+  if (kindType && !kindType.includes('payroll')) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] salary_payments: add payroll to kind enum …');
+    await sequelize.query(`
+      ALTER TABLE \`salary_payments\`
+        MODIFY COLUMN \`kind\` ENUM('instructor','theory_teacher','other','payroll') NOT NULL
+    `);
+  }
+
+  if (!colSet.has('status')) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] salary_payments: add status …');
+    await sequelize.query(`
+      ALTER TABLE \`salary_payments\`
+        ADD COLUMN \`status\` ENUM('approved','paid') NOT NULL DEFAULT 'paid' AFTER \`total_amd\`
+    `);
+  }
+
+  if (!colSet.has('breakdown_json')) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] salary_payments: add breakdown_json …');
+    await sequelize.query(`
+      ALTER TABLE \`salary_payments\`
+        ADD COLUMN \`breakdown_json\` TEXT NULL AFTER \`status\`
+    `);
+  }
+}
+
+async function ensureStaffEmployeesTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_employees'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table staff_employees …');
+  await sequelize.query(`
+    CREATE TABLE \`staff_employees\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`name\` VARCHAR(255) NOT NULL,
+      \`user_id\` INT UNSIGNED NULL,
+      \`position\` ENUM('instructor','theory_teacher','instructor_and_theory','director','admin','cleaner','other') NOT NULL,
+      \`job_title\` VARCHAR(128) NOT NULL DEFAULT '',
+      \`start_date_iso\` DATE NOT NULL,
+      \`phone\` VARCHAR(64) NULL,
+      \`notes\` TEXT NULL,
+      \`is_active\` TINYINT(1) NOT NULL DEFAULT 1,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`staff_employees_user_idx\` (\`user_id\`),
+      KEY \`staff_employees_active_name_idx\` (\`is_active\`, \`name\`),
+      KEY \`staff_employees_position_idx\` (\`position\`),
+      CONSTRAINT \`staff_employees_user_fk\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL,
+      CONSTRAINT \`staff_employees_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+/** Expand staff_employees.position enum (replace legacy fixed_staff with director/admin/cleaner). */
+async function ensureStaffEmployeesPositionEnum(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_employees'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length === 0) return;
+
+  const col = await sequelize.query<{ COLUMN_TYPE: string }>(
+    `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_employees' AND COLUMN_NAME = 'position'`,
+    { type: QueryTypes.SELECT },
+  );
+  const colType = col[0]?.COLUMN_TYPE ?? '';
+  if (colType.includes("'director'") && colType.includes("'admin'") && colType.includes("'cleaner'")) {
+    if (!colType.includes("'fixed_staff'")) return;
+  }
+
+  // eslint-disable-next-line no-console
+  console.info('[migrate] staff_employees: update position enum …');
+  // Widen first so we can rewrite legacy values.
+  await sequelize.query(`
+    ALTER TABLE \`staff_employees\`
+      MODIFY COLUMN \`position\` ENUM(
+        'instructor','theory_teacher','instructor_and_theory',
+        'director','admin','cleaner','other','fixed_staff'
+      ) NOT NULL
+  `);
+  await sequelize.query(`
+    UPDATE \`staff_employees\` SET \`position\` = 'other' WHERE \`position\` = 'fixed_staff'
+  `);
+  await sequelize.query(`
+    ALTER TABLE \`staff_employees\`
+      MODIFY COLUMN \`position\` ENUM(
+        'instructor','theory_teacher','instructor_and_theory',
+        'director','admin','cleaner','other'
+      ) NOT NULL
+  `);
+}
+
+async function ensureEmployeeCompensationRulesTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length === 0) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] Creating table employee_compensation_rules …');
+    await sequelize.query(`
+      CREATE TABLE \`employee_compensation_rules\` (
+        \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        \`staff_employee_id\` INT UNSIGNED NULL,
+        \`employee_user_id\` INT UNSIGNED NULL,
+        \`compensation_type\` ENUM('fixed_monthly','hourly_practical','per_theory_lesson','per_group') NOT NULL,
+        \`role_label\` VARCHAR(128) NOT NULL,
+        \`rate_amd\` INT UNSIGNED NOT NULL,
+        \`effective_from\` DATE NOT NULL,
+        \`effective_to\` DATE NULL,
+        \`notes\` TEXT NULL,
+        \`created_by_user_id\` INT UNSIGNED NULL,
+        \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        KEY \`emp_comp_rules_staff_type_idx\` (\`staff_employee_id\`, \`compensation_type\`),
+        KEY \`emp_comp_rules_employee_type_idx\` (\`employee_user_id\`, \`compensation_type\`),
+        KEY \`emp_comp_rules_effective_idx\` (\`employee_user_id\`, \`effective_from\`, \`effective_to\`),
+        CONSTRAINT \`emp_comp_rules_staff_fk\` FOREIGN KEY (\`staff_employee_id\`) REFERENCES \`staff_employees\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE CASCADE,
+        CONSTRAINT \`emp_comp_rules_employee_fk\` FOREIGN KEY (\`employee_user_id\`) REFERENCES \`users\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE SET NULL,
+        CONSTRAINT \`emp_comp_rules_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    return;
+  }
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string; IS_NULLABLE: string }>(
+    `SELECT COLUMN_NAME, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'`,
+    { type: QueryTypes.SELECT },
+  );
+  const byName = new Map(cols.map((c) => [c.COLUMN_NAME, c]));
+
+  if (!byName.has('staff_employee_id')) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] employee_compensation_rules: add staff_employee_id …');
+    await sequelize.query(`
+      ALTER TABLE \`employee_compensation_rules\`
+        ADD COLUMN \`staff_employee_id\` INT UNSIGNED NULL AFTER \`id\`
+    `);
+  }
+
+  const idx = await sequelize.query<{ INDEX_NAME: string }>(
+    `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'employee_compensation_rules'
+       AND INDEX_NAME = 'emp_comp_rules_staff_type_idx'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (idx.length === 0) {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] employee_compensation_rules: add staff type index …');
+    await sequelize.query(`
+      ALTER TABLE \`employee_compensation_rules\`
+        ADD KEY \`emp_comp_rules_staff_type_idx\` (\`staff_employee_id\`, \`compensation_type\`)
+    `);
+  }
+
+  const userCol = byName.get('employee_user_id');
+  if (userCol && userCol.IS_NULLABLE === 'NO') {
+    // eslint-disable-next-line no-console
+    console.info('[migrate] employee_compensation_rules: nullable employee_user_id …');
+    // Drop FK temporarily if present, modify, re-add.
+    const fks = await sequelize.query<{ CONSTRAINT_NAME: string }>(
+      `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'
+         AND COLUMN_NAME = 'employee_user_id' AND REFERENCED_TABLE_NAME IS NOT NULL`,
+      { type: QueryTypes.SELECT },
+    );
+    for (const fk of fks) {
+      await sequelize.query(
+        `ALTER TABLE \`employee_compensation_rules\` DROP FOREIGN KEY \`${fk.CONSTRAINT_NAME}\``,
+      );
+    }
+    await sequelize.query(`
+      ALTER TABLE \`employee_compensation_rules\`
+        MODIFY COLUMN \`employee_user_id\` INT UNSIGNED NULL
+    `);
+    await sequelize.query(`
+      ALTER TABLE \`employee_compensation_rules\`
+        ADD CONSTRAINT \`emp_comp_rules_employee_fk\`
+        FOREIGN KEY (\`employee_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    `);
+  }
+}
+
+async function ensureSalaryAdjustmentsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'salary_adjustments'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating table salary_adjustments …');
+  await sequelize.query(`
+    CREATE TABLE \`salary_adjustments\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`employee_user_id\` INT UNSIGNED NOT NULL,
+      \`employee_name\` VARCHAR(255) NOT NULL,
+      \`date_iso\` DATE NOT NULL,
+      \`kind\` ENUM('bonus','additional','deduction','other') NOT NULL,
+      \`amount_amd\` INT UNSIGNED NOT NULL,
+      \`title\` VARCHAR(255) NOT NULL,
+      \`notes\` TEXT NULL,
+      \`created_by_user_id\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (\`id\`),
+      KEY \`salary_adjustments_employee_date_idx\` (\`employee_user_id\`, \`date_iso\`),
+      KEY \`salary_adjustments_date_idx\` (\`date_iso\`),
+      CONSTRAINT \`salary_adjustments_employee_fk\` FOREIGN KEY (\`employee_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+      CONSTRAINT \`salary_adjustments_created_by_fk\` FOREIGN KEY (\`created_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function linkCompensationRulesToStaffEmployees(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+
+  const rulesTable = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (rulesTable.length === 0) return;
+
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'
+       AND COLUMN_NAME = 'staff_employee_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length === 0) return;
+
+  // Backfill staff_employee_id from linked user accounts.
+  await sequelize.query(`
+    UPDATE \`employee_compensation_rules\` r
+    INNER JOIN \`staff_employees\` e ON e.\`user_id\` = r.\`employee_user_id\`
+    SET r.\`staff_employee_id\` = e.\`id\`
+    WHERE r.\`staff_employee_id\` IS NULL AND r.\`employee_user_id\` IS NOT NULL
+  `);
+
+  const fks = await sequelize.query<{ CONSTRAINT_NAME: string }>(
+    `SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'
+       AND CONSTRAINT_NAME = 'emp_comp_rules_staff_fk' AND CONSTRAINT_TYPE = 'FOREIGN KEY'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (fks.length === 0) {
+    try {
+      await sequelize.query(`
+        ALTER TABLE \`employee_compensation_rules\`
+          ADD CONSTRAINT \`emp_comp_rules_staff_fk\`
+          FOREIGN KEY (\`staff_employee_id\`) REFERENCES \`staff_employees\` (\`id\`)
+          ON UPDATE CASCADE ON DELETE CASCADE
+      `);
+    } catch {
+      // ignore if already exists / not ready
+    }
+  }
+}
+
+/** Seed open-ended rules from instructor_profiles when an employee has none yet. */
+async function seedCompensationRulesFromInstructorProfiles(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const rulesTable = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_compensation_rules'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (rulesTable.length === 0) return;
+
+  const { default: StaffEmployeeService } = await import('../services/staff-employee.service');
+  await StaffEmployeeService.syncFromInstructorProfiles();
+
+  const profiles = await InstructorProfile.findAll({
+    attributes: [
+      'userId',
+      'practicalSalaryPerLessonAmd',
+      'theorySalaryPerLessonAmd',
+      'teachesPractical',
+      'teachesTheory',
+    ],
+  });
+  if (profiles.length === 0) return;
+
+  const staffByUser = new Map(
+    (
+      await StaffEmployee.findAll({
+        where: { userId: { [Op.ne]: null } },
+        attributes: ['id', 'userId'],
+      })
+    )
+      .filter((e) => e.userId != null)
+      .map((e) => [e.userId as number, e.id]),
+  );
+
+  const existing = await EmployeeCompensationRule.findAll({
+    attributes: ['employeeUserId', 'compensationType'],
+    where: { effectiveTo: null },
+  });
+  const have = new Set(
+    existing
+      .filter((r) => r.employeeUserId != null)
+      .map((r) => `${r.employeeUserId}:${r.compensationType}`),
+  );
+  const from = '2020-01-01';
+
+  for (const p of profiles) {
+    const staffId = staffByUser.get(p.userId) ?? null;
+    if (p.teachesPractical || (p.practicalSalaryPerLessonAmd ?? 0) > 0) {
+      const key = `${p.userId}:hourly_practical`;
+      if (!have.has(key)) {
+        await EmployeeCompensationRule.create({
+          staffEmployeeId: staffId,
+          employeeUserId: p.userId,
+          compensationType: 'hourly_practical',
+          roleLabel: 'Հրահանգիչ',
+          rateAmd: p.practicalSalaryPerLessonAmd ?? 1500,
+          effectiveFrom: from,
+          effectiveTo: null,
+          notes: 'Synced from instructor profile',
+        });
+        have.add(key);
+      }
+    }
+    if (p.teachesTheory || (p.theorySalaryPerLessonAmd ?? 0) > 0) {
+      const key = `${p.userId}:per_theory_lesson`;
+      if (!have.has(key)) {
+        await EmployeeCompensationRule.create({
+          staffEmployeeId: staffId,
+          employeeUserId: p.userId,
+          compensationType: 'per_theory_lesson',
+          roleLabel: 'Տեսության դասախոս',
+          rateAmd: p.theorySalaryPerLessonAmd ?? 3000,
+          effectiveFrom: from,
+          effectiveTo: null,
+          notes: 'Synced from instructor profile',
+        });
+        have.add(key);
+      }
+    }
   }
 }
 
@@ -2860,6 +3314,14 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceTransactionsRefundColumns();
   await ensureFinanceTransactionsBookingRefundExpenseKind();
   await ensureFinanceTransactionsCreatedByUserIdColumn();
+  /**
+   * Before `sync()`: EmployeeCompensationRule indexes/FK reference `staff_employee_id`.
+   * Existing DBs created the rules table without that column — add it first or sync fails with
+   * "Key column 'staff_employee_id' doesn't exist in table".
+   */
+  await ensureStaffEmployeesTable();
+  await ensureStaffEmployeesPositionEnum();
+  await ensureEmployeeCompensationRulesTable();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureDirectorTablesNullableFkColumns();
   await ensureBookingsInstructorUserIdOnDeleteSetNull();
@@ -2900,7 +3362,12 @@ export async function syncModels(): Promise<void> {
   await ensurePetrolConsumptionsNullableCarAndInstructor();
   await ensureInstructorKmLogsTable();
   await ensureSalaryPaymentsTable();
+  await ensureSalaryPaymentsPayrollColumns();
   await ensureSalaryCardTransfersTable();
+  // staff_employees + employee_compensation_rules columns already ensured before sync()
+  await ensureSalaryAdjustmentsTable();
+  await seedCompensationRulesFromInstructorProfiles();
+  await linkCompensationRulesToStaffEmployees();
   await ensureBookingsPaymentColumns();
   await ensureBookingsPaidAmountColumn();
   await ensureBookingsPaymentNotesAndReminderAtColumns();

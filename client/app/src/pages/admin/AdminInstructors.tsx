@@ -24,7 +24,6 @@ import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
 import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
-import { useAccount } from "src/modules/accounts";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
@@ -44,8 +43,6 @@ type InstructorForm = Pick<
   | "status"
   | "availableBranchIds"
   | "hourlyPrice"
-  | "practicalSalaryPerLessonAmd"
-  | "theorySalaryPerLessonAmd"
   | "imageSrc"
   | "fleetCarIds"
 >;
@@ -64,8 +61,6 @@ const createNewInstructorDraft = (): InstructorForm => ({
   status: "active",
   availableBranchIds: [],
   hourlyPrice: 7000,
-  practicalSalaryPerLessonAmd: 1500,
-  theorySalaryPerLessonAmd: 3000,
   imageSrc: BRAND_LOGO_FALLBACK_SRC,
   fleetCarIds: [],
 });
@@ -175,8 +170,6 @@ export default function AdminInstructors() {
   const editPracticalSlotsSaveRef = useRef<InstructorPracticalSlotsSaveHandle | null>(null);
   const { t, lang } = useLang();
   const { showToast } = useToast();
-  const { user } = useAccount();
-  const isSuperAdmin = user?.accountType === "super_admin";
   const { branches } = useBranches();
   const { cities } = useCities();
   const [instructors, setInstructors] = useState<Instructor[]>([]);
@@ -548,26 +541,21 @@ export default function AdminInstructors() {
     }
 
     try {
-      const body: Record<string, unknown> = {
-        name: editIns.name,
-        email: editIns.email,
-        phone: editIns.phone,
-        years: editIns.years,
-        hourlyPrice: editIns.hourlyPrice,
-        status: editIns.status,
-        imageSrc: editIns.imageSrc,
-        teachesPractical: editIns.teachesPractical,
-        teachesTheory: editIns.teachesTheory,
-        fleetCarIds: editIns.fleetCarIds ?? [],
-        availableBranchIds: editIns.availableBranchIds,
-      };
-      if (isSuperAdmin) {
-        body.practicalSalaryPerLessonAmd = editIns.practicalSalaryPerLessonAmd;
-        body.theorySalaryPerLessonAmd = editIns.theorySalaryPerLessonAmd;
-      }
       await vivaApiJson(`/instructors/${encodeURIComponent(editIns.id)}`, {
         method: "PATCH",
-        body,
+        body: {
+          name: editIns.name,
+          email: editIns.email,
+          phone: editIns.phone,
+          years: editIns.years,
+          hourlyPrice: editIns.hourlyPrice,
+          status: editIns.status,
+          imageSrc: editIns.imageSrc,
+          teachesPractical: editIns.teachesPractical,
+          teachesTheory: editIns.teachesTheory,
+          fleetCarIds: editIns.fleetCarIds ?? [],
+          availableBranchIds: editIns.availableBranchIds,
+        },
       });
       setEditId(null);
       await loadInstructors();
@@ -585,26 +573,23 @@ export default function AdminInstructors() {
       return;
     }
 
-    const nextPayload: Record<string, unknown> = {
-      name: newIns.name,
-      email: newIns.email,
-      phone: newIns.phone,
-      years: newIns.years,
-      hourlyPrice: newIns.hourlyPrice,
-      status: newIns.status,
-      imageSrc: newIns.imageSrc,
-      teachesPractical: newIns.teachesPractical,
-      teachesTheory: newIns.teachesTheory,
-      fleetCarIds: newIns.fleetCarIds ?? [],
-      availableBranchIds: newIns.availableBranchIds,
-    };
-    if (isSuperAdmin) {
-      nextPayload.practicalSalaryPerLessonAmd = newIns.practicalSalaryPerLessonAmd;
-      nextPayload.theorySalaryPerLessonAmd = newIns.theorySalaryPerLessonAmd;
-    }
-
     try {
-      await vivaApiJson("/instructors", { method: "POST", body: nextPayload });
+      await vivaApiJson("/instructors", {
+        method: "POST",
+        body: {
+          name: newIns.name,
+          email: newIns.email,
+          phone: newIns.phone,
+          years: newIns.years,
+          hourlyPrice: newIns.hourlyPrice,
+          status: newIns.status,
+          imageSrc: newIns.imageSrc,
+          teachesPractical: newIns.teachesPractical,
+          teachesTheory: newIns.teachesTheory,
+          fleetCarIds: newIns.fleetCarIds ?? [],
+          availableBranchIds: newIns.availableBranchIds,
+        },
+      });
       setAddOpen(false);
       setNewIns(createNewInstructorDraft());
       await loadInstructors();
@@ -979,56 +964,6 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
-              {isSuperAdmin && (editIns.teachesPractical || editIns.teachesTheory) ? (
-                <div
-                  className={
-                    editIns.teachesPractical && editIns.teachesTheory
-                      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
-                      : undefined
-                  }
-                >
-                  {editIns.teachesPractical ? (
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">
-                        {editIns.teachesTheory
-                          ? t("salaryPerPracticalLessonLabel")
-                          : t("salaryPerLessonLabel")}
-                      </label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editIns.practicalSalaryPerLessonAmd}
-                        onChange={(e) =>
-                          updateEdit(editIns.id, {
-                            practicalSalaryPerLessonAmd: +e.target.value || 0,
-                          })
-                        }
-                        className="h-10"
-                      />
-                    </div>
-                  ) : null}
-                  {editIns.teachesTheory ? (
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">
-                        {editIns.teachesPractical
-                          ? t("salaryPerTheoryLessonLabel")
-                          : t("salaryPerLessonLabel")}
-                      </label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={editIns.theorySalaryPerLessonAmd}
-                        onChange={(e) =>
-                          updateEdit(editIns.id, {
-                            theorySalaryPerLessonAmd: +e.target.value || 0,
-                          })
-                        }
-                        className="h-10"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               {editIns.teachesPractical ? (
                 <InstructorPracticalSlotsSection instructorId={editIns.id} saveRef={editPracticalSlotsSaveRef} />
               ) : null}
@@ -1211,58 +1146,6 @@ export default function AdminInstructors() {
                   </label>
                 </div>
               </div>
-              {isSuperAdmin && (newIns.teachesPractical || newIns.teachesTheory) ? (
-                <div
-                  className={
-                    newIns.teachesPractical && newIns.teachesTheory
-                      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
-                      : undefined
-                  }
-                >
-                  {newIns.teachesPractical ? (
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">
-                        {newIns.teachesTheory
-                          ? t("salaryPerPracticalLessonLabel")
-                          : t("salaryPerLessonLabel")}
-                      </label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={newIns.practicalSalaryPerLessonAmd}
-                        onChange={(e) =>
-                          setNewIns({
-                            ...newIns,
-                            practicalSalaryPerLessonAmd: +e.target.value || 0,
-                          })
-                        }
-                        className="h-10"
-                      />
-                    </div>
-                  ) : null}
-                  {newIns.teachesTheory ? (
-                    <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-1">
-                        {newIns.teachesPractical
-                          ? t("salaryPerTheoryLessonLabel")
-                          : t("salaryPerLessonLabel")}
-                      </label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={newIns.theorySalaryPerLessonAmd}
-                        onChange={(e) =>
-                          setNewIns({
-                            ...newIns,
-                            theorySalaryPerLessonAmd: +e.target.value || 0,
-                          })
-                        }
-                        className="h-10"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               {branches.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">{t("instructorBranchesLabel")}</label>

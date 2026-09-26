@@ -14,7 +14,12 @@ import type {
   DirectorRepair,
   DirectorRevenue,
   DirectorSalary,
+  DirectorSalaryAdjustment,
   DirectorSalaryCardTransfer,
+  DirectorCompensationRule,
+  DirectorCompensationType,
+  DirectorStaffEmployee,
+  DirectorStaffEmployeePosition,
   DirectorSalaryEmployeeKind,
   DirectorSalaryLessons,
   DirectorSalaryPayment,
@@ -294,14 +299,21 @@ export async function fetchDirectorSalaryPayments(q: string): Promise<{ items: D
 }
 
 export async function createDirectorSalaryPayment(body: {
-  kind: DirectorSalaryEmployeeKind;
+  kind: DirectorSalaryEmployeeKind | "payroll";
   employeeUserId: number;
   title: string;
   periodStart: string;
   periodEnd: string;
+  status?: "approved" | "paid";
   notes?: string | null;
 }): Promise<DirectorSalaryPayment> {
   return vivaApiJson<DirectorSalaryPayment>(`${BASE}/salary-payments`, { method: "POST", body });
+}
+
+export async function markDirectorSalaryPaymentPaid(id: number): Promise<DirectorSalaryPayment> {
+  return vivaApiJson<DirectorSalaryPayment>(`${BASE}/salary-payments/${id}/mark-paid`, {
+    method: "PATCH",
+  });
 }
 
 export async function deleteDirectorSalaryPayment(id: number): Promise<void> {
@@ -343,6 +355,111 @@ export async function updateDirectorSalaryCardTransfer(
 
 export async function deleteDirectorSalaryCardTransfer(id: number): Promise<void> {
   await vivaApiJson(`${BASE}/salary-card-transfers/${id}`, { method: "DELETE" });
+}
+
+export async function fetchDirectorCompensationRules(
+  staffEmployeeId?: number,
+): Promise<{ items: DirectorCompensationRule[] }> {
+  const q =
+    staffEmployeeId != null && staffEmployeeId > 0
+      ? `?staffEmployeeId=${encodeURIComponent(String(staffEmployeeId))}`
+      : "";
+  return vivaApiJson(`${BASE}/salary-compensation-rules${q}`);
+}
+
+export async function createDirectorCompensationRule(body: {
+  staffEmployeeId: number;
+  compensationType: DirectorCompensationType;
+  roleLabel: string;
+  rateAmd: number;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  notes?: string | null;
+}): Promise<DirectorCompensationRule> {
+  return vivaApiJson(`${BASE}/salary-compensation-rules`, { method: "POST", body });
+}
+
+export async function updateDirectorCompensationRule(
+  id: number,
+  body: {
+    roleLabel?: string;
+    rateAmd?: number;
+    effectiveFrom?: string;
+    effectiveTo?: string | null;
+    notes?: string | null;
+  },
+): Promise<DirectorCompensationRule> {
+  return vivaApiJson(`${BASE}/salary-compensation-rules/${id}`, { method: "PATCH", body });
+}
+
+export async function deleteDirectorCompensationRule(id: number): Promise<void> {
+  await vivaApiJson(`${BASE}/salary-compensation-rules/${id}`, { method: "DELETE" });
+}
+
+export async function fetchDirectorSalaryAdjustments(
+  q: string,
+  employeeUserId?: number,
+): Promise<{ items: DirectorSalaryAdjustment[] }> {
+  const params = new URLSearchParams(q);
+  if (employeeUserId != null && employeeUserId > 0) {
+    params.set("employeeUserId", String(employeeUserId));
+  }
+  return vivaApiJson(`${BASE}/salary-adjustments?${params.toString()}`);
+}
+
+export async function createDirectorSalaryAdjustment(body: {
+  employeeUserId: number;
+  dateIso: string;
+  kind: "bonus" | "additional" | "deduction" | "other";
+  amountAmd: number;
+  title: string;
+  notes?: string | null;
+}): Promise<DirectorSalaryAdjustment> {
+  return vivaApiJson(`${BASE}/salary-adjustments`, { method: "POST", body });
+}
+
+export async function deleteDirectorSalaryAdjustment(id: number): Promise<void> {
+  await vivaApiJson(`${BASE}/salary-adjustments/${id}`, { method: "DELETE" });
+}
+
+export async function fetchDirectorStaffEmployees(
+  activeOnly = false,
+): Promise<{ items: DirectorStaffEmployee[] }> {
+  const q = activeOnly ? "?activeOnly=1" : "";
+  return vivaApiJson(`${BASE}/staff-employees${q}`);
+}
+
+export async function createDirectorStaffEmployee(body: {
+  name: string;
+  userId?: number | null;
+  position: DirectorStaffEmployeePosition;
+  jobTitle?: string | null;
+  startDateIso: string;
+  phone?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}): Promise<DirectorStaffEmployee> {
+  return vivaApiJson(`${BASE}/staff-employees`, { method: "POST", body });
+}
+
+export async function updateDirectorStaffEmployee(
+  id: number,
+  body: Partial<{
+    name: string;
+    userId: number | null;
+    position: DirectorStaffEmployeePosition;
+    jobTitle: string | null;
+    startDateIso: string;
+    phone: string | null;
+    notes: string | null;
+    isActive: boolean;
+  }>,
+): Promise<DirectorStaffEmployee> {
+  return vivaApiJson(`${BASE}/staff-employees/${id}`, { method: "PATCH", body });
+}
+
+export async function deleteDirectorStaffEmployee(id: number): Promise<void> {
+  await vivaApiJson(`${BASE}/staff-employees/${id}`, { method: "DELETE" });
 }
 
 export async function fetchDirectorRevenues(q: string, isLegacy: boolean): Promise<DirectorRevenue[]> {

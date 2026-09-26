@@ -129,6 +129,24 @@ export type DirectorSalary = {
 
 export type DirectorSalaryEmployeeKind = "instructor" | "theory_teacher";
 
+export type DirectorCompensationType =
+  | "fixed_monthly"
+  | "hourly_practical"
+  | "per_theory_lesson"
+  | "per_group";
+
+export type DirectorPayrollStatus = "calculated" | "approved" | "paid";
+
+export type DirectorSalaryCalcLine = {
+  ruleId: number | null;
+  compensationType: DirectorCompensationType | "adjustment";
+  roleLabel: string;
+  quantity: number;
+  rateAmd: number;
+  subtotalAmd: number;
+  description: string;
+};
+
 export type DirectorSalaryReportRow = {
   kind: DirectorSalaryEmployeeKind;
   employeeUserId: number;
@@ -150,7 +168,27 @@ export type DirectorSalaryReportRow = {
     lessonsCount: number | null;
     totalAmd: number;
     paidAtIso: string;
+    status?: "approved" | "paid";
   } | null;
+};
+
+export type DirectorSalaryEmployeeRow = {
+  employeeUserId: number;
+  employeeName: string;
+  fixedAmd: number;
+  hoursCount: number;
+  hoursAmd: number;
+  lessonsCount: number;
+  lessonsAmd: number;
+  groupsCount: number;
+  groupsAmd: number;
+  adjustmentsAmd: number;
+  totalAmd: number;
+  cardTransferAmd: number | null;
+  unpaidHoursCount: number;
+  status: DirectorPayrollStatus;
+  paid: DirectorSalaryReportRow["paid"];
+  lines: DirectorSalaryCalcLine[];
 };
 
 export type DirectorSalaryReport = {
@@ -159,6 +197,7 @@ export type DirectorSalaryReport = {
   instructorRateAmd: number;
   theoryTeacherRateAmd: number;
   rows: DirectorSalaryReportRow[];
+  employees: DirectorSalaryEmployeeRow[];
 };
 
 export type DirectorSalaryLessonPaymentBucket = "payable" | "unpaid";
@@ -190,7 +229,7 @@ export type DirectorSalaryLessons = {
 export type DirectorSalaryPayment = {
   id: number;
   title: string;
-  kind: DirectorSalaryEmployeeKind | "other";
+  kind: DirectorSalaryEmployeeKind | "other" | "payroll";
   employeeUserId: number | null;
   employeeName: string;
   periodStartIso: string;
@@ -198,9 +237,61 @@ export type DirectorSalaryPayment = {
   lessonsCount: number | null;
   ratePerLessonAmd: number | null;
   totalAmd: number;
+  status?: "approved" | "paid";
+  breakdown?: DirectorSalaryCalcLine[] | null;
   notes: string | null;
   createdAtIso: string;
   createdByName: string | null;
+};
+
+export type DirectorCompensationRule = {
+  id: number;
+  staffEmployeeId: number | null;
+  employeeUserId: number | null;
+  employeeName: string;
+  compensationType: DirectorCompensationType;
+  roleLabel: string;
+  rateAmd: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  notes: string | null;
+  createdAtIso: string;
+};
+
+export type DirectorStaffEmployeePosition =
+  | "instructor"
+  | "theory_teacher"
+  | "instructor_and_theory"
+  | "director"
+  | "admin"
+  | "cleaner"
+  | "other";
+
+export type DirectorStaffEmployee = {
+  id: number;
+  name: string;
+  userId: number | null;
+  accountName: string | null;
+  position: DirectorStaffEmployeePosition;
+  jobTitle: string;
+  startDateIso: string;
+  phone: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAtIso: string;
+};
+
+export type DirectorSalaryAdjustment = {
+  id: number;
+  employeeUserId: number;
+  employeeName: string;
+  dateIso: string;
+  kind: "bonus" | "additional" | "deduction" | "other";
+  amountAmd: number;
+  signedAmd: number;
+  title: string;
+  notes: string | null;
+  createdAtIso: string;
 };
 
 export type DirectorSalaryCardTransfer = {

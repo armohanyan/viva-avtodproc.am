@@ -5,6 +5,7 @@ export { default as DirectorFuelPage } from "./DirectorFuel";
 export { default as DirectorKmPage } from "./DirectorKm";
 export { default as DirectorDriverProfilePage } from "./DirectorDriverProfile";
 export { default as DirectorSalaryPage } from "./DirectorSalary";
+export { default as DirectorEmployeesPage } from "./DirectorEmployees";
 export { default as DirectorStudentsPage } from "./DirectorStudents";
 export { default as DirectorArchivePage } from "./DirectorArchive";
 export { default as DirectorReportsPage } from "./DirectorReports";

@@ -283,6 +283,7 @@ export default function AdminLayout({ children }: Props) {
 		"/admin/director/driver-profile": User,
 		"/admin/director/fuel": Fuel,
 		"/admin/director/km": Gauge,
+		"/admin/director/employees": Users,
 		"/admin/director/salary": Banknote,
 		"/admin/director/repair": Wrench,
 		"/admin/director/students": GraduationCap,

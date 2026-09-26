@@ -10,6 +10,7 @@ export const DIRECTOR_NAV_LINKS: DirectorNavLink[] = [
   { href: "/admin/director/driver-profile", label: "Վարորդի պրոֆիլ" },
   { href: "/admin/director/fuel", label: "Վառելիք" },
   { href: "/admin/director/km", label: "Կիլոմետրեր" },
+  { href: "/admin/director/employees", label: "Աշխատակիցներ" },
   { href: "/admin/director/salary", label: "Աշխատավարձ" },
   { href: "/admin/director/repair", label: "Վերանորոգում" },
   { href: "/admin/director/students", label: "Ուսանողներ" },

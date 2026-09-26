@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import AdminSalaryController from '../controllers/admin-salary.controller';
 import DirectorController from '../controllers/director.controller';
+import StaffEmployeeController from '../controllers/staff-employee.controller';
 import { requireSuperAdmin } from '../middleware/staff-auth.middleware';
 
 const router = Router();
@@ -51,14 +52,30 @@ router.delete('/salaries/:id', DirectorController.deleteSalary);
 
 router.get('/salary-report', AdminSalaryController.report);
 router.get('/salary-lessons', AdminSalaryController.lessons);
+router.get('/salary-employee-detail', AdminSalaryController.employeeDetail);
 router.get('/salary-payments', AdminSalaryController.listPayments);
 router.post('/salary-payments', AdminSalaryController.createPayment);
+router.patch('/salary-payments/:id/mark-paid', AdminSalaryController.markPaymentPaid);
 router.delete('/salary-payments/:id', AdminSalaryController.removePayment);
 
 router.get('/salary-card-transfers', AdminSalaryController.listCardTransfers);
 router.post('/salary-card-transfers', AdminSalaryController.createCardTransfer);
 router.patch('/salary-card-transfers/:id', AdminSalaryController.updateCardTransfer);
 router.delete('/salary-card-transfers/:id', AdminSalaryController.removeCardTransfer);
+
+router.get('/staff-employees', StaffEmployeeController.list);
+router.post('/staff-employees', StaffEmployeeController.create);
+router.patch('/staff-employees/:id', StaffEmployeeController.update);
+router.delete('/staff-employees/:id', StaffEmployeeController.remove);
+
+router.get('/salary-compensation-rules', AdminSalaryController.listCompensationRules);
+router.post('/salary-compensation-rules', AdminSalaryController.createCompensationRule);
+router.patch('/salary-compensation-rules/:id', AdminSalaryController.updateCompensationRule);
+router.delete('/salary-compensation-rules/:id', AdminSalaryController.removeCompensationRule);
+
+router.get('/salary-adjustments', AdminSalaryController.listAdjustments);
+router.post('/salary-adjustments', AdminSalaryController.createAdjustment);
+router.delete('/salary-adjustments/:id', AdminSalaryController.removeAdjustment);
 
 router.get('/revenues', DirectorController.listRevenues);
 router.get('/revenues/chart', DirectorController.revenueChart);
