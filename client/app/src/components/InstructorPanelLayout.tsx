@@ -12,6 +12,7 @@ import {
 	Settings,
 	CalendarDays,
 	BarChart3,
+	Banknote,
 	Fuel,
 	BookOpen,
 	type LucideIcon,
@@ -47,6 +48,7 @@ const iconByPath: Record<string, LucideIcon> = {
 	"/instructor/questions": BookOpen,
 	"/instructor/cars": Car,
 	"/instructor/reports": BarChart3,
+	"/instructor/salary": Banknote,
 	"/instructor/fuel-expenses": Fuel,
 	"/instructor/profile": User,
 };

@@ -1336,6 +1336,18 @@ export default class AdminSalaryService {
     };
   }
 
+  /** Payout history for one employee. Caller must already have scoped the user id. */
+  static async listEmployeePayments(employeeUserId: number): Promise<{ items: SalaryPaymentDto[] }> {
+    const rows = await SalaryPayment.findAll({
+      where: { employeeUserId },
+      order: [
+        ['createdAt', 'DESC'],
+        ['id', 'DESC'],
+      ],
+    });
+    return { items: rows.map((row) => paymentRowToDto(row)) };
+  }
+
   static async createCalculatedPayment(
     input: CreateCalculatedSalaryInput,
     createdByUserId?: number,

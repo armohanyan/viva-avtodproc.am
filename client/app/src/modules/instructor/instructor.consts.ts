@@ -7,6 +7,7 @@ export const INSTRUCTOR_NAV_LINKS: readonly InstructorNavigationLink[] = [
 	{ href: "/instructor/questions", translationKey: "instructorQuestionsNav", scope: "theory" },
 	{ href: "/instructor/cars", translationKey: "instructorCarsTitle", scope: "practical" },
 	{ href: "/instructor/reports", translationKey: "instructorReportsNav", scope: "shared" },
+	{ href: "/instructor/salary", translationKey: "instructorSalaryNav", scope: "shared" },
 	{ href: "/instructor/fuel-expenses", translationKey: "instructorFuelNav", scope: "practical" },
 	{ href: "/instructor/profile", translationKey: "profile", scope: "shared" },
 ];

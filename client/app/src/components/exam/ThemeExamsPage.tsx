@@ -29,9 +29,11 @@ export type ThemeExamsPageProps = {
   quizHrefForPack: (packIndex: number) => string;
   /** Optional learn subnav (student only). */
   subnav?: ReactNode;
+  /** Control shown beside the page title, such as a back button. */
+  headerLeading?: ReactNode;
 };
 
-export default function ThemeExamsPage({ quizHrefForPack, subnav }: ThemeExamsPageProps) {
+export default function ThemeExamsPage({ quizHrefForPack, subnav, headerLeading }: ThemeExamsPageProps) {
   const { t } = useLang();
   const [thematicCardTitles, setThematicCardTitles] = useState(() => defaultExamQuestionMeta().thematicCardTitles);
   const [thematicCardQuestionIds, setThematicCardQuestionIds] = useState(
@@ -112,11 +114,7 @@ export default function ThemeExamsPage({ quizHrefForPack, subnav }: ThemeExamsPa
 
   return (
     <div className="max-w-5xl mx-auto">
-      <PanelPageHeader
-        className="mb-4 sm:mb-6"
-        title={t("themeExamsTitle")}
-        subtitle={t("themeExamsSubtitle")}
-      />
+      <PanelPageHeader className="mb-4 sm:mb-6" title={t("themeExamsTitle")} leading={headerLeading} />
 
       {subnav}
 

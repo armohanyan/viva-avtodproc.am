@@ -81,11 +81,7 @@ export default function DashboardRoadSigns() {
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
-        <PanelPageHeader
-          className="mb-4 sm:mb-6"
-          title={t("dashboardLearnRoadSigns")}
-          subtitle={t("dashboardLearnRoadSignsSubtitle")}
-        />
+        <PanelPageHeader className="mb-4 sm:mb-6" title={t("dashboardLearnRoadSigns")} />
 
         <DashboardLearnSubnav active="road-signs" />
 

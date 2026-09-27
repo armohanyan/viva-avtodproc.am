@@ -28,10 +28,11 @@ import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMet
 import { useExamQuizQuestionPool } from "src/modules/exam/useExamQuestionPacks";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 import ExamQuizToolbar from "src/components/exam/ExamQuizToolbar";
-import ExamQuizQuestionCommentButton from "src/components/exam/ExamQuizQuestionCommentButton";
+import ExamQuizQuestionTools from "src/components/exam/ExamQuizQuestionTools";
 import ExamQuestionNumberNav, {
   buildQuestionNavStatuses,
 } from "src/components/exam/ExamQuestionNumberNav";
+import { readQuizFocusIndex, withQuestionSessionReturn } from "src/lib/questionSessionReturn";
 import { cn } from "src/lib/utils";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
@@ -166,20 +167,32 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
         return row ? row.selectedAnswerId : null;
       });
       setAnswers(resumedAnswers);
-      setIndex(Math.max(0, Math.min(questions.length - 1, snapshot.currentQuestionIndex)));
+      const focusIndex = readQuizFocusIndex();
+      setIndex(Math.max(0, Math.min(questions.length - 1, focusIndex ?? snapshot.currentQuestionIndex)));
     });
     return () => {
       mounted = false;
     };
   }, [resumable, topicId, topicQuestionIds, questions, round]);
 
+  useEffect(() => {
+    if (resumable || questions.length === 0) return;
+    const focusIndex = readQuizFocusIndex();
+    if (focusIndex == null) return;
+    setIndex(Math.max(0, Math.min(questions.length - 1, focusIndex)));
+  }, [resumable, questions.length]);
+
   const finished = Boolean(questions.length > 0 && index >= questions.length);
 
   const questionDetailHref = useCallback(
-    (questionId: string) => {
-      if (listPath === "/road-signs") return `/road-signs/question/${questionId}`;
-      if (mode === "topics") return `/thematic-questions/question/${questionId}`;
-      return `/exam-tests/question/${questionId}`;
+    (questionId: string, questionIndex: number) => {
+      const path =
+        listPath === "/road-signs"
+          ? `/road-signs/question/${questionId}`
+          : mode === "topics"
+            ? `/thematic-questions/question/${questionId}`
+            : `/exam-tests/question/${questionId}`;
+      return withQuestionSessionReturn(path, questionIndex);
     },
     [mode, listPath],
   );
@@ -467,8 +480,10 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                             <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                           )}
                           <p className="text-sm text-foreground font-medium min-w-0 flex-1">{loc.text}</p>
-                          <ExamQuizQuestionCommentButton
-                            href={questionDetailHref(question.id)}
+                          <ExamQuizQuestionTools
+                            questionId={question.id}
+                            questionIndex={i}
+                            href={questionDetailHref(question.id, i)}
                             Link={MarketingLink}
                           />
                         </div>
@@ -563,6 +578,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                 onFocusToggle={() => setFocusMode((v) => !v)}
                 layoutMode={layoutMode}
                 onLayoutModeChange={setLayoutModeAndSyncIndex}
+                className={focusMode ? undefined : "top-16"}
               />
               {(() => {
                 const displayAnswers = questions.map((_, i) => {
@@ -597,34 +613,29 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                   }
                 };
                 return (
-              <div
-                className={cn(
-                  layoutMode === "scroll" ? "flex flex-col" : "lg:flex lg:items-start lg:gap-4",
-                )}
-              >
+              <div className="flex items-start gap-1.5 sm:gap-3">
                 <ExamQuestionNumberNav
                   total={questions.length}
                   currentIndex={Math.min(index, questions.length - 1)}
                   statuses={navStatuses}
                   onSelect={goToQuestion}
-                  pinned={layoutMode === "scroll"}
+                  className={cn(focusMode ? "top-12 h-[calc(100dvh-6rem)]" : "top-28")}
                 />
                 <div className="min-w-0 flex-1">
               {layoutMode === "step" ? (
                 <Reveal delay={0.06}>
-                  <Card className="p-4 sm:p-8 border-border">
+                  <Card className="relative p-2 border-border">
+                    {q ? (
+                      <ExamQuizQuestionTools
+                        className="absolute top-2 right-2 z-10"
+                        questionId={q.id}
+                        questionIndex={index}
+                        href={questionDetailHref(q.id, index)}
+                        Link={MarketingLink}
+                      />
+                    ) : null}
                     {q?.imageUrl ? <ExamQuestionFigure url={q.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
-                    <div className="flex items-start justify-between gap-3 mb-6">
-                      <h2 className="text-lg font-semibold text-foreground leading-snug min-w-0 flex-1">
-                        {current?.text ?? ""}
-                      </h2>
-                      {q ? (
-                        <ExamQuizQuestionCommentButton
-                          href={questionDetailHref(q.id)}
-                          Link={MarketingLink}
-                        />
-                      ) : null}
-                    </div>
+                    <h2 className="mb-6 text-lg font-semibold text-foreground leading-snug">{current?.text ?? ""}</h2>
                     <div className="space-y-2">
                       {current?.options.map((opt, i) => {
                         const hideImmediateFeedback = timedExam;
@@ -681,7 +692,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                         );
                       })}
                     </div>
-                    <div className="mt-8 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <Button onClick={goBack} disabled={index === 0} variant="outline" className="w-full sm:w-auto">
                         {t("examQuizPrevious")}
                       </Button>
@@ -707,7 +718,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                           <Card
                             id={`quiz-q-${question.id}`}
                             className={cn(
-                              "scroll-mt-24 p-6 sm:p-8 border-border",
+                              "scroll-mt-24 p-2 border-border",
                               qIdx === index && "ring-2 ring-primary/30",
                             )}
                           >
@@ -715,8 +726,10 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                               <p className="text-xs font-medium text-muted-foreground">
                                 {t("examQuizQuestion")} {qIdx + 1} {t("examQuizOf")} {questions.length}
                               </p>
-                              <ExamQuizQuestionCommentButton
-                                href={questionDetailHref(question.id)}
+                              <ExamQuizQuestionTools
+                                questionId={question.id}
+                                questionIndex={qIdx}
+                                href={questionDetailHref(question.id, qIdx)}
                                 Link={MarketingLink}
                               />
                             </div>

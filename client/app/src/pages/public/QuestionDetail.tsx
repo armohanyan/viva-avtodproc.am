@@ -4,6 +4,7 @@ import { Redirect, useRoute } from "wouter";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import QuestionDetailView from "src/components/exam/QuestionDetailView";
+import { readQuestionReturnTo } from "src/lib/questionSessionReturn";
 
 export default function QuestionDetail() {
   const [examMatch, examParams] = useRoute("/exam-tests/question/:id");
@@ -17,7 +18,9 @@ export default function QuestionDetail() {
     return <Redirect to="/thematic-questions" />;
   }
 
-  const backHref = roadSignsMatch ? "/road-signs" : themeMatch ? "/thematic-questions" : "/exam-tests";
+  const backHref = readQuestionReturnTo(
+    roadSignsMatch ? "/road-signs" : themeMatch ? "/thematic-questions" : "/exam-tests",
+  );
 
   return (
     <div className="min-h-screen bg-background">

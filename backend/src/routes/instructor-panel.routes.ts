@@ -9,6 +9,7 @@ const router = Router();
 router.get('/class-schedule', requireStaffOrInstructor, ClassScheduleController.listForInstructor);
 
 router.get('/salary-report', requireStaffOrInstructor, InstructorSalaryReportController.report);
+router.get('/salary', requireStaffOrInstructor, InstructorSalaryReportController.overview);
 
 router.get(
   '/petrol-expense-requests/cars',

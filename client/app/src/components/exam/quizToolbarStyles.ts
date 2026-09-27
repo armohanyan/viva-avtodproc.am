@@ -1,11 +1,15 @@
 import { cn } from "src/lib/utils";
 
-/** 40px desktop, 44px mobile — quiz toolbar touch targets. */
-export const quizToolbarTouchTarget = cn(
-	"size-10 min-h-10 min-w-10 shrink-0",
-	"max-sm:min-h-11 max-sm:min-w-11 max-sm:size-11",
+/** Icon-only control: no padding, border, or fill. */
+export const quizBareIconButton = cn(
+	"inline-flex size-6 shrink-0 items-center justify-center rounded-md leading-none",
+	"border-0 bg-transparent p-0 shadow-none ring-0",
+	"text-muted-foreground hover:bg-transparent hover:text-foreground",
+	"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+	"disabled:pointer-events-none disabled:opacity-50",
+	"[&_svg]:size-5",
 );
 
-export const quizToolbarToolGroup = cn(
-	"inline-flex items-center gap-1 rounded-xl border border-border bg-muted/40 p-1 shadow-xs",
-);
+export const quizBareIconButtonActive = "text-primary hover:bg-transparent hover:text-primary";
+
+export const quizToolbarToolGroup = "inline-flex items-center gap-3";

@@ -77,10 +77,11 @@ function roleLabelFor(
   return POSITION_LABEL[position];
 }
 
-function positionsForPayFocus(focus: PayFocus): DirectorStaffEmployeePosition[] {
+function positionsForPayFocus(focus: PayFocus): DirectorStaffEmployeePosition[] | null {
   if (focus === "practical") return ["instructor", "instructor_and_theory"];
   if (focus === "theory") return ["theory_teacher", "instructor_and_theory"];
-  return ["director", "admin", "cleaner", "other"];
+  // Fixed monthly can apply to any position, including theory teachers paid a flat salary.
+  return null;
 }
 
 type Props = { reloadKey: number };
@@ -123,9 +124,9 @@ export default function DirectorSalaryRulesView({ reloadKey }: Props) {
   useDirectorReload(load, [reloadKey]);
 
   const filteredStaff = useMemo(() => {
-    const allowed = new Set(positionsForPayFocus(form.payFocus));
+    const allowed = positionsForPayFocus(form.payFocus);
     return staff
-      .filter((s) => s.isActive && allowed.has(s.position))
+      .filter((s) => s.isActive && (allowed == null || allowed.includes(s.position)))
       .filter((s) => {
         if (form.payFocus === "fixed") return true;
         // Lesson-based pay needs a linked instructor account

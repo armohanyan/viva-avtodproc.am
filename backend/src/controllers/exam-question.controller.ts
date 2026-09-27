@@ -111,6 +111,15 @@ function readAuthenticatedUser(req: Request): { userId: number; accountType: 'su
   };
 }
 
+function canBookmarkQuestion(accountType: string): boolean {
+  return (
+    accountType === 'student' ||
+    accountType === 'instructor' ||
+    accountType === 'admin' ||
+    accountType === 'super_admin'
+  );
+}
+
 export default class ExamQuestionController {
   static async getMeta(_req: Request, res: Response, next: NextFunction) {
     try {
@@ -284,8 +293,8 @@ export default class ExamQuestionController {
   static async getSavedState(req: Request, res: Response, next: NextFunction) {
     try {
       const user = readAuthenticatedUser(req);
-      if (user.accountType !== 'student') {
-        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      if (!canBookmarkQuestion(user.accountType)) {
+        return next(new PermissionError('Insufficient permissions', HttpStatusCodesUtil.FORBIDDEN));
       }
       const questionId = String(req.params.id ?? '').trim();
       const exists = await ExamQuestionEngagementService.questionExists(questionId);
@@ -302,8 +311,8 @@ export default class ExamQuestionController {
   static async setSavedState(req: Request, res: Response, next: NextFunction) {
     try {
       const user = readAuthenticatedUser(req);
-      if (user.accountType !== 'student') {
-        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      if (!canBookmarkQuestion(user.accountType)) {
+        return next(new PermissionError('Insufficient permissions', HttpStatusCodesUtil.FORBIDDEN));
       }
       const questionId = String(req.params.id ?? '').trim();
       const exists = await ExamQuestionEngagementService.questionExists(questionId);
@@ -321,8 +330,8 @@ export default class ExamQuestionController {
   static async listSavedQuestions(req: Request, res: Response, next: NextFunction) {
     try {
       const user = readAuthenticatedUser(req);
-      if (user.accountType !== 'student') {
-        return next(new PermissionError('Student access required', HttpStatusCodesUtil.FORBIDDEN));
+      if (!canBookmarkQuestion(user.accountType)) {
+        return next(new PermissionError('Insufficient permissions', HttpStatusCodesUtil.FORBIDDEN));
       }
       const savedIds = await ExamQuestionEngagementService.listSavedQuestionIds(user.userId);
       if (savedIds.length === 0) {

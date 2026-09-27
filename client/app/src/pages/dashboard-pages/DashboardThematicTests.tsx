@@ -118,11 +118,7 @@ export default function DashboardThematicTests() {
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
-        <PanelPageHeader
-          className="mb-4 sm:mb-6"
-          title={t("dashboardLearnThematicTests")}
-          subtitle={t("dashboardLearnThematicSubtitle")}
-        />
+        <PanelPageHeader className="mb-4 sm:mb-6" title={t("dashboardLearnThematicTests")} />
 
         <DashboardLearnSubnav active="thematic" />
 

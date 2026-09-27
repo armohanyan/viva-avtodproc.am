@@ -89,22 +89,22 @@ export default function DashboardRoadSignTopicProgress() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        <div className="mb-3">
-          <Link href={listHref}>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label={t("dashboardRoadSignsTopicBack")}
-              title={t("dashboardRoadSignsTopicBack")}
-            >
-              <ArrowLeft className="w-4 h-4" aria-hidden />
-            </Button>
-          </Link>
-        </div>
         <PanelPageHeader
           title={categoryTitle || t("dashboardLearnRoadSigns")}
           subtitle={t("dashboardRoadSignsTopicSubtitle")}
           className="mb-4"
+          leading={
+            <Link href={listHref}>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={t("dashboardRoadSignsTopicBack")}
+                title={t("dashboardRoadSignsTopicBack")}
+              >
+                <ArrowLeft className="w-4 h-4" aria-hidden />
+              </Button>
+            </Link>
+          }
         />
 
         <Card className="rounded-xl border border-border p-5">
@@ -192,17 +192,30 @@ export default function DashboardRoadSignTopicProgress() {
                   {filteredQuestions.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{t("dashboardThematicTopicNoQuestions")}</p>
                   ) : (
-                    <div className="max-h-72 space-y-2 overflow-auto pr-1">
-                      {filteredQuestions.map((question, idx) => (
-                        <Link key={question.id} href={`/dashboard/learn/road-signs/question/${question.id}`}>
-                          <button
-                            type="button"
-                            className="w-full rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted"
+                    <div className="flex max-h-96 flex-col gap-3 overflow-auto pr-1">
+                      {filteredQuestions.map((question, idx) => {
+                        const loc = getQuestionInLang(question, lang);
+                        return (
+                          <Link
+                            key={question.id}
+                            href={`/dashboard/learn/road-signs/question/${question.id}`}
+                            className="block"
                           >
-                            {idx + 1}. {getQuestionInLang(question, lang).text}
-                          </button>
-                        </Link>
-                      ))}
+                            <div className="flex items-start gap-3 rounded-md border border-border px-3 py-3 text-sm hover:bg-muted">
+                              {question.imageUrl ? (
+                                <img
+                                  src={question.imageUrl}
+                                  alt=""
+                                  className="size-16 shrink-0 rounded-md border border-border bg-white object-contain"
+                                />
+                              ) : null}
+                              <p className="min-w-0 text-left">
+                                {idx + 1}. {loc.text}
+                              </p>
+                            </div>
+                          </Link>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

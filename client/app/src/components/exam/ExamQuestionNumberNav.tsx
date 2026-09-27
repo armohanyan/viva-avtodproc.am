@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
 
@@ -9,8 +10,6 @@ export type ExamQuestionNumberNavProps = {
 	currentIndex: number;
 	statuses: QuestionNavItemStatus[];
 	onSelect: (index: number) => void;
-	/** Keep the number strip fixed while the question list scrolls (scroll layout). */
-	pinned?: boolean;
 	className?: string;
 };
 
@@ -32,22 +31,10 @@ function statusLabel(
 function scrollChildIntoContainer(scroller: HTMLElement, child: HTMLElement) {
 	const scrollerRect = scroller.getBoundingClientRect();
 	const childRect = child.getBoundingClientRect();
-	const isColumn = getComputedStyle(scroller).flexDirection === "column";
-
-	if (isColumn) {
-		const overflowTop = childRect.top < scrollerRect.top;
-		const overflowBottom = childRect.bottom > scrollerRect.bottom;
-		if (!overflowTop && !overflowBottom) return;
-		scroller.scrollTop +=
-			childRect.top - scrollerRect.top - (scrollerRect.height - childRect.height) / 2;
-		return;
-	}
-
-	const overflowLeft = childRect.left < scrollerRect.left;
-	const overflowRight = childRect.right > scrollerRect.right;
-	if (!overflowLeft && !overflowRight) return;
-	scroller.scrollLeft +=
-		childRect.left - scrollerRect.left - (scrollerRect.width - childRect.width) / 2;
+	const overflowTop = childRect.top < scrollerRect.top;
+	const overflowBottom = childRect.bottom > scrollerRect.bottom;
+	if (!overflowTop && !overflowBottom) return;
+	scroller.scrollTop += childRect.top - scrollerRect.top - (scrollerRect.height - childRect.height) / 2;
 }
 
 export default function ExamQuestionNumberNav({
@@ -55,19 +42,39 @@ export default function ExamQuestionNumberNav({
 	currentIndex,
 	statuses,
 	onSelect,
-	pinned = false,
 	className,
 }: ExamQuestionNumberNavProps) {
 	const { t } = useLang();
 	const scrollerRef = useRef<HTMLDivElement>(null);
 	const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+	const [canScrollUp, setCanScrollUp] = useState(false);
+	const [canScrollDown, setCanScrollDown] = useState(false);
 
 	useEffect(() => {
 		const scroller = scrollerRef.current;
 		const btn = itemRefs.current[currentIndex];
 		if (!scroller || !btn) return;
 		scrollChildIntoContainer(scroller, btn);
-	}, [currentIndex]);
+	}, [currentIndex, total]);
+
+	useEffect(() => {
+		const scroller = scrollerRef.current;
+		if (!scroller) return;
+		const update = () => {
+			const up = scroller.scrollTop > 4;
+			const down = scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 4;
+			setCanScrollUp(up);
+			setCanScrollDown(down);
+		};
+		update();
+		scroller.addEventListener("scroll", update, { passive: true });
+		const observer = new ResizeObserver(update);
+		observer.observe(scroller);
+		return () => {
+			scroller.removeEventListener("scroll", update);
+			observer.disconnect();
+		};
+	}, [total]);
 
 	if (total <= 0) return null;
 
@@ -75,59 +82,71 @@ export default function ExamQuestionNumberNav({
 		<nav
 			aria-label={t("examQuizQuestionNavLabel")}
 			className={cn(
-				"z-20 h-fit min-w-0",
-				pinned
-					? // Scroll mode: always a sticky top strip so numbers stay fixed while questions move.
-						"sticky top-0 mb-4 w-full -mx-1 rounded-xl border border-border bg-background/95 px-2 py-2 shadow-xs backdrop-blur supports-[backdrop-filter]:bg-background/80"
-					: cn(
-							"mb-4 w-full -mx-1 rounded-xl border border-border bg-background/95 px-2 py-2 shadow-xs backdrop-blur supports-[backdrop-filter]:bg-background/80",
-							"lg:mx-0 lg:mb-0 lg:w-auto lg:shrink-0 lg:self-start lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none lg:backdrop-blur-none",
-						),
+				"sticky top-3 z-20 flex h-[calc(100dvh-9.5rem)] w-9 shrink-0 flex-col self-start rounded-lg border border-border bg-background/95 py-0.5 shadow-xs",
 				className,
 			)}
 		>
-			<div
-				ref={scrollerRef}
-				className={cn(
-					// Extra padding so circle borders + current ring aren't clipped by overflow.
-					"flex gap-1.5 overflow-x-auto overscroll-x-contain px-1 py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-					// Step mode: vertical rail on large screens. Scroll/pinned mode: keep horizontal so sticky top works reliably.
-					!pinned &&
-						"lg:max-h-[min(70vh,36rem)] lg:w-16 lg:flex-col lg:items-center lg:overflow-y-auto lg:px-2 lg:py-2",
-				)}
-			>
-				{Array.from({ length: total }, (_, i) => {
-					const status = statuses[i] ?? "unanswered";
-					const isCurrent = i === currentIndex;
-					return (
-						<button
-							key={i}
-							ref={(el) => {
-								itemRefs.current[i] = el;
-							}}
-							type="button"
-							onClick={() => onSelect(i)}
-							aria-label={statusLabel(status, i + 1, isCurrent, t)}
-							aria-current={isCurrent ? "true" : undefined}
-							className={cn(
-								"inline-flex size-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold tabular-nums transition-colors",
-								"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-								"max-sm:size-10 max-sm:text-sm",
-								isCurrent && "ring-2 ring-primary ring-offset-2 ring-offset-background",
-								status === "correct" &&
-									"border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600/90",
-								status === "wrong" && "border-red-600 bg-red-600 text-white hover:bg-red-600/90",
-								status === "answered" &&
-									"border-primary bg-primary/15 text-foreground hover:bg-primary/25",
-								status === "unanswered" &&
-									"border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
-							)}
-						>
-							{i + 1}
-						</button>
-					);
-				})}
+			<div className="relative min-h-0 flex-1">
+				<div
+					ref={scrollerRef}
+					className="flex h-full flex-col items-center gap-0.5 overflow-y-auto overscroll-y-contain px-0.5 py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+				>
+					{Array.from({ length: total }, (_, i) => {
+						const status = statuses[i] ?? "unanswered";
+						const isCurrent = i === currentIndex;
+						return (
+							<button
+								key={i}
+								ref={(el) => {
+									itemRefs.current[i] = el;
+								}}
+								type="button"
+								onClick={() => onSelect(i)}
+								aria-label={statusLabel(status, i + 1, isCurrent, t)}
+								aria-current={isCurrent ? "true" : undefined}
+								className={cn(
+									"inline-flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold tabular-nums transition-colors",
+									"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+									isCurrent && "ring-2 ring-primary",
+									status === "correct" &&
+										"border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-600/90",
+									status === "wrong" && "border-red-600 bg-red-600 text-white hover:bg-red-600/90",
+									status === "answered" &&
+										"border-primary bg-primary/15 text-foreground hover:bg-primary/25",
+									status === "unanswered" &&
+										"border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+								)}
+							>
+								{i + 1}
+							</button>
+						);
+					})}
+				</div>
+				{canScrollUp ? (
+					<div
+						className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-background to-transparent"
+						aria-hidden
+					/>
+				) : null}
+				{canScrollDown ? (
+					<div
+						className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-background to-transparent"
+						aria-hidden
+					/>
+				) : null}
 			</div>
+			{canScrollDown ? (
+				<button
+					type="button"
+					className="mx-auto inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+					aria-label={t("examQuizQuestionNavScrollMore")}
+					onClick={() => {
+						scrollerRef.current?.scrollBy({ top: 160, behavior: "smooth" });
+					}}
+				>
+					<ChevronDown className="size-4" aria-hidden />
+				</button>
+			) : null}
 		</nav>
 	);
 }

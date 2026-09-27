@@ -1,35 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
-import { ArrowLeft, Bookmark, BookmarkCheck, ChevronLeft, ChevronRight, Loader2, MessageSquare, Send, Share2, Trash2 } from "lucide-react";
+import { useLocation } from "wouter";
+import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, MessageSquare, Send, Share2, Trash2 } from "lucide-react";
+import ExamQuizQuestionSaveButton from "src/components/exam/ExamQuizQuestionSaveButton";
 import ExamQuizToolbarIconButton from "src/components/exam/ExamQuizToolbarIconButton";
-import { quizToolbarToolGroup } from "src/components/exam/quizToolbarStyles";
 import { Card } from "src/components/ui/card";
-import { Button } from "src/components/ui/button";
 import { TooltipProvider } from "src/components/ui/tooltip";
 import ExamQuestionFigure from "src/components/ExamQuestionFigure";
 import { useAccount } from "src/modules/accounts";
 import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
+import { quizBareIconButton } from "src/components/exam/quizToolbarStyles";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import {
   addQuestionComment,
   deleteQuestionComment,
-  getQuestionSavedState,
   loadQuestionById,
   loadQuestionComments,
-  setQuestionSavedState,
   type ExamQuestionComment,
 } from "src/lib/examQuestionEngagement";
 import { getQuestionInLang, type ExamQuestion } from "src/data/examSampleQuestions";
-import { cn } from "src/lib/utils";
+import { leaveQuestionDetail } from "src/lib/questionSessionReturn";
 
 type Props = {
   questionId: string;
   backHref: string;
-  savedHref?: string;
 };
 
-export default function QuestionDetailView({ questionId, backHref, savedHref }: Props) {
+export default function QuestionDetailView({ questionId, backHref }: Props) {
   const roleLabel = (role: ExamQuestionComment["commenter"]["role"]): string => {
     if (role === "super_admin" || role === "admin") return t("roleAdmin");
     if (role === "instructor") return t("roleInstructor");
@@ -51,12 +48,9 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
   const COMMENTS_PAGE_SIZE = 8;
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [savingBusy, setSavingBusy] = useState(false);
 
   const canComment = user?.accountType === "student" || user?.accountType === "instructor" || user?.accountType === "admin" || user?.accountType === "super_admin";
   const canModerate = user?.accountType === "admin" || user?.accountType === "super_admin";
-  const canSave = user?.accountType === "student";
 
   useEffect(() => {
     setCommentsPage(1);
@@ -107,39 +101,7 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
     };
   }, [COMMENTS_PAGE_SIZE, commentsPage, questionId]);
 
-  useEffect(() => {
-    if (!canSave) {
-      setSaved(false);
-      return;
-    }
-    let mounted = true;
-    void getQuestionSavedState(questionId)
-      .then((v) => {
-        if (mounted) setSaved(v);
-      })
-      .catch(() => {
-        if (mounted) setSaved(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [canSave, questionId]);
-
   const localized = useMemo(() => (question ? getQuestionInLang(question, lang) : null), [question, lang]);
-
-  const toggleSaved = async () => {
-    if (!canSave || savingBusy) return;
-    setSavingBusy(true);
-    try {
-      const next = await setQuestionSavedState(questionId, !saved);
-      setSaved(next);
-      showToast(next ? t("questionSavedToast") : t("questionUnsavedToast"), "success");
-    } catch (e) {
-      showToast(getApiErrorMessage(e), "error");
-    } finally {
-      setSavingBusy(false);
-    }
-  };
 
   const onShare = async () => {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -212,8 +174,7 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
           <p className="text-sm text-muted-foreground mb-4">{questionError || t("questionDetailNotFound")}</p>
           <ExamQuizToolbarIconButton
             label={t("examQuizBackToList")}
-            variant="outline"
-            onClick={() => setLocation(backHref)}
+            onClick={() => leaveQuestionDetail(setLocation, backHref)}
           >
             <ArrowLeft className="size-4" aria-hidden />
           </ExamQuizToolbarIconButton>
@@ -228,51 +189,20 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
         <div className="mb-4 flex items-center gap-3">
           <ExamQuizToolbarIconButton
             label={t("examQuizBackToList")}
-            variant="ghost"
-            onClick={() => setLocation(backHref)}
+            onClick={() => leaveQuestionDetail(setLocation, backHref)}
           >
             <ArrowLeft className="size-4" aria-hidden />
           </ExamQuizToolbarIconButton>
-          {savedHref ? (
-            <div className={quizToolbarToolGroup}>
-              <ExamQuizToolbarIconButton
-                label={t("questionSavedListTitle")}
-                onClick={() => setLocation(savedHref)}
-              >
-                <Bookmark className="size-4" aria-hidden />
-              </ExamQuizToolbarIconButton>
-            </div>
-          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            <ExamQuizQuestionSaveButton questionId={questionId} />
+            <ExamQuizToolbarIconButton label={t("questionShareAction")} onClick={() => void onShare()}>
+              <Share2 className="size-4" aria-hidden />
+            </ExamQuizToolbarIconButton>
+          </div>
         </div>
       </TooltipProvider>
 
-      <Card className="p-6 sm:p-8">
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          {canSave ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={toggleSaved}
-              disabled={savingBusy}
-              title={saved ? t("questionUnsaveAction") : t("questionSaveAction")}
-              aria-label={saved ? t("questionUnsaveAction") : t("questionSaveAction")}
-            >
-              {saved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={onShare}
-            title={t("questionShareAction")}
-            aria-label={t("questionShareAction")}
-          >
-            <Share2 className="w-4 h-4" />
-          </Button>
-        </div>
-
+      <Card className="p-2">
         {question.imageUrl ? <ExamQuestionFigure url={question.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
         <h1 className="text-lg font-semibold text-foreground mb-4">{localized.text}</h1>
         <div className="space-y-2">
@@ -308,16 +238,16 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
               maxLength={2000}
             />
             <div className="mt-2 flex justify-end">
-              <Button
+              <button
                 type="button"
-                size="icon"
                 onClick={submitComment}
                 disabled={commentBusy || commentText.trim().length < 2}
                 title={t("questionCommentSubmit")}
                 aria-label={t("questionCommentSubmit")}
+                className={quizBareIconButton}
               >
                 <Send className="w-4 h-4" />
-              </Button>
+              </button>
             </div>
           </div>
         ) : (
@@ -360,22 +290,22 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
         )}
         {!loadingComments && !commentsError && commentsTotal > COMMENTS_PAGE_SIZE ? (
           <div className="mt-4 flex items-center justify-end gap-2">
-            <Button
-              size="icon"
-              variant="outline"
+            <button
+              type="button"
+              className={quizBareIconButton}
               onClick={() => setCommentsPage((p) => Math.max(1, p - 1))}
               disabled={commentsPage <= 1}
               aria-label={t("questionCommentsPrev")}
               title={t("questionCommentsPrev")}
             >
               <ChevronLeft className="w-4 h-4" />
-            </Button>
+            </button>
             <span className="text-xs text-muted-foreground">
               {commentsPage} / {Math.max(1, Math.ceil(commentsTotal / COMMENTS_PAGE_SIZE))}
             </span>
-            <Button
-              size="icon"
-              variant="outline"
+            <button
+              type="button"
+              className={quizBareIconButton}
               onClick={() =>
                 setCommentsPage((p) => Math.min(Math.max(1, Math.ceil(commentsTotal / COMMENTS_PAGE_SIZE)), p + 1))
               }
@@ -384,7 +314,7 @@ export default function QuestionDetailView({ questionId, backHref, savedHref }: 
               title={t("questionCommentsNext")}
             >
               <ChevronRight className="w-4 h-4" />
-            </Button>
+            </button>
           </div>
         ) : null}
       </Card>

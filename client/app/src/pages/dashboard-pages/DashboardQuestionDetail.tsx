@@ -1,6 +1,7 @@
 import { Redirect, useRoute } from "wouter";
 import DashboardLayout from "src/components/DashboardLayout";
 import QuestionDetailView from "src/components/exam/QuestionDetailView";
+import { readQuestionReturnTo } from "src/lib/questionSessionReturn";
 
 export default function DashboardQuestionDetail() {
   const [examMatch, examParams] = useRoute("/dashboard/learn/exam-tests/question/:id");
@@ -15,17 +16,18 @@ export default function DashboardQuestionDetail() {
     return <Redirect to="/dashboard/learn/exam-tests" />;
   }
 
-  const backHref = roadSignsMatch
+  const fallbackHref = roadSignsMatch
     ? "/dashboard/learn/road-signs"
     : themeMatch
       ? "/dashboard/learn/thematic-tests"
       : examMatch
         ? "/dashboard/learn/exam-tests"
         : "/dashboard/exam-tests";
+  const backHref = readQuestionReturnTo(fallbackHref);
 
   return (
     <DashboardLayout>
-      <QuestionDetailView questionId={questionId} backHref={backHref} savedHref="/dashboard/learn/saved-questions" />
+      <QuestionDetailView questionId={questionId} backHref={backHref} />
     </DashboardLayout>
   );
 }

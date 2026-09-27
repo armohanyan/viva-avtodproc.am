@@ -9,7 +9,7 @@ import ExamQuestionNumberNav, {
 	buildQuestionNavStatuses,
 } from "src/components/exam/ExamQuestionNumberNav";
 import ExamQuizFocusModeButton from "src/components/exam/ExamQuizFocusModeButton";
-import { quizToolbarToolGroup } from "src/components/exam/quizToolbarStyles";
+import { quizBareIconButton, quizToolbarToolGroup } from "src/components/exam/quizToolbarStyles";
 import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
 import { TooltipProvider } from "src/components/ui/tooltip";
@@ -217,22 +217,29 @@ function InstructorQuestionsCategoryView() {
 
 	return (
 		<div className={cn("mx-auto w-full", focusMode ? "max-w-5xl" : "max-w-4xl")}>
-			<div className="mb-3">
-				<Link href="/instructor/questions">
-					<Button variant="outline" size="icon" aria-label={t("instructorQuestionsBack")}>
-						<ArrowLeft className="w-4 h-4" aria-hidden />
-					</Button>
-				</Link>
-			</div>
-
 			{!focusMode ? (
 				<PanelPageHeader
 					className="mb-4"
 					icon={BookOpen}
 					title={categoryTitle || t("instructorQuestionsTitle")}
 					subtitle={t("instructorQuestionsCategorySubtitle")}
+					leading={
+						<Link href="/instructor/questions" aria-label={t("instructorQuestionsBack")}>
+							<span className={quizBareIconButton}>
+								<ArrowLeft className="w-4 h-4" aria-hidden />
+							</span>
+						</Link>
+					}
 				/>
-			) : null}
+			) : (
+				<div className="mb-3">
+					<Link href="/instructor/questions" aria-label={t("instructorQuestionsBack")}>
+						<span className={quizBareIconButton}>
+							<ArrowLeft className="w-4 h-4" aria-hidden />
+						</span>
+					</Link>
+				</div>
+			)}
 
 			{loading ? (
 				<p className="text-sm text-muted-foreground">{t("loading")}</p>
@@ -264,22 +271,18 @@ function InstructorQuestionsCategoryView() {
 						</div>
 					</TooltipProvider>
 
-					<div
-						className={cn(
-							layoutMode === "scroll" ? "flex flex-col" : "lg:flex lg:items-start lg:gap-4",
-						)}
-					>
+					<div className="flex items-start gap-1.5 sm:gap-3">
 						<ExamQuestionNumberNav
 							total={pool.length}
 							currentIndex={index}
 							statuses={navStatuses}
 							onSelect={goToIndex}
-							pinned={layoutMode === "scroll"}
+							className={focusMode ? "h-[calc(100dvh-6rem)]" : undefined}
 						/>
 
 						<div className="min-w-0 flex-1">
 							{layoutMode === "step" && question && localized ? (
-								<Card className="border-border p-5 sm:p-8">
+								<Card className="border-border p-2">
 									<p className="text-lg sm:text-xl font-semibold text-foreground leading-snug mb-5">
 										{localized.text}
 									</p>
@@ -397,7 +400,7 @@ function InstructorQuestionsCategoryView() {
 												key={q.id}
 												id={questionDomId(q.id)}
 												className={cn(
-													"scroll-mt-24 border-border p-5 sm:p-8",
+													"scroll-mt-24 border-border p-2",
 													qIdx === index && "ring-2 ring-primary/40",
 												)}
 											>

@@ -11,16 +11,15 @@ export default function InstructorThemeExams() {
   return (
     <InstructorPanelLayout>
       <InstructorScopeGuard require="theory">
-        <div className="mb-4">
-          <Link href="/instructor/questions">
-            <Button variant="outline" size="sm" className="gap-2">
-              <ArrowLeft className="w-4 h-4" />
-              {t("instructorQuestionsBack")}
-            </Button>
-          </Link>
-        </div>
         <ThemeExamsPage
           quizHrefForPack={(packIndex) => `/instructor/questions/theme-exams/quiz/full?themeExam=${packIndex}`}
+          headerLeading={
+            <Link href="/instructor/questions" aria-label={t("instructorQuestionsBack")}>
+              <Button variant="outline" size="icon" aria-label={t("instructorQuestionsBack")}>
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            </Link>
+          }
         />
       </InstructorScopeGuard>
     </InstructorPanelLayout>

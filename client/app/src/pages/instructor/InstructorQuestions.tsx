@@ -95,7 +95,6 @@ export default function InstructorQuestions() {
 								</div>
 								<div className="min-w-0 flex-1">
 									<p className="text-sm font-medium text-foreground">{t("themeExamsTitle")}</p>
-									<p className="text-xs text-muted-foreground mt-0.5">{t("themeExamsSubtitle")}</p>
 								</div>
 								<ArrowUpRight className="w-4 h-4 text-muted-foreground shrink-0" aria-hidden />
 							</Link>

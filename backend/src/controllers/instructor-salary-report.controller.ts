@@ -23,4 +23,18 @@ export default class InstructorSalaryReportController {
       next(e);
     }
   }
+
+  /** Current-period expectation and payout history for the authenticated instructor only. */
+  static async overview(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const id = req.staff?.sub != null ? Number(req.staff.sub) : Number.NaN;
+      if (!Number.isFinite(id) || id <= 0) {
+        throw new UnauthorizedError('Authentication required', HttpStatusCodesUtil.UNAUTHORIZED);
+      }
+      const data = await InstructorSalaryReportService.overview(id);
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
 }

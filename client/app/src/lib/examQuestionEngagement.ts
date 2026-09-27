@@ -88,3 +88,29 @@ export async function loadMySavedQuestions(): Promise<ExamQuestion[]> {
   const rows = await vivaApiJson<ExamQuestionDto[]>("/exam-questions/saved/mine");
   return rows.map(mapDto);
 }
+
+let savedIdSet: Set<string> | null = null;
+let savedIdSetPromise: Promise<Set<string>> | null = null;
+
+/** One shared fetch so every question card can show bookmark state. */
+export function loadSavedQuestionIdSet(): Promise<Set<string>> {
+  if (savedIdSet) return Promise.resolve(savedIdSet);
+  if (!savedIdSetPromise) {
+    savedIdSetPromise = loadMySavedQuestions()
+      .then((rows) => {
+        savedIdSet = new Set(rows.map((row) => row.id));
+        return savedIdSet;
+      })
+      .catch((err: unknown) => {
+        savedIdSetPromise = null;
+        throw err;
+      });
+  }
+  return savedIdSetPromise;
+}
+
+export function rememberSavedQuestionId(questionId: string, saved: boolean): void {
+  if (!savedIdSet) savedIdSet = new Set();
+  if (saved) savedIdSet.add(questionId);
+  else savedIdSet.delete(questionId);
+}

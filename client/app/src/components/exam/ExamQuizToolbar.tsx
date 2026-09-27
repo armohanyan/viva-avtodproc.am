@@ -16,6 +16,7 @@ export type ExamQuizToolbarProps = {
 	onFocusToggle: () => void;
 	layoutMode: QuizLayoutMode;
 	onLayoutModeChange: (mode: QuizLayoutMode) => void;
+	className?: string;
 };
 
 export default function ExamQuizToolbar({
@@ -26,26 +27,28 @@ export default function ExamQuizToolbar({
 	onFocusToggle,
 	layoutMode,
 	onLayoutModeChange,
+	className,
 }: ExamQuizToolbarProps) {
 	const { t } = useLang();
 
 	return (
 		<TooltipProvider delayDuration={300}>
-			<div className="mb-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+			<div
+				className={cn(
+					"sticky top-0 z-30 mb-6 flex items-center justify-between gap-2 bg-background py-2",
+					className,
+				)}
+			>
 				<div className="flex min-w-0 items-center gap-2">
-					<ExamQuizToolbarIconButton
-						label={t("examQuizBackToList")}
-						onClick={onBack}
-						variant="ghost"
-					>
+					<ExamQuizToolbarIconButton label={t("examQuizBackToList")} onClick={onBack}>
 						<ArrowLeft className="size-4" aria-hidden />
 					</ExamQuizToolbarIconButton>
-					<div className="min-w-0 text-sm text-muted-foreground">{progress}</div>
+					<div className="min-w-0 truncate text-sm text-muted-foreground">{progress}</div>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+				<div className="flex shrink-0 items-center gap-2">
 					{countdown ? <div className="shrink-0">{countdown}</div> : null}
-					<div className={cn(quizToolbarToolGroup, "gap-1")}>
+					<div className={cn(quizToolbarToolGroup, "gap-2")}>
 						<ExamQuizLayoutToggle mode={layoutMode} onChange={onLayoutModeChange} />
 					</div>
 					<ExamQuizFocusModeButton active={focusMode} onToggle={onFocusToggle} />

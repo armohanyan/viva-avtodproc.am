@@ -8,12 +8,14 @@ import {
 	InstructorNotificationsPage,
 	InstructorClassSchedulePage,
 	InstructorReportsPage,
+	InstructorSalaryPage,
 	InstructorFuelExpensesPage,
 	InstructorQuestionsPage,
 	InstructorQuestionsCategoryPage,
 	InstructorQuestionPresentPage,
 	InstructorThemeExamsPage,
 	InstructorThemeExamQuizPage,
+	InstructorQuestionDetailPage,
 } from "src/pages/instructor";
 
 const INSTRUCTOR: readonly AccountType[] = ["instructor"];
@@ -49,6 +51,11 @@ export const instructorRoutes: readonly AppRoute[] = [
 		allowedAccountTypes: INSTRUCTOR,
 	},
 	{
+		path: "/instructor/questions/theme-exams/question/:id",
+		component: InstructorQuestionDetailPage,
+		allowedAccountTypes: INSTRUCTOR,
+	},
+	{
 		path: "/instructor/questions/theme-exams",
 		component: InstructorThemeExamsPage,
 		allowedAccountTypes: INSTRUCTOR,
@@ -56,6 +63,7 @@ export const instructorRoutes: readonly AppRoute[] = [
 	{ path: "/instructor/questions", component: InstructorQuestionsPage, allowedAccountTypes: INSTRUCTOR },
 	{ path: "/instructor/cars", component: InstructorCarsPage, allowedAccountTypes: INSTRUCTOR },
 	{ path: "/instructor/reports", component: InstructorReportsPage, allowedAccountTypes: INSTRUCTOR },
+	{ path: "/instructor/salary", component: InstructorSalaryPage, allowedAccountTypes: INSTRUCTOR },
 	{ path: "/instructor/fuel-expenses", component: InstructorFuelExpensesPage, allowedAccountTypes: INSTRUCTOR },
 	{ path: "/instructor/profile", component: InstructorProfilePage, allowedAccountTypes: INSTRUCTOR },
 	{ path: "/instructor/notifications", component: InstructorNotificationsPage, allowedAccountTypes: INSTRUCTOR },
