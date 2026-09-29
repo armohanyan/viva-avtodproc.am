@@ -202,6 +202,38 @@ function resolveAdminTotalPriceAmd(override: number | undefined, computed: numbe
   return Math.max(0, Math.round(computed));
 }
 
+const ADMIN_BOOKING_PAYMENT_METHODS = ['card', 'idram', 'cash', 'transfer'] as const;
+type AdminBookingPaymentMethod = (typeof ADMIN_BOOKING_PAYMENT_METHODS)[number];
+
+/** Method + optional first-payment timestamp from an admin booking PATCH. */
+function adminCollectedIncomeSyncOpts(patch: object):
+  | {
+      method?: AdminBookingPaymentMethod;
+      createdAt?: string;
+      replaceExistingMethod?: boolean;
+      createdByUserId?: number | null;
+    }
+  | undefined {
+  const methodRaw = (patch as { paymentMethod?: unknown }).paymentMethod;
+  const method = (ADMIN_BOOKING_PAYMENT_METHODS as readonly unknown[]).includes(methodRaw)
+    ? (methodRaw as AdminBookingPaymentMethod)
+    : undefined;
+  const recordedRaw = (patch as { paymentRecordedAt?: unknown }).paymentRecordedAt;
+  const createdAt =
+    typeof recordedRaw === 'string' && recordedRaw.trim() && !Number.isNaN(new Date(recordedRaw).getTime())
+      ? recordedRaw
+      : undefined;
+  const staffRaw = (patch as { recordedByUserId?: unknown }).recordedByUserId;
+  const staffId = typeof staffRaw === 'number' ? staffRaw : Number(staffRaw);
+  const createdByUserId = Number.isFinite(staffId) && staffId > 0 ? staffId : undefined;
+  if (!method && !createdAt && createdByUserId == null) return undefined;
+  return {
+    ...(method ? { method, replaceExistingMethod: true as const } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(createdByUserId != null ? { createdByUserId } : {}),
+  };
+}
+
 function adminPaymentDbPatch(
   totalPriceAmd: number,
   input: { adminPaymentStatus?: AdminBookingPaymentStatus; paidAmountAmd?: number },
@@ -4871,7 +4903,7 @@ export default class BookingService {
         if (lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)) {
           await TheoryCohortService.ensureEnrolledInTx(patch.theoryCohortId, nextStudentId, transaction);
         }
-        await FinanceService.syncBookingCollectedIncome(id, transaction);
+        await FinanceService.syncBookingCollectedIncome(id, transaction, adminCollectedIncomeSyncOpts(patch));
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -5042,7 +5074,7 @@ export default class BookingService {
           nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
-        await FinanceService.syncBookingCollectedIncome(id, transaction);
+        await FinanceService.syncBookingCollectedIncome(id, transaction, adminCollectedIncomeSyncOpts(patch));
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -5154,7 +5186,7 @@ export default class BookingService {
         nextStatusRaw: lifecycleStatus ?? patch.status,
         transaction,
       });
-      await FinanceService.syncBookingCollectedIncome(id, transaction);
+      await FinanceService.syncBookingCollectedIncome(id, transaction, adminCollectedIncomeSyncOpts(patch));
 
       // When a package sale payment changes, credit lessons follow.
       if (isPackagePurchaseMeta(row.prepaidMeta) && payUpdate.paymentStatus !== undefined) {
@@ -5196,6 +5228,10 @@ export default class BookingService {
       allowCustomPracticalTime?: boolean;
       customSlotEndTime?: string;
       paidSlotEntries?: readonly { dateIso: string; time: string }[];
+      paymentMethod?: 'card' | 'idram' | 'cash' | 'transfer';
+      paymentRecordedAt?: string;
+      /** Staff user from the auth token. Not a booking column — used when creating a kassa row. */
+      recordedByUserId?: number | null;
     }>,
   ): Promise<BookingAdminDto | null> {
     const row = await Booking.findByPk(id);
@@ -5430,7 +5466,7 @@ export default class BookingService {
           nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
-        await FinanceService.syncBookingCollectedIncome(row.id, transaction);
+        await FinanceService.syncBookingCollectedIncome(row.id, transaction, adminCollectedIncomeSyncOpts(patch));
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {

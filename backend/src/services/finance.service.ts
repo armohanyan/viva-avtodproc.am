@@ -183,7 +183,18 @@ export default class FinanceService {
   static async syncBookingCollectedIncome(
     bookingId: number,
     transaction?: SequelizeTransaction,
-    opts?: { createdAt?: Date | string | null; method?: FinanceTxMethod; createdByUserId?: number | null },
+    opts?: {
+      createdAt?: Date | string | null;
+      method?: FinanceTxMethod;
+      createdByUserId?: number | null;
+      /**
+       * Admin changed the booking payment method. Rewrite existing manual income rows.
+       * System (vPOS) rows stay as recorded.
+       */
+      replaceExistingMethod?: boolean;
+      /** When set, `createdAt` also applies to a new installment even if older rows exist. */
+      forceCreatedAt?: boolean;
+    },
   ): Promise<void> {
     const id = Math.floor(Number(bookingId));
     if (!Number.isFinite(id) || id <= 0) return;
@@ -203,6 +214,14 @@ export default class FinanceService {
       transaction,
       lock: transaction ? Transaction.LOCK.UPDATE : undefined,
     });
+
+    if (opts?.replaceExistingMethod && opts.method) {
+      for (const row of rows) {
+        if (row.source !== 'manual') continue;
+        if (row.method === opts.method) continue;
+        await row.update({ method: opts.method }, { transaction });
+      }
+    }
 
     let sum = 0;
     for (const row of rows) {
@@ -224,7 +243,10 @@ export default class FinanceService {
         opts?.method ??
         (rows[rows.length - 1]?.method as FinanceTxMethod | undefined) ??
         'cash';
-      const createdAt = opts?.createdAt ? new Date(opts.createdAt) : new Date();
+      // First kassa line can use the datetime the admin picked. Later installments stay "today"
+      // unless the caller explicitly backdates the delta (finance row edit).
+      const applyExplicitCreatedAt = Boolean(opts?.createdAt) && (opts?.forceCreatedAt || rows.length === 0);
+      const createdAt = applyExplicitCreatedAt ? new Date(opts!.createdAt as Date | string) : new Date();
       const createdByUserIdRaw = opts?.createdByUserId != null ? Number(opts.createdByUserId) : null;
       const createdByUserId =
         createdByUserIdRaw != null && Number.isFinite(createdByUserIdRaw) && createdByUserIdRaw > 0
@@ -737,6 +759,7 @@ export default class FinanceService {
     if (row.entryType === 'income' && row.bookingId != null) {
       await FinanceService.syncBookingCollectedIncome(Number(row.bookingId), undefined, {
         createdAt: nextCreatedAt ?? undefined,
+        forceCreatedAt: nextCreatedAt != null,
         method: (input.method ?? row.method) as FinanceTxMethod,
       });
       await row.reload();

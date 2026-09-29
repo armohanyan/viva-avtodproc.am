@@ -26,7 +26,6 @@ import {
   adminPaymentApiPayload,
   adminPaymentFromBooking,
   bookingStatusFromAdminPayment,
-  paidAmountFromState,
   validateAdminBookingPayment,
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
@@ -52,13 +51,6 @@ function parseTotalPriceAmd(str: string, fallback: number): number {
   const parsed = parseAmdInput(str);
   if (!Number.isFinite(parsed) || parsed < 0) return Math.max(0, Math.round(fallback));
   return Math.max(0, Math.round(parsed));
-}
-
-function financeStatusFromBookingStatus(status: Status): "completed" | "pending" | "failed" | "refunded" {
-  if (status === "confirmed") return "completed";
-  if (status === "refunded") return "refunded";
-  if (status === "cancelled") return "failed";
-  return "pending";
 }
 
 function slotsFromBooking(booking: AdminBookingRow): { dateIso: string; time: string }[] {
@@ -243,10 +235,6 @@ export default function PracticalBookingDetailModal({
 
     const paymentBody = adminPaymentApiPayload(bookingPayment, totalPriceAmd);
     const lifecycleStatus = bookingStatusFromAdminPayment(paymentBody.adminPaymentStatus, status);
-    const paid =
-      paymentBody.adminPaymentStatus === "paid"
-        ? totalPriceAmd
-        : paymentBody.paidAmountAmd ?? paidAmountFromState(bookingPayment);
 
     setSubmitting(true);
     try {
@@ -300,29 +288,6 @@ export default function PracticalBookingDetailModal({
             : {}),
         },
       });
-
-      const hasSystemTx = Boolean(booking.systemFinanceTx);
-      if (!hasSystemTx && paid > 0) {
-        const bookingIdNum = Number(booking.id);
-        // Never inflate an existing kassa line to the new paid total — the booking PATCH
-        // sync adds a separate installment for the remaining cash.
-        if (!booking.manualFinanceTx?.id) {
-          await vivaApiJson("/finance/transactions", {
-            method: "POST",
-            body: {
-              createdAt: new Date(bookingPayment.datetimeLocal).toISOString(),
-              customer: (booking.studentName ?? "").trim() || `Student #${booking.studentId}`,
-              email: (booking.studentEmail ?? "").trim(),
-              branchId: Number(branchId),
-              method: bookingPayment.method,
-              grossAmd: paid,
-              status: financeStatusFromBookingStatus(status),
-              source: "manual",
-              bookingId: bookingIdNum,
-            },
-          });
-        }
-      }
 
       showToast(t("bookingUpdatedToast"), "success");
       onChanged();

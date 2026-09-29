@@ -60,6 +60,10 @@ const createBodySchema = z.object({
       }),
     )
     .optional(),
+  /** Office payment channel (cash, card, transfer, idram). Applied to the booking's kassa rows. */
+  paymentMethod: z.enum(['card', 'idram', 'cash', 'transfer']).optional(),
+  /** When the admin recorded the payment. Used for the first kassa row only. */
+  paymentRecordedAt: z.string().optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -669,7 +673,11 @@ export default class BookingController {
   static async update(req: Request, res: Response, next: NextFunction) {
     try {
       const body = parseBody(updateSchema, req.body);
-      const row = await BookingService.updateAdmin(Number(req.params.id), body);
+      const recordedByUserId = readStaffUserIdFromToken(req);
+      const row = await BookingService.updateAdmin(Number(req.params.id), {
+        ...body,
+        ...(recordedByUserId != null ? { recordedByUserId } : {}),
+      });
       if (!row) {
         return next(new ResourceNotFoundError('Booking not found', HttpStatusCodesUtil.NOT_FOUND));
       }

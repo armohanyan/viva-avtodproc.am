@@ -553,8 +553,6 @@ export default function AdminBookings() {
   const [usePracticalPackageCredits, setUsePracticalPackageCredits] = useState(true);
   const [addGiftNote, setAddGiftNote] = useState("");
   const [editPaymentErrorKey, setEditPaymentErrorKey] = useState<import("src/lib/i18n").TranslationKey | null>(null);
-  /** Manual finance row id when editing a booking that already has a manual payment. */
-  const [editManualTxId, setEditManualTxId] = useState<number | null>(null);
   /** When set, booking has a system-generated payment — show notice instead of form. */
   const [editSystemPayment, setEditSystemPayment] = useState<AdminBookingFinanceLink | null>(null);
   const [slotPick, setSlotPick] = useState<LessonBookingPayload | null>(null);
@@ -1529,14 +1527,12 @@ export default function AdminBookings() {
   useEffect(() => {
     const source = editBookingPaymentSourceRef.current;
     if (!source) {
-      setEditManualTxId(null);
       setEditSystemPayment(null);
       return;
     }
     const manual = source.manualFinanceTx;
     const system = source.systemFinanceTx;
     if (manual) {
-      setEditManualTxId(manual.id);
       setEditSystemPayment(null);
       setEditBookingPayment(
         adminPaymentFromBooking(source, {
@@ -1545,7 +1541,6 @@ export default function AdminBookings() {
         }),
       );
     } else if (system) {
-      setEditManualTxId(null);
       setEditSystemPayment(system);
       setEditBookingPayment(
         adminPaymentFromBooking(source, {
@@ -1554,7 +1549,6 @@ export default function AdminBookings() {
         }),
       );
     } else {
-      setEditManualTxId(null);
       setEditSystemPayment(null);
       setEditBookingPayment(adminPaymentFromBooking(source));
     }
@@ -1669,36 +1663,6 @@ export default function AdminBookings() {
         source: "manual",
         ...(bid != null ? { bookingId: bid } : {}),
         ...(bid == null && description ? { description } : {}),
-      },
-    });
-  };
-
-  const patchManualFinance = async (
-    txId: number,
-    payment: BookingPaymentFields,
-    ctx: {
-      studentId: string;
-      branchId: string;
-      bookingIdNum: number;
-      financeDescription: string;
-      bookingStatus: string;
-    },
-  ) => {
-    const gross = parseAmdInput(payment.grossStr);
-    const created = new Date(payment.datetimeLocal);
-    const { name, email } = studentContact(studentsMini, ctx.studentId);
-    await vivaApiJson(`/finance/transactions/${encodeURIComponent(String(txId))}`, {
-      method: "PATCH",
-      body: {
-        customer: name.trim(),
-        email: email.trim(),
-        description: ctx.financeDescription.trim(),
-        branchId: Number(ctx.branchId),
-        method: payment.method,
-        grossAmd: gross,
-        status: financeStatusFromBookingStatus(ctx.bookingStatus),
-        createdAt: created.toISOString(),
-        bookingId: ctx.bookingIdNum,
       },
     });
   };
@@ -1835,29 +1799,6 @@ export default function AdminBookings() {
         method: "PATCH",
         body,
       });
-      const bookingIdNum = Number(editBooking.id);
-      const collectedAmd =
-        paymentBody.adminPaymentStatus === "paid"
-          ? Math.max(0, Math.round(editTotal))
-          : paymentBody.adminPaymentStatus === "partial"
-            ? Math.max(0, Math.round(paymentBody.paidAmountAmd ?? 0))
-            : 0;
-      // First cash only. Completing a partial must not PATCH the old kassa line to the full
-      // total (that shows +30,000 today). The booking API adds a separate +delta installment.
-      if (!editSystemPayment && collectedAmd > 0 && editManualTxId == null) {
-        const financeFields = {
-          ...bookingPaymentToFinanceFields(editBookingPayment),
-          grossStr: String(collectedAmd),
-        };
-        const ok = validatePaymentForSubmit(editBookingPayment, editBooking.studentId, true);
-        if (!ok) return;
-        await postManualFinance(financeFields, {
-          studentId: editBooking.studentId,
-          branchId: editBooking.branchId,
-          bookingIdNum,
-          bookingStatus: bookingLifecycleStatus,
-        });
-      }
       setEditBooking(null);
       lastEditSlotInitKey.current = "";
       setBookingModalTab("booking");

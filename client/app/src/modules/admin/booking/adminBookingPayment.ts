@@ -153,6 +153,12 @@ export function validateAdminBookingPayment(
   return null;
 }
 
+function paymentRecordedAtIso(datetimeLocal: string): string | undefined {
+  const created = new Date(datetimeLocal);
+  if (Number.isNaN(created.getTime())) return undefined;
+  return created.toISOString();
+}
+
 export function adminPaymentApiPayload(
   state: AdminBookingPaymentState,
   totalAmd: number,
@@ -161,6 +167,8 @@ export function adminPaymentApiPayload(
   paidAmountAmd?: number;
   paymentNotes?: string | null;
   paymentReminderDate?: string | null;
+  paymentMethod: TxMethod;
+  paymentRecordedAt?: string;
 } {
   const total = Math.max(0, Math.round(totalAmd));
   const paidFromField = Math.min(total, Math.max(0, paidAmountFromState(state)));
@@ -175,8 +183,18 @@ export function adminPaymentApiPayload(
       : state.paymentReminderDate.trim()
         ? state.paymentReminderDate.trim().slice(0, 10)
         : null;
+  const paymentMethod = state.method;
+  const paymentRecordedAt = paymentRecordedAtIso(state.datetimeLocal);
+  const recorded = paymentRecordedAt ? { paymentRecordedAt } : {};
   if (status === "paid") {
-    return { adminPaymentStatus: "paid", paidAmountAmd: total, paymentNotes: notes, paymentReminderDate: null };
+    return {
+      adminPaymentStatus: "paid",
+      paidAmountAmd: total,
+      paymentNotes: notes,
+      paymentReminderDate: null,
+      paymentMethod,
+      ...recorded,
+    };
   }
   if (status === "unpaid") {
     return {
@@ -184,6 +202,8 @@ export function adminPaymentApiPayload(
       paidAmountAmd: 0,
       paymentNotes: notes,
       paymentReminderDate: reminderDate,
+      paymentMethod,
+      ...recorded,
     };
   }
   return {
@@ -191,6 +211,8 @@ export function adminPaymentApiPayload(
     paidAmountAmd: paidFromField,
     paymentNotes: notes,
     paymentReminderDate: reminderDate,
+    paymentMethod,
+    ...recorded,
   };
 }
 
