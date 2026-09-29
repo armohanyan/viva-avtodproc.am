@@ -598,7 +598,7 @@ export default function PracticalBookingDetailModal({
           instructorId={instructor.id}
           instructorName={instructor.name}
           branchId={String(branchId || booking.branchId)}
-          dateIso={firstEntry?.dateIso ?? booking.dateIso}
+          dateIso={focusSlot?.dateIso?.slice(0, 10) || firstEntry?.dateIso || booking.dateIso}
           slotSource="practical"
           ignoreBusyBookingId={String(booking.id)}
           initialSelected={sortedEntries}

@@ -30,6 +30,7 @@ import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
   bookableTimesFromPlan,
+  lessonDurationTimesFromBookable,
   isSlotStartOutsideWorkWindow,
   normalizePracticalSlotPlan,
   practicalSlotRangeMinutesFromBookable,
@@ -616,7 +617,15 @@ export default function AdminDrivingDayModal({
     return mergeOrphanTimes(base, orphanTimes);
   }, [planRows, bookingByInstructorTime]);
 
-  const bookableTimes = useMemo(() => bookableTimesFromPlan(displayRows), [displayRows]);
+  const schoolDurationTimes = useMemo(
+    () =>
+      lessonDurationTimesFromBookable(
+        bookableTimesFromPlan(
+          ensureLunchBreakRow(planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN),
+        ),
+      ),
+    [planRows],
+  );
   const planTimeSet = useMemo(
     () =>
       new Set(
@@ -640,7 +649,16 @@ export default function AdminDrivingDayModal({
       if (busyTimesByInstructor.get(String(instructorId))?.has(padSlotTime(time))) {
         return "bookingSlotUnavailable";
       }
-      const slotRange = practicalSlotRangeMinutesFromBookable(time, bookableTimes);
+      const ownStarts: string[] = [];
+      for (const cell of bookingByInstructorTime.values()) {
+        if (String(cell.instructorId ?? "") === String(instructorId) && cell.time) {
+          ownStarts.push(cell.time);
+        }
+      }
+      const slotRange = practicalSlotRangeMinutesFromBookable(
+        time,
+        lessonDurationTimesFromBookable([...schoolDurationTimes, ...ownStarts]),
+      );
       const blocks = blocksByInstructor.get(String(instructorId)) ?? [];
 
       const planGate = planTimesByInstructor.get(String(instructorId));
@@ -688,7 +706,7 @@ export default function AdminDrivingDayModal({
       }
       return null;
     },
-    [blocksByInstructor, busyTimesByInstructor, planTimesByInstructor, bookableTimes, day],
+    [blocksByInstructor, busyTimesByInstructor, planTimesByInstructor, bookingByInstructorTime, schoolDurationTimes, day],
   );
 
   const busy = loading || planLoading;

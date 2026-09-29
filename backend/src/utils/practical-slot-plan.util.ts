@@ -77,6 +77,22 @@ export function bookableTimesFromPlan(plan: readonly PracticalSlotPlanRow[]): st
   return [...set].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
 }
 
+/**
+ * Starts that define one lesson's length on the day graphic.
+ * The 14:00 lunch row sits between 13:20 and 15:00, so 13:20 ends at 14:00.
+ * Lesson length follows this school grid, not gaps in an instructor's personal slot list.
+ */
+export function lessonDurationTimesFromBookable(times: readonly string[]): string[] {
+  const unique = [
+    ...new Set(times.map((t) => normalizeTimeHHMM(t)).filter((t): t is string => Boolean(t))),
+  ].sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+  if (unique.includes('13:20') && unique.includes('15:00') && !unique.includes('14:00')) {
+    unique.push('14:00');
+    unique.sort((a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b));
+  }
+  return unique;
+}
+
 export function isTimeInPracticalPlan(time: string, plan: readonly PracticalSlotPlanRow[]): boolean {
   const n = normalizeTimeHHMM(time);
   if (!n) return false;

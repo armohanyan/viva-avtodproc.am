@@ -10,7 +10,11 @@ import {
   normalizeBranchScheduleFromApi,
   type SlotUnavailabilityReason,
 } from "src/modules/booking/booking-slot.util";
-import { practicalSlotRangeMinutesFromBookable } from "src/modules/booking/practical-slot-plan";
+import {
+  bookableTimesFromPlan,
+  lessonDurationTimesFromBookable,
+  practicalSlotRangeMinutesFromBookable,
+} from "src/modules/booking/practical-slot-plan";
 import { useEffectivePracticalSlots } from "src/modules/booking/useEffectivePracticalSlots";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { padSlotTime, type InstructorBusySlotRow } from "./adminAvailabilityGrid";
@@ -44,7 +48,7 @@ export function useInstructorDaySlots({
   slotSource = "branch",
 }: Params) {
   const usePracticalPlan = slotSource === "practical";
-  const { effectiveTimes, loading: planLoading } = useEffectivePracticalSlots(
+  const { effectiveTimes, branchPlan, loading: planLoading } = useEffectivePracticalSlots(
     branchId,
     instructorId,
     open && usePracticalPlan,
@@ -133,6 +137,16 @@ export function useInstructorDaySlots({
     return [...effectiveTimes];
   }, [usePracticalPlan, effectiveTimes]);
 
+  /** Same lesson windows as the day graphic, so a free cell there stays selectable here. */
+  const durationTimes = useMemo(() => {
+    if (!usePracticalPlan) return [];
+    const fromBranch = lessonDurationTimesFromBookable([
+      ...bookableTimesFromPlan(branchPlan),
+      ...busySlots.map((b) => b.time),
+    ]);
+    return fromBranch.length > 0 ? fromBranch : planTimes;
+  }, [usePracticalPlan, branchPlan, busySlots, planTimes]);
+
   const slots = useMemo((): DaySlotRow[] => {
     const times = usePracticalPlan
       ? planTimes
@@ -164,7 +178,11 @@ export function useInstructorDaySlots({
         return { time: slot, status: "unavailable" as const, reason: "unavailable" as const };
       }
 
-      const slotRange = usePracticalPlan ? practicalSlotRangeMinutesFromBookable(slot, times) : undefined;
+      const rangeSource = durationTimes.length > 0 ? durationTimes : times;
+      const slotRange =
+        usePracticalPlan && rangeSource.length > 0
+          ? practicalSlotRangeMinutesFromBookable(slot, rangeSource)
+          : undefined;
       if (
         isSlotBlockedByAvailabilityRules(dateIso, slot, availabilityBlocks, slotRange, {
           forPracticalPlan: usePracticalPlan,
@@ -178,6 +196,7 @@ export function useInstructorDaySlots({
   }, [
     usePracticalPlan,
     planTimes,
+    durationTimes,
     dateIso,
     branchScheduleRules,
     loading,

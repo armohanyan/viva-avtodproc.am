@@ -4995,6 +4995,18 @@ export default class BookingService {
       : null;
 
     const existingSlotRows = await BookingSlot.findAll({ where: { bookingId: id } });
+    const unchangedSlots =
+      existingSlotRows.length > 0
+        ? existingSlotRows.map((s) => ({
+            dateIso: dateIsoString(s.dateIso),
+            time: normalizeTimeHHMM(String(s.slotTime ?? '')) ?? String(s.slotTime ?? ''),
+          }))
+        : [
+            {
+              dateIso: dateIsoString(row.dateIso),
+              time: normalizeTimeHHMM(String(row.time ?? '')) ?? String(row.time ?? ''),
+            },
+          ];
     const scheduleUnchanged =
       instructorUserId === row.instructorUserId &&
       branchId === row.branchId &&
@@ -5014,6 +5026,7 @@ export default class BookingService {
         allowPastSlots: true,
         allowCustomPracticalTime: allowCustomPractical,
         customSlotEndTime: customEnd ?? undefined,
+        unchangedSlots,
       });
     }
 

@@ -11,7 +11,8 @@ import {
   isRefundWindowForCancellation,
 } from '../services/booking.service';
 import { clipOccupiedRangeForForceSlot, claimStartTimesForOccupiedBooking, claimStartTimesInRange, occupiedRangesMinutes } from '../services/booking-slot-validation.service';
-import { bookableTimesFromPlan, DEFAULT_PRACTICAL_SLOT_PLAN } from '../utils/practical-slot-plan.util';
+import { bookableTimesFromPlan, DEFAULT_PRACTICAL_SLOT_PLAN, lessonDurationTimesFromBookable, practicalSlotRangeMinutesFromBookable } from '../utils/practical-slot-plan.util';
+import { isSlotBlockedByScheduleRules, type InstructorScheduleRuleDto } from '../services/instructor-availability.service';
 import { rangesOverlapHalfOpen } from '../utils/booking-slot.util';
 
 const far = hoursUntilLessonStart('2099-06-15', '10:00');
@@ -207,6 +208,33 @@ const theoryClaims = claimStartTimesInRange('14:00', '16:10', defaultBookable);
 assert.ok(theoryClaims.includes('15:00'), 'theory 14:00–16:10 must cover 15:00 plan start');
 assert.ok(theoryClaims.includes('14:00'));
 assert.equal(theoryClaims.includes('16:10'), false, 'half-open end must exclude 16:10');
+
+/** 16:10 stays free when the school grid ends the lesson at 17:20, even if the instructor skipped later slots. */
+const schoolTimes = lessonDurationTimesFromBookable(bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN));
+const schoolRange = practicalSlotRangeMinutesFromBookable('16:10', schoolTimes);
+assert.equal(schoolRange.end, 17 * 60 + 20, '16:10 lesson ends at the next school slot 17:20');
+const sparseRange = practicalSlotRangeMinutesFromBookable('16:10', ['16:10', '19:40']);
+assert.equal(sparseRange.end, 19 * 60 + 40, 'a personal gap would stretch 16:10 until 19:40');
+const tuesdayRules: InstructorScheduleRuleDto[] = [
+  { id: 1, ruleKind: 'work_hours', weekday: 2, dateIso: null, timeStart: '07:00', timeEnd: '21:00', allDay: false },
+  { id: 2, ruleKind: 'recurring_busy', weekday: 2, dateIso: null, timeStart: '18:00', timeEnd: '19:00', allDay: false },
+];
+assert.equal(
+  isSlotBlockedByScheduleRules('2026-10-06', '16:10', tuesdayRules, schoolRange, {
+    forPracticalPlan: true,
+    skipLunch: true,
+  }),
+  false,
+  '16:10–17:20 must stay bookable when the break is 18:00–19:00',
+);
+assert.equal(
+  isSlotBlockedByScheduleRules('2026-10-06', '16:10', tuesdayRules, sparseRange, {
+    forPracticalPlan: true,
+    skipLunch: true,
+  }),
+  true,
+  'stretching 16:10 across a later break must still count as unavailable',
+);
 
 // eslint-disable-next-line no-console
 console.log('booking-rules-selftest: OK');

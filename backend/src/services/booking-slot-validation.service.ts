@@ -21,6 +21,7 @@ import PracticalSlotPlanService from './practical-slot-plan.service';
 import {
   bookableTimesFromPlan,
   DEFAULT_PRACTICAL_SLOT_PLAN,
+  lessonDurationTimesFromBookable,
   practicalSlotRangeMinutesFromBookable,
 } from '../utils/practical-slot-plan.util';
 
@@ -50,7 +51,20 @@ export type SlotConflictDetail = {
   requestedRangeEndExclusive: string;
 };
 
-function messageForReason(reason: SlotValidationFailureReason): string {
+/** date + time key shared by schedule grandfathering and overlap checks. */
+export function slotScheduleKey(dateIso: string, time: string): string {
+  return `${dateIso.slice(0, 10)}\t${normalizeTimeHHMM(time) ?? time}`;
+}
+
+function formatSlotWhen(dateIso: string, time: string): string {
+  const day = dateIso.slice(0, 10);
+  const [y, m, d] = day.split('-');
+  const clock = normalizeTimeHHMM(time) ?? time;
+  if (y && m && d) return `${d}.${m}.${y} ${clock}`;
+  return `${day} ${clock}`;
+}
+
+function messageForReason(reason: SlotValidationFailureReason, dateIso?: string, time?: string): string {
   switch (reason) {
     case 'past':
       return 'This time slot is in the past and cannot be booked.';
@@ -58,8 +72,10 @@ function messageForReason(reason: SlotValidationFailureReason): string {
       return 'This time is outside branch business hours.';
     case 'branch_closed':
       return 'The branch is closed at this time.';
-    case 'instructor_unavailable':
-      return 'Instructor is not available at this time (day off, break, or outside work hours).';
+    case 'instructor_unavailable': {
+      const when = dateIso && time ? ` ${formatSlotWhen(dateIso, time)}` : '';
+      return `Instructor is not available at this time (day off, break, or outside work hours).${when}`;
+    }
     case 'booked':
       return 'This time slot is no longer available.';
     default:
@@ -561,6 +577,11 @@ export default class BookingSlotValidationService {
     allowCustomPracticalTime?: boolean;
     /** Exclusive end HH:MM for a custom practical range (required when allowCustomPracticalTime). */
     customSlotEndTime?: string;
+    /**
+     * Slots already stored on this booking. Day-off / work-hours rules are not applied again,
+     * so moving one free lesson does not fail because another day on the same booking is now blocked.
+     */
+    unchangedSlotKeys?: ReadonlySet<string>;
   }): Promise<void> {
     const dateIso = input.dateIso.slice(0, 10);
     if (!Number.isFinite(input.branchId) || input.branchId <= 0) {
@@ -594,6 +615,23 @@ export default class BookingSlotValidationService {
       isPractical && Number.isFinite(input.instructorUserId)
         ? await PracticalSlotPlanService.getEffectiveBookableTimes(input.branchId, input.instructorUserId)
         : null;
+    /**
+     * Lesson length follows the branch day graphic: next school-grid row, including the lunch
+     * gap and any start already on that day. A gap in the instructor's personal working slots
+     * must not stretch 16:10 across a later break and report them as unavailable.
+     */
+    let rangeTimes: string[] = effectiveTimes ?? [];
+    if (isPractical) {
+      const claimed = await BookingSlot.findAll({
+        where: { instructorUserId: input.instructorUserId, dateIso },
+        attributes: ['slotTime'],
+      });
+      rangeTimes = lessonDurationTimesFromBookable([
+        ...bookableTimesFromPlan(await PracticalSlotPlanService.getBranchPlan(input.branchId)),
+        ...claimed.map((row) => normalizeTimeHHMM(String(row.slotTime ?? '')) ?? ''),
+        ...input.slots,
+      ]);
+    }
 
     const allowHistorical = input.allowHistoricalSlots === true;
     const allowPast = allowHistorical || input.allowPastSlots === true;
@@ -612,6 +650,7 @@ export default class BookingSlotValidationService {
       }
 
       const slotNorm = normalizeTimeHHMM(slot) ?? slot;
+      const keepExistingSchedule = input.unchangedSlotKeys?.has(slotScheduleKey(dateIso, slotNorm)) === true;
       let proposedRange: { start: number; end: number } | undefined;
 
       if (allowCustomPractical && customEndNorm) {
@@ -632,14 +671,14 @@ export default class BookingSlotValidationService {
         proposedRange = { start: startM, end: endM };
       }
 
-      if (!allowHistorical) {
+      if (!allowHistorical && !keepExistingSchedule) {
         if (isPractical && effectiveTimes) {
           const inPlan = Boolean(normalizeTimeHHMM(slot) && effectiveTimes.includes(slotNorm));
           if (!allowCustomPractical && !inPlan) {
             const lunchSlotRange =
               proposedRange ??
-              (effectiveTimes.length
-                ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes)
+              (rangeTimes.length
+                ? practicalSlotRangeMinutesFromBookable(slot, rangeTimes)
                 : { start: parseTimeToMinutes(slotNorm), end: parseTimeToMinutes(slotNorm) + 60 });
             const rules = skipLunch
               ? await InstructorAvailabilityService.listForInstructor(input.instructorUserId)
@@ -665,8 +704,8 @@ export default class BookingSlotValidationService {
 
         const slotRange =
           proposedRange ??
-          (isPractical && effectiveTimes?.length
-            ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes)
+          (isPractical && rangeTimes.length
+            ? practicalSlotRangeMinutesFromBookable(slot, rangeTimes)
             : { start: parseTimeToMinutes(slotNorm), end: parseTimeToMinutes(slotNorm) + 60 });
 
         const instructorUnavailable = await InstructorAvailabilityService.isSlotUnavailableForInstructor(
@@ -677,15 +716,18 @@ export default class BookingSlotValidationService {
           { forPracticalPlan: isPractical, skipLunch },
         );
         if (instructorUnavailable) {
-          throw new InputValidationError(messageForReason('instructor_unavailable'), HttpStatusCodesUtil.BAD_REQUEST);
+          throw new InputValidationError(
+            messageForReason('instructor_unavailable', dateIso, slotNorm),
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
         }
         proposedRange = slotRange;
       }
 
       const rangeForBusy =
         proposedRange ??
-        (isPractical && effectiveTimes?.length
-          ? practicalSlotRangeMinutesFromBookable(slot, effectiveTimes)
+        (isPractical && rangeTimes.length
+          ? practicalSlotRangeMinutesFromBookable(slot, rangeTimes)
           : { start: parseTimeToMinutes(slotNorm), end: parseTimeToMinutes(slotNorm) + 60 });
 
       await this.assertInstructorRangeFree({
@@ -713,7 +755,12 @@ export default class BookingSlotValidationService {
     allowPastSlots?: boolean;
     allowCustomPracticalTime?: boolean;
     customSlotEndTime?: string;
+    /** Slots already stored on this booking; schedule rules are not re-applied to them. */
+    unchangedSlots?: readonly { dateIso: string; time: string }[];
   }): Promise<void> {
+    const unchangedSlotKeys = new Set(
+      (input.unchangedSlots ?? []).map((e) => slotScheduleKey(e.dateIso, e.time)),
+    );
     for (const e of input.entries) {
       await this.assertSlotsBookable({
         branchId: input.branchId,
@@ -726,6 +773,7 @@ export default class BookingSlotValidationService {
         allowPastSlots: input.allowPastSlots,
         allowCustomPracticalTime: input.allowCustomPracticalTime,
         customSlotEndTime: input.customSlotEndTime,
+        unchangedSlotKeys,
       });
     }
   }

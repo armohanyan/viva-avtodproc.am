@@ -218,7 +218,11 @@ export function getApiErrorMessage(err: unknown): string {
 		) {
 			return tr("bookingSlotUnavailable");
 		}
-		if (m.includes("instructor is not available at this time")) return tr("bookingInstructorUnavailable");
+		if (m.includes("instructor is not available at this time")) {
+			const slot = raw.match(/(\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2})\s*$/);
+			const base = tr("bookingInstructorUnavailable");
+			return slot ? `${base} (${slot[1]})` : base;
+		}
 		if (m.includes("instructor not found")) return tr("bookingInstructorNotFound");
 		if (m.includes("instructor does not serve this branch")) return tr("bookingBranchMismatch");
 		if (m.includes("student has no active package credits")) return tr("bookingPackageNoCredits");
