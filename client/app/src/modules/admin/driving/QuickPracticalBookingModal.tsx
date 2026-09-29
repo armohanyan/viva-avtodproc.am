@@ -162,13 +162,19 @@ export default function QuickPracticalBookingModal({
 
   const customEndNorm = useMemo(() => normalizeUiTime(customTimeEnd), [customTimeEnd]);
 
+  const hourlyPriceAmd = Math.max(0, Math.round(Number(instructor.hourlyPrice) || 0));
+  const slotCountForCredits = Math.max(1, sortedEntries.length);
+  const creditsAvailable = Math.max(0, practicalCredits?.packagePracticalRemaining ?? 0);
+  const creditsToApply =
+    usePackageCredits && !isGift ? Math.min(creditsAvailable, slotCountForCredits) : 0;
+  const unpaidSlotCount = Math.max(0, slotCountForCredits - creditsToApply);
+  const creditsCoverPayment = creditsToApply > 0 && unpaidSlotCount === 0;
+  const partialPackageCredits = creditsToApply > 0 && unpaidSlotCount > 0;
+  const pricedSlotCount = creditsToApply > 0 ? unpaidSlotCount : sortedEntries.length;
+
   const suggestedTotalAmd = useMemo(
-    () =>
-      Math.max(
-        0,
-        Math.round(Number(instructor.hourlyPrice) || 0) * billablePracticalLessonCount(sortedEntries.length),
-      ),
-    [instructor.hourlyPrice, sortedEntries.length],
+    () => hourlyPriceAmd * billablePracticalLessonCount(pricedSlotCount),
+    [hourlyPriceAmd, pricedSlotCount],
   );
 
   const totalPriceAmd = useMemo(
@@ -176,12 +182,6 @@ export default function QuickPracticalBookingModal({
     [totalPriceStr, suggestedTotalAmd],
   );
 
-  const slotCountForCredits = Math.max(1, sortedEntries.length);
-  const creditsCoverPayment =
-    usePackageCredits &&
-    !isGift &&
-    Boolean(practicalCredits?.coversPayment) &&
-    (practicalCredits?.packagePracticalRemaining ?? 0) >= slotCountForCredits;
   const effectiveTotalAmd = creditsCoverPayment || isGift ? 0 : totalPriceAmd;
 
   useEffect(() => {
@@ -238,18 +238,11 @@ export default function QuickPracticalBookingModal({
   }, [open, studentId, slotCountForCredits]);
 
   useEffect(() => {
-    if (!open || !usePackageCredits || isGift || !practicalCredits?.coversPayment) return;
-    if ((practicalCredits.packagePracticalRemaining ?? 0) < slotCountForCredits) return;
+    if (!open || !creditsCoverPayment) return;
     setBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
     setStatus("confirmed");
     setIsGift(false);
-  }, [
-    open,
-    usePackageCredits,
-    isGift,
-    practicalCredits,
-    slotCountForCredits,
-  ]);
+  }, [open, creditsCoverPayment]);
 
   useEffect(() => {
     if (!open) return;
@@ -368,7 +361,13 @@ export default function QuickPracticalBookingModal({
       ? { isGift: true, ...(giftNote.trim() ? { giftNote: giftNote.trim() } : {}) }
       : creditsCoverPayment
         ? { adminPaymentStatus: "paid" as const, paidAmountAmd: 0, consumePackageCredits: true }
-        : { ...adminPaymentApiPayload(bookingPayment, effectiveTotalAmd), consumePackageCredits: false };
+        : partialPackageCredits
+          ? {
+              ...adminPaymentApiPayload(bookingPayment, effectiveTotalAmd),
+              consumePackageCredits: true,
+              packageCreditUnits: creditsToApply,
+            }
+          : { ...adminPaymentApiPayload(bookingPayment, effectiveTotalAmd), consumePackageCredits: false };
     const lifecycleStatus =
       isGift || !("adminPaymentStatus" in paymentBody)
         ? status
@@ -693,9 +692,13 @@ export default function QuickPracticalBookingModal({
               )}
             >
               <p className="font-medium">
-                {practicalCredits.coversPayment
-                  ? t("adminBookingPracticalCreditsNotice")
-                  : t("adminBookingPracticalCreditsInsufficient")}
+                {partialPackageCredits
+                  ? t("adminBookingPracticalCreditsPartial")
+                      .replace("%credits", String(creditsToApply))
+                      .replace("%lessons", String(unpaidSlotCount))
+                  : practicalCredits.coversPayment
+                    ? t("adminBookingPracticalCreditsNotice")
+                    : t("adminBookingPracticalCreditsInsufficient")}
               </p>
               <p className="mt-1 text-xs opacity-90">
                 {t("adminBookingPracticalCreditsRemainingLabel").replace(
@@ -703,7 +706,7 @@ export default function QuickPracticalBookingModal({
                   String(practicalCredits.packagePracticalRemaining),
                 )}
               </p>
-              {usePackageCredits && practicalCredits.coversPayment ? (
+              {usePackageCredits && (practicalCredits.coversPayment || partialPackageCredits) ? (
                 <div className="mt-2">
                   <PackageCreditMark packageName={practicalCredits.packageName} />
                 </div>

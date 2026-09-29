@@ -2313,6 +2313,8 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   adminBookingPracticalCreditsRemainingLabel: "%n credit(s) remaining",
   adminBookingPracticalCreditsInsufficient:
     "This student has package credits, but not enough for the selected hours. Record payment for the remaining hours.",
+  adminBookingPracticalCreditsPartial:
+    "%credits credit(s) from this package will be used. The student must pay for %lessons remaining lesson(s).",
   adminStudentActivePackageHeading: "Active package",
   adminStudentActivePackageNone: "No active package.",
   adminStudentPackagePracticalRemaining: "Practical remaining",
@@ -4737,6 +4739,8 @@ const ru: typeof en = {
   adminBookingPracticalCreditsRemainingLabel: "Осталось кредитов: %n",
   adminBookingPracticalCreditsInsufficient:
     "У ученика есть кредиты пакета, но их недостаточно для выбранных часов. Укажите оплату за оставшиеся часы.",
+  adminBookingPracticalCreditsPartial:
+    "Из пакета будет списано кредитов: %credits. Ученик должен оплатить оставшиеся занятия: %lessons.",
   adminStudentActivePackageHeading: "Активный пакет",
   adminStudentActivePackageNone: "Нет активного пакета.",
   adminStudentPackagePracticalRemaining: "Практика осталось",
@@ -7136,6 +7140,8 @@ const am: typeof en = {
   adminBookingPracticalCreditsRemainingLabel: "Մնացած կրեդիտներ՝ %n",
   adminBookingPracticalCreditsInsufficient:
     "Ուսանողն ունի փաթեթի կրեդիտներ, բայց ընտրված ժամերի համար բավարար չէ։ Գրանցեք վճարումը մնացած ժամերի համար։",
+  adminBookingPracticalCreditsPartial:
+    "Փաթեթից կգանձվի %credits կրեդիտ։ Ուսանողը պետք է վճարի մնացած %lessons դասի համար։",
   adminStudentActivePackageHeading: "Ակտիվ փաթեթ",
   adminStudentActivePackageNone: "Ակտիվ փաթեթ չկա։",
   adminStudentPackagePracticalRemaining: "Մնացած պրակտիկ",

@@ -59,6 +59,8 @@ export function isPackageCreditPrepaidMeta(meta: unknown): boolean {
   if (meta == null || typeof meta !== 'object') return false;
   if (isPackagePurchaseMeta(meta)) return false;
   const m = meta as Record<string, unknown>;
+  // Some hours came from package credits; the rest are a normal cash charge.
+  if (m.partialCashRemainder === true) return false;
   if (Math.floor(Number(m.packageOrderId) || 0) > 0) return true;
   if (Math.max(0, Math.floor(Number(m.packageBalanceUnits) || 0)) > 0) return true;
   if (Math.max(0, Math.floor(Number(m.pkg) || 0)) > 0) return true;

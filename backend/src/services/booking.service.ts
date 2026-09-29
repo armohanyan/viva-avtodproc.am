@@ -1621,6 +1621,27 @@ function readPositiveInt(raw: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/**
+ * How many package-credit hours an admin practical booking should consume.
+ * Omitted `packageCreditUnits` means every selected slot (existing all-or-nothing behavior).
+ * A smaller count uses that many credits and leaves the rest as a cash charge.
+ */
+function practicalPackageCreditPlan(input: {
+  consumePackageCredits?: boolean;
+  packageCreditUnits?: number;
+  slotCount: number;
+}): { units: number; partialCashRemainder: boolean } | null {
+  if (input.consumePackageCredits !== true) return null;
+  const slotCount = Math.max(0, Math.floor(input.slotCount));
+  if (slotCount <= 0) return null;
+  const raw = input.packageCreditUnits;
+  const requested =
+    raw != null && Number.isFinite(Number(raw)) ? Math.floor(Number(raw)) : slotCount;
+  if (requested <= 0) return null;
+  const units = Math.min(slotCount, requested);
+  return { units, partialCashRemainder: units < slotCount };
+}
+
 async function consumePackageLessonCreditsInTx(input: {
   studentUserId: number;
   lessonType: 'practical' | 'theory' | 'theory_personal';
@@ -3674,6 +3695,7 @@ export default class BookingService {
     status: string;
     branchId: number;
     consumePackageCredits?: boolean;
+    packageCreditUnits?: number;
     packageOrderId?: number;
     meetLink?: string | null;
     adminPaymentStatus?: AdminBookingPaymentStatus;
@@ -3750,19 +3772,27 @@ export default class BookingService {
     let createdLifecycleStatus = adminCreateLifecycleStatus('unpaid', input.status);
     try {
       await sequelize.transaction(async (transaction) => {
-        const prepaidMeta =
-          input.consumePackageCredits === true
-            ? await consumePackageLessonCreditsInTx({
-                studentUserId: input.studentId,
-                lessonType: input.lessonType,
-                slotCount: entries.length,
-                packageOrderId: input.packageOrderId,
-                transaction,
-              })
-            : null;
-        const billableTotal = prepaidMeta ? 0 : totalPriceAmd;
+        const creditPlan = practicalPackageCreditPlan({
+          consumePackageCredits: input.consumePackageCredits,
+          packageCreditUnits: input.packageCreditUnits,
+          slotCount: entries.length,
+        });
+        const prepaidMeta = creditPlan
+          ? await consumePackageLessonCreditsInTx({
+              studentUserId: input.studentId,
+              lessonType: input.lessonType,
+              slotCount: creditPlan.units,
+              packageOrderId: input.packageOrderId,
+              transaction,
+            })
+          : null;
+        if (prepaidMeta && creditPlan?.partialCashRemainder) {
+          prepaidMeta.partialCashRemainder = true;
+        }
+        const fullPackagePrepaid = Boolean(prepaidMeta) && creditPlan?.partialCashRemainder !== true;
+        const billableTotal = fullPackagePrepaid ? 0 : totalPriceAmd;
         const packageOrderIdForPay = Math.floor(Number(prepaidMeta?.packageOrderId) || 0);
-        const packagePurchasePaid = prepaidMeta
+        const packagePurchasePaid = fullPackagePrepaid
           ? packageOrderIdForPay > 0
             ? await isPackageOrderPurchaseFullyPaid(packageOrderIdForPay, transaction)
             : true
@@ -3770,11 +3800,12 @@ export default class BookingService {
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
-          prepaidMeta,
+          fullPackagePrepaid ? prepaidMeta : null,
           packagePurchasePaid,
         );
-        // Credit lessons keep the slot confirmed even when the package sale is unpaid.
-        createdLifecycleStatus = prepaidMeta
+        // Fully credit-covered lessons stay confirmed even when the package sale is unpaid.
+        // A partial credit booking follows the cash payment for the remaining hours.
+        createdLifecycleStatus = fullPackagePrepaid
           ? 'confirmed'
           : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatus =
@@ -3785,7 +3816,7 @@ export default class BookingService {
           paymentNotes: input.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
         });
-        if (prepaidMeta && payStatus === 'unpaid') {
+        if (fullPackagePrepaid && payStatus === 'unpaid') {
           paymentExtras.paymentNotes = notesWithPackageUnpaidReason(paymentExtras.paymentNotes, true);
         }
         const created = await Booking.create(
@@ -3798,7 +3829,7 @@ export default class BookingService {
             endTime,
             totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
-            status: prepaidMeta
+            status: fullPackagePrepaid
               ? 'confirmed'
               : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             holdExpiresAt: null,
@@ -3859,6 +3890,7 @@ export default class BookingService {
     theoryCohortId?: number;
     slotEntries?: readonly { dateIso: string; time: string }[];
     consumePackageCredits?: boolean;
+    packageCreditUnits?: number;
     packageOrderId?: number;
     meetLink?: string | null;
     adminPaymentStatus?: AdminBookingPaymentStatus;
@@ -3930,6 +3962,7 @@ export default class BookingService {
         status: input.status,
         branchId: input.branchId,
         consumePackageCredits: input.consumePackageCredits,
+        packageCreditUnits: input.packageCreditUnits,
         packageOrderId: input.packageOrderId,
         meetLink: input.meetLink,
         adminPaymentStatus: input.adminPaymentStatus,
@@ -3972,6 +4005,7 @@ export default class BookingService {
           status: input.status,
           branchId: input.branchId,
           consumePackageCredits: input.consumePackageCredits,
+          packageCreditUnits: input.packageCreditUnits,
           packageOrderId: input.packageOrderId,
           meetLink: input.meetLink,
           adminPaymentStatus: input.adminPaymentStatus,
@@ -4002,6 +4036,7 @@ export default class BookingService {
         instructorUserId: input.instructorUserId,
         theoryCohortId: input.theoryCohortId,
         consumePackageCredits: input.consumePackageCredits,
+        packageCreditUnits: input.packageCreditUnits,
         packageOrderId: input.packageOrderId,
         meetLink: input.meetLink,
         adminPaymentStatus: input.adminPaymentStatus,
@@ -4463,6 +4498,7 @@ export default class BookingService {
     instructorUserId?: number;
     theoryCohortId?: number;
     consumePackageCredits?: boolean;
+    packageCreditUnits?: number;
     packageOrderId?: number;
     meetLink?: string | null;
     adminPaymentStatus?: AdminBookingPaymentStatus;
@@ -4572,7 +4608,16 @@ export default class BookingService {
     let createdLifecycleStatus = adminCreateLifecycleStatus('unpaid', input.status);
     try {
       await sequelize.transaction(async (transaction) => {
-        let shouldConsumePackage = input.consumePackageCredits === true;
+        const creditPlan =
+          input.lessonType === 'practical'
+            ? practicalPackageCreditPlan({
+                consumePackageCredits: input.consumePackageCredits,
+                packageCreditUnits: input.packageCreditUnits,
+                slotCount: sorted.length,
+              })
+            : null;
+        let shouldConsumePackage =
+          input.lessonType === 'practical' ? creditPlan != null : input.consumePackageCredits === true;
         let packageOrderId = input.packageOrderId;
         if (input.lessonType === 'theory' && input.consumePackageCredits !== false) {
           const peek = await peekPackageTheoryRemaining(input.studentId);
@@ -4590,7 +4635,7 @@ export default class BookingService {
             prepaidMeta = await consumePackageLessonCreditsInTx({
               studentUserId: input.studentId,
               lessonType: input.lessonType,
-              slotCount: sorted.length,
+              slotCount: creditPlan?.units ?? sorted.length,
               packageOrderId,
               consumeAll: input.lessonType === 'theory',
               transaction,
@@ -4606,6 +4651,9 @@ export default class BookingService {
             }
           }
         }
+        if (prepaidMeta && creditPlan?.partialCashRemainder) {
+          prepaidMeta.partialCashRemainder = true;
+        }
         if (input.lessonType === 'theory' && input.theoryCohortId != null && Number.isFinite(input.theoryCohortId)) {
           prepaidMeta = { ...(prepaidMeta ?? {}), theoryCohortId: input.theoryCohortId };
         }
@@ -4613,9 +4661,10 @@ export default class BookingService {
           shouldConsumePackage &&
           prepaidMeta != null &&
           (prepaidMeta.packageOrderId != null || prepaidMeta.packageBalanceUnits != null);
-        const billableTotal = packagePrepaid ? 0 : totalPriceAmd;
+        const fullPackagePrepaid = packagePrepaid && creditPlan?.partialCashRemainder !== true;
+        const billableTotal = fullPackagePrepaid ? 0 : totalPriceAmd;
         const packageOrderIdForPay = Math.floor(Number(prepaidMeta?.packageOrderId) || 0);
-        const packagePurchasePaid = packagePrepaid
+        const packagePurchasePaid = fullPackagePrepaid
           ? packageOrderIdForPay > 0
             ? await isPackageOrderPurchaseFullyPaid(packageOrderIdForPay, transaction)
             : true
@@ -4623,17 +4672,17 @@ export default class BookingService {
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           {
-            adminPaymentStatus: packagePrepaid
+            adminPaymentStatus: fullPackagePrepaid
               ? packagePurchasePaid
                 ? 'paid'
                 : 'unpaid'
               : input.adminPaymentStatus,
-            paidAmountAmd: packagePrepaid ? 0 : input.paidAmountAmd,
+            paidAmountAmd: fullPackagePrepaid ? 0 : input.paidAmountAmd,
           },
-          packagePrepaid ? prepaidMeta : null,
+          fullPackagePrepaid ? prepaidMeta : null,
           packagePurchasePaid,
         );
-        createdLifecycleStatus = packagePrepaid
+        createdLifecycleStatus = fullPackagePrepaid
           ? 'confirmed'
           : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status);
         const payStatusMulti =
@@ -4644,7 +4693,7 @@ export default class BookingService {
           paymentNotes: input.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
         });
-        if (packagePrepaid && payStatusMulti === 'unpaid') {
+        if (fullPackagePrepaid && payStatusMulti === 'unpaid') {
           paymentExtrasMulti.paymentNotes = notesWithPackageUnpaidReason(paymentExtrasMulti.paymentNotes, true);
         }
         const created = await Booking.create(
@@ -4657,7 +4706,7 @@ export default class BookingService {
             endTime: exclusiveEnd,
             totalPriceAmd: billableTotal,
             lessonType: input.lessonType,
-            status: packagePrepaid
+            status: fullPackagePrepaid
               ? 'confirmed'
               : adminCreateLifecycleStatus(payPatch.paymentStatus, input.status),
             holdExpiresAt: null,

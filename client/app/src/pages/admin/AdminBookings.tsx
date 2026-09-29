@@ -33,6 +33,7 @@ import GroupLessonSelector from "src/modules/admin/booking/GroupLessonSelector";
 import PackageSelector from "src/modules/admin/booking/PackageSelector";
 import SlotSelector from "src/modules/admin/booking/SlotSelector";
 import { useBookingPriceCalculator, type BookingPriceInput } from "src/modules/admin/booking/useBookingPriceCalculator";
+import { billablePracticalLessonCount } from "src/utils/booking.utils";
 import { validateAdminBookingAdd } from "src/modules/admin/booking/useBookingValidation";
 import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
 import {
@@ -1434,8 +1435,14 @@ export default function AdminBookings() {
     return { remaining, packageName, coversPayment: remaining >= need };
   }, [addFlowKind, addStudentPackageOrders, slotPick]);
 
-  const practicalCreditsApply =
-    addFlowKind === "practical" && usePracticalPackageCredits && practicalPackageCredits.coversPayment;
+  const practicalSlotCount = addFlowKind === "practical" ? slotPickCount(slotPick) : 0;
+  const practicalCreditsToApply =
+    addFlowKind === "practical" && usePracticalPackageCredits && !addIsGift
+      ? Math.min(practicalPackageCredits.remaining, practicalSlotCount)
+      : 0;
+  const practicalUnpaidSlots = Math.max(0, practicalSlotCount - practicalCreditsToApply);
+  const practicalCreditsApply = practicalCreditsToApply > 0 && practicalUnpaidSlots === 0;
+  const practicalPartialCredits = practicalCreditsToApply > 0 && practicalUnpaidSlots > 0;
 
   useEffect(() => {
     if (!practicalCreditsApply) return;
@@ -1443,6 +1450,16 @@ export default function AdminBookings() {
     setDraft((d) => (d ? { ...d, status: "confirmed" } : d));
     setAddIsGift(false);
   }, [practicalCreditsApply]);
+
+  useEffect(() => {
+    if (!practicalPartialCredits) return;
+    setAddBookingPayment((prev) => {
+      if (prev.status !== "paid") return prev;
+      const paid = Number(prev.paidStr);
+      if (Number.isFinite(paid) && paid > 0) return prev;
+      return { ...prev, status: "unpaid", paidStr: "0" };
+    });
+  }, [practicalPartialCredits]);
 
   const addEffectiveTotalAmd = useMemo(() => {
     if (addFlowKind === "package") {
@@ -1452,6 +1469,12 @@ export default function AdminBookings() {
     }
     if (addFlowKind === "theory_group" && theoryGroupPackageCovered) return 0;
     if (practicalCreditsApply) return 0;
+    if (practicalPartialCredits) {
+      const fullBillable = billablePracticalLessonCount(practicalSlotCount);
+      const unpaidBillable = billablePracticalLessonCount(practicalUnpaidSlots);
+      if (fullBillable <= 0) return 0;
+      return Math.max(0, Math.round((addTotalAmd * unpaidBillable) / fullBillable));
+    }
     return addTotalAmd;
   }, [
     addFlowKind,
@@ -1459,6 +1482,9 @@ export default function AdminBookings() {
     addTotalAmd,
     theoryGroupPackageCovered,
     practicalCreditsApply,
+    practicalPartialCredits,
+    practicalSlotCount,
+    practicalUnpaidSlots,
   ]);
 
   const addValidation = useMemo(
@@ -1943,7 +1969,13 @@ export default function AdminBookings() {
                       ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
                         ? { instructorUserId: Number(pick.instructorUserId) }
                         : {}),
-                      consumePackageCredits: practicalCreditsApply,
+                      consumePackageCredits: practicalCreditsApply || practicalPartialCredits,
+                      ...(practicalPartialCredits
+                        ? {
+                            packageCreditUnits: practicalCreditsToApply,
+                            totalPriceAmd: addEffectiveTotalAmd,
+                          }
+                        : {}),
                     }
                   : {
                       theoryCohortId: Number(theoryCohortId),
@@ -3070,9 +3102,13 @@ export default function AdminBookings() {
                           }`}
                         >
                           <p className="font-medium">
-                            {practicalPackageCredits.coversPayment
-                              ? t("adminBookingPracticalCreditsNotice")
-                              : t("adminBookingPracticalCreditsInsufficient")}
+                            {practicalPartialCredits
+                              ? t("adminBookingPracticalCreditsPartial")
+                                  .replace("%credits", String(practicalCreditsToApply))
+                                  .replace("%lessons", String(practicalUnpaidSlots))
+                              : practicalPackageCredits.coversPayment
+                                ? t("adminBookingPracticalCreditsNotice")
+                                : t("adminBookingPracticalCreditsInsufficient")}
                           </p>
                           <p className="mt-1 text-xs opacity-90">
                             {t("adminBookingPracticalCreditsRemainingLabel").replace(
@@ -3080,7 +3116,8 @@ export default function AdminBookings() {
                               String(practicalPackageCredits.remaining),
                             )}
                           </p>
-                          {usePracticalPackageCredits && practicalPackageCredits.coversPayment ? (
+                          {usePracticalPackageCredits &&
+                          (practicalPackageCredits.coversPayment || practicalPartialCredits) ? (
                             <div className="mt-2">
                               <PackageCreditMark packageName={practicalPackageCredits.packageName} />
                             </div>

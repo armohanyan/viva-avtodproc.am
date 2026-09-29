@@ -36,6 +36,8 @@ const createBodySchema = z.object({
     )
     .optional(),
   consumePackageCredits: z.boolean().optional(),
+  /** Practical hours to take from package credits. Omit to consume one credit per selected slot. */
+  packageCreditUnits: z.coerce.number().int().positive().optional(),
   packageOrderId: z.coerce.number().int().positive().optional(),
   meetLink: z.union([z.string().max(512), z.null(), z.literal('')]).optional(),
   adminPaymentStatus: adminPaymentStatusSchema.optional(),
@@ -491,6 +493,7 @@ export default class BookingController {
             theoryCohortId: body.theoryCohortId,
             slotEntries: body.slotEntries,
             consumePackageCredits: body.consumePackageCredits,
+            packageCreditUnits: body.packageCreditUnits,
             packageOrderId: body.packageOrderId,
             adminPaymentStatus: body.adminPaymentStatus,
             paidAmountAmd: body.paidAmountAmd,
@@ -561,6 +564,7 @@ export default class BookingController {
         theoryCohortId: body.theoryCohortId,
         slotEntries: body.slotEntries,
         consumePackageCredits: body.consumePackageCredits,
+        packageCreditUnits: body.packageCreditUnits,
         packageOrderId: body.packageOrderId,
         meetLink: body.meetLink,
         adminPaymentStatus: body.adminPaymentStatus,
