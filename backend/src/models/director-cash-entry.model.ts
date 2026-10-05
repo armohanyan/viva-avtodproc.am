@@ -14,6 +14,8 @@ export class DirectorCashEntry extends Model<
   declare amount: number;
   declare comment: CreationOptional<string | null>;
   declare createdByUserId: CreationOptional<number | null>;
+  /** Set when the line is entered from an open cash-register shift. */
+  declare shiftId: CreationOptional<number | null>;
 }
 
 DirectorCashEntry.init(
@@ -25,6 +27,7 @@ DirectorCashEntry.init(
     amount: { type: DataTypes.INTEGER, allowNull: false },
     comment: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
     createdByUserId: fkUnsignedIntNullable(),
+    shiftId: fkUnsignedIntNullable(),
   },
   {
     sequelize,

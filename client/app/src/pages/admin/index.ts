@@ -1,4 +1,6 @@
 export { default as AdminDashboardPage } from "./AdminDashboard";
+export { default as AdminCashRegisterPage } from "./AdminCashRegister";
+export { default as AdminCashRegisterShiftDetailPage } from "./AdminCashRegisterShiftDetail";
 export { default as AdminUsersPage } from "./AdminUsers";
 export { default as AdminStudentDetailsPage } from "./AdminStudentDetails";
 export { default as AdminInstructorsPage } from "./AdminInstructors";

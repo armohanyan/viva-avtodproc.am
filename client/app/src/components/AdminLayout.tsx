@@ -80,6 +80,7 @@ export default function AdminLayout({ children }: Props) {
 	const [collapsibleOverrides, setCollapsibleOverrides] = useState<Record<string, boolean>>({});
 
 	const iconByPath = {
+		"/admin/cash-register": Wallet,
 		"/admin/dashboard": LayoutDashboard,
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
@@ -396,7 +397,7 @@ export default function AdminLayout({ children }: Props) {
 				<div className="flex flex-col h-full min-h-0 bg-hero">
 					<div className="px-3 pt-4 pb-2 shrink-0">
 						<Link
-							href={isDirectorMode ? "/admin/director/cash" : "/admin/dashboard"}
+							href={isDirectorMode ? "/admin/director/cash" : "/admin/cash-register"}
 							onClick={() => closeMobileNav()}
 							className="flex items-center gap-2 min-w-0"
 						>

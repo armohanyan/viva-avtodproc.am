@@ -149,7 +149,7 @@ function occurredAtFromDateOnly(dateIso: string, createdAt?: Date | string | nul
 
 type CashLedgerPaymentMethod = 'card' | 'cash';
 
-type CashLedgerRow = {
+export type CashLedgerRow = {
   id: number;
   source: 'manual' | 'finance' | 'expense' | 'fuel' | 'repair';
   sourceId: number;
@@ -165,6 +165,8 @@ type CashLedgerRow = {
   comment: string | null;
   performedByUserId: number | null;
   performedByName: string | null;
+  /** Manual cash-register line, when the entry was created on a shift. */
+  shiftId: number | null;
 };
 
 function normalizeCashLedgerPayment(raw: unknown): CashLedgerPaymentMethod {
@@ -179,6 +181,7 @@ function serializeManualCashEntry(row: {
   comment: string | null;
   createdByUserId?: number | null;
   createdAt?: Date | string | null;
+  shiftId?: number | null;
 }): CashLedgerRow {
   const signed = num(row.amount);
   const performedByUserId =
@@ -200,6 +203,10 @@ function serializeManualCashEntry(row: {
     comment: row.comment,
     performedByUserId,
     performedByName: null,
+    shiftId:
+      row.shiftId != null && Number.isFinite(Number(row.shiftId)) && Number(row.shiftId) > 0
+        ? Number(row.shiftId)
+        : null,
   };
 }
 
@@ -232,6 +239,7 @@ function serializeFinanceCashTx(tx: FinanceTransaction): CashLedgerRow | null {
     comment,
     performedByUserId,
     performedByName: null,
+    shiftId: null,
   };
 }
 
@@ -253,6 +261,7 @@ function serializeBookingSlotCashRevenue(row: CashBookingRevenueRow): CashLedger
     comment: row.comment?.trim() || 'Դասերի վճարում',
     performedByUserId: row.performedByUserId,
     performedByName: null,
+    shiftId: null,
   };
 }
 
@@ -289,6 +298,7 @@ function serializeDirectorCashExpense(row: {
     comment: note ? `${row.expType} · ${note}` : row.expType,
     performedByUserId,
     performedByName: null,
+    shiftId: null,
   };
 }
 
@@ -322,6 +332,7 @@ function serializeDirectorCashFuel(row: {
     comment: `Վառելիք · ${row.fuelType}`,
     performedByUserId,
     performedByName: null,
+    shiftId: null,
   };
 }
 
@@ -361,6 +372,7 @@ function serializeDirectorCashRepair(row: {
     comment: parts.join(' · '),
     performedByUserId,
     performedByName: null,
+    shiftId: null,
   };
 }
 
@@ -489,6 +501,139 @@ function sumField(rows: readonly { amount?: number; totalAmd?: number }[], key: 
   return rows.reduce((acc, r) => acc + (r[key] ?? 0), 0);
 }
 
+/** Period ledger rows for a Yerevan date range. Same lines `listCash` returns as `entries`. */
+async function loadCashPeriodEntries(range: DateRange): Promise<CashLedgerRow[]> {
+  const { startAt, endAt } = yerevanRangeBounds(range.startDate, range.endDate);
+  const adminUserId =
+    range.adminUserId != null && Number.isFinite(range.adminUserId) && range.adminUserId > 0
+      ? range.adminUserId
+      : null;
+  const branchId = adminUserId != null ? null : range.branchId;
+  const scopedRange: DateRange = { ...range, branchId, adminUserId };
+  const financeBranch = branchId != null ? { branchId } : {};
+  const dateOnly = { date: { [Op.between]: [scopedRange.startDate, scopedRange.endDate] } };
+  const bookingRevenueBalanceRange: DateRange = {
+    startDate: CASH_BALANCE_START_DATE,
+    endDate: scopedRange.endDate,
+    branchId,
+  };
+
+  const [manualPeriod, financeTxs, expensesPeriod, fuelPeriodRows, repairPeriodRows, bookingRevenuesThroughEnd] =
+    await Promise.all([
+      DirectorCashEntry.findAll({
+        where: dateWhere(scopedRange),
+        order: [['date', 'DESC'], ['id', 'DESC']],
+      }),
+      FinanceTransaction.findAll({
+        where: {
+          status: 'completed',
+          ...financeBranch,
+        },
+      }),
+      DirectorExpense.findAll({
+        where: dateWhere(scopedRange),
+      }),
+      DirectorFuel.findAll({ where: dateOnly }),
+      DirectorRepair.findAll({ where: dateOnly }),
+      fetchCashBookingRevenues(bookingRevenueBalanceRange),
+    ]);
+
+  const activeFinanceTxs = await dropFinanceLinkedToArchivedBookings(financeTxs);
+  const financeBookingIds = [
+    ...new Set(
+      activeFinanceTxs
+        .map((tx) => (tx.bookingId != null ? Number(tx.bookingId) : 0))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  ];
+  const bookingCreatorById = new Map<number, number>();
+  if (financeBookingIds.length > 0) {
+    const linkedBookings = await Booking.findAll({
+      where: { id: { [Op.in]: financeBookingIds } },
+      attributes: ['id', 'createdByUserId'],
+    });
+    for (const b of linkedBookings) {
+      const uid = b.createdByUserId != null ? Number(b.createdByUserId) : 0;
+      if (Number.isFinite(uid) && uid > 0) bookingCreatorById.set(b.id, uid);
+    }
+  }
+
+  const financePerformerId = (tx: FinanceTransaction): number | null => {
+    const createdBy =
+      tx.createdByUserId != null && Number.isFinite(Number(tx.createdByUserId)) && Number(tx.createdByUserId) > 0
+        ? Number(tx.createdByUserId)
+        : null;
+    if (createdBy != null) return createdBy;
+    const bookingId = tx.bookingId != null ? Number(tx.bookingId) : 0;
+    if (!Number.isFinite(bookingId) || bookingId <= 0) return null;
+    return bookingCreatorById.get(bookingId) ?? null;
+  };
+
+  const financePeriod: CashLedgerRow[] = [];
+  for (const tx of activeFinanceTxs) {
+    const row = serializeFinanceCashTx(tx);
+    if (!row) continue;
+    const performerId = financePerformerId(tx);
+    row.performedByUserId = performerId;
+    if (!matchesCashAdmin(performerId, adminUserId)) continue;
+    if (financeTxInYerevanRange(tx, startAt, endAt)) {
+      financePeriod.push(row);
+    }
+  }
+
+  const bookingPeriodRows = bookingRevenuesThroughEnd
+    .filter((r) => r.date >= scopedRange.startDate && r.date <= scopedRange.endDate)
+    .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId))
+    .map(serializeBookingSlotCashRevenue)
+    .filter((r): r is CashLedgerRow => r != null);
+
+  const expensePeriod = expensesPeriod
+    .map((r) => serializeDirectorCashExpense(r.toJSON()))
+    .filter((r): r is CashLedgerRow => r != null)
+    .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
+  const fuelPeriod = fuelPeriodRows
+    .map((r) => serializeDirectorCashFuel(r.toJSON()))
+    .filter((r): r is CashLedgerRow => r != null)
+    .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
+  const repairPeriod = repairPeriodRows
+    .map((r) => serializeDirectorCashRepair(r.toJSON()))
+    .filter((r): r is CashLedgerRow => r != null)
+    .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
+
+  const manualPeriodRows = manualPeriod
+    .map((r) => serializeManualCashEntry(r.toJSON()))
+    .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
+  const entries = [
+    ...financePeriod,
+    ...bookingPeriodRows,
+    ...expensePeriod,
+    ...fuelPeriod,
+    ...repairPeriod,
+    ...manualPeriodRows,
+  ].sort(sortCashLedger);
+
+  const performerIds = [
+    ...new Set(
+      entries
+        .map((e) => e.performedByUserId)
+        .filter((id): id is number => id != null && Number.isFinite(id) && id > 0),
+    ),
+  ];
+  if (performerIds.length > 0) {
+    const users = await User.findAll({
+      where: { id: { [Op.in]: performerIds } },
+      attributes: ['id', 'name'],
+    });
+    const nameById = new Map(users.map((u) => [u.id, (u.name ?? '').trim() || `User #${u.id}`]));
+    for (const entry of entries) {
+      if (entry.performedByUserId == null) continue;
+      entry.performedByName = nameById.get(entry.performedByUserId) ?? `User #${entry.performedByUserId}`;
+    }
+  }
+
+  return entries;
+}
+
 export default class DirectorService {
   static async ensureDefaultOptions(): Promise<void> {
     for (const category of DIRECTOR_OPTION_CATEGORIES) {
@@ -524,9 +669,15 @@ export default class DirectorService {
     return this.listOptions(category);
   }
 
+  /** Period lines only (no lifetime balance). Used by the cash register and by `listCash`. */
+  static async periodEntries(range: DateRange): Promise<CashLedgerRow[]> {
+    await FinanceService.reconcileCollectedIncomeShortfalls();
+    return loadCashPeriodEntries(range);
+  }
+
   static async listCash(range: DateRange) {
     await FinanceService.reconcileCollectedIncomeShortfalls();
-    const { startAt, endAt } = yerevanRangeBounds(range.startDate, range.endDate);
+    const { endAt } = yerevanRangeBounds(range.startDate, range.endDate);
     const adminUserId =
       range.adminUserId != null && Number.isFinite(range.adminUserId) && range.adminUserId > 0
         ? range.adminUserId
@@ -535,7 +686,6 @@ export default class DirectorService {
     const branchId = adminUserId != null ? null : range.branchId;
     const scopedRange: DateRange = { ...range, branchId, adminUserId };
     const financeBranch = branchId != null ? { branchId } : {};
-    const dateOnly = { date: { [Op.between]: [scopedRange.startDate, scopedRange.endDate] } };
     const dateUntilEnd = { date: { [Op.lte]: scopedRange.endDate } };
     const bookingRevenueBalanceRange: DateRange = {
       startDate: CASH_BALANCE_START_DATE,
@@ -544,21 +694,15 @@ export default class DirectorService {
     };
 
     const [
-      manualPeriod,
+      entries,
       manualBalance,
       financeTxs,
-      expensesPeriod,
       expensesBalance,
-      fuelPeriodRows,
       fuelBalanceRows,
-      repairPeriodRows,
       repairBalanceRows,
       bookingRevenuesThroughEnd,
     ] = await Promise.all([
-      DirectorCashEntry.findAll({
-        where: dateWhere(scopedRange),
-        order: [['date', 'DESC'], ['id', 'DESC']],
-      }),
+      loadCashPeriodEntries(scopedRange),
       DirectorCashEntry.findAll({
         where: {
           date: { [Op.lte]: scopedRange.endDate },
@@ -572,17 +716,12 @@ export default class DirectorService {
         },
       }),
       DirectorExpense.findAll({
-        where: dateWhere(scopedRange),
-      }),
-      DirectorExpense.findAll({
         where: {
           ...dateUntilEnd,
           ...cashBranchWhere(branchId),
         },
       }),
-      DirectorFuel.findAll({ where: dateOnly }),
       DirectorFuel.findAll({ where: dateUntilEnd }),
-      DirectorRepair.findAll({ where: dateOnly }),
       DirectorRepair.findAll({ where: dateUntilEnd }),
       fetchCashBookingRevenues(bookingRevenueBalanceRange),
     ]);
@@ -619,7 +758,6 @@ export default class DirectorService {
       return bookingCreatorById.get(bookingId) ?? null;
     };
 
-    const financePeriod: CashLedgerRow[] = [];
     let financeCashBalanceSigned = 0;
     for (const tx of activeFinanceTxs) {
       const row = serializeFinanceCashTx(tx);
@@ -632,33 +770,12 @@ export default class DirectorService {
       if (created != null && !Number.isNaN(created.getTime()) && created <= endAt) {
         financeCashBalanceSigned += signedCashAmount(row);
       }
-      if (created != null && financeTxInYerevanRange(tx, startAt, endAt)) {
-        financePeriod.push(row);
-      }
     }
 
-    const bookingPeriodRows = bookingRevenuesThroughEnd
-      .filter((r) => r.date >= scopedRange.startDate && r.date <= scopedRange.endDate)
-      .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId))
-      .map(serializeBookingSlotCashRevenue)
-      .filter((r): r is CashLedgerRow => r != null);
     const bookingCashBalanceIn = bookingRevenuesThroughEnd
       .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId))
       .filter((r) => normalizeCashLedgerPayment(r.paymentMethod) === 'cash')
       .reduce((s, r) => s + Math.abs(num(r.amount)), 0);
-
-    const expensePeriod = expensesPeriod
-      .map((r) => serializeDirectorCashExpense(r.toJSON()))
-      .filter((r): r is CashLedgerRow => r != null)
-      .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
-    const fuelPeriod = fuelPeriodRows
-      .map((r) => serializeDirectorCashFuel(r.toJSON()))
-      .filter((r): r is CashLedgerRow => r != null)
-      .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
-    const repairPeriod = repairPeriodRows
-      .map((r) => serializeDirectorCashRepair(r.toJSON()))
-      .filter((r): r is CashLedgerRow => r != null)
-      .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
 
     const expenseCashBalanceOut = expensesBalance
       .filter((r) =>
@@ -687,37 +804,6 @@ export default class DirectorService {
       )
       .filter((r) => normalizeCashLedgerPayment(r.paymentMethod) === 'cash')
       .reduce((s, r) => s + Math.abs(num(r.amount)), 0);
-
-    const manualPeriodRows = manualPeriod
-      .map((r) => serializeManualCashEntry(r.toJSON()))
-      .filter((r) => matchesCashAdmin(r.performedByUserId, adminUserId));
-    const entries = [
-      ...financePeriod,
-      ...bookingPeriodRows,
-      ...expensePeriod,
-      ...fuelPeriod,
-      ...repairPeriod,
-      ...manualPeriodRows,
-    ].sort(sortCashLedger);
-
-    const performerIds = [
-      ...new Set(
-        entries
-          .map((e) => e.performedByUserId)
-          .filter((id): id is number => id != null && Number.isFinite(id) && id > 0),
-      ),
-    ];
-    if (performerIds.length > 0) {
-      const users = await User.findAll({
-        where: { id: { [Op.in]: performerIds } },
-        attributes: ['id', 'name'],
-      });
-      const nameById = new Map(users.map((u) => [u.id, (u.name ?? '').trim() || `User #${u.id}`]));
-      for (const entry of entries) {
-        if (entry.performedByUserId == null) continue;
-        entry.performedByName = nameById.get(entry.performedByUserId) ?? `User #${entry.performedByUserId}`;
-      }
-    }
 
     const totals = sumCashDirections(entries);
     const manualBalanceSigned = manualBalance

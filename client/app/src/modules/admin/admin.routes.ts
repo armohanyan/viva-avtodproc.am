@@ -2,6 +2,8 @@ import type { AccountType } from "src/modules/accounts";
 import type { AppRoute } from "src/types/router.types";
 import {
   AdminDashboardPage,
+  AdminCashRegisterPage,
+  AdminCashRegisterShiftDetailPage,
   AdminUsersPage,
   AdminStudentDetailsPage,
   AdminInstructorsPage,
@@ -53,6 +55,8 @@ import { SUPER_ADMIN_ONLY_ACCOUNT_TYPES } from "./admin.consts";
 const STAFF: readonly AccountType[] = ["super_admin", "admin"];
 
 export const adminRoutes: readonly AppRoute[] = [
+  { path: "/admin/cash-register/shifts/:id", component: AdminCashRegisterShiftDetailPage, allowedAccountTypes: STAFF },
+  { path: "/admin/cash-register", component: AdminCashRegisterPage, allowedAccountTypes: STAFF },
   { path: "/admin/dashboard", component: AdminDashboardPage, allowedAccountTypes: STAFF },
   { path: "/admin/reports", component: DirectorRedirectLegacyAdminReports, allowedAccountTypes: SUPER_ADMIN_ONLY_ACCOUNT_TYPES },
   { path: "/admin/branches", component: AdminBranchesPage, allowedAccountTypes: STAFF },

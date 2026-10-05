@@ -710,6 +710,7 @@ const en = {
 
   // Admin
   adminDashboard: "Admin Dashboard",
+  adminCashRegister: "Cash register",
   adminReports: "Reports",
   totalUsers: "Total Users",
   totalBookings: "Total Bookings",
@@ -3113,6 +3114,7 @@ const ru: typeof en = {
   bookingDurationLabel: "Длительность",
   
     adminDashboard: "Панель администратора",
+    adminCashRegister: "Касса",
     adminReports: "Отчёты",
   totalUsers: "Всего пользователей",
   totalBookings: "Всего записей",

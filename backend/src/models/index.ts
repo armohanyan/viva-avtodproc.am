@@ -48,6 +48,7 @@ import { SalaryAdjustment } from './salary-adjustment.model';
 import { StaffEmployee } from './staff-employee.model';
 import { DirectorOption } from './director-option.model';
 import { DirectorCashEntry } from './director-cash-entry.model';
+import { CashShift } from './cash-shift.model';
 import { DirectorExpense } from './director-expense.model';
 import { DirectorRepair } from './director-repair.model';
 import { DirectorFuel } from './director-fuel.model';
@@ -361,6 +362,7 @@ export {
   StaffEmployee,
   DirectorOption,
   DirectorCashEntry,
+  CashShift,
   DirectorExpense,
   DirectorRepair,
   DirectorFuel,
@@ -3303,6 +3305,72 @@ async function ensureDirectorTablesNullableFkColumns(): Promise<void> {
   }
 }
 
+async function ensureCashShiftsTable(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const t = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cash_shifts'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (t.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Creating cash_shifts …');
+  await sequelize.query(`
+    CREATE TABLE \`cash_shifts\` (
+      \`id\` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+      \`admin_id\` INT UNSIGNED NOT NULL,
+      \`branch_id\` INT UNSIGNED NOT NULL,
+      \`closed_by_user_id\` INT UNSIGNED NULL,
+      \`opening_balance\` INT UNSIGNED NOT NULL,
+      \`cash_in_total\` INT UNSIGNED NULL,
+      \`cash_out_total\` INT UNSIGNED NULL,
+      \`expected_balance\` INT NULL,
+      \`actual_balance\` INT UNSIGNED NULL,
+      \`status\` ENUM('OPEN','CLOSED') NOT NULL,
+      \`opened_at\` DATETIME NOT NULL,
+      \`closed_at\` DATETIME NULL,
+      \`open_branch_key\` INT UNSIGNED NULL,
+      \`created_at\` DATETIME NOT NULL,
+      \`updated_at\` DATETIME NOT NULL,
+      PRIMARY KEY (\`id\`),
+      UNIQUE KEY \`cash_shifts_open_branch_key\` (\`open_branch_key\`),
+      KEY \`cash_shifts_branch_opened\` (\`branch_id\`, \`opened_at\`),
+      KEY \`cash_shifts_status\` (\`status\`),
+      CONSTRAINT \`cash_shifts_admin_fk\` FOREIGN KEY (\`admin_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`cash_shifts_branch_fk\` FOREIGN KEY (\`branch_id\`) REFERENCES \`branches\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE RESTRICT,
+      CONSTRAINT \`cash_shifts_closed_by_fk\` FOREIGN KEY (\`closed_by_user_id\`) REFERENCES \`users\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureDirectorCashEntriesShiftIdColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') return;
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'director_cash_entries'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) return;
+  const cols = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'director_cash_entries' AND COLUMN_NAME = 'shift_id'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (cols.length > 0) return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Adding director_cash_entries.shift_id …');
+  await sequelize.query(`
+    ALTER TABLE \`director_cash_entries\`
+      ADD COLUMN \`shift_id\` INT UNSIGNED NULL AFTER \`created_by_user_id\`,
+      ADD KEY \`director_cash_entries_shift_id\` (\`shift_id\`),
+      ADD CONSTRAINT \`director_cash_entries_shift_fk\` FOREIGN KEY (\`shift_id\`) REFERENCES \`cash_shifts\` (\`id\`)
+        ON UPDATE CASCADE ON DELETE SET NULL
+  `);
+}
+
 export async function syncModels(): Promise<void> {
   await assertMysqlCoreIdsAreInteger();
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
@@ -3322,6 +3390,8 @@ export async function syncModels(): Promise<void> {
   await ensureStaffEmployeesTable();
   await ensureStaffEmployeesPositionEnum();
   await ensureEmployeeCompensationRulesTable();
+  await ensureCashShiftsTable();
+  await ensureDirectorCashEntriesShiftIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
   await ensureDirectorTablesNullableFkColumns();
   await ensureBookingsInstructorUserIdOnDeleteSetNull();

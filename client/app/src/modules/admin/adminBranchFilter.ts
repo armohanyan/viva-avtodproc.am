@@ -10,6 +10,7 @@ const BRANCH_FILTER_PATH_PREFIXES = [
 	"/finance/transactions",
 	"/admin/class-schedule",
 	"/admin/director",
+	"/admin/cash-register",
 	"/admin/petrol-expenses",
 	"/admin/instructor-km-logs",
 	"/admin/petrol-fuel-km",

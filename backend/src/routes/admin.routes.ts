@@ -6,10 +6,12 @@ import AuditLogController from '../controllers/audit-log.controller';
 import ClassScheduleController from '../controllers/class-schedule.controller';
 import { requireStaff, requireSuperAdmin } from '../middleware/staff-auth.middleware';
 import directorRoutes from './director.routes';
+import cashRegisterRoutes from './cash-register.routes';
 import adminPetrolExpenseRequestRoutes from './admin-petrol-expense-request.routes';
 
 const router = Router();
 
+router.use('/cash-register', requireStaff, cashRegisterRoutes);
 router.use('/director', directorRoutes);
 router.use('/petrol-expense-requests', adminPetrolExpenseRequestRoutes);
 
