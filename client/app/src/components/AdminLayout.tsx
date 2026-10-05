@@ -81,7 +81,6 @@ export default function AdminLayout({ children }: Props) {
 
 	const iconByPath = {
 		"/admin/cash-register": Wallet,
-		"/admin/dashboard": LayoutDashboard,
 		"/admin/branches": MapPin,
 		"/admin/cars": CarFront,
 		"/admin/bookings": Calendar,
@@ -322,7 +321,7 @@ export default function AdminLayout({ children }: Props) {
 		if (location === "/admin/learn/groups") return t("adminSidebarGroups");
 		if (location === "/admin/learn/packages") return t("packages");
 		if (location.startsWith("/admin/bookings")) return t("bookings");
-		return adminNavLabels.find((n) => n.href === location)?.label || t("adminDashboard");
+		return adminNavLabels.find((n) => n.href === location)?.label || t("adminCashRegister");
 	}, [location, t, adminNavLabels]);
 
 	const isSuperAdmin = user?.accountType === "super_admin";
@@ -339,7 +338,7 @@ export default function AdminLayout({ children }: Props) {
 						<>
 							{isSuperAdmin && isDirectorMode ? (
 								<Button variant="outline" size="sm" asChild className="shrink-0 max-sm:w-full">
-									<Link href="/admin/dashboard" onClick={() => closeMobileNav()}>
+									<Link href="/admin/cash-register" onClick={() => closeMobileNav()}>
 										<ArrowLeft className="w-3.5 h-3.5" />
 										<span>Ադմին վահանակ</span>
 									</Link>

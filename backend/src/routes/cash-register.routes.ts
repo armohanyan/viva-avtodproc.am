@@ -3,6 +3,7 @@ import CashRegisterController from '../controllers/cash-register.controller';
 
 const router = Router();
 
+router.get('/kassa', CashRegisterController.kassa);
 router.get('/period-summary', CashRegisterController.periodSummary);
 router.get('/shifts', CashRegisterController.list);
 router.post('/shifts', CashRegisterController.open);

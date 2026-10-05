@@ -5,7 +5,7 @@ export function defaultHomePathForAccountType(accountType: AccountType): string 
   switch (accountType) {
     case "super_admin":
     case "admin":
-      return "/admin/dashboard";
+      return "/admin/notifications";
     case "instructor":
       return "/instructor/dashboard";
     case "student":

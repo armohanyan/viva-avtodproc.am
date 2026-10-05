@@ -19,18 +19,23 @@ import { useBranches } from "src/modules/branches/useBranches";
 import { cityNameById, useCities } from "src/modules/cities";
 import CashRegisterShiftView from "src/modules/cash-register/CashRegisterShiftView";
 import CashRegisterFilters from "src/modules/cash-register/CashRegisterFilters";
+import CashRegisterDayLedger from "src/modules/cash-register/CashRegisterDayLedger";
 import CashRegisterPeriodPanel from "src/modules/cash-register/CashRegisterPeriodPanel";
 import { printCashRegisterPeriodReport } from "src/modules/cash-register/cashRegisterPrint";
+import type { CashRegisterAdminOption } from "src/modules/cash-register/CashRegisterFilters";
 import {
   closeCashRegisterShift,
   createCashRegisterEntry,
   deleteCashRegisterEntry,
+  fetchCashRegisterKassa,
   fetchCashRegisterPeriodSummary,
   fetchCashRegisterShift,
   fetchCashRegisterShifts,
   openCashRegisterShift,
   updateCashRegisterEntry,
 } from "src/modules/cash-register/cash-register.api";
+import type { DirectorCashSummary } from "src/modules/director/director.types";
+import type { DirectorCashViewBy } from "src/modules/director/director.consts";
 import type {
   CashRegisterPeriodSummary,
   CashShiftDetail,
@@ -48,7 +53,7 @@ import {
 } from "src/modules/director/directorFormValues";
 import { formatAmd } from "src/pages/admin/finance/adminFinanceShared";
 import { formatDateTime } from "src/lib/adminFormat";
-import { getApiErrorMessage } from "src/lib/vivaApi";
+import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import { Wallet, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -89,11 +94,28 @@ export default function AdminCashRegisterPage() {
   const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
   const [historySearch, setHistorySearch] = useState("");
   const [periodSummary, setPeriodSummary] = useState<CashRegisterPeriodSummary | null>(null);
+  const [kassa, setKassa] = useState<DirectorCashSummary | null>(null);
+  const [viewBy, setViewBy] = useState<DirectorCashViewBy>("branch");
+  const [filterAdminUserId, setFilterAdminUserId] = useState<string | null>(null);
+  const [admins, setAdmins] = useState<CashRegisterAdminOption[]>([]);
   /** Keeps a closed shift visible after «Փակել գրաֆիկ» until another shift is opened or selected. */
   const [focusedShiftId, setFocusedShiftId] = useState<number | null>(null);
 
   const filterBranchId = getAdminBranchFilterId();
-  const canQuery = isSuperAdmin || filterBranchId != null;
+
+  const kassaQueryParams = useMemo(
+    () => ({
+      startDate,
+      endDate,
+      branchId: viewBy === "branch" ? filterBranchId : null,
+      adminUserId: viewBy === "admin" ? filterAdminUserId : null,
+    }),
+    [startDate, endDate, viewBy, filterBranchId, filterAdminUserId],
+  );
+
+  const canQuery =
+    isSuperAdmin ||
+    (viewBy === "admin" ? filterAdminUserId != null : filterBranchId != null);
   const shiftBranchSelected = filterBranchId != null;
 
   const openShiftForBranch = useMemo(
@@ -108,6 +130,42 @@ export default function AdminCashRegisterPage() {
     if (isSuperAdmin || filterBranchId != null || branches.length === 0) return;
     setAdminBranchFilterId(String(branches[0]!.id));
   }, [isSuperAdmin, filterBranchId, branches]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await vivaApiJson<Array<{ id: number | string; name?: string; email?: string }>>(
+          "/accounts?roles=admin,super_admin",
+        );
+        if (cancelled) return;
+        const next = (Array.isArray(data) ? data : [])
+          .map((a) => {
+            const id = String(a.id ?? "").trim();
+            if (!id) return null;
+            const name = String(a.name ?? "").trim() || String(a.email ?? "").trim() || `Admin #${id}`;
+            return { id, name };
+          })
+          .filter((a): a is CashRegisterAdminOption => a != null)
+          .sort((a, b) => a.name.localeCompare(b.name, "hy"));
+        setAdmins(next);
+      } catch {
+        if (!cancelled) setAdmins([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onViewByChange = (next: DirectorCashViewBy) => {
+    setViewBy(next);
+    if (next === "admin") {
+      setFilterAdminUserId((prev) => prev ?? (user?.id ? String(user.id) : null));
+    } else {
+      setFilterAdminUserId(null);
+    }
+  };
 
   const onBranchFilterChange = (value: string | null) => {
     setAdminBranchFilterId(value);
@@ -142,17 +200,20 @@ export default function AdminCashRegisterPage() {
       setShifts([]);
       setActiveDetail(null);
       setPeriodSummary(null);
+      setKassa(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const [list, period] = await Promise.all([
+      const [list, period, kassaData] = await Promise.all([
         fetchCashRegisterShifts(startDate, endDate, filterBranchId),
-        fetchCashRegisterPeriodSummary(startDate, endDate, filterBranchId),
+        fetchCashRegisterPeriodSummary(kassaQueryParams),
+        fetchCashRegisterKassa(kassaQueryParams),
       ]);
       setShifts(list);
       setPeriodSummary(period);
+      setKassa(kassaData);
       const open =
         filterBranchId != null
           ? list.find((s) => s.status === "OPEN" && String(s.branchId) === filterBranchId)
@@ -168,11 +229,12 @@ export default function AdminCashRegisterPage() {
       setShifts([]);
       setActiveDetail(null);
       setPeriodSummary(null);
+      setKassa(null);
       showToast(getApiErrorMessage(e), "error");
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, filterBranchId, canQuery, showToast, resolveShiftDetailId]);
+  }, [kassaQueryParams, filterBranchId, canQuery, showToast, resolveShiftDetailId, startDate, endDate]);
 
   useEffect(() => {
     void reload();
@@ -185,6 +247,9 @@ export default function AdminCashRegisterPage() {
   }, [filterBranchId, branches, cities]);
 
   const printedByName = user?.name?.trim() || user?.email?.trim() || undefined;
+
+  const kassaRangeLabel =
+    startDate === endDate ? startDate : `${startDate} — ${endDate}`;
 
   const filteredShifts = useMemo(() => {
     const q = historySearch.trim().toLowerCase();
@@ -305,29 +370,39 @@ export default function AdminCashRegisterPage() {
         endDate={endDate}
         onStartDateChange={setStartDate}
         onEndDateChange={setEndDate}
+        viewBy={viewBy}
+        onViewByChange={onViewByChange}
         branchId={filterBranchId}
         onBranchIdChange={onBranchFilterChange}
+        adminUserId={filterAdminUserId}
+        onAdminUserIdChange={setFilterAdminUserId}
+        adminOptions={admins}
         showAllBranchesOption={isSuperAdmin}
         onApply={() => void reload()}
       />
 
       {!canQuery ? (
         <Card className="p-4 mb-6 text-sm text-muted-foreground">
-          Ընտրեք մասնաճյուղ՝ տվյալները տեսնելու համար։
+          {viewBy === "admin"
+            ? "Ընտրեք ադմին՝ տվյալները տեսնելու համար։"
+            : "Ընտրեք մասնաճյուղ՝ տվյալները տեսնելու համար։"}
         </Card>
       ) : null}
 
       {loading ? (
         <p className="text-sm text-muted-foreground mb-6">Բեռնվում է…</p>
-      ) : periodSummary ? (
-        <CashRegisterPeriodPanel
-          summary={periodSummary}
-          startDate={startDate}
-          endDate={endDate}
-          branchScope={branchScopeLabel}
-          printedBy={printedByName}
-          shifts={shifts}
-        />
+      ) : kassa && periodSummary ? (
+        <>
+          <CashRegisterDayLedger kassa={kassa} rangeLabel={kassaRangeLabel} />
+          <CashRegisterPeriodPanel
+            summary={periodSummary}
+            startDate={startDate}
+            endDate={endDate}
+            branchScope={branchScopeLabel}
+            printedBy={printedByName}
+            shifts={shifts}
+          />
+        </>
       ) : null}
 
       {shiftBranchSelected ? (

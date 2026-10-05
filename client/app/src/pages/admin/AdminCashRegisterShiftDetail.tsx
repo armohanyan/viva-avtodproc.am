@@ -38,8 +38,9 @@ export default function AdminCashRegisterShiftDetailPage() {
       const day = next.shift.openedAt.slice(0, 10);
       try {
         const branchKey = String(next.shift.branchId);
+        const query = { startDate: day, endDate: day, branchId: branchKey };
         const [period, shifts] = await Promise.all([
-          fetchCashRegisterPeriodSummary(day, day, branchKey),
+          fetchCashRegisterPeriodSummary(query),
           fetchCashRegisterShifts(day, day, branchKey),
         ]);
         setPrintDaily(() => () =>

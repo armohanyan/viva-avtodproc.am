@@ -28,6 +28,7 @@ import type {
   DirectorStudentAnalytics,
 } from "./director.types";
 import { directorHoursNumber } from "./directorFormat";
+import { normalizeDirectorCashSummary } from "./normalizeDirectorCash";
 
 const BASE = "/admin/director";
 
@@ -113,31 +114,7 @@ export async function fetchDirectorStudentAnalytics(q: string): Promise<Director
 
 export async function fetchDirectorCash(q: string): Promise<DirectorCashSummary> {
   const data = await vivaApiJson<DirectorCashSummary>(`${BASE}/cash?${q}`);
-  const entries = Array.isArray(data?.entries)
-    ? data.entries.map((e) => ({
-        ...e,
-        source: e.source ?? "manual",
-        sourceId: e.sourceId ?? e.id,
-        readOnly:
-          Boolean(e.readOnly) ||
-          e.source === "finance" ||
-          e.source === "expense" ||
-          e.source === "fuel" ||
-          e.source === "repair",
-        paymentMethod: e.paymentMethod === "cash" ? "cash" : "card",
-        amount: Number(e.amount) || 0,
-      }))
-    : [];
-  return {
-    entries,
-    balance: Number(data?.balance) || 0,
-    periodIn: Number(data?.periodIn) || 0,
-    periodOut: Number(data?.periodOut) || 0,
-    periodCashIn: Number(data?.periodCashIn) || 0,
-    periodCardIn: Number(data?.periodCardIn) || 0,
-    periodCashOut: Number(data?.periodCashOut) || 0,
-    periodCardOut: Number(data?.periodCardOut) || 0,
-  };
+  return normalizeDirectorCashSummary(data);
 }
 
 export async function createDirectorCash(body: {

@@ -65,6 +65,7 @@ export type CashRegisterPeriodEntry = {
   id: number;
   source: CashShiftLine["source"];
   sourceId: number;
+  readOnly: boolean;
   date: string;
   occurredAt: string;
   branchId: number | null;
@@ -77,6 +78,7 @@ export type CashRegisterPeriodEntry = {
 };
 
 export type CashRegisterPeriodSummary = {
+  balance: number;
   totals: {
     periodIn: number;
     periodOut: number;

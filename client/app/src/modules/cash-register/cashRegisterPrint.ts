@@ -141,6 +141,7 @@ function reportHeaderHtml(opts: {
   </header>`;
 }
 
+/** Hidden iframe — avoids popup blockers and blank tabs when `noopener` blocks `document.write`. */
 function openPrintWindow(title: string, body: string): void {
   const html = `<!DOCTYPE html>
 <html lang="hy">
@@ -151,12 +152,39 @@ function openPrintWindow(title: string, body: string): void {
 </head>
 <body>${body}</body>
 </html>`;
-  const w = window.open("", "_blank", "noopener,noreferrer");
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  w.print();
+
+  try {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("title", "cash-register-print");
+    iframe.style.cssText =
+      "position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+    document.body.appendChild(iframe);
+
+    const win = iframe.contentWindow;
+    const doc = win?.document;
+    if (!win || !doc) {
+      iframe.remove();
+      return;
+    }
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    let printed = false;
+    const runPrint = () => {
+      if (printed) return;
+      printed = true;
+      win.focus();
+      win.print();
+      window.setTimeout(() => iframe.remove(), 800);
+    };
+
+    win.addEventListener("load", runPrint);
+    window.setTimeout(runPrint, 400);
+  } catch {
+    /* ignore */
+  }
 }
 
 function branchRegisterBlock(shift: CashShiftSummary, reportDay: string): string {

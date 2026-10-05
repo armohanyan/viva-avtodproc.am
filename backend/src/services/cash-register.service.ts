@@ -80,6 +80,7 @@ export type CashRegisterPeriodEntry = {
   id: number;
   source: CashLedgerRow['source'];
   sourceId: number;
+  readOnly: boolean;
   date: string;
   occurredAt: string;
   branchId: number | null;
@@ -92,6 +93,8 @@ export type CashRegisterPeriodEntry = {
 };
 
 export type CashRegisterPeriodSummary = {
+  /** Cumulative cash balance through end date (same as director Կասսա `balance`). */
+  balance: number;
   totals: {
     periodIn: number;
     periodOut: number;
@@ -270,15 +273,13 @@ async function attributeLines(shift: CashShift, rows: CashLedgerRow[]): Promise<
 }
 
 async function linesForShift(shift: CashShift, endAt: Date): Promise<CashShiftLine[]> {
+  /** Same calendar-day scope as director Կասսա (not time-of-day after «Բացել գրաֆիկ»). */
   const rows = await DirectorService.periodEntries({
     startDate: yerevanDay(new Date(shift.openedAt)),
     endDate: yerevanDay(endAt),
     branchId: shift.branchId,
   });
-  const startStamp = yerevanStamp(new Date(shift.openedAt));
-  const endStamp = yerevanStamp(endAt);
-  const windowed = rows.filter((r) => r.occurredAt >= startStamp && r.occurredAt <= endStamp);
-  const scoped = windowed.filter((r) => {
+  const scoped = rows.filter((r) => {
     if (r.source === 'fuel' || r.source === 'repair') return true;
     return r.branchId === shift.branchId;
   });
@@ -480,16 +481,17 @@ export default class CashRegisterService {
     startDate: string;
     endDate: string;
     branchId?: number;
+    adminUserId?: number | null;
     allowAllBranches: boolean;
   }): Promise<CashRegisterPeriodSummary> {
-    if (!input.allowAllBranches && input.branchId == null) {
-      throw new InputValidationError('Select a branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    if (!input.allowAllBranches && input.branchId == null && input.adminUserId == null) {
+      throw new InputValidationError('Select a branch or admin filter.', HttpStatusCodesUtil.BAD_REQUEST);
     }
     const ledger = await DirectorService.listCash({
       startDate: input.startDate,
       endDate: input.endDate,
       branchId: input.branchId ?? null,
-      adminUserId: null,
+      adminUserId: input.adminUserId ?? null,
     });
 
     const branchIds = [
@@ -553,6 +555,7 @@ export default class CashRegisterService {
       id: row.id,
       source: row.source,
       sourceId: row.sourceId,
+      readOnly: row.readOnly,
       date: row.date,
       occurredAt: row.occurredAt,
       branchId: row.branchId,
@@ -565,6 +568,7 @@ export default class CashRegisterService {
     }));
 
     return {
+      balance: ledger.balance,
       totals: {
         periodIn: ledger.periodIn,
         periodOut: ledger.periodOut,

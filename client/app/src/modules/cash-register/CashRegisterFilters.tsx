@@ -13,15 +13,22 @@ import { useLang } from "src/lib/i18n";
 import { ADMIN_BRANCH_FILTER_ALL } from "src/modules/admin/adminBranchFilter";
 import { branchOptionLabel, useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
-import { todayIso } from "src/modules/director/director.consts";
+import { todayIso, type DirectorCashViewBy } from "src/modules/director/director.consts";
+
+export type CashRegisterAdminOption = { id: string; name: string };
 
 type Props = {
   startDate: string;
   endDate: string;
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
+  viewBy: DirectorCashViewBy;
+  onViewByChange: (value: DirectorCashViewBy) => void;
   branchId: string | null;
   onBranchIdChange: (value: string | null) => void;
+  adminUserId: string | null;
+  onAdminUserIdChange: (value: string | null) => void;
+  adminOptions: CashRegisterAdminOption[];
   showAllBranchesOption: boolean;
   onApply: () => void;
 };
@@ -45,8 +52,13 @@ export default function CashRegisterFilters({
   endDate,
   onStartDateChange,
   onEndDateChange,
+  viewBy,
+  onViewByChange,
   branchId,
   onBranchIdChange,
+  adminUserId,
+  onAdminUserIdChange,
+  adminOptions,
   showAllBranchesOption,
   onApply,
 }: Props) {
@@ -87,31 +99,68 @@ export default function CashRegisterFilters({
             onChange={(e) => onEndDateChange(e.target.value || today)}
           />
         </div>
-        <div className="space-y-1 min-w-[12rem] flex-1 sm:flex-none">
-          <Label>Մասնաճյուղ</Label>
+        <div className="space-y-1 min-w-[10rem]">
+          <Label>Դիտել ըստ</Label>
           <Select
-            value={selectedValue}
-            onValueChange={(value) =>
-              onBranchIdChange(value === ADMIN_BRANCH_FILTER_ALL ? null : value)
-            }
-            disabled={loading && branches.length === 0}
+            value={viewBy}
+            onValueChange={(v) => onViewByChange(v as DirectorCashViewBy)}
           >
-            <SelectTrigger className="w-full sm:min-w-[12rem] h-9 gap-1.5">
-              <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-              <SelectValue placeholder={t("adminBranchFilterAll")}>{selectedLabel}</SelectValue>
+            <SelectTrigger className="w-full sm:min-w-[10rem] h-9">
+              <SelectValue />
             </SelectTrigger>
-            <SelectContent className="max-h-[min(20rem,70vh)]">
-              {showAllBranchesOption ? (
-                <SelectItem value={ADMIN_BRANCH_FILTER_ALL}>{t("adminBranchFilterAll")}</SelectItem>
-              ) : null}
-              {branches.map((b) => (
-                <SelectItem key={b.id} value={String(b.id)}>
-                  {branchOptionLabel(b, cityNameById(cities, b.cityId))}
-                </SelectItem>
-              ))}
+            <SelectContent>
+              <SelectItem value="branch">Մասնաճյուղ</SelectItem>
+              <SelectItem value="admin">Ադմին</SelectItem>
             </SelectContent>
           </Select>
         </div>
+        {viewBy === "admin" ? (
+          <div className="space-y-1 min-w-[12rem] flex-1 sm:flex-none">
+            <Label>Ադմին</Label>
+            <Select
+              value={adminUserId ?? "all"}
+              onValueChange={(value) => onAdminUserIdChange(value === "all" ? null : value)}
+            >
+              <SelectTrigger className="w-full sm:min-w-[12rem] h-9">
+                <SelectValue placeholder="Բոլորը" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[min(20rem,70vh)]">
+                <SelectItem value="all">Բոլորը</SelectItem>
+                {adminOptions.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="space-y-1 min-w-[12rem] flex-1 sm:flex-none">
+            <Label>Մասնաճյուղ</Label>
+            <Select
+              value={selectedValue}
+              onValueChange={(value) =>
+                onBranchIdChange(value === ADMIN_BRANCH_FILTER_ALL ? null : value)
+              }
+              disabled={loading && branches.length === 0}
+            >
+              <SelectTrigger className="w-full sm:min-w-[12rem] h-9 gap-1.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                <SelectValue placeholder={t("adminBranchFilterAll")}>{selectedLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent className="max-h-[min(20rem,70vh)]">
+                {showAllBranchesOption ? (
+                  <SelectItem value={ADMIN_BRANCH_FILTER_ALL}>{t("adminBranchFilterAll")}</SelectItem>
+                ) : null}
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {branchOptionLabel(b, cityNameById(cities, b.cityId))}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <Button type="button" className="sm:mb-0" onClick={onApply}>
           Ցույց տալ
         </Button>

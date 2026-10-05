@@ -1,4 +1,3 @@
-export { default as AdminDashboardPage } from "./AdminDashboard";
 export { default as AdminCashRegisterPage } from "./AdminCashRegister";
 export { default as AdminCashRegisterShiftDetailPage } from "./AdminCashRegisterShiftDetail";
 export { default as AdminUsersPage } from "./AdminUsers";
@@ -17,6 +16,10 @@ export {
   AdminRedirectBookedCallsToInbox,
   AdminRedirectTheoryPersonalRequestsToInbox,
 } from "./AdminInboxLegacyRedirects";
+export {
+  AdminRedirectDashboardToCashRegister,
+  AdminRedirectDashboardToNotifications,
+} from "./AdminDashboardLegacyRedirect";
 export { default as AdminPackagesPage } from "./AdminPackages";
 export { default as AdminCohortsPage } from "./AdminCohorts";
 export { default as AdminBranchesPage } from "./AdminBranches";

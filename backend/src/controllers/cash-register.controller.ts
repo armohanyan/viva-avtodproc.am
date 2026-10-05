@@ -2,8 +2,13 @@ import type { NextFunction, Response } from 'express';
 import { z } from 'zod';
 import { DIRECTOR_CASH_DIRECTIONS } from '../constants/director-cash-direction';
 import { parseBody, parseQuery, resolveBranchIdFilter } from '../helpers';
+import {
+  parseAdminUserIdQuery,
+  resolveDirectorCashRangeFromRequest,
+} from '../helpers/director-cash-query.helper';
 import { directorAmdField, directorCommentField } from '../helpers/director-form.helper';
 import type { StaffRequest } from '../middleware/staff-auth.middleware';
+import DirectorService from '../services/director.service';
 import CashRegisterService from '../services/cash-register.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -32,17 +37,34 @@ const entryBody = z.object({
 });
 
 export default class CashRegisterController {
+  /** Same payload as director «Կասսա» (`DirectorService.listCash`) for staff admins. */
+  static async kassa(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const range = await resolveDirectorCashRangeFromRequest(req);
+      const adminUserId = parseAdminUserIdQuery(req);
+      if (!isSuperAdmin(req) && range.branchId == null && adminUserId == null) {
+        throw new InputValidationError('Select a branch or admin filter.', HttpStatusCodesUtil.BAD_REQUEST);
+      }
+      const data = await DirectorService.listCash({
+        ...range,
+        branchId: range.branchId ?? null,
+        adminUserId: adminUserId ?? null,
+      });
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async periodSummary(req: StaffRequest, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate } = parseQuery(
-        z.object({ startDate: dateField, endDate: dateField }),
-        req.query,
-      );
-      const branchId = await resolveBranchIdFilter(req);
+      const range = await resolveDirectorCashRangeFromRequest(req);
+      const adminUserId = parseAdminUserIdQuery(req);
       const data = await CashRegisterService.periodSummary({
-        startDate,
-        endDate,
-        branchId,
+        startDate: range.startDate,
+        endDate: range.endDate,
+        branchId: range.branchId,
+        adminUserId: adminUserId ?? null,
         allowAllBranches: isSuperAdmin(req),
       });
       SuccessHandlerUtil.handleGet(res, next, data);
