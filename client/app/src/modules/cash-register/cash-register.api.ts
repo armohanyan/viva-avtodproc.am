@@ -1,6 +1,10 @@
 import { vivaApiJson } from "src/lib/vivaApi";
 import type { DirectorCashDirection } from "src/modules/director/director.types";
-import type { CashShiftDetail, CashShiftSummary } from "./cash-register.types";
+import type {
+  CashRegisterPeriodSummary,
+  CashShiftDetail,
+  CashShiftSummary,
+} from "./cash-register.types";
 
 const BASE = "/admin/cash-register";
 
@@ -33,11 +37,30 @@ function normalizeDetail(raw: CashShiftDetail): CashShiftDetail {
   };
 }
 
-export function fetchCashRegisterShifts(startDate: string, endDate: string): Promise<CashShiftSummary[]> {
+function shiftsQuery(startDate: string, endDate: string, branchId?: string | null): URLSearchParams {
   const q = new URLSearchParams({ startDate, endDate });
+  if (branchId?.trim()) q.set("branchId", branchId.trim());
+  return q;
+}
+
+export function fetchCashRegisterShifts(
+  startDate: string,
+  endDate: string,
+  branchId?: string | null,
+): Promise<CashShiftSummary[]> {
+  const q = shiftsQuery(startDate, endDate, branchId);
   return vivaApiJson<CashShiftSummary[]>(`${BASE}/shifts?${q}`).then((rows) =>
     (Array.isArray(rows) ? rows : []).map(normalizeSummary),
   );
+}
+
+export function fetchCashRegisterPeriodSummary(
+  startDate: string,
+  endDate: string,
+  branchId?: string | null,
+): Promise<CashRegisterPeriodSummary> {
+  const q = shiftsQuery(startDate, endDate, branchId);
+  return vivaApiJson<CashRegisterPeriodSummary>(`${BASE}/period-summary?${q}`);
 }
 
 export function fetchCashRegisterShift(id: number): Promise<CashShiftDetail> {

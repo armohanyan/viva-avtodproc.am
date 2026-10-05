@@ -25,6 +25,9 @@ type Props = {
   onDeleteEntry?: (line: CashShiftLine) => void;
   toolbarActions?: React.ReactNode;
   showShare?: boolean;
+  printedBy?: string;
+  /** Full-day A4 report for the filtered period (main dashboard print). */
+  onPrintDailyResults?: () => void;
 };
 
 function statCard(label: string, value: string, className?: string) {
@@ -42,9 +45,12 @@ export default function CashRegisterShiftView({
   onDeleteEntry,
   toolbarActions,
   showShare = true,
+  printedBy,
+  onPrintDailyResults,
 }: Props) {
   const { showToast } = useToast();
   const { shift, entries } = detail;
+  const isClosed = shift.status === "CLOSED";
 
   const columns = useMemo(
     () => [
@@ -160,6 +166,31 @@ export default function CashRegisterShiftView({
 
   return (
     <div className="space-y-6 print:hidden">
+      {isClosed ? (
+        <Card className="p-4 border-emerald-500/40 bg-emerald-500/5">
+          <p className="text-sm font-medium mb-3">Գրաֆիկը փակված է · կարող եք կիսվել կամ տպել օրվա արդյունքները</p>
+          <div className="flex flex-wrap gap-2">
+            {showShare ? (
+              <Button type="button" onClick={() => void share()}>
+                <Copy className="h-4 w-4 me-1" />
+                Կիսվել գրաֆիկ
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (onPrintDailyResults) onPrintDailyResults();
+                else printCashRegisterReport(detail, { printedBy });
+              }}
+            >
+              <Printer className="h-4 w-4 me-1" />
+              Տպել օրվա արդյունք
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={shift.status === "OPEN" ? "default" : "secondary"}>
           {shift.status === "OPEN" ? "Բաց" : "Փակ"}
@@ -171,21 +202,28 @@ export default function CashRegisterShiftView({
           {formatDateTime(shift.openedAt)}
           {shift.closedAt ? ` — ${formatDateTime(shift.closedAt)}` : " — …"}
         </span>
-        <div className="flex flex-wrap gap-2 ms-auto">
-          <Button type="button" variant="outline" size="sm" onClick={() => printCashRegisterReport(detail)}>
-            <Printer className="h-4 w-4 me-1" />
-            Տպել
-          </Button>
-          {showShare ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => void share()}>
-              <Copy className="h-4 w-4 me-1" />
-              Կիսվել
+        {!isClosed ? (
+          <div className="flex flex-wrap gap-2 ms-auto">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => printCashRegisterReport(detail, { printedBy })}
+            >
+              <Printer className="h-4 w-4 me-1" />
+              Տպել A4
             </Button>
-          ) : null}
-          <Button type="button" variant="ghost" size="sm" asChild>
-            <Link href={`/admin/cash-register/shifts/${shift.id}`}>Մանրամասն</Link>
-          </Button>
-        </div>
+            {showShare ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => void share()}>
+                <Copy className="h-4 w-4 me-1" />
+                Կիսվել
+              </Button>
+            ) : null}
+            <Button type="button" variant="ghost" size="sm" asChild>
+              <Link href={`/admin/cash-register/shifts/${shift.id}`}>Մանրամասն</Link>
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

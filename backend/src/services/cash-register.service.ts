@@ -58,6 +58,53 @@ export type CashShiftDetail = {
   entries: CashShiftLine[];
 };
 
+export type CashRegisterMethodTotals = {
+  cash: number;
+  card: number;
+  total: number;
+  paymentCount: number;
+};
+
+export type CashRegisterManagerRow = CashRegisterMethodTotals & {
+  managerName: string;
+  branchId: number | null;
+  branchName: string;
+};
+
+export type CashRegisterBranchRow = CashRegisterMethodTotals & {
+  branchId: number | null;
+  branchName: string;
+};
+
+export type CashRegisterPeriodEntry = {
+  id: number;
+  source: CashLedgerRow['source'];
+  sourceId: number;
+  date: string;
+  occurredAt: string;
+  branchId: number | null;
+  branchName: string;
+  direction: DirectorCashDirection;
+  paymentMethod: 'cash' | 'card';
+  amount: number;
+  comment: string | null;
+  performedByName: string | null;
+};
+
+export type CashRegisterPeriodSummary = {
+  totals: {
+    periodIn: number;
+    periodOut: number;
+    periodCashIn: number;
+    periodCardIn: number;
+    periodCashOut: number;
+    periodCardOut: number;
+  };
+  byManager: CashRegisterManagerRow[];
+  byBranch: CashRegisterBranchRow[];
+  entries: CashRegisterPeriodEntry[];
+};
+
 function yerevanStamp(value: Date): string {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Yerevan',
@@ -428,4 +475,128 @@ export default class CashRegisterService {
     }
     await row.destroy();
   }
+
+  static async periodSummary(input: {
+    startDate: string;
+    endDate: string;
+    branchId?: number;
+    allowAllBranches: boolean;
+  }): Promise<CashRegisterPeriodSummary> {
+    if (!input.allowAllBranches && input.branchId == null) {
+      throw new InputValidationError('Select a branch.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const ledger = await DirectorService.listCash({
+      startDate: input.startDate,
+      endDate: input.endDate,
+      branchId: input.branchId ?? null,
+      adminUserId: null,
+    });
+
+    const branchIds = [
+      ...new Set(
+        ledger.entries
+          .map((e) => e.branchId)
+          .filter((id): id is number => id != null && Number.isFinite(id) && id > 0),
+      ),
+    ];
+    const branchRows =
+      branchIds.length > 0
+        ? await Branch.findAll({ where: { id: { [Op.in]: branchIds } }, attributes: ['id', 'name', 'label'] })
+        : [];
+    const branchNameById = new Map(
+      branchRows.map((b) => [b.id, (b.label ?? b.name ?? '').trim() || `Branch #${b.id}`]),
+    );
+    const branchLabel = (id: number | null | undefined): string => {
+      if (id == null || !Number.isFinite(id) || id <= 0) return '—';
+      return branchNameById.get(id) ?? `Branch #${id}`;
+    };
+
+    const byManagerKey = new Map<string, CashRegisterManagerRow>();
+    const byBranchKey = new Map<string, CashRegisterBranchRow>();
+
+    for (const row of ledger.entries) {
+      if (row.direction !== 'in') continue;
+      const amount = Math.abs(row.amount);
+      if (amount <= 0) continue;
+
+      const managerName = (row.performedByName ?? '').trim() || '—';
+      const branchId = row.branchId;
+      const branchName = branchLabel(branchId);
+
+      const managerKey = `${row.performedByUserId ?? 0}:${branchId ?? 0}`;
+      let managerRow = byManagerKey.get(managerKey);
+      if (!managerRow) {
+        managerRow = {
+          managerName,
+          branchId,
+          branchName,
+          ...emptyMethodTotals(),
+        };
+        byManagerKey.set(managerKey, managerRow);
+      }
+      addMethodTotals(managerRow, row.paymentMethod, amount);
+
+      const branchKey = String(branchId ?? 0);
+      let branchRow = byBranchKey.get(branchKey);
+      if (!branchRow) {
+        branchRow = {
+          branchId,
+          branchName,
+          ...emptyMethodTotals(),
+        };
+        byBranchKey.set(branchKey, branchRow);
+      }
+      addMethodTotals(branchRow, row.paymentMethod, amount);
+    }
+
+    const entries: CashRegisterPeriodEntry[] = ledger.entries.map((row) => ({
+      id: row.id,
+      source: row.source,
+      sourceId: row.sourceId,
+      date: row.date,
+      occurredAt: row.occurredAt,
+      branchId: row.branchId,
+      branchName: branchLabel(row.branchId),
+      direction: row.direction,
+      paymentMethod: row.paymentMethod,
+      amount: Math.abs(row.amount),
+      comment: row.comment,
+      performedByName: row.performedByName,
+    }));
+
+    return {
+      totals: {
+        periodIn: ledger.periodIn,
+        periodOut: ledger.periodOut,
+        periodCashIn: ledger.periodCashIn,
+        periodCardIn: ledger.periodCardIn,
+        periodCashOut: ledger.periodCashOut,
+        periodCardOut: ledger.periodCardOut,
+      },
+      byManager: [...byManagerKey.values()].sort(
+        (a, b) => b.total - a.total || a.managerName.localeCompare(b.managerName, 'hy'),
+      ),
+      byBranch: [...byBranchKey.values()].sort(
+        (a, b) => b.total - a.total || a.branchName.localeCompare(b.branchName, 'hy'),
+      ),
+      entries,
+    };
+  }
+}
+
+function emptyMethodTotals(): CashRegisterMethodTotals {
+  return { cash: 0, card: 0, total: 0, paymentCount: 0 };
+}
+
+function addMethodTotals(
+  target: CashRegisterMethodTotals,
+  paymentMethod: 'cash' | 'card',
+  amount: number,
+): void {
+  const n = Math.abs(amount);
+  if (n <= 0) return;
+  target.paymentCount += 1;
+  target.total += n;
+  if (paymentMethod === 'cash') target.cash += n;
+  else target.card += n;
 }

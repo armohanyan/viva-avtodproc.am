@@ -42,3 +42,50 @@ export type CashShiftDetail = {
   shift: CashShiftSummary;
   entries: CashShiftLine[];
 };
+
+export type CashRegisterMethodTotals = {
+  cash: number;
+  card: number;
+  total: number;
+  paymentCount: number;
+};
+
+export type CashRegisterManagerRow = CashRegisterMethodTotals & {
+  managerName: string;
+  branchId: number | null;
+  branchName: string;
+};
+
+export type CashRegisterBranchRow = CashRegisterMethodTotals & {
+  branchId: number | null;
+  branchName: string;
+};
+
+export type CashRegisterPeriodEntry = {
+  id: number;
+  source: CashShiftLine["source"];
+  sourceId: number;
+  date: string;
+  occurredAt: string;
+  branchId: number | null;
+  branchName: string;
+  direction: DirectorCashDirection;
+  paymentMethod: "cash" | "card";
+  amount: number;
+  comment: string | null;
+  performedByName: string | null;
+};
+
+export type CashRegisterPeriodSummary = {
+  totals: {
+    periodIn: number;
+    periodOut: number;
+    periodCashIn: number;
+    periodCardIn: number;
+    periodCashOut: number;
+    periodCardOut: number;
+  };
+  byManager: CashRegisterManagerRow[];
+  byBranch: CashRegisterBranchRow[];
+  entries: CashRegisterPeriodEntry[];
+};

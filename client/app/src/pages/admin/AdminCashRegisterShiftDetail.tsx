@@ -4,18 +4,26 @@ import { Button } from "src/components/ui/button";
 import { getApiErrorMessage } from "src/lib/vivaApi";
 import { useToast } from "src/lib/toast";
 import CashRegisterShiftView from "src/modules/cash-register/CashRegisterShiftView";
-import { fetchCashRegisterShift } from "src/modules/cash-register/cash-register.api";
+import {
+  fetchCashRegisterPeriodSummary,
+  fetchCashRegisterShift,
+  fetchCashRegisterShifts,
+} from "src/modules/cash-register/cash-register.api";
 import type { CashShiftDetail } from "src/modules/cash-register/cash-register.types";
+import { printCashRegisterPeriodReport } from "src/modules/cash-register/cashRegisterPrint";
 import { Wallet, ArrowLeft } from "lucide-react";
+import { useAccount } from "src/modules/accounts";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useRoute } from "wouter";
 
 export default function AdminCashRegisterShiftDetailPage() {
+  const { user } = useAccount();
   const { showToast } = useToast();
   const [, params] = useRoute<{ id: string }>("/admin/cash-register/shifts/:id");
   const shiftId = Number(params?.id ?? 0);
   const [detail, setDetail] = useState<CashShiftDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [printDaily, setPrintDaily] = useState<(() => void) | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!(shiftId > 0)) {
@@ -25,14 +33,36 @@ export default function AdminCashRegisterShiftDetailPage() {
     }
     setLoading(true);
     try {
-      setDetail(await fetchCashRegisterShift(shiftId));
+      const next = await fetchCashRegisterShift(shiftId);
+      setDetail(next);
+      const day = next.shift.openedAt.slice(0, 10);
+      try {
+        const branchKey = String(next.shift.branchId);
+        const [period, shifts] = await Promise.all([
+          fetchCashRegisterPeriodSummary(day, day, branchKey),
+          fetchCashRegisterShifts(day, day, branchKey),
+        ]);
+        setPrintDaily(() => () =>
+          printCashRegisterPeriodReport({
+            startDate: day,
+            endDate: day,
+            branchScope: next.shift.branchName,
+            printedBy: user?.name?.trim() || user?.email?.trim() || undefined,
+            period,
+            shifts,
+          }),
+        );
+      } catch {
+        setPrintDaily(undefined);
+      }
     } catch (e) {
+      setPrintDaily(undefined);
       setDetail(null);
       showToast(getApiErrorMessage(e), "error");
     } finally {
       setLoading(false);
     }
-  }, [shiftId, showToast]);
+  }, [shiftId, showToast, user?.email, user?.name]);
 
   useEffect(() => {
     void load();
@@ -56,7 +86,12 @@ export default function AdminCashRegisterShiftDetailPage() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Բեռնվում է…</p>
       ) : detail ? (
-        <CashRegisterShiftView detail={detail} showShare />
+        <CashRegisterShiftView
+          detail={detail}
+          showShare
+          printedBy={user?.name?.trim() || user?.email?.trim() || undefined}
+          onPrintDailyResults={printDaily}
+        />
       ) : (
         <p className="text-sm text-muted-foreground">Գրաֆիկը չի գտնվել</p>
       )}

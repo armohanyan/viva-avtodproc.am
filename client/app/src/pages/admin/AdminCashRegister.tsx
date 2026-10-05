@@ -9,20 +9,34 @@ import { Badge } from "src/components/ui/badge";
 import AdminTableScroll from "src/components/AdminTableScroll";
 import DataTableToolbar from "src/components/DataTableToolbar";
 import { useAccount } from "src/modules/accounts";
-import { getAdminBranchFilterId } from "src/modules/admin/adminBranchFilter";
+import {
+  getAdminBranchFilterId,
+  setAdminBranchFilterId,
+} from "src/modules/admin/adminBranchFilter";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { branchOptionLabel } from "src/modules/branches";
 import { useBranches } from "src/modules/branches/useBranches";
+import { cityNameById, useCities } from "src/modules/cities";
 import CashRegisterShiftView from "src/modules/cash-register/CashRegisterShiftView";
+import CashRegisterFilters from "src/modules/cash-register/CashRegisterFilters";
+import CashRegisterPeriodPanel from "src/modules/cash-register/CashRegisterPeriodPanel";
+import { printCashRegisterPeriodReport } from "src/modules/cash-register/cashRegisterPrint";
 import {
   closeCashRegisterShift,
   createCashRegisterEntry,
   deleteCashRegisterEntry,
+  fetchCashRegisterPeriodSummary,
   fetchCashRegisterShift,
   fetchCashRegisterShifts,
   openCashRegisterShift,
   updateCashRegisterEntry,
 } from "src/modules/cash-register/cash-register.api";
-import type { CashShiftDetail, CashShiftLine, CashShiftSummary } from "src/modules/cash-register/cash-register.types";
+import type {
+  CashRegisterPeriodSummary,
+  CashShiftDetail,
+  CashShiftLine,
+  CashShiftSummary,
+} from "src/modules/cash-register/cash-register.types";
 import { todayIso } from "src/modules/director/director.consts";
 import {
   DIRECTOR_CASH_DIRECTION_LABELS,
@@ -55,6 +69,7 @@ export default function AdminCashRegisterPage() {
   const { user } = useAccount();
   const { showToast } = useToast();
   const { branches } = useBranches();
+  const { cities } = useCities();
   const branchFilterRevision = useOptionalAdminBranchFilterRevision();
   const isSuperAdmin = user?.accountType === "super_admin";
 
@@ -73,50 +88,103 @@ export default function AdminCashRegisterPage() {
   const [entryForm, setEntryForm] = useState<EntryForm>(emptyEntryForm);
   const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
   const [historySearch, setHistorySearch] = useState("");
+  const [periodSummary, setPeriodSummary] = useState<CashRegisterPeriodSummary | null>(null);
+  /** Keeps a closed shift visible after «Փակել գրաֆիկ» until another shift is opened or selected. */
+  const [focusedShiftId, setFocusedShiftId] = useState<number | null>(null);
 
   const filterBranchId = getAdminBranchFilterId();
-  const needsBranch = !isSuperAdmin || filterBranchId != null;
+  const canQuery = isSuperAdmin || filterBranchId != null;
+  const shiftBranchSelected = filterBranchId != null;
 
   const openShiftForBranch = useMemo(
     () =>
       filterBranchId != null
         ? shifts.find((s) => s.status === "OPEN" && String(s.branchId) === filterBranchId)
-        : shifts.find((s) => s.status === "OPEN"),
+        : null,
     [shifts, filterBranchId],
   );
 
+  useEffect(() => {
+    if (isSuperAdmin || filterBranchId != null || branches.length === 0) return;
+    setAdminBranchFilterId(String(branches[0]!.id));
+  }, [isSuperAdmin, filterBranchId, branches]);
+
+  const onBranchFilterChange = (value: string | null) => {
+    setAdminBranchFilterId(value);
+    setFocusedShiftId(null);
+  };
+
+  const resolveShiftDetailId = useCallback(
+    (list: CashShiftSummary[], open: CashShiftSummary | undefined): number | null => {
+      if (open) return open.id;
+      if (
+        focusedShiftId != null &&
+        list.some((s) => s.id === focusedShiftId && String(s.branchId) === filterBranchId)
+      ) {
+        return focusedShiftId;
+      }
+      if (filterBranchId == null) return null;
+      const forBranch = list
+        .filter((s) => String(s.branchId) === filterBranchId)
+        .sort((a, b) => Date.parse(b.openedAt) - Date.parse(a.openedAt));
+      return forBranch[0]?.id ?? null;
+    },
+    [filterBranchId, focusedShiftId],
+  );
+
+  const loadShiftDetail = useCallback(async (id: number) => {
+    setFocusedShiftId(id);
+    setActiveDetail(await fetchCashRegisterShift(id));
+  }, []);
+
   const reload = useCallback(async () => {
-    if (!needsBranch && isSuperAdmin) {
+    if (!canQuery) {
       setShifts([]);
       setActiveDetail(null);
+      setPeriodSummary(null);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const list = await fetchCashRegisterShifts(startDate, endDate);
+      const [list, period] = await Promise.all([
+        fetchCashRegisterShifts(startDate, endDate, filterBranchId),
+        fetchCashRegisterPeriodSummary(startDate, endDate, filterBranchId),
+      ]);
       setShifts(list);
+      setPeriodSummary(period);
       const open =
         filterBranchId != null
           ? list.find((s) => s.status === "OPEN" && String(s.branchId) === filterBranchId)
-          : list.find((s) => s.status === "OPEN");
-      if (open) {
-        setActiveDetail(await fetchCashRegisterShift(open.id));
+          : undefined;
+      const detailId = resolveShiftDetailId(list, open);
+      if (detailId != null) {
+        setActiveDetail(await fetchCashRegisterShift(detailId));
+        if (open) setFocusedShiftId(open.id);
       } else {
         setActiveDetail(null);
       }
     } catch (e) {
       setShifts([]);
       setActiveDetail(null);
+      setPeriodSummary(null);
       showToast(getApiErrorMessage(e), "error");
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, filterBranchId, needsBranch, isSuperAdmin, showToast]);
+  }, [startDate, endDate, filterBranchId, canQuery, showToast, resolveShiftDetailId]);
 
   useEffect(() => {
     void reload();
   }, [reload, branchFilterRevision]);
+
+  const branchScopeLabel = useMemo(() => {
+    if (!filterBranchId) return "Բոլորը";
+    const branch = branches.find((b) => String(b.id) === filterBranchId);
+    return branch ? branchOptionLabel(branch, cityNameById(cities, branch.cityId)) : filterBranchId;
+  }, [filterBranchId, branches, cities]);
+
+  const printedByName = user?.name?.trim() || user?.email?.trim() || undefined;
 
   const filteredShifts = useMemo(() => {
     const q = historySearch.trim().toLowerCase();
@@ -149,6 +217,7 @@ export default function AdminCashRegisterPage() {
       setOpenModal(false);
       setOpeningBalance("");
       showToast("Գրաֆիկը բացված է", "success");
+      setFocusedShiftId(detail.shift.id);
       setActiveDetail(detail);
       void reload();
     } catch (e) {
@@ -162,8 +231,9 @@ export default function AdminCashRegisterPage() {
       const detail = await closeCashRegisterShift(activeDetail.shift.id, directorAmd(actualBalance));
       setCloseModal(false);
       setActualBalance("");
-      showToast("Գրաֆիկը փակված է", "success");
+      setFocusedShiftId(detail.shift.id);
       setActiveDetail(detail);
+      showToast("Գրաֆիկը փակված է", "success");
       void reload();
     } catch (e) {
       showToast(getApiErrorMessage(e), "error");
@@ -230,75 +300,98 @@ export default function AdminCashRegisterPage() {
     <AdminLayout>
       <PanelPageHeader icon={Wallet} title="Դրամարկղ" subtitle="Կանխիկ մուտքեր, ելքեր և գրաֆիկ" />
 
-      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:flex-wrap sm:items-end">
-        <div className="space-y-1">
-          <Label htmlFor="cr-start">Սկիզբ</Label>
-          <Input
-            id="cr-start"
-            type="date"
-            className="w-full sm:w-auto"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value || todayIso())}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="cr-end">Վերջ</Label>
-          <Input
-            id="cr-end"
-            type="date"
-            className="w-full sm:w-auto"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value || todayIso())}
-          />
-        </div>
-        <Button type="button" variant="outline" onClick={() => void reload()}>
-          Թարմացնել
-        </Button>
-        <div className="flex flex-wrap gap-2 sm:ms-auto">
-          {!openShiftForBranch ? (
-            <Button type="button" onClick={openOpenModal} disabled={!needsBranch && isSuperAdmin}>
-              Բացել գրաֆիկ
-            </Button>
-          ) : null}
-          {activeDetail?.shift.status === "OPEN" ? (
-            <>
-              <Button type="button" variant="secondary" onClick={() => setCloseModal(true)}>
-                Փակել գրաֆիկ
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  setEditingEntryId(null);
-                  setEntryForm(emptyEntryForm());
-                  setEntryModal(true);
-                }}
-              >
-                <Plus className="h-4 w-4 me-1" />
-                Նոր գրառում
-              </Button>
-            </>
-          ) : null}
-        </div>
-      </div>
+      <CashRegisterFilters
+        startDate={startDate}
+        endDate={endDate}
+        onStartDateChange={setStartDate}
+        onEndDateChange={setEndDate}
+        branchId={filterBranchId}
+        onBranchIdChange={onBranchFilterChange}
+        showAllBranchesOption={isSuperAdmin}
+        onApply={() => void reload()}
+      />
 
-      {!needsBranch && isSuperAdmin ? (
+      {!canQuery ? (
         <Card className="p-4 mb-6 text-sm text-muted-foreground">
-          Ընտրեք մասնաճյուղ վերևի ֆիլտրից կամ բացեք գրաֆիկ՝ ընտրելով մասնաճյուղ։
+          Ընտրեք մասնաճյուղ՝ տվյալները տեսնելու համար։
         </Card>
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Բեռնվում է…</p>
-      ) : activeDetail ? (
-        <CashRegisterShiftView
-          detail={activeDetail}
-          onEditEntry={onEditEntry}
-          onDeleteEntry={(line) => void onDeleteEntry(line)}
+        <p className="text-sm text-muted-foreground mb-6">Բեռնվում է…</p>
+      ) : periodSummary ? (
+        <CashRegisterPeriodPanel
+          summary={periodSummary}
+          startDate={startDate}
+          endDate={endDate}
+          branchScope={branchScopeLabel}
+          printedBy={printedByName}
+          shifts={shifts}
         />
-      ) : needsBranch ? (
-        <Card className="p-6 text-center text-muted-foreground">
-          Այս մասնաճյուղում բաց գրաֆիկ չկա։ Սեղմեք «Բացել գրաֆիկ»։
-        </Card>
+      ) : null}
+
+      {shiftBranchSelected ? (
+        <section className="mb-10">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <h2 className="text-lg font-semibold">
+              {activeDetail?.shift.status === "CLOSED" ? "Փակված գրաֆիկ" : "Բաց գրաֆիկ"}
+            </h2>
+            <div className="flex flex-wrap gap-2 ms-auto">
+              {!openShiftForBranch ? (
+                <Button type="button" onClick={openOpenModal}>
+                  Բացել գրաֆիկ
+                </Button>
+              ) : null}
+              {activeDetail?.shift.status === "OPEN" ? (
+                <>
+                  <Button type="button" variant="secondary" onClick={() => setCloseModal(true)}>
+                    Փակել գրաֆիկ
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setEditingEntryId(null);
+                      setEntryForm(emptyEntryForm());
+                      setEntryModal(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 me-1" />
+                    Նոր գրառում
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </div>
+          {loading ? null : activeDetail ? (
+            <CashRegisterShiftView
+              detail={activeDetail}
+              printedBy={printedByName}
+              onEditEntry={activeDetail.shift.status === "OPEN" ? onEditEntry : undefined}
+              onDeleteEntry={
+                activeDetail.shift.status === "OPEN"
+                  ? (line) => void onDeleteEntry(line)
+                  : undefined
+              }
+              onPrintDailyResults={
+                periodSummary
+                  ? () =>
+                      printCashRegisterPeriodReport({
+                        startDate,
+                        endDate,
+                        branchScope: branchScopeLabel,
+                        printedBy: printedByName,
+                        period: periodSummary,
+                        shifts,
+                      })
+                  : undefined
+              }
+            />
+          ) : (
+            <Card className="p-6 text-center text-muted-foreground">
+              Այս մասնաճյուղում բաց գրաֆիկ չկա։ Սեղմեք «Բացել գրաֆիկ»։
+            </Card>
+          )}
+        </section>
       ) : null}
 
       <section className="mt-10">
@@ -341,8 +434,12 @@ export default function AdminCashRegisterPage() {
                       </td>
                       <td className="p-3 text-end tabular-nums">{formatAmd(s.expectedBalance)}</td>
                       <td className="p-3 text-end">
-                        <Button variant="link" size="sm" asChild>
-                          <Link href={`/admin/cash-register/shifts/${s.id}`}>Դիտել</Link>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          onClick={() => void loadShiftDetail(s.id)}
+                        >
+                          Դիտել
                         </Button>
                       </td>
                     </tr>

@@ -32,6 +32,25 @@ const entryBody = z.object({
 });
 
 export default class CashRegisterController {
+  static async periodSummary(req: StaffRequest, res: Response, next: NextFunction) {
+    try {
+      const { startDate, endDate } = parseQuery(
+        z.object({ startDate: dateField, endDate: dateField }),
+        req.query,
+      );
+      const branchId = await resolveBranchIdFilter(req);
+      const data = await CashRegisterService.periodSummary({
+        startDate,
+        endDate,
+        branchId,
+        allowAllBranches: isSuperAdmin(req),
+      });
+      SuccessHandlerUtil.handleGet(res, next, data);
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static async list(req: StaffRequest, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate } = parseQuery(
