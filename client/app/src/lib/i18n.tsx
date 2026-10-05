@@ -5544,6 +5544,7 @@ const am: typeof en = {
   bookingDurationLabel: "Տևողություն",
 
   adminDashboard: "Գլխավոր",
+  adminCashRegister: "Դրամարկղ",
   adminReports: "Հաշվետվություններ",
   totalUsers: "Ընդհանուր օգտատերեր",
   totalBookings: "Ընդհանուր ամրագրումներ",
