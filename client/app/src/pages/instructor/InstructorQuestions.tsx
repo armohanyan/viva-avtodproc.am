@@ -10,7 +10,7 @@ import {
 	THEMATIC_TOPIC_IDS,
 	THEMATIC_TOPIC_TITLE_KEYS,
 } from "src/data/thematicTopics";
-import { SIGNS_CARD_COUNT } from "src/data/signCategories";
+import { SIGNS_CARD_COUNT, isVisibleSignSlot } from "src/data/signCategories";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, subscribeExamQuestionMetaUpdated } from "src/lib/examQuestionMeta";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { Reveal } from "src/lib/motion";
@@ -72,7 +72,7 @@ export default function InstructorQuestions() {
 					title: titleFromMeta || `${t("dashboardLearnRoadSigns")} ${slotId}`,
 					total: (signsCardQuestionIds[i] ?? []).length,
 				};
-			}),
+			}).filter((category) => isVisibleSignSlot(category.slotId)),
 		[signsCardQuestionIds, signsCardTitles, t],
 	);
 

@@ -8,7 +8,7 @@ import { useLang } from "src/lib/i18n";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { normalizeSignSlot } from "src/lib/roadSignCopy";
 
-export default function RoadSigns() {
+export default function RoadSignsStudyPage() {
   const { t } = useLang();
   const { MarketingLink, panelHref } = useAppNavigation();
   const search = (useSearch() ?? "").replace(/^\?/, "");
@@ -20,12 +20,14 @@ export default function RoadSigns() {
       <Navbar />
       <section className="py-8 sm:py-12">
         <div className="mx-auto max-w-5xl px-4 sm:px-6">
-          <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">{t("dashboardLearnRoadSigns")}</h1>
-          <p className="mb-6 text-sm text-muted-foreground sm:text-base">{t("roadSignsSub")}</p>
+          <MarketingLink href="/road-signs" className="mb-4 inline-flex text-sm font-medium text-primary">
+            {t("dashboardRoadSignsTopicBack")}
+          </MarketingLink>
+          <h1 className="mb-5 text-2xl font-bold text-foreground">{t("dashboardLearnRoadSigns")}</h1>
           <RoadSignsStudy
             slotId={slotId}
             locked={slotId !== "1"}
-            categoryHref={(slot) => (slot === "1" ? "/road-signs?topic=1" : lockedHref)}
+            categoryHref={(slot) => (slot === "1" ? "/road-signs/quiz/topics?topic=1" : lockedHref)}
             LinkComponent={MarketingLink}
           />
         </div>

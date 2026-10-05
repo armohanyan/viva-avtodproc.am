@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearch } from "wouter";
+import { useSearchParams } from "next/navigation";
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import RoadSignsStudy from "src/components/exam/RoadSignsStudy";
@@ -8,11 +8,11 @@ import { useLang } from "src/lib/i18n";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { normalizeSignSlot } from "src/lib/roadSignCopy";
 
-export default function RoadSigns() {
+export default function RoadSignsStudyPage() {
   const { t } = useLang();
   const { MarketingLink, panelHref } = useAppNavigation();
-  const search = (useSearch() ?? "").replace(/^\?/, "");
-  const slotId = normalizeSignSlot(new URLSearchParams(search).get("topic"));
+  const params = useSearchParams();
+  const slotId = normalizeSignSlot(params.get("topic"));
   const lockedHref = panelHref("/login?redirect=/road-signs");
 
   return (

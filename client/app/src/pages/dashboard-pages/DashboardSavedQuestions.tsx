@@ -8,6 +8,7 @@ import { SIGN_CATEGORY_SLUGS } from "src/data/signCategories";
 import { THEMATIC_TOPIC_IDS, THEMATIC_TOPIC_TITLE_KEYS } from "src/data/thematicTopics";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { getQuestionInLang, type ExamQuestion } from "src/data/examSampleQuestions";
+import { roadSignCopyFromQuestion } from "src/lib/roadSignCopy";
 import { defaultExamQuestionMeta, loadExamQuestionMeta, type ExamQuestionMeta } from "src/lib/examQuestionMeta";
 import { loadMySavedQuestions } from "src/lib/examQuestionEngagement";
 import { getApiErrorMessage } from "src/lib/vivaApi";
@@ -99,6 +100,7 @@ export default function DashboardSavedQuestions() {
         <div className="flex flex-col gap-4">
           {rows.map((q) => {
             const loc = getQuestionInLang(q, lang);
+            const title = q.category === "signs" ? roadSignCopyFromQuestion(q).title || loc.text : loc.text;
             const themeTitle = themeTitleForQuestion(q, meta, t);
             const href =
               q.category === "signs"
@@ -119,7 +121,7 @@ export default function DashboardSavedQuestions() {
                       {themeTitle ? (
                         <p className="text-xs font-medium text-primary mb-1">{themeTitle}</p>
                       ) : null}
-                      <p className="text-sm font-medium text-foreground">{loc.text}</p>
+                      <p className="text-sm font-medium text-foreground">{title}</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {q.category === "signs" ? t("dashboardLearnRoadSigns") : t("dashboardLearnThematicTests")}
                       </p>

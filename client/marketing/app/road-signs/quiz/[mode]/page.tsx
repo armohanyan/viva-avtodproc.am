@@ -1,18 +1,9 @@
-import type { Metadata } from "next";
-import ExamQuiz from "src/views/public/ExamQuiz";
+import { redirect } from "next/navigation";
+import { normalizeSignSlot } from "src/lib/roadSignCopy";
 
-type Props = { params: Promise<{ mode: string }> };
+type Props = { searchParams: Promise<{ topic?: string }> };
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { mode } = await params;
-  return {
-    title: `Նշաններ - ${mode}`,
-    description: "Ճանապարհային նշանների թեստ՝ պատասխանեք հարցերին և դիտեք արդյունքները։",
-    robots: { index: false, follow: true },
-  };
-}
-
-export default async function Page({ params }: Props) {
-  const { mode } = await params;
-  return <ExamQuiz mode={mode} examListPath="/road-signs" />;
+export default async function Page({ searchParams }: Props) {
+  const { topic } = await searchParams;
+  redirect(`/road-signs?topic=${normalizeSignSlot(topic)}`);
 }

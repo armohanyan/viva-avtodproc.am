@@ -19,12 +19,23 @@ import {
   type ExamQuestionComment,
 } from "src/lib/examQuestionEngagement";
 import { getQuestionInLang, type ExamQuestion } from "src/data/examSampleQuestions";
+import { roadSignCopyFromQuestion } from "src/lib/roadSignCopy";
 import { leaveQuestionDetail } from "src/lib/questionSessionReturn";
 
 type Props = {
   questionId: string;
   backHref: string;
 };
+
+function SignDescription({ question }: { question: ExamQuestion }) {
+  const copy = roadSignCopyFromQuestion(question);
+  return (
+    <div className="px-2 pb-3">
+      <h1 className="text-lg font-semibold text-foreground">{copy.title || question.id}</h1>
+      {copy.body ? <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground">{copy.body}</p> : null}
+    </div>
+  );
+}
 
 export default function QuestionDetailView({ questionId, backHref }: Props) {
   const roleLabel = (role: ExamQuestionComment["commenter"]["role"]): string => {
@@ -204,22 +215,28 @@ export default function QuestionDetailView({ questionId, backHref }: Props) {
 
       <Card className="p-2">
         {question.imageUrl ? <ExamQuestionFigure url={question.imageUrl} alt={t("examQuizQuestionImageAlt")} /> : null}
-        <h1 className="text-lg font-semibold text-foreground mb-4">{localized.text}</h1>
-        <div className="space-y-2">
-          {localized.options.map((opt, idx) => (
-            <div
-              key={idx}
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                idx === question.correctIndex ? "border-emerald-500/60 bg-emerald-500/5" : "border-border"
-              }`}
-            >
-              <p>{opt}</p>
-              {idx === question.correctIndex && localized.explanation ? (
-                <p className="text-xs text-muted-foreground mt-1">{localized.explanation}</p>
-              ) : null}
+        {question.category === "signs" ? (
+          <SignDescription question={question} />
+        ) : (
+          <>
+            <h1 className="text-lg font-semibold text-foreground mb-4">{localized.text}</h1>
+            <div className="space-y-2">
+              {localized.options.map((opt, idx) => (
+                <div
+                  key={idx}
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    idx === question.correctIndex ? "border-emerald-500/60 bg-emerald-500/5" : "border-border"
+                  }`}
+                >
+                  <p>{opt}</p>
+                  {idx === question.correctIndex && localized.explanation ? (
+                    <p className="text-xs text-muted-foreground mt-1">{localized.explanation}</p>
+                  ) : null}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </Card>
 
       <Card className="p-6 mt-6">

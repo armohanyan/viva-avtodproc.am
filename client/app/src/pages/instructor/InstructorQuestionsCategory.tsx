@@ -14,7 +14,9 @@ import { Button } from "src/components/ui/button";
 import { Card } from "src/components/ui/card";
 import { TooltipProvider } from "src/components/ui/tooltip";
 import { InstructorScopeGuard } from "src/modules/instructor/InstructorScopeGuard";
+import RoadSignsStudy from "src/components/exam/RoadSignsStudy";
 import { getQuestionInLang, type ExamQuestion } from "src/data/examSampleQuestions";
+import { isVisibleSignSlot } from "src/data/signCategories";
 import {
 	THEMATIC_TOPIC_IDS,
 	THEMATIC_TOPIC_TITLE_KEYS,
@@ -209,6 +211,34 @@ function InstructorQuestionsCategoryView() {
 	const maxSlot = route.kind === "thematic" ? THEMATIC_TOPIC_IDS.length : 10;
 	if (!Number.isInteger(slotNum) || slotNum < 1 || slotNum > maxSlot) {
 		return <Redirect to="/instructor/questions" />;
+	}
+	if (route.kind === "signs" && !isVisibleSignSlot(route.slotId)) {
+		return <Redirect to="/instructor/questions" />;
+	}
+
+	if (route.kind === "signs") {
+		return (
+			<div className="mx-auto w-full max-w-5xl">
+				<PanelPageHeader
+					className="mb-4"
+					icon={BookOpen}
+					title={categoryTitle || t("dashboardLearnRoadSigns")}
+					leading={
+						<Link href="/instructor/questions" aria-label={t("instructorQuestionsBack")}>
+							<span className={quizBareIconButton}>
+								<ArrowLeft className="w-4 h-4" aria-hidden />
+							</span>
+						</Link>
+					}
+				/>
+				<RoadSignsStudy
+					slotId={route.slotId}
+					showHeading={false}
+					categoryHref={(slotId) => `/instructor/questions/signs/${slotId}`}
+					LinkComponent={Link}
+				/>
+			</div>
+		);
 	}
 
 	const question: ExamQuestion | null = pool[index] ?? null;

@@ -34,6 +34,7 @@ import ExamQuestionNumberNav, {
 } from "src/components/exam/ExamQuestionNumberNav";
 import { readQuizFocusIndex, withQuestionSessionReturn } from "src/lib/questionSessionReturn";
 import { cn } from "src/lib/utils";
+import { normalizeSignSlot } from "src/lib/roadSignCopy";
 
 const VALID_MODES: ExamQuizMode[] = ["full", "topics", "signs"];
 
@@ -49,6 +50,15 @@ export type ExamQuizProps = {
   mode?: string | null;
   examListPath?: ExamQuizListPath;
 };
+
+function RoadSignsQuizRedirect() {
+  const { navigate } = useAppNavigation();
+  useEffect(() => {
+    const topic = new URLSearchParams(window.location.search).get("topic");
+    navigate(`/road-signs?topic=${normalizeSignSlot(topic)}`);
+  }, [navigate]);
+  return null;
+}
 
 function ExamQuizRedirect({ target }: { target: ExamQuizListPath }) {
   const { navigate } = useAppNavigation();
@@ -853,6 +863,10 @@ function ExamQuizWouter() {
     return null;
   }
 
+  if (listPath === "/road-signs") {
+    return <RoadSignsQuizRedirect />;
+  }
+
   return <ExamQuizRunner mode={mode} listPath={listPath} />;
 }
 
@@ -862,6 +876,9 @@ export default function ExamQuiz({ mode: modeProp, examListPath }: ExamQuizProps
     const m = isExamMode(trimmed) ? trimmed : null;
     if (!m) {
       return <ExamQuizRedirect target={examListPath} />;
+    }
+    if (examListPath === "/road-signs") {
+      return <RoadSignsQuizRedirect />;
     }
     return <ExamQuizRunner mode={m} listPath={examListPath} />;
   }

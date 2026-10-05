@@ -169,9 +169,9 @@ const ROUTE_SEO: Record<string, RouteSeo> = {
       am: "Ճանապարհային նշաններ",
     },
     description: {
-      en: "Learn Armenian road signs by category and practice with image-based quizzes at Viva Autoschool.",
-      ru: "Изучайте дорожные знаки Армении по категориям и практикуйтесь с тестами по картинкам в автошколе Viva.",
-      am: "Ուսուցեք հայկական ճանապարհային նշանները ըստ խմբերի և պրակտիկա անցեք պատկերներով թեստերով «Վիվա Ավտոդպրոցում»։",
+      en: "Browse Armenian road signs by category, with the image and description for each sign, at Viva Autoschool.",
+      ru: "Дорожные знаки Армении по категориям: изображение и описание каждого знака в автошколе Viva.",
+      am: "Հայկական ճանապարհային նշաններն ըստ խմբերի՝ նկարով և նկարագրությամբ «Վիվա Ավտոդպրոցում»։",
     },
     keywords: {
       en: "Armenia road signs, driving theory signs practice, Yerevan",

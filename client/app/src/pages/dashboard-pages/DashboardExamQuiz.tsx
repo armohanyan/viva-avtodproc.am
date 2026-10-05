@@ -469,6 +469,11 @@ export function DashboardExamQuizView() {
     return <Redirect to={instructorThemeMatch ? "/instructor/questions/theme-exams" : "/dashboard/learn/exam-tests"} />;
   }
 
+  if (roadSignsMatch) {
+    const slot = mode === "topics" && topicParam && /^\d+$/.test(topicParam) ? topicParam : "1";
+    return <Redirect to={`/dashboard/learn/road-signs?topic=${slot}`} />;
+  }
+
   if (useThemeExam && themeExamReady && themeExamQuestionIds.length === 0) {
     return <Redirect to={backHref} />;
   }

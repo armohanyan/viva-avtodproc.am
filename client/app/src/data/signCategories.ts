@@ -14,6 +14,9 @@ export const SIGN_CATEGORY_SLUGS = [
 
 export const SIGNS_CARD_COUNT = SIGN_CATEGORY_SLUGS.length;
 
+/** Kept in stored data so existing slot numbers stay stable, but hidden from the catalog. */
+const HIDDEN_SIGN_CATEGORY_SLUGS = new Set<string>(["hushumnner"]);
+
 export type SignCategorySlug = (typeof SIGN_CATEGORY_SLUGS)[number];
 
 /** UI slot `?topic=1` … `?topic=10` maps to {@link SIGN_CATEGORY_SLUGS}. */
@@ -21,6 +24,15 @@ export function signCategorySlugFromSlot(slot: string): string | undefined {
   const n = Number.parseInt(slot.trim(), 10);
   if (!Number.isInteger(n) || n < 1 || n > SIGNS_CARD_COUNT) return undefined;
   return SIGN_CATEGORY_SLUGS[n - 1];
+}
+
+export function isVisibleSignSlot(slot: string): boolean {
+  const slug = signCategorySlugFromSlot(slot);
+  return Boolean(slug) && !HIDDEN_SIGN_CATEGORY_SLUGS.has(slug as string);
+}
+
+export function visibleSignSlots(): string[] {
+  return SIGN_CATEGORY_SLUGS.map((_, index) => String(index + 1)).filter(isVisibleSignSlot);
 }
 
 export function roadSignsTopicKeyFromSlot(slot: string): string {
