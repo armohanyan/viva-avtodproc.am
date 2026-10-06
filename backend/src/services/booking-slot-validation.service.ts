@@ -38,6 +38,8 @@ const SLOT_RESERVING_STATUSES = [
 
 /** Minimum custom practical lesson length (minutes). */
 export const MIN_CUSTOM_PRACTICAL_DURATION_MINUTES = 30;
+/** Minimum personal-theory lesson length (minutes). */
+export const MIN_CUSTOM_THEORY_DURATION_MINUTES = 15;
 
 export type SlotValidationFailureReason = 'past' | 'outside_hours' | 'branch_closed' | 'instructor_unavailable' | 'booked';
 export type SlotConflictDetail = {
@@ -575,7 +577,12 @@ export default class BookingSlotValidationService {
      * Day-off and other busy rules still apply; lunch is skipped via skipLunch for admin.
      */
     allowCustomPracticalTime?: boolean;
-    /** Exclusive end HH:MM for a custom practical range (required when allowCustomPracticalTime). */
+    /**
+     * Admin personal theory: any same-day start and exclusive end (not branch 09:00–18:00 hours).
+     * Day-off and explicit busy marks still block. Work hours and lunch do not.
+     */
+    allowCustomTheoryTime?: boolean;
+    /** Exclusive end HH:MM for a custom practical or personal-theory range. */
     customSlotEndTime?: string;
     /**
      * Slots already stored on this booking. Day-off / work-hours rules are not applied again,
@@ -596,16 +603,23 @@ export default class BookingSlotValidationService {
     const branchRules = await BranchScheduleService.resolveEffectiveRulesForBranch(input.branchId);
     const isPractical = input.lessonType === 'practical';
     const allowCustomPractical = input.allowCustomPracticalTime === true && isPractical;
-    const customEndNorm = allowCustomPractical
-      ? normalizeTimeHHMM(String(input.customSlotEndTime ?? '').trim())
-      : null;
-    if (allowCustomPractical) {
+    const allowCustomTheory = input.allowCustomTheoryTime === true && input.lessonType === 'theory_personal';
+    const customEndNorm =
+      allowCustomPractical || allowCustomTheory
+        ? normalizeTimeHHMM(String(input.customSlotEndTime ?? '').trim())
+        : null;
+    if (allowCustomPractical || allowCustomTheory) {
       if (!customEndNorm) {
-        throw new InputValidationError('Custom slot end time is required.', HttpStatusCodesUtil.BAD_REQUEST);
+        throw new InputValidationError(
+          allowCustomTheory ? 'Personal theory end time is required.' : 'Custom slot end time is required.',
+          HttpStatusCodesUtil.BAD_REQUEST,
+        );
       }
       if (input.slots.length !== 1) {
         throw new InputValidationError(
-          'Custom practical slots must be a single start time with an end time.',
+          allowCustomTheory
+            ? 'Personal theory must be one start time with an end time.'
+            : 'Custom practical slots must be a single start time with an end time.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
@@ -650,10 +664,11 @@ export default class BookingSlotValidationService {
       }
 
       const slotNorm = normalizeTimeHHMM(slot) ?? slot;
-      const keepExistingSchedule = input.unchangedSlotKeys?.has(slotScheduleKey(dateIso, slotNorm)) === true;
+      const keepExistingSchedule =
+        !allowCustomTheory && input.unchangedSlotKeys?.has(slotScheduleKey(dateIso, slotNorm)) === true;
       let proposedRange: { start: number; end: number } | undefined;
 
-      if (allowCustomPractical && customEndNorm) {
+      if ((allowCustomPractical || allowCustomTheory) && customEndNorm) {
         const startM = parseTimeToMinutes(slotNorm);
         const endM = parseTimeToMinutes(customEndNorm);
         if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) {
@@ -662,9 +677,14 @@ export default class BookingSlotValidationService {
             HttpStatusCodesUtil.BAD_REQUEST,
           );
         }
-        if (endM - startM < MIN_CUSTOM_PRACTICAL_DURATION_MINUTES) {
+        const minDuration = allowCustomTheory
+          ? MIN_CUSTOM_THEORY_DURATION_MINUTES
+          : MIN_CUSTOM_PRACTICAL_DURATION_MINUTES;
+        if (endM - startM < minDuration) {
           throw new InputValidationError(
-            `Custom slot must be at least ${MIN_CUSTOM_PRACTICAL_DURATION_MINUTES} minutes.`,
+            allowCustomTheory
+              ? `Personal theory must be at least ${MIN_CUSTOM_THEORY_DURATION_MINUTES} minutes.`
+              : `Custom slot must be at least ${MIN_CUSTOM_PRACTICAL_DURATION_MINUTES} minutes.`,
             HttpStatusCodesUtil.BAD_REQUEST,
           );
         }
@@ -691,7 +711,7 @@ export default class BookingSlotValidationService {
               );
             }
           }
-        } else if (!allowCustomPractical && input.lessonType !== 'theory') {
+        } else if (!allowCustomPractical && !allowCustomTheory && input.lessonType !== 'theory') {
           // Group theory follows the cohort schedule, not branch business hours.
           const branchReason = branchScheduleBlockReason(dateIso, slot, branchRules);
           if (branchReason === 'branch_closed') {
@@ -713,7 +733,7 @@ export default class BookingSlotValidationService {
           dateIso,
           slot,
           slotRange,
-          { forPracticalPlan: isPractical, skipLunch },
+          { forPracticalPlan: isPractical, skipLunch: skipLunch || allowCustomTheory, skipWorkHours: allowCustomTheory },
         );
         if (instructorUnavailable) {
           throw new InputValidationError(
@@ -754,6 +774,7 @@ export default class BookingSlotValidationService {
     allowHistoricalSlots?: boolean;
     allowPastSlots?: boolean;
     allowCustomPracticalTime?: boolean;
+    allowCustomTheoryTime?: boolean;
     customSlotEndTime?: string;
     /** Slots already stored on this booking; schedule rules are not re-applied to them. */
     unchangedSlots?: readonly { dateIso: string; time: string }[];
@@ -772,6 +793,7 @@ export default class BookingSlotValidationService {
         allowHistoricalSlots: input.allowHistoricalSlots,
         allowPastSlots: input.allowPastSlots,
         allowCustomPracticalTime: input.allowCustomPracticalTime,
+        allowCustomTheoryTime: input.allowCustomTheoryTime,
         customSlotEndTime: input.customSlotEndTime,
         unchangedSlotKeys,
       });

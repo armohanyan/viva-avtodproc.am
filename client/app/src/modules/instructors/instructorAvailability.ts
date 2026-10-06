@@ -206,12 +206,13 @@ export function isSlotBlockedByAvailabilityRules(
   timeSlot: string,
   blocks: readonly AvailabilityBlock[],
   slotRangeOverride?: { start: number; end: number },
-  options?: { forPracticalPlan?: boolean; skipLunch?: boolean },
+  options?: { forPracticalPlan?: boolean; skipLunch?: boolean; skipWorkHours?: boolean },
 ): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
   const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
   const forPracticalPlan = options?.forPracticalPlan === true;
   const skipLunch = options?.skipLunch === true;
+  const skipWorkHours = options?.skipWorkHours === true;
 
   for (const b of blocks) {
     if (b.ruleKind === "lunch" && b.timeStart && b.timeEnd) {
@@ -242,7 +243,7 @@ export function isSlotBlockedByAvailabilityRules(
     }
   }
 
-  if (isSlotOutsideInstructorWorkHours(dateIso, timeSlot, blocks, slotRange)) {
+  if (!skipWorkHours && isSlotOutsideInstructorWorkHours(dateIso, timeSlot, blocks, slotRange)) {
     return true;
   }
 

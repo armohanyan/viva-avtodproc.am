@@ -46,6 +46,8 @@ const busySlotsQuerySchema = z.object({
   to: z.string().min(10),
   /** When editing a booking, omit that booking’s slot rows so the calendar stays usable. */
   excludeBookingId: z.coerce.number().int().positive().optional(),
+  /** `ranges` returns occupied [start, end) windows instead of grid start times. */
+  shape: z.enum(['ranges']).optional(),
 });
 
 const slotPlanRowSchema = z.object({
@@ -190,7 +192,18 @@ export default class InstructorController {
         from: req.query.from,
         to: req.query.to,
         excludeBookingId: req.query.excludeBookingId,
+        shape: req.query.shape,
       });
+      if (q.shape === 'ranges') {
+        const ranges = await BookingService.listOccupiedRangesForInstructor(
+          instructorUserId,
+          q.from.slice(0, 10),
+          q.to.slice(0, 10),
+          q.excludeBookingId,
+        );
+        SuccessHandlerUtil.handleList(res, next, ranges);
+        return;
+      }
       const branchId = await resolveBranchIdFilter(req);
       const data = await BookingService.listBusySlotsForInstructor(
         instructorUserId,

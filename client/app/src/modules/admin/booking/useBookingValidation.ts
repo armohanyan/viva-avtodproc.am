@@ -4,6 +4,7 @@ import type { AdminBookingFlowKind, AdminPackageOption, TheoryCohortOption } fro
 import { isTheoryCohortBookableStatus } from "./adminTheoryCohort";
 import { theoryGroupSlotPlanFromCohort } from "./theoryGroupSlotPlan";
 import type { PracticalLessonType } from "src/modules/instructors/instructor-booking";
+import { theoryPersonalBillableHours } from "./personalTheorySchedule";
 
 export type BookingValidationResult = { ok: boolean; messageKeys: TranslationKey[] };
 
@@ -22,6 +23,10 @@ export type BookingValidationInput = {
   packageTheoryCohortId: string;
   practicalLessonType: PracticalLessonType | "";
   theoryThemeTitles: readonly string[];
+  /** Personal theory: same-day start and exclusive end (HH:MM). */
+  theoryDateIso?: string;
+  theoryStart?: string;
+  theoryEnd?: string;
 };
 
 function strTrim(v: unknown): string {
@@ -87,8 +92,8 @@ export function validateAdminBookingAdd(input: BookingValidationInput): BookingV
     if (!strTrim(input.instructorName)) {
       keys.push("adminBookingValSelectInstructor");
     }
-    if (!hasSlotPickSlots(input.slotPick)) {
-      keys.push("adminBookingValSelectSlots");
+    if (theoryPersonalBillableHours(input.theoryStart ?? "", input.theoryEnd ?? "") <= 0 || !strTrim(input.theoryDateIso)) {
+      keys.push("adminBookingValPersonalTheoryWindow");
     }
     return { ok: keys.length === 0, messageKeys: keys };
   }

@@ -151,12 +151,13 @@ export function isSlotBlockedByScheduleRules(
   timeSlot: string,
   rules: readonly InstructorScheduleRuleDto[],
   slotRangeOverride?: { start: number; end: number },
-  options?: { forPracticalPlan?: boolean; skipLunch?: boolean },
+  options?: { forPracticalPlan?: boolean; skipLunch?: boolean; skipWorkHours?: boolean },
 ): boolean {
   const weekday = weekdayMon1ToSun7FromDateIso(dateIso);
   const slotRange = slotRangeOverride ?? slotRangeMinutes(timeSlot);
   const forPracticalPlan = options?.forPracticalPlan === true;
   const skipLunch = options?.skipLunch === true;
+  const skipWorkHours = options?.skipWorkHours === true;
 
   for (const b of rules) {
     if (b.ruleKind === 'lunch' && b.timeStart && b.timeEnd) {
@@ -187,7 +188,7 @@ export function isSlotBlockedByScheduleRules(
     }
   }
 
-  if (isSlotOutsideInstructorWorkHours(dateIso, timeSlot, rules, slotRange)) {
+  if (!skipWorkHours && isSlotOutsideInstructorWorkHours(dateIso, timeSlot, rules, slotRange)) {
     return true;
   }
 
@@ -408,7 +409,7 @@ export default class InstructorAvailabilityService {
     dateIso: string,
     timeSlot: string,
     slotRangeOverride?: { start: number; end: number },
-    options?: { forPracticalPlan?: boolean; skipLunch?: boolean },
+    options?: { forPracticalPlan?: boolean; skipLunch?: boolean; skipWorkHours?: boolean },
   ): Promise<boolean> {
     const rules = await this.listForInstructor(instructorUserId);
     return isSlotBlockedByScheduleRules(dateIso, timeSlot, rules, slotRangeOverride, options);

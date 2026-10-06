@@ -5,6 +5,7 @@ import { parseAmdInput } from "src/pages/admin/finance/adminFinanceShared";
 import { billablePracticalLessonCount } from "src/utils/booking.utils";
 import type { AdminBookingFlowKind, AdminPackageOption, TheoryCohortOption } from "./types";
 import { theoryGroupSlotPlanFromCohort } from "./theoryGroupSlotPlan";
+import { theoryPersonalBillableHours } from "./personalTheorySchedule";
 
 export type BookingPriceInput = {
   flowKind: AdminBookingFlowKind;
@@ -15,6 +16,8 @@ export type BookingPriceInput = {
   theoryCohorts: readonly TheoryCohortOption[];
   selectedPackage: AdminPackageOption | null;
   packagePracticalSlots: LessonBookingPayload | null;
+  /** Personal theory cash price follows this window, not an hour-grid slot count. */
+  theoryWindow?: { start: string; end: string } | null;
 };
 
 export { billablePracticalLessonCount };
@@ -58,11 +61,11 @@ export function computeBookingTotalAmd(input: BookingPriceInput): number {
   }
 
   if (flowKind === "theory_personal") {
-    const n = slotCount(input.slotPick);
-    if (n === 0) return 0;
+    const hours = theoryPersonalBillableHours(input.theoryWindow?.start ?? "", input.theoryWindow?.end ?? "");
+    if (hours <= 0) return 0;
     const ins = input.instructors.find((i) => i.name === input.instructorName);
     const hourly = ins && Number.isFinite(ins.hourlyPrice) ? ins.hourlyPrice : 0;
-    return hourly * n;
+    return hourly * hours;
   }
 
   return 0;
@@ -80,6 +83,7 @@ export function useBookingPriceCalculator(input: BookingPriceInput): number {
       input.selectedPackage,
       input.instructors,
       input.theoryCohorts,
+      input.theoryWindow,
     ],
   );
 }

@@ -32,6 +32,11 @@ import { PackageCreditMark } from "src/modules/admin/booking/PackageCreditMark";
 import GroupLessonSelector from "src/modules/admin/booking/GroupLessonSelector";
 import PackageSelector from "src/modules/admin/booking/PackageSelector";
 import SlotSelector from "src/modules/admin/booking/SlotSelector";
+import PersonalTheoryScheduleFields, {
+  type PersonalTheoryScheduleStatus,
+} from "src/modules/admin/booking/PersonalTheoryScheduleFields";
+import { theoryPersonalBillableHours } from "src/modules/admin/booking/personalTheorySchedule";
+import { normalizeTimeHHMM } from "src/modules/booking/booking-slot.util";
 import { useBookingPriceCalculator, type BookingPriceInput } from "src/modules/admin/booking/useBookingPriceCalculator";
 import { billablePracticalLessonCount } from "src/utils/booking.utils";
 import { validateAdminBookingAdd } from "src/modules/admin/booking/useBookingValidation";
@@ -284,6 +289,30 @@ function hourlyStartsFromBookingRange(startTime: string, endTimeExclusive?: stri
     out.push(toLabel(m));
   }
   return out;
+}
+
+const idleTheoryScheduleStatus = (): PersonalTheoryScheduleStatus => ({
+  checking: false,
+  checkFailed: false,
+  valid: false,
+  unavailable: false,
+  overlapLabel: null,
+  near: [],
+  acknowledged: false,
+});
+
+function theoryScheduleSaveError(
+  status: PersonalTheoryScheduleStatus,
+  t: (k: TranslationKey) => string,
+): string | null {
+  if (!status.valid) return t("adminBookingValPersonalTheoryWindow");
+  if (status.checking) return t("adminBookingPersonalTheoryChecking");
+  if (status.unavailable) return t("adminBookingPersonalTheoryUnavailable");
+  if (status.overlapLabel) {
+    return t("adminBookingPersonalTheoryOverlap").replace("%range%", status.overlapLabel);
+  }
+  if (status.near.length > 0 && !status.acknowledged) return t("adminBookingPersonalTheoryNearRequired");
+  return null;
 }
 
 function padSlotTime(t: string): string {
@@ -570,6 +599,9 @@ export default function AdminBookings() {
   const [editPracticalLessonType, setEditPracticalLessonType] = useState<PracticalLessonType | "">("");
   const [addTheoryThemeTitles, setAddTheoryThemeTitles] = useState<string[]>([]);
   const [editTheoryThemeTitles, setEditTheoryThemeTitles] = useState<string[]>([]);
+  const [addTheoryEnd, setAddTheoryEnd] = useState("");
+  const [addTheoryStatus, setAddTheoryStatus] = useState<PersonalTheoryScheduleStatus>(idleTheoryScheduleStatus);
+  const [editTheoryStatus, setEditTheoryStatus] = useState<PersonalTheoryScheduleStatus>(idleTheoryScheduleStatus);
 
   const bookableTheoryCohorts = useMemo(
     () => theoryCohorts.filter((c) => isTheoryCohortBookableStatus(c.status)),
@@ -605,7 +637,7 @@ export default function AdminBookings() {
   );
 
   const activeTheoryInstructors = useMemo(
-    () => instructors.filter((i) => i.status === "active" && i.teachesTheory),
+    () => instructors.filter((i) => i.status === "active" && Boolean(i.teachesTheory)),
     [instructors],
   );
 
@@ -628,11 +660,6 @@ export default function AdminBookings() {
     [activePracticalInstructors, draft?.instructorName],
   );
 
-  const theoryInstructorsForGrid = useMemo(
-    () => withSelectedInstructorByName(activeTheoryInstructors, draft?.instructorName, activeTheoryInstructors),
-    [activeTheoryInstructors, draft?.instructorName],
-  );
-
   const defaultPracticalInstructorName = useMemo(
     () => practicalInstructorsForAdd[0]?.name ?? instructorNames[0] ?? "",
     [practicalInstructorsForAdd, instructorNames],
@@ -640,9 +667,8 @@ export default function AdminBookings() {
 
   const theoryPersonalInstructorsForAdd = useMemo(() => {
     const branchIds = draft?.branchId ? [draft.branchId] : [];
-    const filtered = filterInstructorsServingBranches(activeTheoryInstructors, branchIds);
-    return withSelectedInstructorByName(filtered, draft?.instructorName, activeTheoryInstructors);
-  }, [activeTheoryInstructors, draft?.branchId, draft?.instructorName]);
+    return filterInstructorsServingBranches(activeTheoryInstructors, branchIds);
+  }, [activeTheoryInstructors, draft?.branchId]);
 
   const theoryPersonalInstructorsForEdit = useMemo(() => {
     const branchIds = editBooking?.branchId ? [editBooking.branchId] : [];
@@ -654,6 +680,15 @@ export default function AdminBookings() {
     () => theoryPersonalInstructorsForAdd.map((i) => i.name),
     [theoryPersonalInstructorsForAdd],
   );
+
+  useEffect(() => {
+    if (!addOpen || addFlowKind !== "theory_personal") return;
+    setDraft((d) => {
+      if (!d?.instructorName) return d;
+      if (theoryPersonalInstructorsForAdd.some((i) => i.name === d.instructorName)) return d;
+      return { ...d, instructorName: "" };
+    });
+  }, [addOpen, addFlowKind, theoryPersonalInstructorsForAdd]);
 
   const theoryEditCalendarInstructors = useMemo(() => {
     const base = theoryPersonalInstructorsForEdit;
@@ -696,8 +731,6 @@ export default function AdminBookings() {
     }
     return "";
   }, [editBooking, instructors, editTheoryCohortId, bookableTheoryCohorts]);
-
-  const theoryPersonalCalendarInstructors = theoryPersonalInstructorsForAdd;
 
   const theoryPersonalCalendarInstructorId = useMemo(() => {
     if (!draft || draft.type !== "theory_personal") return "";
@@ -1093,7 +1126,7 @@ export default function AdminBookings() {
         studentId: pickStudent,
         instructorName: resolveInstructorName(),
         dateIso: cohortPlan?.dateIso ?? todayIsoDate(),
-        time: cohortPlan?.times[0] ?? "10:00",
+        time: cohortPlan?.times[0] ?? (flow === "theory_personal" ? "" : "10:00"),
         type: lessonType,
         status: "pending",
         branchId: pickBranch,
@@ -1105,6 +1138,8 @@ export default function AdminBookings() {
       setAddPackageTheoryCohortId("");
       setAddPracticalLessonType("");
       setAddTheoryThemeTitles(opts?.theoryThemeTitles?.length ? [...opts.theoryThemeTitles] : []);
+      setAddTheoryEnd("");
+      setAddTheoryStatus(idleTheoryScheduleStatus());
       setSlotPick(null);
       setTheoryCohortId(flow === "theory_group" ? prefillCohortId : "");
       pendingTheoryRequestIdRef.current = opts?.theoryRequestId?.trim() ? opts.theoryRequestId.trim() : null;
@@ -1268,6 +1303,10 @@ export default function AdminBookings() {
       setAddPackageTheoryCohortId("");
       if (flow !== "practical") setAddPracticalLessonType("");
       if (flow !== "theory_personal") setAddTheoryThemeTitles([]);
+      if (flow === "theory_personal") {
+        setAddTheoryEnd("");
+        setAddTheoryStatus(idleTheoryScheduleStatus());
+      }
       setDraft((d) => {
         if (!d) return d;
         if (flow === "practical") {
@@ -1284,7 +1323,8 @@ export default function AdminBookings() {
           return {
             ...d,
             type: "theory_personal",
-            instructorName: theoryPersonalInstructorNames[0] ?? d.instructorName,
+            time: "",
+            instructorName: theoryPersonalInstructorNames[0] ?? "",
           };
         }
         return { ...d, type: "practical" };
@@ -1384,11 +1424,15 @@ export default function AdminBookings() {
       theoryCohorts: addTheoryCohorts,
       selectedPackage: selectedAddPackage,
       packagePracticalSlots: addPackagePracticalSlotPick,
+      theoryWindow:
+        addFlowKind === "theory_personal" ? { start: draft?.time ?? "", end: addTheoryEnd } : null,
     }),
     [
       addFlowKind,
       instructors,
       draft?.instructorName,
+      draft?.time,
+      addTheoryEnd,
       slotPick,
       theoryCohortId,
       addTheoryCohorts,
@@ -1507,6 +1551,9 @@ export default function AdminBookings() {
         packageTheoryCohortId: addPackageTheoryCohortId,
         practicalLessonType: addPracticalLessonType,
         theoryThemeTitles: addTheoryThemeTitles,
+        theoryDateIso: draft?.dateIso ?? "",
+        theoryStart: draft?.time ?? "",
+        theoryEnd: addTheoryEnd,
       }),
     [
       addFlowKind,
@@ -1524,6 +1571,9 @@ export default function AdminBookings() {
       addPackageTheoryCohortId,
       addPracticalLessonType,
       addTheoryThemeTitles,
+      draft?.dateIso,
+      draft?.time,
+      addTheoryEnd,
     ],
   );
   const addValidationKeySet = useMemo(
@@ -1538,6 +1588,7 @@ export default function AdminBookings() {
       theoryGroup: addValidationKeySet.has("adminBookingValSelectTheoryGroup"),
       slots:
         addValidationKeySet.has("adminBookingValSelectSlots") ||
+        addValidationKeySet.has("adminBookingValPersonalTheoryWindow") ||
         addValidationKeySet.has("adminBookingValPackagePracticalCount") ||
         addValidationKeySet.has("adminBookingValPackageTheoryCount"),
     }),
@@ -1710,7 +1761,13 @@ export default function AdminBookings() {
         showToast(t("fillRequired"), "error");
         return;
       }
-      if (bookingModalTab !== "payment") {
+      if (editBooking.type === "theory_personal" && bookingModalTab !== "payment") {
+        const scheduleError = theoryScheduleSaveError(editTheoryStatus, t);
+        if (scheduleError) {
+          showToast(scheduleError, "error");
+          return;
+        }
+      } else if (bookingModalTab !== "payment" && editBooking.type !== "theory_personal") {
         const hasSlots =
           editSlotPick &&
           ((editSlotPick.slotEntries?.length ?? 0) > 0 || editSlotPick.times.length > 0);
@@ -1748,7 +1805,9 @@ export default function AdminBookings() {
             time,
           }));
     const showEditPaidSlots =
-      editBookingPayment.status === "partial" && editSlotList.length > 1;
+      editBooking.type !== "theory_personal" &&
+      editBookingPayment.status === "partial" &&
+      editSlotList.length > 1;
     if (showEditPaidSlots && editPaidSlotKeys.size === 0) {
       setBookingModalTab("payment");
       showToast(t("adminDrivingPaidSlotsRequired"), "error");
@@ -1767,7 +1826,7 @@ export default function AdminBookings() {
       const pick = editSlotPick;
       const useArbitrarySlots =
         !isPackagePurchaseEdit &&
-        (editBooking.type === "practical" || editBooking.type === "theory_personal") &&
+        editBooking.type === "practical" &&
         (pick?.slotEntries?.length ?? 0) > 0;
       const paymentBody = editBooking.coveredByPackage
         ? {
@@ -1792,7 +1851,29 @@ export default function AdminBookings() {
             ...paymentBody,
             ...(paidSlotEntries ? { paidSlotEntries } : {}),
           }
-        : editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal"
+        : editBooking.type === "theory_personal"
+          ? (() => {
+              const theoryStart = normalizeTimeHHMM(editBooking.time) ?? "";
+              const theoryEnd = normalizeTimeHHMM(editBooking.endTime ?? "") ?? "";
+              const theoryInstructor = instructors.find((i) => i.name === editBooking.instructorName);
+              return {
+                studentId: editBooking.studentId,
+                branchId: Number(editBooking.branchId),
+                status: bookingLifecycleStatus,
+                type: "theory_personal" as const,
+                dateIso: editBooking.dateIso.slice(0, 10),
+                time: theoryStart,
+                slots: [theoryStart],
+                slotEntries: [{ dateIso: editBooking.dateIso.slice(0, 10), time: theoryStart }],
+                customSlotEndTime: theoryEnd,
+                instructorName: editBooking.instructorName,
+                ...(theoryInstructor?.id ? { instructorUserId: Number(theoryInstructor.id) } : {}),
+                meetLink: editBooking.meetLink?.trim() || null,
+                totalPriceAmd: editBooking.coveredByPackage ? 0 : (editBooking.totalPriceAmd ?? 0),
+                ...paymentBody,
+              };
+            })()
+          : editBooking.type === "practical" || editBooking.type === "theory"
           ? {
               studentId: editBooking.studentId,
               branchId: Number(editBooking.branchId),
@@ -1801,12 +1882,9 @@ export default function AdminBookings() {
               dateIso: editSlotPick!.dateIso,
               slots: editSlotPick!.times,
               ...(useArbitrarySlots ? { slotEntries: editSlotPick!.slotEntries } : {}),
-              ...(editBooking.type === "practical" || editBooking.type === "theory_personal"
+              ...(editBooking.type === "practical"
                 ? { instructorName: editSlotPick!.instructor || editBooking.instructorName }
                 : { theoryCohortId: Number(editTheoryCohortId) }),
-              ...(editBooking.type === "theory_personal"
-                ? { meetLink: editBooking.meetLink?.trim() || null }
-                : {}),
               ...paymentBody,
               ...(paidSlotEntries ? { paidSlotEntries } : {}),
             }
@@ -1835,6 +1913,19 @@ export default function AdminBookings() {
     }
   };
 
+  const applyEditTheorySchedule = (patch: Partial<Booking>) => {
+    setEditBooking((eb) => {
+      if (!eb) return eb;
+      const next = { ...eb, ...patch };
+      if (next.coveredByPackage) return { ...next, totalPriceAmd: 0 };
+      const hours = theoryPersonalBillableHours(next.time, next.endTime ?? "");
+      if (hours <= 0) return next;
+      const ins = instructors.find((i) => i.name === next.instructorName);
+      const hourly = ins && Number.isFinite(ins.hourlyPrice) ? ins.hourlyPrice : 0;
+      return { ...next, totalPriceAmd: Math.round(hourly * hours) };
+    });
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft) return;
@@ -1843,6 +1934,14 @@ export default function AdminBookings() {
       setBookingModalTab("booking");
       showToast(t(v.messageKeys[0]), "error");
       return;
+    }
+    if (addFlowKind === "theory_personal") {
+      const scheduleError = theoryScheduleSaveError(addTheoryStatus, t);
+      if (scheduleError) {
+        setBookingModalTab("booking");
+        showToast(scheduleError, "error");
+        return;
+      }
     }
     const addGiftActive = addIsGift && addFlowKind === "practical";
     const packageCreditCoversPayment =
@@ -1932,28 +2031,32 @@ export default function AdminBookings() {
         const theoryCohort = addTheoryCohorts.find((x) => x.id === theoryCohortId);
         const theoryPlan =
           draft.type === "theory" && theoryCohort ? theoryGroupSlotPlanFromCohort(theoryCohort) : null;
-        const pick = slotPick!;
+        const pick = slotPick;
         const arbitrary =
-          (addFlowKind === "practical" || addFlowKind === "theory_personal") &&
-          pick.slotEntries &&
-          pick.slotEntries.length > 0
+          addFlowKind === "practical" && pick?.slotEntries && pick.slotEntries.length > 0
             ? { slotEntries: pick.slotEntries }
             : {};
+        const theoryInstructor = instructors.find((i) => i.name === draft.instructorName);
+        const theoryStart = normalizeTimeHHMM(draft.time) ?? "";
+        const theoryEnd = normalizeTimeHHMM(addTheoryEnd) ?? "";
         const body =
           addFlowKind === "theory_personal"
             ? {
                 studentId: Number(draft.studentId),
-                ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
-                  ? { instructorUserId: Number(pick.instructorUserId) }
+                ...(theoryInstructor?.id && Number.isFinite(Number(theoryInstructor.id))
+                  ? { instructorUserId: Number(theoryInstructor.id) }
                   : {}),
-                instructorName: pick.instructor || draft.instructorName,
-                dateIso: pick.dateIso,
+                instructorName: draft.instructorName,
+                dateIso: draft.dateIso.slice(0, 10),
+                time: theoryStart,
                 type: "theory_personal" as const,
                 status: addBookingLifecycleStatus,
                 branchId: Number(draft.branchId),
-                slots: pick.times,
+                slots: [theoryStart],
+                slotEntries: [{ dateIso: draft.dateIso.slice(0, 10), time: theoryStart }],
+                customSlotEndTime: theoryEnd,
+                totalPriceAmd: addEffectiveTotalAmd,
                 meetLink: draft.meetLink?.trim() || null,
-                ...arbitrary,
                 ...paymentBody,
               }
             : {
@@ -1961,13 +2064,13 @@ export default function AdminBookings() {
                 branchId: Number(draft.branchId),
                 status: addBookingLifecycleStatus,
                 type: draft.type,
-                dateIso: theoryPlan ? theoryPlan.dateIso : pick.dateIso,
-                slots: theoryPlan ? theoryPlan.times : pick.times,
+                dateIso: theoryPlan ? theoryPlan.dateIso : pick!.dateIso,
+                slots: theoryPlan ? theoryPlan.times : pick!.times,
                 ...(draft.type === "practical"
                   ? {
-                      instructorName: pick.instructor || draft.instructorName,
-                      ...(pick.instructorUserId && Number.isFinite(Number(pick.instructorUserId))
-                        ? { instructorUserId: Number(pick.instructorUserId) }
+                      instructorName: pick!.instructor || draft.instructorName,
+                      ...(pick!.instructorUserId && Number.isFinite(Number(pick!.instructorUserId))
+                        ? { instructorUserId: Number(pick!.instructorUserId) }
                         : {}),
                       consumePackageCredits: practicalCreditsApply || practicalPartialCredits,
                       ...(practicalPartialCredits
@@ -2859,26 +2962,28 @@ export default function AdminBookings() {
                     />
                   </div>
                 ) : null}
-                {editBooking.type === "theory_personal" ? (
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-1">{t("cohortColInstructor")}</label>
-                    <select
-                      value={editBooking.instructorName}
-                      onChange={(e) => {
-                        setEditBooking({ ...editBooking, instructorName: e.target.value });
-                        lastEditSlotInitKey.current = "";
-                      }}
-                      className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {theoryPersonalInstructorsForEdit.map((ins) => (
-                        <option key={ins.id} value={ins.name}>
-                          {ins.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {editBooking.type === "theory_personal" && !editBooking.packagePurchase ? (
+                  <PersonalTheoryScheduleFields
+                    instructors={theoryPersonalInstructorsForEdit}
+                    instructorId={
+                      theoryPersonalInstructorsForEdit.find((i) => i.name === editBooking.instructorName)?.id ?? ""
+                    }
+                    onInstructorId={(id) => {
+                      const ins = instructors.find((i) => i.id === id);
+                      applyEditTheorySchedule({ instructorName: ins?.name ?? "" });
+                    }}
+                    dateIso={editBooking.dateIso}
+                    onDateIso={(dateIso) => applyEditTheorySchedule({ dateIso })}
+                    startTime={editBooking.time}
+                    onStartTime={(time) => applyEditTheorySchedule({ time })}
+                    endTime={editBooking.endTime ?? ""}
+                    onEndTime={(endTime) => applyEditTheorySchedule({ endTime })}
+                    excludeBookingId={editBooking.id}
+                    onStatus={setEditTheoryStatus}
+                    t={t}
+                  />
                 ) : null}
-                {(editBooking.type === "practical" || editBooking.type === "theory" || editBooking.type === "theory_personal") &&
+                {(editBooking.type === "practical" || editBooking.type === "theory") &&
                 !editBooking.packagePurchase ? (
                   <div className="space-y-2 pt-2 border-t border-border">
                     <p className="text-sm text-muted-foreground">{t("bookingColTime")}</p>
@@ -2900,7 +3005,7 @@ export default function AdminBookings() {
                       <p className="text-xs text-amber-600 dark:text-amber-500">{t("adminBookingSlotsNotSelected")}</p>
                     )}
                   </div>
-                ) : editBooking.packagePurchase ? null : (
+                ) : editBooking.packagePurchase || editBooking.type === "theory_personal" ? null : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-1">{t("date")}</label>
@@ -2971,7 +3076,8 @@ export default function AdminBookings() {
                       }}
                       errorKey={editPaymentErrorKey}
                     />
-                    {editBookingPayment.status === "partial" &&
+                    {editBooking.type !== "theory_personal" &&
+                    editBookingPayment.status === "partial" &&
                     ((editSlotPick?.slotEntries?.length ?? 0) > 1 ||
                       (editSlotPick?.times.length ?? 0) > 1) ? (
                       <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/20 p-3">
@@ -3400,52 +3506,30 @@ export default function AdminBookings() {
 
                     {addFlowKind === "theory_personal" ? (
                       <div>
-                        <SlotSelector
-                          selectedInstructorId={theoryPersonalCalendarInstructorId}
-                          instructors={theoryInstructorsForGrid}
-                          onInstructorChange={(id, opts) => {
+                        <PersonalTheoryScheduleFields
+                          instructors={theoryPersonalInstructorsForAdd}
+                          instructorId={
+                            theoryPersonalInstructorsForAdd.find((i) => i.name === draft.instructorName)?.id ?? ""
+                          }
+                          onInstructorId={(id) => {
                             const ins = instructors.find((i) => i.id === id);
-                            if (ins) {
-                              setDraft((d) => (d ? { ...d, instructorName: ins.name } : d));
-                              if (!opts?.fromGridPick) {
-                                setSlotPick(null);
-                                setAddInlineErrors((prev) => ({ ...prev, slots: null }));
-                              }
-                            }
-                          }}
-                          onBranchPicked={(bid, opts) => {
-                            setDraft((d) => (d ? { ...d, branchId: bid } : d));
-                            if (!opts?.fromGridPick) setSlotPick(null);
-                          }}
-                          branchId={draft.branchId}
-                          studentName={studentLabel(draft.studentId)}
-                          showInstructorPicker
-                          onBookingConfirmed={(payload) => {
-                            setSlotPick(payload);
-                            setDraft((d) => {
-                              if (!d) return d;
-                              const next: Booking = {
-                                ...d,
-                                dateIso: payload.dateIso,
-                                time: payload.time,
-                                instructorName: payload.instructor || d.instructorName,
-                              };
-                              return next;
-                            });
-                          }}
-                          onAdminSelectionCleared={() => {
-                            setSlotPick(null);
+                            setDraft((d) => (d ? { ...d, instructorName: ins?.name ?? "" } : d));
                             setAddInlineErrors((prev) => ({ ...prev, slots: null }));
                           }}
-                          calendarKey={`add-personal-${addSlotSessionId}`}
-                          reloadKey={busyGridReloadKey}
+                          dateIso={draft.dateIso}
+                          onDateIso={(dateIso) => setDraft((d) => (d ? { ...d, dateIso } : d))}
+                          startTime={draft.time}
+                          onStartTime={(time) => setDraft((d) => (d ? { ...d, time } : d))}
+                          endTime={addTheoryEnd}
+                          onEndTime={setAddTheoryEnd}
+                          onStatus={setAddTheoryStatus}
                           t={t}
                         />
                         {addInlineErrors.slots ? (
                           <p className="mt-1 text-xs text-red-600">{addInlineErrors.slots}</p>
                         ) : null}
                         {addFieldInvalid.slots ? (
-                          <p className="mt-1 text-xs text-red-600">{t("adminBookingValSelectSlots")}</p>
+                          <p className="mt-1 text-xs text-red-600">{t("adminBookingValPersonalTheoryWindow")}</p>
                         ) : null}
                       </div>
                     ) : null}

@@ -24,6 +24,7 @@ import TheoryCohortInstructorService from './theory-cohort-instructor.service';
 import BookingSlotValidationService, {
   claimStartTimesForOccupiedBooking,
   claimStartTimesInRange,
+  occupiedRangesMinutes,
 } from './booking-slot-validation.service';
 import PracticalSlotPlanService from './practical-slot-plan.service';
 import FinanceService from './finance.service';
@@ -192,6 +193,14 @@ function billableSlotCountForLesson(
   slotCount: number,
 ): number {
   return lessonType === 'practical' ? billablePracticalSlotCount(slotCount) : slotCount;
+}
+
+/** Cash price for one personal-theory window: each started hour, minimum 1. */
+function theoryPersonalBillableHours(startHHMM: string, endHHMM: string): number {
+  const start = parseTimeToMinutes(startHHMM);
+  const end = parseTimeToMinutes(endHHMM);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 1;
+  return Math.max(1, Math.ceil((end - start) / 60));
 }
 
 /** Admin may override auto-calculated lesson total (e.g. discount or custom rate). */
@@ -1521,8 +1530,10 @@ function adminPatchTouchesSchedule(
     theoryCohortId?: number;
     slotEntries?: readonly { dateIso: string; time: string }[];
     meetLink?: string | null;
+    customSlotEndTime?: string;
   }>,
 ): boolean {
+  if (patch.customSlotEndTime !== undefined) return true;
   if (
     patch.dateIso !== undefined ||
     patch.time !== undefined ||
@@ -3030,6 +3041,165 @@ export default class BookingService {
   }
 
   /**
+   * Occupied half-open windows for one instructor on every branch.
+   * Personal-theory booking uses this so a lesson at 13:10 is visible next to 13:20,
+   * not only as an on-the-hour grid cell.
+   */
+  static async listOccupiedRangesForInstructor(
+    instructorUserId: number,
+    fromIso: string,
+    toIso: string,
+    excludeBookingId?: number,
+  ): Promise<
+    {
+      dateIso: string;
+      start: string;
+      end: string;
+      lessonType: 'practical' | 'theory' | 'theory_personal' | 'theory_group';
+    }[]
+  > {
+    const exists = await User.count({ where: { id: instructorUserId, accountType: 'instructor' } });
+    if (!exists) return [];
+
+    const bookableSorted = bookableTimesFromPlan(DEFAULT_PRACTICAL_SLOT_PLAN);
+    const from = fromIso.slice(0, 10);
+    const to = toIso.slice(0, 10);
+    const bookingWhere: Record<string, unknown> = { status: { [Op.in]: [...SLOT_RESERVING_STATUSES] } };
+    if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
+      bookingWhere.id = { [Op.ne]: excludeBookingId };
+    }
+
+    const slotRows = await BookingSlot.findAll({
+      attributes: ['dateIso', 'slotTime', 'bookingId'],
+      where: { instructorUserId, dateIso: { [Op.between]: [from, to] } },
+      include: [
+        {
+          model: Booking,
+          as: 'booking',
+          attributes: ['id', 'lessonType', 'dateIso', 'time', 'endTime'],
+          required: true,
+          where: bookingWhere,
+        },
+      ],
+    });
+
+    type RangeMeta = {
+      lessonType: 'practical' | 'theory' | 'theory_personal';
+      bookingTime: string;
+      bookingEndTime: string | null;
+      bookingDateIso: string;
+      slotTimes: string[];
+    };
+    const byBookingDate = new Map<string, RangeMeta>();
+    for (const r of slotRows) {
+      const bk = (
+        r as unknown as {
+          booking: {
+            id: number;
+            lessonType: 'practical' | 'theory' | 'theory_personal';
+            dateIso: string;
+            time: string;
+            endTime: string | null;
+          };
+        }
+      ).booking;
+      const dateIso = dateIsoString(r.dateIso);
+      const key = `${bk.id}\t${dateIso}`;
+      const slotTime = normalizeTimeHHMM(r.slotTime) ?? r.slotTime;
+      const cur = byBookingDate.get(key);
+      if (cur) {
+        cur.slotTimes.push(slotTime);
+      } else {
+        byBookingDate.set(key, {
+          lessonType: bk.lessonType,
+          bookingTime: bk.time,
+          bookingEndTime: bk.endTime,
+          bookingDateIso: dateIsoString(bk.dateIso),
+          slotTimes: [slotTime],
+        });
+      }
+    }
+
+    const out: {
+      dateIso: string;
+      start: string;
+      end: string;
+      lessonType: 'practical' | 'theory' | 'theory_personal' | 'theory_group';
+    }[] = [];
+    const pushRange = (
+      dateIso: string,
+      startMin: number,
+      endMin: number,
+      lessonType: (typeof out)[number]['lessonType'],
+    ) => {
+      if (!Number.isFinite(startMin) || !Number.isFinite(endMin) || endMin <= startMin) return;
+      out.push({
+        dateIso,
+        start: minutesToHHMM(startMin),
+        end: minutesToHHMM(endMin),
+        lessonType,
+      });
+    };
+
+    for (const [key, meta] of byBookingDate) {
+      const dateIso = key.split('\t')[1]!;
+      const ranges = occupiedRangesMinutes(
+        meta.bookingTime,
+        meta.bookingEndTime,
+        meta.bookingDateIso,
+        dateIso,
+        meta.slotTimes,
+        bookableSorted,
+      );
+      for (const range of ranges) pushRange(dateIso, range.start, range.end, meta.lessonType);
+    }
+
+    const legacyWhere: Record<string, unknown> = {
+      instructorUserId,
+      dateIso: { [Op.between]: [from, to] },
+      status: { [Op.in]: [...SLOT_RESERVING_STATUSES] },
+      [Op.and]: literal('NOT EXISTS (SELECT 1 FROM `booking_slots` AS `s` WHERE s.`booking_id` = `Booking`.`id`)'),
+    };
+    if (excludeBookingId != null && Number.isFinite(excludeBookingId) && excludeBookingId > 0) {
+      legacyWhere.id = { [Op.ne]: excludeBookingId };
+    }
+    const legacyBookings = await Booking.findAll({ where: legacyWhere, attributes: ['dateIso', 'time', 'endTime', 'lessonType'] });
+    for (const b of legacyBookings) {
+      const dateIso = dateIsoString(b.dateIso);
+      const ranges = occupiedRangesMinutes(b.time, b.endTime, dateIso, dateIso, [], bookableSorted);
+      const lessonType = b.lessonType === 'theory' || b.lessonType === 'theory_personal' ? b.lessonType : 'practical';
+      for (const range of ranges) pushRange(dateIso, range.start, range.end, lessonType);
+    }
+
+    const theorySessions = await TheoryCohortSession.findAll({
+      where: {
+        instructorUserId,
+        dateIso: { [Op.between]: [from, to] },
+        status: { [Op.in]: ['scheduled', 'completed'] },
+      },
+      attributes: ['dateIso', 'startTime', 'endTime'],
+    });
+    for (const s of theorySessions) {
+      const dateIso = dateIsoString(s.dateIso);
+      const start = normalizeTimeHHMM(String(s.startTime).slice(0, 5));
+      const end = normalizeTimeHHMM(String(s.endTime).slice(0, 5));
+      if (!start || !end) continue;
+      pushRange(dateIso, parseTimeToMinutes(start), parseTimeToMinutes(end), 'theory_group');
+    }
+
+    const seen = new Set<string>();
+    const deduped: typeof out = [];
+    for (const row of out) {
+      const k = `${row.dateIso}\t${row.start}\t${row.end}\t${row.lessonType}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      deduped.push(row);
+    }
+    deduped.sort((a, b) => a.dateIso.localeCompare(b.dateIso) || a.start.localeCompare(b.start));
+    return deduped;
+  }
+
+  /**
    * For calendar: each occupied hour for this instructor in the date range.
    * Includes practical bookings, 1:1 theory, and theory-group sessions (so hybrid
    * instructors cannot double-book). Callers that display lesson counts (e.g. the
@@ -3730,10 +3900,17 @@ export default class BookingService {
     }
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, input.lessonType);
+    const customTheoryEnd =
+      input.lessonType === 'theory_personal'
+        ? normalizeTimeHHMM(String(input.customSlotEndTime ?? '').trim())
+        : null;
+    const useCustomTheory = Boolean(customTheoryEnd) && entries.length === 1;
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const computedTotal = Number.isFinite(hourly)
-      ? hourly * billableSlotCountForLesson(input.lessonType, entries.length)
-      : 0;
+    const pricedUnits =
+      useCustomTheory && customTheoryEnd
+        ? theoryPersonalBillableHours(entries[0]!.time, customTheoryEnd)
+        : billableSlotCountForLesson(input.lessonType, entries.length);
+    const computedTotal = Number.isFinite(hourly) ? hourly * pricedUnits : 0;
     const gift = giftCreateFields(input);
     const totalPriceAmd = gift.isGift ? 0 : resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
 
@@ -3744,19 +3921,22 @@ export default class BookingService {
       lessonType: input.lessonType,
       allowHistoricalSlots: input.allowHistoricalSlots,
       allowPastSlots: true,
-      allowCustomPracticalTime: input.allowCustomPracticalTime,
-      customSlotEndTime: input.customSlotEndTime,
+      allowCustomPracticalTime: input.allowCustomPracticalTime === true && !useCustomTheory,
+      allowCustomTheoryTime: useCustomTheory,
+      customSlotEndTime: useCustomTheory ? customTheoryEnd ?? undefined : input.customSlotEndTime,
     });
 
     const first = entries[0];
     const customEndNorm =
-      input.allowCustomPracticalTime === true && input.customSlotEndTime
+      !useCustomTheory && input.allowCustomPracticalTime === true && input.customSlotEndTime
         ? normalizeTimeHHMM(String(input.customSlotEndTime).trim())
         : null;
     const endTime =
-      customEndNorm && entries.length === 1
-        ? customEndNorm
-        : input.lessonType === 'practical'
+      useCustomTheory && customTheoryEnd
+        ? customTheoryEnd
+        : customEndNorm && entries.length === 1
+          ? customEndNorm
+          : input.lessonType === 'practical'
           ? input.allowHistoricalSlots || input.allowCustomPracticalTime
             ? endTimeExclusiveForPracticalSlotEntries(
                 entries,
@@ -3907,6 +4087,52 @@ export default class BookingService {
     createdByAccountType?: 'admin' | 'super_admin' | null;
     paidSlotEntries?: readonly { dateIso: string; time: string }[];
   }): Promise<BookingAdminDto | null> {
+    if (input.type === 'theory_personal') {
+      const endNorm = normalizeTimeHHMM(String(input.customSlotEndTime ?? '').trim());
+      if (endNorm) {
+        const raw =
+          (input.slotEntries?.length ?? 0) > 0
+            ? input.slotEntries!
+            : [
+                {
+                  dateIso: input.dateIso.slice(0, 10),
+                  time: (input.slots?.[0] ?? input.time ?? '').trim(),
+                },
+              ];
+        const theoryEntries = normalizeAdminSlotEntries(raw, undefined, { allowAnyValidTime: true });
+        if (theoryEntries.length !== 1) {
+          throw new InputValidationError(
+            'Personal theory needs one start time and an end time.',
+            HttpStatusCodesUtil.BAD_REQUEST,
+          );
+        }
+        return BookingService.createAdminWithArbitrarySlotEntries({
+          studentId: input.studentId,
+          instructorName: input.instructorName,
+          instructorUserId: input.instructorUserId,
+          entries: theoryEntries,
+          lessonType: 'theory_personal',
+          status: input.status,
+          branchId: input.branchId,
+          consumePackageCredits: input.consumePackageCredits,
+          packageCreditUnits: input.packageCreditUnits,
+          packageOrderId: input.packageOrderId,
+          meetLink: input.meetLink,
+          adminPaymentStatus: input.adminPaymentStatus,
+          paidAmountAmd: input.paidAmountAmd,
+          paymentNotes: input.paymentNotes,
+          paymentReminderDate: input.paymentReminderDate,
+          totalPriceAmd: input.totalPriceAmd,
+          createdByUserId: input.createdByUserId,
+          allowHistoricalSlots: input.allowHistoricalSlots,
+          customSlotEndTime: endNorm,
+          isGift: input.isGift,
+          giftNote: input.giftNote,
+          createdByAccountType: input.createdByAccountType,
+          paidSlotEntries: input.paidSlotEntries,
+        });
+      }
+    }
     let allowedPracticalTimes: string[] | undefined;
     let allowCustomPractical =
       input.type === 'practical' && input.allowCustomPracticalTime === true;
@@ -5016,10 +5242,19 @@ export default class BookingService {
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, lessonType);
+    const customTheoryEnd =
+      lessonType === 'theory_personal' ? normalizeTimeHHMM(String(patch.customSlotEndTime ?? '').trim()) : null;
+    const offHourTheory = lessonType === 'theory_personal' && entries.some((e) => parseTimeToMinutes(e.time) % 60 !== 0);
+    if (offHourTheory && !customTheoryEnd) {
+      throw new InputValidationError('Personal theory end time is required.', HttpStatusCodesUtil.BAD_REQUEST);
+    }
+    const useCustomTheory = lessonType === 'theory_personal' && entries.length === 1 && Boolean(customTheoryEnd);
     const hourly = profile ? Number(profile.hourlyPrice) : 0;
-    const computedTotal = Number.isFinite(hourly)
-      ? hourly * billableSlotCountForLesson(lessonType, entries.length)
-      : Number(row.totalPriceAmd ?? 0);
+    const pricedUnits =
+      useCustomTheory && customTheoryEnd
+        ? theoryPersonalBillableHours(entries[0]!.time, customTheoryEnd)
+        : billableSlotCountForLesson(lessonType, entries.length);
+    const computedTotal = Number.isFinite(hourly) ? hourly * pricedUnits : Number(row.totalPriceAmd ?? 0);
 
     const bookable =
       lessonType === 'practical'
@@ -5056,10 +5291,12 @@ export default class BookingService {
               time: normalizeTimeHHMM(String(row.time ?? '')) ?? String(row.time ?? ''),
             },
           ];
+    const existingEndNorm = normalizeTimeHHMM(String(row.endTime ?? '')) ?? null;
     const scheduleUnchanged =
       instructorUserId === row.instructorUserId &&
       branchId === row.branchId &&
-      adminSlotEntriesMatchExisting(entries, existingSlotRows, row);
+      adminSlotEntriesMatchExisting(entries, existingSlotRows, row) &&
+      (!useCustomTheory || customTheoryEnd === existingEndNorm);
     const totalPriceAmd = resolveAdminTotalPriceAmd(
       patch.totalPriceAmd,
       scheduleUnchanged ? Number(row.totalPriceAmd ?? computedTotal) : computedTotal,
@@ -5074,16 +5311,19 @@ export default class BookingService {
         lessonType,
         allowPastSlots: true,
         allowCustomPracticalTime: allowCustomPractical,
-        customSlotEndTime: customEnd ?? undefined,
+        allowCustomTheoryTime: useCustomTheory,
+        customSlotEndTime: useCustomTheory ? customTheoryEnd ?? undefined : customEnd ?? undefined,
         unchangedSlots,
       });
     }
 
     const endTime =
-      scheduleUnchanged && row.endTime
-        ? (normalizeTimeHHMM(String(row.endTime)) ?? row.endTime)
-        : allowCustomPractical && customEnd
-          ? customEnd
+      useCustomTheory && customTheoryEnd
+        ? customTheoryEnd
+        : scheduleUnchanged && row.endTime
+          ? (normalizeTimeHHMM(String(row.endTime)) ?? row.endTime)
+          : allowCustomPractical && customEnd
+            ? customEnd
           : lessonType === 'practical'
             ? endTimeExclusiveForPracticalSlotEntries(entries, bookable) ??
               (reuseCustomWindow ? normalizeTimeHHMM(String(row.endTime ?? '')) : null) ??

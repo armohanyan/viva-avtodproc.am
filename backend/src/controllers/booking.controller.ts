@@ -506,6 +506,7 @@ export default class BookingController {
             createdByAccountType: readStaffAccountTypeFromToken(req),
             allowCustomPracticalTime: body.allowCustomPracticalTime,
             customSlotEndTime: body.customSlotEndTime,
+            meetLink: body.meetLink,
             paidSlotEntries: body.paidSlotEntries,
           });
           if (!row) {
