@@ -2304,7 +2304,6 @@ ctaReadyLicenseSub: "Join thousands of successful drivers. Book your first lesso
   adminBookingPersonalTheoryChecking: "Checking the teacher's schedule…",
   adminBookingPersonalTheoryCheckFailed:
     "Could not load the teacher's schedule. Saving will still reject a real overlap.",
-  adminBookingPersonalTheoryPrice: "%min% min · %hours% h · %total%",
   adminBookingValPersonalTheoryWindow: "Choose a theory teacher and a start and end time on the same day.",
   adminBookingValSelectPackage: "Select a package.",
   adminBookingValPackagePracticalCount: "You selected more practical hours than this package includes.",
@@ -4749,7 +4748,6 @@ const ru: typeof en = {
   adminBookingPersonalTheoryChecking: "Проверяем расписание преподавателя…",
   adminBookingPersonalTheoryCheckFailed:
     "Не удалось загрузить расписание. При сохранении реальное пересечение всё равно будет отклонено.",
-  adminBookingPersonalTheoryPrice: "%min% мин · %hours% ч · %total%",
   adminBookingValPersonalTheoryWindow: "Выберите преподавателя теории и время начала и конца в один день.",
   adminBookingValSelectPackage: "Выберите пакет.",
   adminBookingValPackagePracticalCount: "Выбрано больше практических часов, чем в пакете.",
@@ -7172,7 +7170,6 @@ const am: typeof en = {
   adminBookingPersonalTheoryChecking: "Ստուգվում է դասախոսի գրաֆիկը…",
   adminBookingPersonalTheoryCheckFailed:
     "Չհաջողվեց բեռնել գրաֆիկը։ Պահպանելիս իրական համընկնումը դարձյալ կմերժվի։",
-  adminBookingPersonalTheoryPrice: "%min% րոպե · %hours% ժ · %total%",
   adminBookingValPersonalTheoryWindow: "Ընտրեք տեսության դասախոս և նույն օրվա սկիզբ ու ավարտ։",
   adminBookingValSelectPackage: "Ընտրեք փաթեթը։",
   adminBookingValPackagePracticalCount: "Ընտրել եք ավելի շատ պրակտիկ ժամ, քան փաթեթում է։",

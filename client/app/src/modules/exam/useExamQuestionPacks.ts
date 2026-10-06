@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExamQuestion, ExamQuizMode } from "src/data/examSampleQuestions";
 import { subscribeExamQuestionsUpdated } from "src/lib/examQuestions";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
@@ -89,81 +89,72 @@ export function useExamQuizQuestionPool(opts: ExamQuizPoolOpts): { pool: ExamQue
     opts;
 
   const ticketKey = useMemo(() => examTicketQuestionIds.join("\u0001"), [examTicketQuestionIds]);
+  const requestKey = [
+    mode ?? "",
+    thematicTopicId ?? "",
+    signCategoryTopicId ?? "",
+    examTicketActive ? "1" : "0",
+    examTicketMetaPending ? "1" : "0",
+    ticketKey,
+  ].join("\u0001");
 
   const [pool, setPool] = useState<ExamQuestion[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [readyKey, setReadyKey] = useState<string | null>(null);
+  const [ticketIds, setTicketIds] = useState(examTicketQuestionIds);
+  if (ticketIds.join("\u0001") !== ticketKey) setTicketIds(examTicketQuestionIds);
+  // True on the same render the route changes, before the fetch starts, so the page
+  // does not paint an empty list and drop the scrollbar in between categories.
+  const loading = mode != null && readyKey !== requestKey;
+  const requestSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
+
     if (!mode) {
       setPool([]);
-      setLoading(false);
+      setReadyKey(requestKey);
       return;
     }
 
     if (mode === "full" && examTicketActive && examTicketMetaPending) {
       setPool([]);
-      setLoading(true);
       return;
     }
 
-    if (mode === "full" && examTicketActive && !examTicketMetaPending) {
-      setLoading(true);
-      try {
-        const rows = await fetchPackByIds(examTicketQuestionIds);
-        setPool(rows);
-      } catch {
-        setPool([]);
-      } finally {
-        setLoading(false);
+    const finish = (rows: ExamQuestion[]) => {
+      if (seq !== requestSeq.current) return;
+      setPool(rows);
+      setReadyKey(requestKey);
+    };
+
+    try {
+      if (mode === "full" && examTicketActive && !examTicketMetaPending) {
+        finish(await fetchPackByIds(ticketIds));
+        return;
       }
-      return;
-    }
-
-    if (mode === "topics") {
-      setLoading(true);
-      try {
+      if (mode === "topics") {
         const rows = signCategoryTopicId
           ? await fetchPackSignCategory(signCategoryTopicId)
           : thematicTopicId
             ? await fetchPackThematic(thematicTopicId)
             : await fetchPackRulesSafety();
-        setPool(rows);
-      } catch {
-        setPool([]);
-      } finally {
-        setLoading(false);
+        finish(rows);
+        return;
       }
-      return;
-    }
-
-    if (mode === "signs") {
-      setLoading(true);
-      try {
-        setPool(await fetchPackSigns());
-      } catch {
-        setPool([]);
-      } finally {
-        setLoading(false);
+      if (mode === "signs") {
+        finish(await fetchPackSigns());
+        return;
       }
-      return;
-    }
-
-    if (mode === "full" && !examTicketActive) {
-      setLoading(true);
-      try {
+      if (mode === "full" && !examTicketActive) {
         const [rulesSafety, signs] = await Promise.all([fetchPackRulesSafety(), fetchPackSigns()]);
-        setPool(mergeUniqueById(rulesSafety, signs));
-      } catch {
-        setPool([]);
-      } finally {
-        setLoading(false);
+        finish(mergeUniqueById(rulesSafety, signs));
+        return;
       }
-      return;
+      finish([]);
+    } catch {
+      finish([]);
     }
-
-    setPool([]);
-    setLoading(false);
-  }, [mode, thematicTopicId, signCategoryTopicId, examTicketActive, examTicketMetaPending, ticketKey]);
+  }, [mode, thematicTopicId, signCategoryTopicId, examTicketActive, examTicketMetaPending, requestKey, ticketIds]);
 
   useEffect(() => {
     void load();

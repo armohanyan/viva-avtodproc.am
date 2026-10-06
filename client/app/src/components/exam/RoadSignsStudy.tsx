@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import type { ExamQuestion } from "src/data/examSampleQuestions";
 import {
   BadgePlus,
   Ban,
@@ -80,6 +81,13 @@ export default function RoadSignsStudy({
     };
   }, []);
 
+  const [shown, setShown] = useState<{ slotId: string; questions: readonly ExamQuestion[] } | null>(null);
+
+  useEffect(() => {
+    if (loading || locked || !slotOk) return;
+    setShown({ slotId, questions: pool });
+  }, [loading, locked, slotOk, slotId, pool]);
+
   const slotIndex = Number.parseInt(slotId, 10) - 1;
   const heading =
     (slotOk ? titles[slotIndex]?.trim() : "") || `${t("dashboardLearnRoadSigns")} ${slotOk ? slotId : "1"}`;
@@ -145,12 +153,18 @@ export default function RoadSignsStudy({
         <Card className="rounded-2xl border border-border p-5">
           <p className="text-sm text-muted-foreground">{t("roadSignLockedHint")}</p>
         </Card>
-      ) : loading ? (
-        <p className="text-sm text-muted-foreground">{t("examQuizLoading")}</p>
-      ) : pool.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("examQuizNoQuestions")}</p>
+      ) : shown ? (
+        shown.questions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("examQuizNoQuestions")}</p>
+        ) : (
+          <div aria-busy={loading || undefined}>
+            <RoadSignCatalog key={shown.slotId} questions={shown.questions} />
+          </div>
+        )
       ) : (
-        <RoadSignCatalog key={slotId} questions={pool} />
+        <div className="min-h-[calc(100dvh-12rem)]" aria-busy="true">
+          <p className="text-sm text-muted-foreground">{t("examQuizLoading")}</p>
+        </div>
       )}
     </div>
   );

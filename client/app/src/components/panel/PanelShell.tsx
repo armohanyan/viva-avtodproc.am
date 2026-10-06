@@ -131,7 +131,7 @@ export function PanelShell({
 				<main
 					ref={mainRef}
 					className={cn(
-						"flex-1 min-h-0 overflow-y-auto pb-[max(1rem,env(safe-area-inset-bottom,0px))]",
+						"flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable] pb-[max(1rem,env(safe-area-inset-bottom,0px))]",
 						focusMode ? "p-3 sm:p-5" : "p-4 sm:p-6",
 					)}
 				>

@@ -4,7 +4,6 @@ import type { TranslationKey } from "src/lib/i18n";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { Input } from "src/components/ui/input";
 import { TimeSelectInput } from "src/components/ui/time-select-input";
-import { formatAmd } from "src/utils/currency.utils";
 import {
   normalizeAvailabilityBlocksFromApi,
   type AvailabilityBlock,
@@ -133,10 +132,6 @@ export default function PersonalTheoryScheduleFields({
     [dateIso, startTime, endTime, ranges, blocks],
   );
 
-  const selected = instructors.find((i) => i.id === instructorId) ?? null;
-  const hourly = selected && Number.isFinite(selected.hourlyPrice) ? selected.hourlyPrice : 0;
-  const priceAmd = assessment.billableHours > 0 ? Math.round(hourly * assessment.billableHours) : 0;
-
   const status = useMemo<PersonalTheoryScheduleStatus>(
     () => ({
       checking,
@@ -209,16 +204,6 @@ export default function PersonalTheoryScheduleFields({
           />
         </div>
       </div>
-
-      {assessment.valid && priceAmd > 0 ? (
-        <p className="text-sm text-foreground tabular-nums">
-          {fill(t("adminBookingPersonalTheoryPrice"), {
-            min: String(assessment.durationMinutes),
-            hours: String(assessment.billableHours),
-            total: formatAmd(priceAmd),
-          })}
-        </p>
-      ) : null}
 
       {checking ? <p className="text-xs text-muted-foreground">{t("adminBookingPersonalTheoryChecking")}</p> : null}
       {checkFailed ? <p className="text-xs text-amber-700 dark:text-amber-400">{t("adminBookingPersonalTheoryCheckFailed")}</p> : null}
