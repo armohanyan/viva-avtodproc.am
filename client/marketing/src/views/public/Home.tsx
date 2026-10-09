@@ -176,21 +176,28 @@ export default function Home() {
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="relative flex flex-col min-h-[calc(100svh-4rem-1px)] bg-hero text-hero-foreground overflow-hidden">
+      <section className="relative flex flex-col min-h-[calc(100svh-4rem-1px)] bg-[#d5cbc3] sm:bg-hero text-hero-foreground overflow-hidden">
         <div
-          className="absolute inset-0 bg-cover bg-center"
+          className="absolute inset-0 hidden sm:block bg-no-repeat bg-cover bg-center"
           style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
           aria-hidden="true"
         />
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: "radial-gradient(circle at 20% 50%, #f48633 0%, transparent 50%), radial-gradient(circle at 80% 50%, #e28d51 0%, transparent 50%)" }}
         />
-        <div className="relative flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-10 lg:pt-24 lg:pb-14 flex flex-col">
+        <div className="relative flex-1 w-full max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pb-6 sm:pt-16 sm:pb-10 lg:pt-24 lg:pb-14 flex flex-col">
           <h1 className="sr-only">{t("heroTitle")}</h1>
-          <div className="mt-auto pt-12">
-            <p className="mb-4 text-xl sm:text-2xl font-semibold text-neutral-900">{t("heroCta")}</p>
+          <div
+            className="relative -mx-5 flex-1 min-h-[60vw] bg-no-repeat bg-cover bg-center sm:hidden"
+            style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
+            aria-hidden="true"
+          >
+            <div className="absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-b from-transparent to-[#d5cbc3]" />
+          </div>
+          <div className="mt-auto pt-2 text-center sm:text-left sm:pt-12">
+            <p className="mb-2 sm:mb-4 text-[clamp(1rem,4.6vw,1.25rem)] sm:text-2xl font-semibold leading-snug text-balance text-neutral-900">{t("heroCta")}</p>
             {heroLocationLabel || heroPhone ? (
-              <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium text-neutral-800">
+              <div className="mb-5 sm:mb-6 flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-2 text-sm font-medium text-neutral-800">
                 {heroLocationLabel ? (
                   <MarketingLink
                     href="/contact"
@@ -214,19 +221,19 @@ export default function Home() {
                 ) : null}
               </div>
             ) : null}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <a href={panelHref("/register")}>
-                <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-12 text-base">
+            <div className="flex gap-3 sm:gap-4">
+              <a href={panelHref("/register")} className="flex-1 sm:flex-none">
+                <Button size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground px-4 sm:px-8 h-12 text-base">
                   {t("getStarted")} <ArrowRight className="ml-2 w-4 h-4" />
                 </Button>
               </a>
-              <MarketingLink href="/packages">
+              <MarketingLink href="/packages" className="flex-1 sm:flex-none">
                 <Button
                   size="lg"
                   variant="outline"
-                  className="bg-white/40 border-neutral-900/30 text-neutral-900 hover:bg-white/70 hover:text-neutral-900 h-12 text-base"
+                  className="w-full bg-white/40 border-neutral-900/30 text-neutral-900 hover:bg-white/70 hover:text-neutral-900 px-3 sm:px-6 h-12 text-sm sm:text-base"
                 >
-                  {t("learnMore")}
+                  {t("heroPackagesCta")}
                 </Button>
               </MarketingLink>
             </div>
@@ -235,14 +242,14 @@ export default function Home() {
 
         {stats.length > 0 ? (
           <div className="relative border-t border-border/40 bg-hero/80 backdrop-blur">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="max-w-7xl mx-auto px-1 sm:px-6 lg:px-8 py-3 sm:py-8">
+              <div className="grid grid-cols-4 gap-x-0.5 sm:gap-6">
                 {stats.map((s, i) => (
-                  <Reveal key={i} className="text-center" delay={i * 0.05}>
-                    <div className="text-3xl font-bold text-hero-foreground">
+                  <Reveal key={i} className="text-center min-w-0" delay={i * 0.05}>
+                    <div className="text-base sm:text-3xl font-bold leading-tight text-hero-foreground">
                       <CountUpText value={s.value} />
                     </div>
-                    <div className="text-sm text-hero-foreground/70 mt-1">{s.label}</div>
+                    <div className="text-[clamp(8.5px,2.6vw,11px)] sm:text-sm text-hero-foreground/70 mt-0.5 sm:mt-1 leading-tight sm:leading-snug">{s.label}</div>
                   </Reveal>
                 ))}
               </div>
@@ -269,7 +276,7 @@ export default function Home() {
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("packagesTitle")}</h2>
               <p className="text-muted-foreground text-lg">{t("packagesSub")}</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="-mx-4 px-4 grid grid-flow-col auto-cols-[80%] gap-4 overflow-x-auto overscroll-x-contain snap-x snap-mandatory scroll-px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:pb-0 sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-2 lg:grid-cols-4 sm:gap-5 sm:overflow-visible sm:snap-none">
               {packagesLoading ? (
                 <p className="text-center text-muted-foreground sm:col-span-2 lg:col-span-4 py-6">{t("loading")}</p>
               ) : (
@@ -279,7 +286,7 @@ export default function Home() {
                   return (
                     <div
                       key={pkg.id}
-                      className={`relative bg-card rounded-xl border ${borderClass} overflow-visible p-0 ${popular ? "shadow-lg" : "shadow-sm"} transition-shadow hover:shadow-lg flex flex-col h-full`}
+                      className={`relative snap-start bg-card rounded-xl border ${borderClass} overflow-visible p-0 ${popular ? "shadow-lg" : "shadow-sm"} transition-shadow hover:shadow-lg flex flex-col h-full`}
                     >
                       {popular && (
                         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10">

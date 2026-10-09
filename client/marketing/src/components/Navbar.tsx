@@ -300,8 +300,8 @@ export default function Navbar() {
 
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild className="lg:hidden ml-auto shrink-0">
-              <Button variant="ghost" size="icon-lg" aria-label={t("openMenu")}>
-                <Menu className="h-6 w-6" />
+              <Button variant="ghost" size="icon-lg" className="size-11" aria-label={t("openMenu")}>
+                <Menu className="size-7" strokeWidth={2.25} />
               </Button>
             </SheetTrigger>
             <SheetContent side="right" className="w-[86vw] max-w-[22rem] p-0">

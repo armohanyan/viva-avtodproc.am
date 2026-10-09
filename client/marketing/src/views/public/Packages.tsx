@@ -56,13 +56,13 @@ export default function Packages() {
             {loading ? (
               <p className="text-center text-muted-foreground py-12">{t("loading")}</p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <div className="-mx-4 px-4 grid grid-flow-col auto-cols-[80%] gap-4 overflow-x-auto overscroll-x-contain snap-x snap-mandatory scroll-px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:pb-0 sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-2 lg:grid-cols-4 sm:gap-5 sm:overflow-visible sm:snap-none">
                 {sorted.map((pkg, i) => {
                   const popular = pkg.id === "PKG-002";
                   return (
                     <Reveal
                       key={pkg.id}
-                      className={`relative rounded-xl border ${popular ? "border-primary shadow-lg" : "border-border shadow-sm"} bg-card overflow-visible p-0 flex flex-col h-full`}
+                      className={`relative snap-start rounded-xl border ${popular ? "border-primary shadow-lg" : "border-border shadow-sm"} bg-card overflow-visible p-0 flex flex-col h-full`}
                       delay={i * 0.04}
                     >
                       {popular && (

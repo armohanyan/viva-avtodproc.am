@@ -156,6 +156,10 @@
   select {
     @apply text-foreground;
   }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
   select option {
     background-color: var(--popover);
     color: var(--popover-foreground);
