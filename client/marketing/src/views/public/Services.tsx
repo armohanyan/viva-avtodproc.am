@@ -297,9 +297,6 @@ export default function Services() {
       <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-              {t("servicesEyebrow")}
-            </p>
             <h1 className="text-4xl sm:text-5xl font-bold mb-6">{t("servicesTitle")}</h1>
             <p className="text-hero-foreground/80 text-lg">{t("servicesSub")}</p>
           </div>

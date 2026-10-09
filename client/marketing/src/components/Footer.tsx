@@ -1,7 +1,7 @@
 import { useLang } from "../lib/i18n";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
-import { Phone, Mail, MapPin } from "lucide-react";
+import { Phone, Mail } from "lucide-react";
 import { legalDoc } from "src/lib/legalDocsContent";
 import { MarketingSocialLinks, hasMarketingSocialLinks } from "src/components/MarketingSocialLinks";
 import { AcbaPaymentAcceptanceMarks } from "src/components/payments/AcbaPaymentAcceptanceMarks";
@@ -13,10 +13,11 @@ export default function Footer() {
   const { data: mkt } = useMarketingPublic();
 
   const footerPhone = mkt?.contact?.phones?.[0]?.trim();
-  const footerEmail = mkt?.contact?.emails?.[0]?.trim();
-  const addr1 = mkt?.footer?.addressLine1?.trim();
-  const addr2 = mkt?.footer?.addressLine2?.trim();
-  const hasFooterContact = !!(footerPhone || footerEmail || addr1 || addr2);
+  const footerEmail =
+    mkt?.contact?.emails?.[0]?.trim() ||
+    mkt?.contact?.primaryMailtoHref?.trim().replace(/^mailto:/i, "") ||
+    "";
+  const hasFooterContact = !!(footerPhone || footerEmail);
   const showSocial = hasMarketingSocialLinks(mkt?.social);
   const privacyDoc = legalDoc("privacy", lang);
   const termsDoc = legalDoc("terms", lang);
@@ -32,21 +33,12 @@ export default function Footer() {
             <div className="mb-4">
               <BrandLogo layout="horizontal" tone="on-dark" className="h-10 max-w-[14rem]" />
             </div>
-            <p className="text-sm text-hero-foreground/80 leading-relaxed mb-4">{t("aboutSub")}</p>
-            <p className="text-xs text-hero-foreground/70 leading-relaxed">{t("footerLegalEntity")}</p>
-            {addr1 || addr2 ? (
-              <p className="text-xs text-hero-foreground/60 leading-relaxed mt-1">
-                {addr1 ? <span>{addr1}</span> : null}
-                {addr1 && addr2 ? <br /> : null}
-                {addr2 ? <span>{addr2}</span> : null}
-              </p>
-            ) : null}
             {showSocial ? <MarketingSocialLinks social={mkt?.social} className="mt-5" variant="footer" /> : null}
           </div>
 
           <div>
             <h4 className="font-semibold text-hero-foreground mb-4">{t("quickLinks")}</h4>
-            <ul className="space-y-2">
+            <ul className="flex flex-wrap gap-x-5 gap-y-2.5 max-w-sm">
               {[
                 { href: "/about", label: t("about") },
                 { href: "/services", label: t("services") },
@@ -72,26 +64,26 @@ export default function Footer() {
             <div>
               <h4 className="font-semibold text-hero-foreground mb-4">{t("contact")}</h4>
               <ul className="space-y-3">
-                {addr1 || addr2 ? (
-                  <li className="flex items-start gap-2 text-sm">
-                    <MapPin className="w-4 h-4 mt-0.5 text-primary shrink-0" />
-                    <span>
-                      {addr1 ? <>{addr1}</> : null}
-                      {addr1 && addr2 ? <br /> : null}
-                      {addr2 ? <>{addr2}</> : null}
-                    </span>
-                  </li>
-                ) : null}
                 {footerPhone ? (
-                  <li className="flex items-center gap-2 text-sm">
-                    <Phone className="w-4 h-4 text-primary shrink-0" />
-                    <span>{footerPhone}</span>
+                  <li>
+                    <a
+                      href={`tel:${footerPhone.replace(/[^\d+]/g, "")}`}
+                      className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                    >
+                      <Phone className="w-4 h-4 text-primary shrink-0" />
+                      <span>{footerPhone}</span>
+                    </a>
                   </li>
                 ) : null}
                 {footerEmail ? (
-                  <li className="flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-primary shrink-0" />
-                    <span>{footerEmail}</span>
+                  <li>
+                    <a
+                      href={`mailto:${footerEmail}`}
+                      className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                    >
+                      <Mail className="w-4 h-4 text-primary shrink-0" />
+                      <span className="break-all">{footerEmail}</span>
+                    </a>
                   </li>
                 ) : null}
               </ul>

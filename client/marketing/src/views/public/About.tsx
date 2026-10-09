@@ -4,7 +4,7 @@ import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
 import type { TranslationKey } from "src/lib/i18n";
-import { CheckCircle2, Target, Eye, Heart } from "lucide-react";
+import { Target, Eye, Heart, ShieldCheck, Car, CalendarClock, MonitorPlay } from "lucide-react";
 import { CountUpText, Reveal } from "src/lib/motion";
 import { useMemo } from "react";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
@@ -12,15 +12,9 @@ import {
   ABOUT_MARKETING_STAT_LABEL_KEY,
   ABOUT_MARKETING_STATS_ORDER,
 } from "src/modules/marketing/statLabels";
-import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
-
-const DEFAULT_OWNER_NAME = "[Անուն Ազգանուն]";
-const DEFAULT_OWNER_POSITION = "Հիմնադիր / Տնօրեն";
-const DEFAULT_OWNER_DESCRIPTION =
-  "Մեր նպատակն է յուրաքանչյուր ուսանողի տալ ոչ միայն վարորդական գիտելիքներ, այլ նաև վստահություն, պատասխանատվություն և անվտանգ վարելու մշակույթ։";
 
 export default function About() {
-  const { t, lang } = useLang();
+  const { t } = useLang();
   const { data: mkt } = useMarketingPublic();
 
   const storyStats = useMemo(() => {
@@ -31,16 +25,18 @@ export default function About() {
     }));
   }, [mkt, t]);
 
+  const storyHighlights = [
+    { icon: ShieldCheck, label: t("aboutChecklistCertified") },
+    { icon: Car, label: t("aboutChecklistVehicles") },
+    { icon: CalendarClock, label: t("aboutChecklistScheduling") },
+    { icon: MonitorPlay, label: t("aboutChecklistPortal") },
+  ];
+
   const values = [
     { icon: Target, title: t("aboutValueSafetyTitle"), desc: t("aboutValueSafetyDesc") },
     { icon: Eye, title: t("aboutValueTransparencyTitle"), desc: t("aboutValueTransparencyDesc") },
     { icon: Heart, title: t("aboutValueStudentTitle"), desc: t("aboutValueStudentDesc") },
   ];
-
-  const ownerPhoto = sameOriginStaffUploadUrl(mkt?.siteContent.ownerPhoto);
-  const ownerName = mkt?.siteContent.ownerName?.[lang]?.trim() || DEFAULT_OWNER_NAME;
-  const ownerPosition = mkt?.siteContent.ownerPosition?.[lang]?.trim() || DEFAULT_OWNER_POSITION;
-  const ownerDescription = mkt?.siteContent.ownerDescription?.[lang]?.trim() || DEFAULT_OWNER_DESCRIPTION;
 
   return (
     <div className="min-h-screen">
@@ -61,71 +57,51 @@ export default function About() {
 
       {/* Story */}
       <section className="py-14 sm:py-20 bg-background">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 lg:gap-16 items-center">
-            <div>
-            <h2 className="text-3xl font-bold text-foreground mb-6">{t("aboutOurStoryTitle")}</h2>
-              <p className="text-muted-foreground leading-relaxed mb-4">{t("aboutText")}</p>
-              <p className="text-muted-foreground leading-relaxed mb-8">
-                {t("aboutStoryParagraph2")}
-              </p>
-              <ul className="space-y-3">
-                {[t("aboutChecklistCertified"), t("aboutChecklistVehicles"), t("aboutChecklistScheduling"), t("aboutChecklistPortal")].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-muted-foreground">
-                    <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
-                    {item}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 sm:space-y-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
+            <div className="lg:col-span-7">
+              <h2 className="text-3xl font-bold text-foreground mb-5">{t("aboutOurStoryTitle")}</h2>
+              <div className="space-y-4 text-muted-foreground leading-relaxed">
+                <p>{t("aboutText")}</p>
+                <p>{t("aboutStoryParagraph2")}</p>
+              </div>
+              <ul className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                {storyHighlights.map(({ icon: Icon, label }) => (
+                  <li key={label} className="flex items-start gap-2.5 text-sm text-foreground">
+                    <Icon className="w-4 h-4 mt-0.5 text-primary shrink-0" aria-hidden="true" />
+                    <span className="leading-snug">{label}</span>
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="bg-gradient-to-br from-primary to-primary/60 rounded-2xl p-6 sm:p-8 md:p-10 text-primary-foreground">
-              <h3 className="text-2xl font-bold mb-4">{t("ourMission")}</h3>
-              <p className="text-primary-foreground/80 leading-relaxed text-lg">{t("missionText")}</p>
-              {storyStats.length > 0 ? (
-                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                  {storyStats.map((s, i) => (
-                    <Reveal key={i} delay={i * 0.06}>
-                      <div className="text-3xl font-bold">
-                        <CountUpText value={s.value} />
-                      </div>
-                      <div className="text-primary-foreground/80 text-sm">{s.label}</div>
-                    </Reveal>
-                  ))}
+            <div className="lg:col-span-5">
+              <div className="relative h-full overflow-hidden rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm flex flex-col justify-center">
+                <div className="absolute inset-y-0 left-0 w-1 bg-primary" aria-hidden="true" />
+                <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
+                  <Target className="w-5 h-5" />
                 </div>
-              ) : null}
+                <h3 className="text-xl font-bold text-foreground mb-3">{t("ourMission")}</h3>
+                <p className="text-foreground/80 text-lg leading-relaxed">{t("missionText")}</p>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* Founder / owner */}
-      <section className="py-14 sm:py-20 bg-accent/30 border-y border-border/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold text-foreground">{t("aboutFounderSectionTitle")}</h2>
-          </div>
-          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-            <div className="grid grid-cols-1 lg:grid-cols-12 lg:items-stretch">
-              <div className="relative lg:col-span-5 w-full bg-muted aspect-[4/5] sm:aspect-[16/10] lg:aspect-auto lg:min-h-[22rem] xl:min-h-[26rem] lg:h-full">
-                {ownerPhoto ? (
-                  <img
-                    src={ownerPhoto}
-                    alt={ownerName}
-                    className="absolute inset-0 w-full h-full object-cover object-top"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center border-b lg:border-b-0 lg:border-r border-dashed border-border bg-muted/50 text-muted-foreground text-sm px-4 text-center">
-                    Owner photo
+          {storyStats.length > 0 ? (
+            <div className="grid grid-cols-2 lg:grid-cols-4 rounded-2xl border border-border bg-accent/40 overflow-hidden">
+              {storyStats.map((s, i) => (
+                <Reveal
+                  key={i}
+                  delay={i * 0.06}
+                  className={`px-4 py-6 sm:py-8 text-center ${i % 2 === 1 ? "border-l border-border" : ""} ${i >= 2 ? "border-t lg:border-t-0 border-border" : ""} ${i === 2 ? "lg:border-l" : ""}`}
+                >
+                  <div className="text-3xl sm:text-4xl font-bold text-primary">
+                    <CountUpText value={s.value} />
                   </div>
-                )}
-              </div>
-              <div className="lg:col-span-7 p-6 sm:p-8 lg:p-10 xl:p-12 flex flex-col justify-center">
-                <h3 className="text-2xl sm:text-3xl font-bold text-foreground">{ownerName}</h3>
-                <p className="text-muted-foreground mt-1 text-base sm:text-lg">{ownerPosition}</p>
-                <p className="text-muted-foreground leading-relaxed mt-5">{ownerDescription}</p>
-              </div>
+                  <div className="mt-1 text-sm text-muted-foreground">{s.label}</div>
+                </Reveal>
+              ))}
             </div>
-          </div>
+          ) : null}
         </div>
       </section>
 

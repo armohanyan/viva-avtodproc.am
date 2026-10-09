@@ -10,11 +10,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppModal } from "src/components/AppModal";
 import {
-  Star,
   ArrowRight,
   CheckCircle2,
-  ChevronRight,
-  ChevronLeft,
   Phone,
   Mail,
   MapPin,
@@ -34,13 +31,15 @@ import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { HomeServicesBlock } from "src/views/public/Services";
 import PackagePromoImage from "src/components/PackagePromoImage";
 
+const HOME_INSTRUCTORS_LIMIT = 8;
+
 function telHrefFromListedPhone(phone: string): string {
   const compact = phone.replace(/[^\d+]/g, "");
   return compact ? `tel:${compact}` : "tel:";
 }
 
 export default function Home() {
-  const { t, lang } = useLang();
+  const { t } = useLang();
   const { MarketingLink, panelHref } = useAppNavigation();
   const { branches } = useBranches();
   const { cities } = useCities();
@@ -52,10 +51,8 @@ export default function Home() {
     [apiPackages],
   );
   const visibleInstructors = instructors.filter((ins) => ins.status === "active");
-  const homeInstructors = visibleInstructors.slice(0, 6);
-  const hasMoreInstructors = visibleInstructors.length > 6;
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
-
+  const homeInstructors = visibleInstructors.slice(0, HOME_INSTRUCTORS_LIMIT);
+  const hasMoreInstructors = visibleInstructors.length > HOME_INSTRUCTORS_LIMIT;
   const stats = useMemo(() => {
     const rows = mkt?.stats ?? [];
     return rows.map((s) => ({
@@ -64,15 +61,6 @@ export default function Home() {
     }));
   }, [mkt, t]);
 
-  const testimonials = useMemo(() => {
-    if (!mkt?.testimonials?.length) return [];
-
-    return mkt.testimonials.map((x) => ({
-      name: x.authorName[lang] || x.authorName.am || x.authorName.ru || x.authorName.en || "",
-      text: x.quote[lang] || x.quote.am || x.quote.ru || x.quote.en || "",
-      rating: x.rating,
-    }));
-  }, [mkt, lang]);
   const siteContent = mkt?.siteContent;
   const heroBackgroundImage = sameOriginStaffUploadUrl(siteContent?.homeHeroBackgroundImage) ?? "/home-hero-2.svg";
 
@@ -101,8 +89,11 @@ export default function Home() {
 
     return { phones, emails, locations };
   }, [mkt, branches, cities]);
-  const hasHeroContact =
-    heroContact.phones.length > 0 || heroContact.emails.length > 0 || heroContact.locations.length > 0;
+  const heroLocationLabel =
+    heroContact.locations.length > 1
+      ? t("heroBranchesCount").replace("{n}", String(heroContact.locations.length))
+      : heroContact.locations[0] ?? "";
+  const heroPhone = heroContact.phones[0] ?? "";
 
   type ContactTabKey = "phone" | "email" | "address" | "hours";
   const contactTabs = useMemo(() => {
@@ -170,21 +161,6 @@ export default function Home() {
   const [activeContactTab, setActiveContactTab] = useState<ContactTabKey>("phone");
 
   useEffect(() => {
-    if (testimonials.length === 0) return;
-    setActiveTestimonial((i) => i % testimonials.length);
-  }, [testimonials.length]);
-
-  useEffect(() => {
-    if (testimonials.length === 0) return;
-
-    const timer = window.setTimeout(() => {
-      setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
-    }, 5000);
-
-    return () => window.clearTimeout(timer);
-  }, [activeTestimonial, testimonials.length]);
-
-  useEffect(() => {
     if (contactTabs.length === 0) return;
     if (!contactTabs.some((tab) => tab.key === activeContactTab)) {
       setActiveContactTab(contactTabs[0]!.key);
@@ -196,72 +172,47 @@ export default function Home() {
     if (activeContactTab !== "address") setSelectedBranch(null);
   }, [activeContactTab]);
 
-  const goToPrevTestimonial = () => {
-    setActiveTestimonial((prev) => (prev - 1 + testimonials.length) % testimonials.length);
-  };
-
-  const goToNextTestimonial = () => {
-    setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
-  };
-
   return (
     <div className="min-h-screen">
       <Navbar />
 
-      <section className="relative bg-hero text-hero-foreground overflow-hidden">
+      <section className="relative flex flex-col min-h-[calc(100svh-4rem-1px)] bg-hero text-hero-foreground overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
           aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-hero/40 to-hero/90" />
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: "radial-gradient(circle at 20% 50%, #f48633 0%, transparent 50%), radial-gradient(circle at 80% 50%, #e28d51 0%, transparent 50%)" }}
         />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-28 lg:py-36">
-          <div className="max-w-3xl">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-              {t("heroTitle")}
-            </h1>
-            <p className="text-lg sm:text-xl text-hero-foreground/80 mb-10 max-w-2xl leading-relaxed">
-              {t("heroSub")}
-            </p>
-            {hasHeroContact ? (
-              <ul className="mb-10 flex flex-col gap-3 text-sm sm:text-base text-hero-foreground/85">
-                {heroContact.locations.map((location) => (
-                  <li key={location}>
-                    <MarketingLink
-                      href="/contact"
-                      className="inline-flex items-start gap-2.5 hover:text-hero-foreground transition-colors"
-                    >
-                      <MapPin className="w-4 h-4 mt-1 text-primary shrink-0" aria-hidden="true" />
-                      <span>{location}</span>
-                    </MarketingLink>
-                  </li>
-                ))}
-                {heroContact.phones.map((phone) => (
-                  <li key={phone}>
-                    <a
-                      href={telHrefFromListedPhone(phone)}
-                      className="inline-flex items-center gap-2.5 hover:text-hero-foreground transition-colors"
-                    >
-                      <Phone className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
-                      <span>{phone}</span>
-                    </a>
-                  </li>
-                ))}
-                {heroContact.emails.map((email) => (
-                  <li key={email}>
-                    <a
-                      href={`mailto:${email}`}
-                      className="inline-flex items-center gap-2.5 hover:text-hero-foreground transition-colors"
-                    >
-                      <Mail className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
-                      <span>{email}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
+        <div className="relative flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-10 lg:pt-24 lg:pb-14 flex flex-col">
+          <h1 className="sr-only">{t("heroTitle")}</h1>
+          <div className="mt-auto pt-12">
+            <p className="mb-4 text-xl sm:text-2xl font-semibold text-neutral-900">{t("heroCta")}</p>
+            {heroLocationLabel || heroPhone ? (
+              <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium text-neutral-800">
+                {heroLocationLabel ? (
+                  <MarketingLink
+                    href="/contact"
+                    className="inline-flex items-center gap-2 hover:text-neutral-950 transition-colors"
+                  >
+                    <MapPin className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                    <span className="underline-offset-4 hover:underline">{heroLocationLabel}</span>
+                  </MarketingLink>
+                ) : null}
+                {heroLocationLabel && heroPhone ? (
+                  <span className="text-neutral-500" aria-hidden="true">·</span>
+                ) : null}
+                {heroPhone ? (
+                  <a
+                    href={telHrefFromListedPhone(heroPhone)}
+                    className="inline-flex items-center gap-2 hover:text-neutral-950 transition-colors"
+                  >
+                    <Phone className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>{heroPhone}</span>
+                  </a>
+                ) : null}
+              </div>
             ) : null}
             <div className="flex flex-col sm:flex-row gap-4">
               <a href={panelHref("/register")}>
@@ -273,7 +224,7 @@ export default function Home() {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="bg-transparent border-border/60 text-hero-foreground hover:bg-hero-foreground/10 hover:text-hero-foreground h-12 text-base"
+                  className="bg-white/40 border-neutral-900/30 text-neutral-900 hover:bg-white/70 hover:text-neutral-900 h-12 text-base"
                 >
                   {t("learnMore")}
                 </Button>
@@ -303,9 +254,6 @@ export default function Home() {
       <section className="py-16 sm:py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8 sm:mb-10">
-            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-              {t("servicesEyebrow")}
-            </p>
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("servicesTitle")}</h2>
             <p className="text-muted-foreground text-lg max-w-xl mx-auto">{t("servicesSub")}</p>
           </div>
@@ -318,15 +266,12 @@ export default function Home() {
         <section className="py-14 sm:py-20 bg-accent">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
-              <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-                {t("packagesEyebrow")}
-              </p>
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("packagesTitle")}</h2>
               <p className="text-muted-foreground text-lg">{t("packagesSub")}</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {packagesLoading ? (
-                <p className="text-center text-muted-foreground md:col-span-3 py-6">{t("loading")}</p>
+                <p className="text-center text-muted-foreground sm:col-span-2 lg:col-span-4 py-6">{t("loading")}</p>
               ) : (
                 displayPackages.map((pkg) => {
                   const popular = pkg.id === "PKG-002";
@@ -334,37 +279,42 @@ export default function Home() {
                   return (
                     <div
                       key={pkg.id}
-                      className={`relative bg-card rounded-2xl border-2 ${borderClass} overflow-visible p-0 ${popular ? "shadow-xl" : "shadow-sm"} transition-shadow hover:shadow-xl flex flex-col h-full`}
+                      className={`relative bg-card rounded-xl border ${borderClass} overflow-visible p-0 ${popular ? "shadow-lg" : "shadow-sm"} transition-shadow hover:shadow-lg flex flex-col h-full`}
                     >
                       {popular && (
-                        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
-                          <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10">
+                          <Badge className="bg-primary text-primary-foreground px-3 py-0.5 text-xs">{t("mostPopular")}</Badge>
                         </div>
                       )}
-                      <PackagePromoImage src={pkg.imageUrl} alt={pkg.name} className="rounded-t-2xl" />
-                      <div className="p-6 sm:p-8 flex flex-col flex-1 min-h-0">
-                        <div className="mb-6">
-                          <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
+                      <PackagePromoImage src={pkg.imageUrl} alt={pkg.name} className="rounded-t-xl" compact />
+                      <div className="p-4 flex flex-col flex-1 min-h-0">
+                        <div className="mb-3">
+                          <h3 className="font-semibold text-base text-foreground leading-snug line-clamp-2 mb-1.5" title={pkg.name}>
+                            {pkg.name}
+                          </h3>
                           <div className="flex items-baseline gap-1">
-                            <span className="text-4xl font-bold text-foreground">{pkg.price}</span>
-                            <span className="text-lg text-muted-foreground">֏</span>
+                            <span className="text-2xl font-bold text-foreground">{pkg.price}</span>
+                            <span className="text-sm text-muted-foreground">֏</span>
                           </div>
-                          <p className="text-muted-foreground text-sm mt-1">
+                          <p className="text-muted-foreground text-xs mt-0.5">
                             {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
                             {t("lessonTypeTheory").toLowerCase()}
                           </p>
                         </div>
-                        <ul className="space-y-3 mb-8">
-                          {pkg.features.map((f, j) => (
-                            <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                              {f}
-                            </li>
-                          ))}
-                        </ul>
+                        {pkg.features.length > 0 ? (
+                          <ul className="space-y-1.5 mb-4">
+                            {pkg.features.map((f, j) => (
+                              <li key={j} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                <CheckCircle2 className="w-3.5 h-3.5 mt-px text-primary shrink-0" />
+                                {f}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         <div className="mt-auto">
                           <a href={panelHref("/register")}>
                             <Button
+                              size="sm"
                               className={`w-full ${
                                 popular
                                   ? "bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -389,12 +339,9 @@ export default function Home() {
         <section className="py-14 sm:py-20 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-14">
-              <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-                {t("instructorsEyebrow")}
-              </p>
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {homeInstructors.map((ins, i) => (
                 <InstructorCard
                   key={i}
@@ -413,77 +360,6 @@ export default function Home() {
                 </MarketingLink>
               </div>
             ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {testimonials.length > 0 ? (
-        <section className="py-14 sm:py-20 bg-hero text-hero-foreground">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-14">
-              <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-                {t("testimonialsEyebrow")}
-              </p>
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4">{t("testimonialsTitle")}</h2>
-            </div>
-            <div className="mx-auto max-w-3xl">
-              <div className="bg-secondary rounded-2xl p-8 border border-border min-h-[220px]">
-                <div className="flex gap-1 mb-4">
-                  {Array.from({ length: testimonials[activeTestimonial]!.rating }).map((_, j) => (
-                    <Star key={j} className="w-4 h-4 text-primary fill-primary" />
-                  ))}
-                </div>
-                <p className="text-foreground/80 text-sm leading-relaxed mb-6">
-                  &ldquo;{testimonials[activeTestimonial]!.text}&rdquo;
-                </p>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-semibold">
-                    {testimonials[activeTestimonial]!.name[0]}
-                  </div>
-                  <span className="font-medium text-foreground text-sm">{testimonials[activeTestimonial]!.name}</span>
-                </div>
-              </div>
-
-              <div className="mt-6 flex items-center justify-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="border-border bg-secondary text-foreground hover:bg-secondary/80 hover:text-foreground"
-                  onClick={goToPrevTestimonial}
-                  aria-label="Previous testimonial"
-                >
-                  <ChevronLeft className="w-4 h-4 text-foreground" />
-                </Button>
-                <div className="flex items-center gap-1">
-                  {testimonials.map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setActiveTestimonial(i)}
-                      className="min-h-11 min-w-11 inline-flex items-center justify-center"
-                      aria-label={`Go to testimonial ${i + 1}`}
-                    >
-                      <span
-                        className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                          i === activeTestimonial ? "bg-primary" : "bg-border"
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="border-border bg-secondary text-foreground hover:bg-secondary/80 hover:text-foreground"
-                  onClick={goToNextTestimonial}
-                  aria-label="Next testimonial"
-                >
-                  <ChevronRight className="w-4 h-4 text-foreground" />
-                </Button>
-              </div>
-            </div>
           </div>
         </section>
       ) : null}
@@ -568,13 +444,70 @@ export default function Home() {
                       transition={{ duration: 0.25, ease: "easeOut" }}
                       className="rounded-3xl border border-border/70 bg-background/70 p-7 shadow-sm"
                     >
+                      {activeContact.key === "address" ? (
+                        <div>
+                          <div className="flex items-center gap-3 mb-5">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                              <ActiveIcon className="w-5 h-5" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-foreground">{t("branches")}</h3>
+                            <span className="ml-auto rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                              {branches.length}
+                            </span>
+                          </div>
+                          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {branches.map((branch) => {
+                              const city = cityNameById(cities, branch.cityId);
+                              return (
+                                <li key={branch.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedBranch(branch)}
+                                    disabled={!branch.mapUrl}
+                                    className="group flex h-full w-full flex-col rounded-xl border border-border bg-background p-3.5 text-left transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:cursor-default disabled:hover:border-border disabled:hover:bg-background"
+                                  >
+                                    {city ? (
+                                      <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                                        {city}
+                                      </span>
+                                    ) : null}
+                                    <span className="mt-0.5 text-sm font-semibold leading-snug text-foreground">
+                                      {branch.name}
+                                    </span>
+                                    <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                      {branch.workHours ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Clock className="w-3 h-3" aria-hidden="true" />
+                                          {branch.workHours}
+                                        </span>
+                                      ) : null}
+                                      {branch.phone ? (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Phone className="w-3 h-3" aria-hidden="true" />
+                                          {branch.phone}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                    {branch.mapUrl ? (
+                                      <span className="mt-auto pt-2.5 inline-flex items-center gap-1 text-xs font-medium text-primary/80 group-hover:text-primary">
+                                        <MapPin className="w-3 h-3" aria-hidden="true" />
+                                        {t("branchViewOnMap")}
+                                        <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ) : (
                       <div className="flex items-start gap-5">
                         <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                           <ActiveIcon className="w-6 h-6" />
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-primary">{activeContact.label}</p>
-                        {activeContact.key !== "address" ? (
                           <div className="mt-3 space-y-1">
                             {activeContact.lines.map((line, idx) => (
                               <p key={idx} className="text-foreground text-lg font-semibold leading-relaxed">
@@ -582,37 +515,6 @@ export default function Home() {
                               </p>
                             ))}
                           </div>
-                        ) : (
-                          <div className="mt-3">
-                            <h3 className="text-sm font-semibold text-primary mb-3">{t("branches")}</h3>
-                            <div className="space-y-3">
-                              {branches.map((branch) => (
-                                <div
-                                  key={branch.id}
-                                  className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between rounded-lg border border-border bg-background px-3 py-2.5"
-                                >
-                                  <div className="min-w-0 space-y-1">
-                                    <p className="text-sm font-medium text-foreground">{branch.name}</p>
-                                    <p className="text-xs text-muted-foreground/90">{cityNameById(cities, branch.cityId)}</p>
-                                    {branch.phone && <p className="text-xs text-muted-foreground">{branch.phone}</p>}
-                                    {branch.email && <p className="text-xs text-muted-foreground">{branch.email}</p>}
-                                    {branch.workHours && <p className="text-xs text-muted-foreground">{branch.workHours}</p>}
-                                  </div>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    className="shrink-0"
-                                    onClick={() => setSelectedBranch(branch)}
-                                    aria-label={`Open map for ${branch.name}`}
-                                  >
-                                    <MapPin className="w-4 h-4" />
-                                  </Button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
 
                           <div className="mt-5 flex flex-wrap gap-3 items-center">
                             {activeContact.key === "phone" && (
@@ -636,6 +538,7 @@ export default function Home() {
                           </div>
                         </div>
                       </div>
+                      )}
                     </motion.div>
                   </AnimatePresence>
                 </div>

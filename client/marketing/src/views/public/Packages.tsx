@@ -44,9 +44,6 @@ export default function Packages() {
       <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-              {t("packagesEyebrow")}
-            </p>
             <h1 className="text-4xl sm:text-5xl font-bold mb-6">{t("packagesTitle")}</h1>
             <p className="text-hero-foreground/80 text-lg">{t("packagesSub")}</p>
           </div>
@@ -55,48 +52,53 @@ export default function Packages() {
 
       {(loading || sorted.length > 0) && (
         <section className="py-14 sm:py-20 bg-background">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {loading ? (
               <p className="text-center text-muted-foreground py-12">{t("loading")}</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                 {sorted.map((pkg, i) => {
                   const popular = pkg.id === "PKG-002";
                   return (
                     <Reveal
                       key={pkg.id}
-                      className={`relative rounded-2xl border-2 ${popular ? "border-primary shadow-xl" : "border-border shadow-sm"} bg-card overflow-visible p-0 flex flex-col h-full`}
-                      delay={i * 0.06}
+                      className={`relative rounded-xl border ${popular ? "border-primary shadow-lg" : "border-border shadow-sm"} bg-card overflow-visible p-0 flex flex-col h-full`}
+                      delay={i * 0.04}
                     >
                       {popular && (
-                        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
-                          <Badge className="bg-primary text-primary-foreground px-4 py-1">{t("mostPopular")}</Badge>
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10">
+                          <Badge className="bg-primary text-primary-foreground px-3 py-0.5 text-xs">{t("mostPopular")}</Badge>
                         </div>
                       )}
-                      <PackagePromoImage src={pkg.imageUrl} alt={pkg.name} className="rounded-t-2xl" />
-                      <div className="p-6 sm:p-8 flex flex-col flex-1 min-h-0">
-                        <h3 className="font-bold text-xl text-foreground mb-2">{pkg.name}</h3>
-                        <div className="flex items-baseline gap-1 mb-1">
-                          <span className="text-4xl font-bold text-foreground">
+                      <PackagePromoImage src={pkg.imageUrl} alt={pkg.name} className="rounded-t-xl" compact />
+                      <div className="p-4 flex flex-col flex-1 min-h-0">
+                        <h3 className="font-semibold text-base text-foreground leading-snug line-clamp-2 mb-1.5" title={pkg.name}>
+                          {pkg.name}
+                        </h3>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold text-foreground">
                             <CountUpText value={pkg.price} />
                           </span>
-                          <span className="text-muted-foreground">֏</span>
+                          <span className="text-sm text-muted-foreground">֏</span>
                         </div>
-                        <p className="text-sm text-muted-foreground mb-7">
+                        <p className="text-xs text-muted-foreground mt-0.5 mb-3">
                           {pkg.lessons} {t("lessonTypePractical").toLowerCase()} · {pkg.theoryLessons}{" "}
                           {t("lessonTypeTheory").toLowerCase()}
                         </p>
-                        <ul className="space-y-3 mb-8">
-                          {pkg.features.map((feat, j) => (
-                            <li key={j} className="flex items-center gap-2.5 text-sm">
-                              <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                              <span className="text-foreground">{feat}</span>
-                            </li>
-                          ))}
-                        </ul>
+                        {pkg.features.length > 0 ? (
+                          <ul className="space-y-1.5 mb-4">
+                            {pkg.features.map((feat, j) => (
+                              <li key={j} className="flex items-start gap-1.5 text-xs">
+                                <CheckCircle2 className="w-3.5 h-3.5 mt-px text-primary shrink-0" />
+                                <span className="text-foreground">{feat}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         <div className="mt-auto">
                           <a href={panelHref("/register")}>
                             <Button
+                              size="sm"
                               className={`w-full ${
                                 popular
                                   ? "bg-primary hover:bg-primary/90 text-primary-foreground"

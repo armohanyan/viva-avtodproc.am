@@ -5062,7 +5062,7 @@ const am: typeof en = {
   
   servicesTitle: "Մեր ծառայությունները",
   servicesSub: "Ամբողջական ուսուցում՝ վարորդական իրավունք ստանալու և վստահ վարելու համար։",
-  servicesEyebrow: "Ինչ ենք առաջարկում",
+  servicesEyebrow: "Ի՞նչ ենք առաջարկում",
   practicalLessons: "Գործնական դասեր",
   practicalDesc: "Անհատական վարորդական պարապմունքներ՝ հավաստագրված ուսուցիչների ուղեկցությամբ և կրկնակի կառավարմամբ մեքենաներով։",
   servicesCardPracticalDetail1: "Կրկնակի կառավարմամբ մեքենաներ՝ բարձր անվտանգության համար",
@@ -5085,7 +5085,7 @@ const am: typeof en = {
   servicesCardPrepDetail4: "Աջակցություն քննությունից առաջ անհանգստությունը հաղթահարելու համար",
   refresherCourse: "Վերականգնողական դասընթաց",
   refresherDesc: "Վարորդների համար, ովքեր ցանկանում են վերականգնել կամ բարձրացնել իրենց վարելու վստահությունը։",
-  servicesIncludedTitle: "Ինչ է ներառված",
+  servicesIncludedTitle: "Ի՞նչ է ներառված",
   servicesViewPackagesCta: "Դիտել փաթեթները",
 
   packagesTitle: "Ընտրեք ձեր փաթեթը",
@@ -5503,7 +5503,7 @@ const am: typeof en = {
   bookingsTheoryGroupPageSubtitle: "Ընտրեք խումբ և ամրագրեք տեղը",
   bookingsOverviewSubtitle: "Ձեր բոլոր ամրագրումները մեկ վայրում",
   bookingsSubnavOverview: "Ընդհանուր",
-  bookingsQuickActionsTitle: "Ինչ անել հիմա",
+  bookingsQuickActionsTitle: "Ի՞նչ անել հիմա",
   bookingsActionPracticalTitle: "Ամրագրել գործնական դաս",
   bookingsActionPracticalSub: "Ընտրեք դասավանդող և ժամանակ",
   bookingsActionPackageTitle: "Կրեդիտներ և փաթեթներ",
@@ -6749,7 +6749,7 @@ const am: typeof en = {
 
   // Public CTA / testimonials
   testimonialsEyebrow: "Վկայություններ",
-  testimonialsTitle: "Ինչ են ասում մեր աշակերտները",
+  testimonialsTitle: "Ի՞նչ են ասում մեր աշակերտները",
   ctaReadyLicenseTitle: "Պատրաստե՞ք սկսել",
   ctaReadyLicenseSub: "Միացեք հազարավոր հաջողակ վարորդներին։ Ամրագրեք ձեր առաջին դասը և սկսեք ձեր ճանապարհը։",
 

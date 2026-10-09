@@ -184,7 +184,7 @@ export default function DirectorRepairPage() {
       },
       {
         id: "workDone",
-        header: "Ինչ է արվել",
+        header: "Ի՞նչ է արվել",
         sortable: true,
         searchValue: (r: DirectorRepair) => r.workDone,
         sortValue: (r: DirectorRepair) => r.workDone,
@@ -277,7 +277,7 @@ export default function DirectorRepairPage() {
             <DirectorField label="Պետհամարանիշ">
               <DirectorInput value={form.licensePlate} onChange={(e) => setForm((f) => ({ ...f, licensePlate: e.target.value }))} />
             </DirectorField>
-            <DirectorField label="Ինչ է արվել">
+            <DirectorField label="Ի՞նչ է արվել">
               <DirectorInput value={form.workDone} onChange={(e) => setForm((f) => ({ ...f, workDone: e.target.value }))} />
             </DirectorField>
             <DirectorField label="Գումար">

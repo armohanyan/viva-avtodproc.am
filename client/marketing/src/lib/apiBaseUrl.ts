@@ -4,14 +4,10 @@ function trimTrailingSlashes(s: string): string {
 
 /**
  * API base must be an origin (or host:port) only. Request paths already start with `/api/...`
- * (e.g. `/api/v1/health`). If env mistakenly ends with `/api`, concatenation becomes `/api/api/...`.
+ * (e.g. `/api/v1/health`). If env mistakenly ends with `/api` or `/api/v1`, it is stripped.
  */
 export function normalizeApiBaseUrl(base: string): string {
-	const s = trimTrailingSlashes(base);
-	if (s.endsWith("/api")) {
-		return s.slice(0, -4);
-	}
-	return s;
+	return trimTrailingSlashes(base).replace(/\/api(\/v1)?$/, "");
 }
 
 function viteApiBaseUrl(): string | undefined {

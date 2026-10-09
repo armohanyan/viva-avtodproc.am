@@ -19,9 +19,6 @@ export default function Instructors() {
       <section className="bg-hero text-hero-foreground py-14 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
-            <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
-              {t("instructorsEyebrow")}
-            </p>
             <h1 className="text-4xl sm:text-5xl font-bold mb-6">{t("instructorsTitle")}</h1>
           </div>
         </div>
@@ -29,9 +26,9 @@ export default function Instructors() {
 
       <section className="py-14 sm:py-20 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {visibleInstructors.map((ins, i) => (
-              <Reveal key={i} delay={i * 0.06}>
+              <Reveal key={i} delay={i * 0.04}>
                 <InstructorCard
                   instructor={ins}
                   showBookButton={true}

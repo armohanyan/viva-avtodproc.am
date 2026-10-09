@@ -29,6 +29,8 @@ const en = {
   // Hero
   heroTitle: "Driving Lessons & Theory at Viva Autoschool Yerevan",
   heroSub: "Learn to drive step-by-step with certified instructors. Start your first lesson today.",
+  heroBranchesCount: "{n} branches",
+  heroCta: "Book your first lesson today.",
   getStarted: "Get Started",
   learnMore: "Learn More",
   bookLesson: "Book a Lesson",
@@ -185,6 +187,7 @@ const en = {
   monFri: "Mon–Fri: 9:00–18:00",
   sat: "Sat: 9:00–15:00",
   branches: "Branches",
+  branchViewOnMap: "View on map",
 
   // Blog (public)
   blogs: "Blog",
@@ -1554,6 +1557,8 @@ const ru: typeof en = {
 
   heroTitle: "Уроки вождения и теория в автошколе Viva (Ереван)",
   heroSub: "Учитесь вождению по шагам с сертифицированными инструкторами. Запишитесь на первое занятие сегодня.",
+  heroBranchesCount: "Филиалов: {n}",
+  heroCta: "Запишитесь на первое занятие сегодня.",
   getStarted: "Начать",
   learnMore: "Подробнее",
   bookLesson: "Записаться",
@@ -1704,6 +1709,7 @@ const ru: typeof en = {
   monFri: "Пн–Пт: 9:00–18:00",
   sat: "Сб: 9:00–15:00",
   branches: "Филиалы",
+  branchViewOnMap: "На карте",
 
   blogs: "Блог",
   blogsEyebrow: "Новости и советы",
@@ -3066,6 +3072,8 @@ const am: typeof en = {
 
   heroTitle: "Վիվա Ավտոդպրոց",
   heroSub: "Սովորեք վարել քայլ առ քայլ՝ հավաստագրված ուսուցիչների հետ։ Ամրագրեք ձեր առաջին դասը այսօր։",
+  heroBranchesCount: "{n} մասնաճյուղ",
+  heroCta: "Ամրագրեք ձեր առաջին դասը այսօր։",
   getStarted: "Սկսել",
   learnMore: "Իմանալ ավելին",
   bookLesson: "Ամրագրել դաս",
@@ -3216,6 +3224,7 @@ const am: typeof en = {
   monFri: "Երկ–Ուրբ: 9:00–18:00",
   sat: "Շաբ: 9:00–15:00",
   branches: "Մասնաճյուղերը",
+  branchViewOnMap: "Քարտեզում",
 
   blogs: "Բլոգ",
   blogsEyebrow: "Լուրեր և խորհուրդներ",

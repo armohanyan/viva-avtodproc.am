@@ -54,7 +54,7 @@ export const EXAM_QUESTION_POOL: readonly ExamQuestion[] = [
     text: {
       en: "What is the typical meaning of a triangular sign with a red border?",
       ru: "Что обычно означает треугольный дорожный знак с красной окантовкой?",
-      am: "Ինչ է սովորաբար նշանակում կարմիր եզրով եռանկյուն ճանապարհային նշանը։",
+      am: "Ի՞նչ է սովորաբար նշանակում կարմիր եզրով եռանկյուն ճանապարհային նշանը։",
     },
     options: {
       en: ["End of restriction", "Warning / give way context", "Mandatory direction", "No stopping"],

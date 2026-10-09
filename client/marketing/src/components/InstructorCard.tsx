@@ -35,7 +35,7 @@ export default function InstructorCard({
 }: Props) {
   const { t } = useLang();
   const { panelHref } = useAppNavigation();
-  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "aspect-square w-full");
+  const imgClass = imageHeightClassName ?? (compact ? "h-32" : "aspect-[5/4] w-full");
   const frameBorder =
     pickerMode && isPicked
       ? "border-2 border-primary"
@@ -47,7 +47,7 @@ export default function InstructorCard({
 
   return (
     <Card
-      className={`rounded-2xl ${frameBorder} shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full min-h-0 p-0 gap-0 ${compact ? "rounded-xl" : ""} ${className ?? ""}`}
+      className={`rounded-xl ${frameBorder} shadow-sm hover:shadow-lg transition-shadow overflow-hidden flex flex-col h-full min-h-0 p-0 gap-0 ${className ?? ""}`}
     >
       <div className={`${imgClass} bg-muted overflow-hidden shrink-0`}>
         <img
@@ -56,7 +56,7 @@ export default function InstructorCard({
           className={
             usingFallback || imageObjectFit === "contain"
               ? "h-full w-full object-contain"
-              : "h-full w-full object-cover object-top"
+              : "h-full w-full object-cover object-[center_25%]"
           }
           loading="lazy"
           onError={(e) => {
@@ -66,16 +66,16 @@ export default function InstructorCard({
           }}
         />
       </div>
-      <div className={compact ? "p-3 flex flex-col flex-1 min-h-0" : "p-6"}>
-        <div className={`flex items-start justify-between gap-2 ${compact ? "mb-2" : "mb-3"}`}>
+      <div className={compact ? "p-3 flex flex-col flex-1 min-h-0" : "p-4 flex flex-col flex-1 min-h-0"}>
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0 flex-1">
             <h3
-              className={`font-bold text-foreground break-words ${compact ? "text-sm leading-snug" : "text-lg"}`}
+              className={`font-bold text-foreground break-words leading-snug ${compact ? "text-sm" : "text-base"}`}
             >
               {instructor.name}
             </h3>
             {(instructor.teachesPractical || instructor.teachesTheory) && (
-              <div className={`flex flex-wrap gap-1 ${compact ? "mt-1" : "mt-2 gap-1.5"}`}>
+              <div className="flex flex-wrap gap-1 mt-1">
                 {instructor.teachesPractical && (
                   <Badge variant="secondary" className="text-[9px] font-medium px-1.5 py-0">
                     {t("instructorTeachingPractical")}
@@ -89,11 +89,11 @@ export default function InstructorCard({
               </div>
             )}
           </div>
-          <div className={`flex items-center gap-0.5 shrink-0 ${compact ? "mt-0" : "mt-0.5 gap-1"}`}>
+          <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
             {Array.from({ length: 5 }).map((_, j) => (
               <Star
                 key={j}
-                className={`${compact ? "w-2.5 h-2.5" : "w-3.5 h-3.5"} ${
+                className={`${compact ? "w-2.5 h-2.5" : "w-3 h-3"} ${
                   j < Math.floor(instructor.rating)
                     ? "text-primary fill-primary"
                     : "text-muted-foreground fill-muted-foreground"
@@ -109,11 +109,11 @@ export default function InstructorCard({
         </div>
 
         <div
-          className={`grid text-muted-foreground ${compact ? "grid-cols-1 gap-y-1 text-[11px] leading-snug" : "grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm mb-5"}`}
+          className={`grid text-muted-foreground ${compact ? "grid-cols-1 gap-y-1 text-[11px] leading-snug" : "grid-cols-1 gap-y-1.5 text-xs leading-snug"}`}
         >
           <div className="min-w-0 flex items-center gap-1.5">
             <span
-              className={`shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold ${compact ? "w-3.5 h-3.5 text-[8px]" : "w-4 h-4 text-[10px]"}`}
+              className={`shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold ${compact ? "w-3.5 h-3.5 text-[8px]" : "w-3.5 h-3.5 text-[9px]"}`}
             >
               ֏
             </span>
@@ -122,15 +122,15 @@ export default function InstructorCard({
             </span>
           </div>
           <div className="min-w-0 flex items-center gap-1.5">
-            <Car className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
+            <Car className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
             <span className="break-words">{instructor.car}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Gauge className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
+            <Gauge className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
             <span>{instructor.transmission}</span>
           </div>
-          <div className={`flex items-center gap-1.5 ${compact ? "" : "col-span-2"}`}>
-            <CalendarDays className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-4 h-4"}`} />
+          <div className="flex items-center gap-1.5">
+            <CalendarDays className={`text-primary shrink-0 ${compact ? "w-3 h-3" : "w-3.5 h-3.5"}`} />
             <span>
               {instructor.years.toLocaleString("en-US")} {t("experience")}
             </span>
@@ -150,7 +150,7 @@ export default function InstructorCard({
           </div>
         ) : null}
         {showBookButton && !pickerMode && (
-          <div className="mt-4">
+          <div className="mt-auto pt-3">
             <a href={panelHref("/register")}>
               <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" size="sm">
                 {t("bookLesson")}

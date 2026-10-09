@@ -8,11 +8,7 @@ loadEnvConfig(clientRoot);
 
 /** Same rule as `src/lib/apiBaseUrl.ts` `normalizeApiBaseUrl` — rewrites append `/api/:path*`. */
 function normalizeBackendOrigin(s: string): string {
-	const t = s.replace(/\/+$/, "");
-	if (t.endsWith("/api")) {
-		return t.slice(0, -4);
-	}
-	return t;
+	return s.replace(/\/+$/, "").replace(/\/api(\/v1)?$/, "");
 }
 
 /**
