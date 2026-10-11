@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { JsonLd } from "@/components/JsonLd";
 import { MarketingProviders } from "@/components/MarketingProviders";
@@ -11,6 +11,12 @@ import { baseLayoutMetadata, CRAWL_SEO_LANG, htmlLangFromSeoLang } from "@/lib/s
  * Cookie-based `generateMetadata` streamed those tags after `</head>` and killed SEO.
  */
 export const metadata: Metadata = baseLayoutMetadata(CRAWL_SEO_LANG);
+
+export const viewport: Viewport = {
+  themeColor: "#f48633",
+  width: "device-width",
+  initialScale: 1,
+};
 
 export default function RootLayout({
   children,
