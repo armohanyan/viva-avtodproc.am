@@ -18,6 +18,7 @@ import { useAdminStudentsMini, type AdminStudentMini } from "src/modules/admin/u
 import { useLang } from "src/lib/i18n";
 import { absWouterHref } from "src/lib/wouterFullPath";
 import type { Instructor } from "src/data/instructors";
+import { instructorServesBranchOnDate } from "src/modules/instructors/instructorTemporaryTransfer";
 
 type CellTarget = {
   instructor: Instructor;
@@ -53,7 +54,9 @@ function AdminDrivingContent() {
   const { branchId: adminBranchId } = useAdminBranchFilter();
   const { students, refresh: refreshStudents } = useAdminStudentsMini({ enrollmentStatus: "all" });
   const [search, setSearch] = useState("");
-  const [branchFilterId, setBranchFilterId] = useState(() => adminBranchId ?? "");
+  const [branchFilterIds, setBranchFilterIds] = useState<string[]>(() =>
+    adminBranchId ? [adminBranchId] : [],
+  );
   const [slotModalTarget, setSlotModalTarget] = useState<CellTarget | null>(null);
   const [pendingSelection, setPendingSelection] = useState<SlotSelection | null>(null);
   const [dayModalDateIso, setDayModalDateIso] = useState<string | null>(null);
@@ -66,7 +69,7 @@ function AdminDrivingContent() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
-    setBranchFilterId(adminBranchId ?? "");
+    setBranchFilterIds(adminBranchId ? [adminBranchId] : []);
   }, [adminBranchId]);
 
   /** Prefill from `/admin/driving?q=&student=&branch=` when admin is sent here to book practical. */
@@ -80,7 +83,7 @@ function AdminDrivingContent() {
     if (!q && !studentId && !branch) return;
 
     if (branch && branches.some((b) => String(b.id) === branch)) {
-      setBranchFilterId(branch);
+      setBranchFilterIds([branch]);
     }
     if (q) {
       setSearch(q);
@@ -150,8 +153,8 @@ function AdminDrivingContent() {
           <AdminDrivingFilters
             search={search}
             onSearchChange={setSearch}
-            branchId={branchFilterId}
-            onBranchIdChange={setBranchFilterId}
+            branchIds={branchFilterIds}
+            onBranchIdsChange={setBranchFilterIds}
           />
         </div>
 
@@ -162,7 +165,8 @@ function AdminDrivingContent() {
             <AdminInstructorAvailabilityTable
               key={refreshKey}
               instructors={filteredInstructors}
-              bookingBranchId={branchFilterId}
+              bookingBranchId=""
+              branchIdsFilter={branchFilterIds}
               ignoreGlobalBranchFilter
               fillViewport
               studentName=""
@@ -190,7 +194,7 @@ function AdminDrivingContent() {
           onDateChange={setDayModalDateIso}
           instructors={activePracticalInstructors}
           initialSearch={search}
-          initialBranchId={branchFilterId}
+          initialBranchIds={branchFilterIds}
           reloadKey={refreshKey}
           onEmptyCellClick={({ instructor, branchId, dateIso, time, customSlot, customSlotEndTime }) => {
             setPendingSelection({
@@ -234,6 +238,9 @@ function AdminDrivingContent() {
           branchId={slotModalTarget.branchId}
           dateIso={slotModalTarget.dateIso}
           slotSource="practical"
+          isDateBookable={(dateIso) =>
+            instructorServesBranchOnDate(slotModalTarget.instructor, slotModalTarget.branchId, dateIso)
+          }
           initialSelected={
             pendingSelection?.instructor.id === slotModalTarget.instructor.id
               ? pendingSelection.entries

@@ -2979,6 +2979,7 @@ export default function AdminBookings() {
                     endTime={editBooking.endTime ?? ""}
                     onEndTime={(endTime) => applyEditTheorySchedule({ endTime })}
                     excludeBookingId={editBooking.id}
+                    branchId={editBooking.branchId ? String(editBooking.branchId) : ""}
                     onStatus={setEditTheoryStatus}
                     t={t}
                   />
@@ -3522,6 +3523,7 @@ export default function AdminBookings() {
                           onStartTime={(time) => setDraft((d) => (d ? { ...d, time } : d))}
                           endTime={addTheoryEnd}
                           onEndTime={setAddTheoryEnd}
+                          branchId={draft.branchId ? String(draft.branchId) : ""}
                           onStatus={setAddTheoryStatus}
                           t={t}
                         />

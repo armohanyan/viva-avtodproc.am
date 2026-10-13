@@ -4,6 +4,7 @@ import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { useOptionalAdminBranchFilterRevision } from "src/modules/admin/AdminBranchFilterProvider";
+import { normalizeTemporaryTransfers } from "src/modules/instructors/instructorTemporaryTransfer";
 
 function resolveInstructorImageSrc(raw: string | null | undefined): string {
 	const mapped = sameOriginStaffUploadUrl(raw ?? null) ?? raw ?? "";
@@ -25,6 +26,7 @@ export function useInstructors() {
 							id: String(ins.id),
 							imageSrc: resolveInstructorImageSrc(ins.imageSrc),
 							availableBranchIds: (ins.availableBranchIds ?? []).map(String),
+							temporaryTransfers: normalizeTemporaryTransfers(ins.temporaryTransfers),
 							fleetCarIds: Array.isArray(ins.fleetCarIds) ? ins.fleetCarIds : [],
 							practicalSalaryPerLessonAmd:
 								typeof ins.practicalSalaryPerLessonAmd === "number"

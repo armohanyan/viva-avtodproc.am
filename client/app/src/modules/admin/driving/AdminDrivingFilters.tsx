@@ -1,46 +1,62 @@
 import { useMemo } from "react";
-import { MapPin, Search } from "lucide-react";
-import { Input } from "src/components/ui/input";
+import { ChevronDown, MapPin, Search } from "lucide-react";
+import { Button } from "src/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "src/components/ui/select";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "src/components/ui/dropdown-menu";
+import { Input } from "src/components/ui/input";
 import { useLang } from "src/lib/i18n";
 import { cn } from "src/lib/utils";
-import { ADMIN_BRANCH_FILTER_ALL } from "src/modules/admin/adminBranchFilter";
 import { branchOptionLabel, useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 
 type Props = {
   search: string;
   onSearchChange: (value: string) => void;
-  /** Empty string = all branches. */
-  branchId: string;
-  onBranchIdChange: (value: string) => void;
+  /** Empty = all branches. Otherwise only these branches. */
+  branchIds: readonly string[];
+  onBranchIdsChange: (value: string[]) => void;
   className?: string;
 };
 
 export default function AdminDrivingFilters({
   search,
   onSearchChange,
-  branchId,
-  onBranchIdChange,
+  branchIds,
+  onBranchIdsChange,
   className,
 }: Props) {
   const { t } = useLang();
   const { branches, loading } = useBranches();
   const { cities } = useCities();
 
-  const selectedValue = branchId.trim() || ADMIN_BRANCH_FILTER_ALL;
+  const selectedSet = useMemo(() => new Set(branchIds.map(String)), [branchIds]);
+  const allSelected = branchIds.length === 0;
 
   const selectedLabel = useMemo(() => {
-    if (!branchId.trim()) return t("adminBranchFilterAll");
-    const branch = branches.find((b) => String(b.id) === branchId);
-    return branch ? branchOptionLabel(branch, cityNameById(cities, branch.cityId)) : branchId;
-  }, [branchId, branches, cities, t]);
+    if (allSelected) return t("adminBranchFilterAll");
+    const labels = branchIds.map((id) => {
+      const branch = branches.find((b) => String(b.id) === id);
+      return branch ? branchOptionLabel(branch, cityNameById(cities, branch.cityId)) : id;
+    });
+    if (labels.length <= 2) return labels.join(", ");
+    return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+  }, [allSelected, branchIds, branches, cities, t]);
+
+  const setBranches = (ids: Iterable<string>) => {
+    const next = new Set([...ids].map(String));
+    if (next.size === 0 || next.size >= branches.length) {
+      onBranchIdsChange([]);
+      return;
+    }
+    onBranchIdsChange(
+      branches.map((b) => String(b.id)).filter((id) => next.has(id)),
+    );
+  };
 
   return (
     <div
@@ -59,35 +75,54 @@ export default function AdminDrivingFilters({
           aria-label={t("search")}
         />
       </div>
-      <Select
-        value={selectedValue}
-        onValueChange={(value) =>
-          onBranchIdChange(value === ADMIN_BRANCH_FILTER_ALL ? "" : value)
-        }
-        disabled={loading && branches.length === 0}
-      >
-        <SelectTrigger
-          size="sm"
-          className="w-full sm:w-auto sm:min-w-[12rem] sm:max-w-[18rem] h-9 gap-1.5 border-border bg-background"
-          aria-label={t("adminBranchFilterLabel")}
-        >
-          <MapPin className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
-          <SelectValue placeholder={t("adminBranchFilterAll")}>{selectedLabel}</SelectValue>
-        </SelectTrigger>
-        <SelectContent align="end" className="max-h-[min(20rem,70vh)]">
-          <SelectItem value={ADMIN_BRANCH_FILTER_ALL}>{t("adminBranchFilterAll")}</SelectItem>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading && branches.length === 0}
+            className="h-9 w-full min-w-0 justify-between gap-1.5 overflow-hidden border-border bg-background px-3 font-normal shadow-xs sm:w-auto sm:min-w-[12rem] sm:max-w-[22rem]"
+            aria-label={t("adminBranchFilterLabel")}
+          >
+            <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-h-[min(20rem,70vh)] min-w-[12rem]">
+          <DropdownMenuCheckboxItem
+            checked={allSelected}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={() => onBranchIdsChange([])}
+          >
+            {t("adminBranchFilterAll")}
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
           {branches.length === 0 && !loading ? (
-            <SelectItem value="__empty__" disabled>
+            <DropdownMenuCheckboxItem checked={false} disabled>
               {t("adminBranchFilterEmpty")}
-            </SelectItem>
+            </DropdownMenuCheckboxItem>
           ) : null}
-          {branches.map((b) => (
-            <SelectItem key={b.id} value={String(b.id)}>
-              {branchOptionLabel(b, cityNameById(cities, b.cityId))}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          {branches.map((b) => {
+            const id = String(b.id);
+            return (
+              <DropdownMenuCheckboxItem
+                key={b.id}
+                checked={!allSelected && selectedSet.has(id)}
+                onSelect={(event) => event.preventDefault()}
+                onCheckedChange={(checked) => {
+                  const next = new Set(allSelected ? [] : selectedSet);
+                  if (checked) next.add(id);
+                  else next.delete(id);
+                  setBranches(next);
+                }}
+              >
+                {branchOptionLabel(b, cityNameById(cities, b.cityId))}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

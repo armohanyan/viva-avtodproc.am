@@ -8,6 +8,8 @@ import { Card } from "src/components/ui/card";
 import { branchOptionLabel, branchesInCity, useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 import { useInstructors } from "src/modules/instructors/useInstructors";
+import { branchIdsForUndatedPicker } from "src/modules/instructors/instructorTemporaryTransfer";
+import { yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 import { defaultExamQuestionMeta, loadExamQuestionMeta } from "src/lib/examQuestionMeta";
 import { useLang } from "src/lib/i18n";
 import type { Instructor } from "src/data/instructors";
@@ -37,9 +39,10 @@ export function DashboardBookingsTheoryPersonalTab() {
       theoryInstructors.filter((ins) => {
         if (!cityId) return false;
         if (selectedBranchId) {
-          return ins.availableBranchIds.includes(selectedBranchId);
+          return branchIdsForUndatedPicker(ins, yerevanTodayIso()).includes(selectedBranchId);
         }
-        return ins.availableBranchIds.some((branchId) => branchIdsForCity.includes(branchId));
+        const served = branchIdsForUndatedPicker(ins, yerevanTodayIso());
+        return served.some((branchId) => branchIdsForCity.includes(branchId));
       }),
     [theoryInstructors, cityId, selectedBranchId, branchIdsForCity],
   );

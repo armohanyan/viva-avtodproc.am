@@ -25,6 +25,16 @@ const createSchema = z.object({
   status: z.enum(['active', 'inactive']),
   imageSrc: z.string(),
   availableBranchIds: z.array(z.coerce.number().int().positive()),
+  temporaryTransfers: z
+    .array(
+      z.object({
+        id: z.coerce.number().int().positive().optional(),
+        branchId: z.coerce.number().int().positive(),
+        startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }),
+    )
+    .optional(),
   teachesPractical: z.boolean(),
   teachesTheory: z.boolean(),
   fleetCarIds: z.array(z.number().int().positive()).optional(),

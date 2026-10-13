@@ -26,6 +26,7 @@ import AdminDrivingFilters, {
   filterInstructorsBySearchOrStudentBooking,
 } from "src/modules/admin/driving/AdminDrivingFilters";
 import { useBranches } from "src/modules/branches";
+import { instructorServesBranchOnDate } from "src/modules/instructors/instructorTemporaryTransfer";
 import { usePracticalSlotPlan } from "src/modules/booking/usePracticalSlotPlan";
 import {
   DEFAULT_PRACTICAL_SLOT_PLAN,
@@ -90,7 +91,7 @@ type Props = {
   /** Seed search when the modal opens (from the driving page toolbar). */
   initialSearch?: string;
   /** Seed branch filter when the modal opens; empty = all branches. */
-  initialBranchId?: string;
+  initialBranchIds?: readonly string[];
   /** Bumped by parent after create/edit/delete so the day grid reloads. */
   reloadKey?: number;
   onEmptyCellClick: (target: {
@@ -313,7 +314,7 @@ export default function AdminDrivingDayModal({
   onDateChange,
   instructors,
   initialSearch = "",
-  initialBranchId,
+  initialBranchIds,
   reloadKey = 0,
   onEmptyCellClick,
   onAddCustomSlotClick,
@@ -326,8 +327,12 @@ export default function AdminDrivingDayModal({
   const day = dateIso.slice(0, 10);
 
   const [search, setSearch] = useState(initialSearch);
-  const [branchFilterId, setBranchFilterId] = useState(
-    () => (initialBranchId !== undefined ? initialBranchId : adminBranchId ?? ""),
+  const [branchFilterIds, setBranchFilterIds] = useState<string[]>(() =>
+    initialBranchIds !== undefined
+      ? [...initialBranchIds]
+      : adminBranchId
+        ? [adminBranchId]
+        : [],
   );
   const [multiSelection, setMultiSelection] = useState<MultiSlotSelection | null>(null);
   const emptyClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -335,8 +340,14 @@ export default function AdminDrivingDayModal({
   useEffect(() => {
     if (!open) return;
     setSearch(initialSearch);
-    setBranchFilterId(initialBranchId !== undefined ? initialBranchId : adminBranchId ?? "");
-  }, [open, initialSearch, initialBranchId, adminBranchId]);
+    setBranchFilterIds(
+      initialBranchIds !== undefined
+        ? [...initialBranchIds]
+        : adminBranchId
+          ? [adminBranchId]
+          : [],
+    );
+  }, [open, initialSearch, initialBranchIds, adminBranchId]);
 
   useEffect(() => {
     if (!open) {
@@ -376,16 +387,31 @@ export default function AdminDrivingDayModal({
     return filterInstructorsBySearchOrStudentBooking(instructors, search, dayBookings);
   }, [instructors, search, items, day]);
 
+  const bookedColumns = useMemo(() => {
+    const out: { instructorId: string; branchId: string }[] = [];
+    for (const item of items) {
+      if (item.date.slice(0, 10) !== day) continue;
+      const branchId = String(item.branch?.id ?? "").trim();
+      const instructorId = item.instructor.id != null && item.instructor.id > 0 ? String(item.instructor.id) : "";
+      if (!instructorId || !branchId) continue;
+      out.push({ instructorId, branchId });
+    }
+    return out;
+  }, [items, day]);
+
   const dayColumns = useMemo(
-    () => buildInstructorBranchColumns(branches, filteredInstructors, branchFilterId),
-    [branches, filteredInstructors, branchFilterId],
+    () =>
+      buildInstructorBranchColumns(branches, filteredInstructors, branchFilterIds, {
+        dateIsos: [day],
+        bookedColumns,
+      }),
+    [branches, filteredInstructors, branchFilterIds, day, bookedColumns],
   );
 
   const primaryBranchId = useMemo(() => {
-    const filtered = branchFilterId.trim();
-    if (filtered) return filtered;
+    if (branchFilterIds.length === 1) return branchFilterIds[0] ?? "";
     return dayColumns[0]?.bookingBranchId ?? "";
-  }, [branchFilterId, dayColumns]);
+  }, [branchFilterIds, dayColumns]);
 
   const { rows: planRows, loading: planLoading } = usePracticalSlotPlan(primaryBranchId, open);
 
@@ -583,17 +609,21 @@ export default function AdminDrivingDayModal({
       setCell(`${instructorKey}|${time}`, cell, true);
     }
 
-    // Pass 2: fill real schedule rows covered by [start, end) that have no booking yet so
+    // Pass 2: fill on-plan schedule rows covered by [start, end) that have no booking yet so
     // busy-only hours of the same booking are not left as grey occupied cells.
     // Do NOT include the synthetic 14:00 lunch row from ensureLunchBreakRow — that row exists
     // only so admins can book custom lunch slots; painting it green from a 13:20→15:00
     // exclusive end is a visual false booking.
+    // Off-plan custom slots (e.g. lunch at 14:00 with a 70-minute endTime) must not paint the
+    // next plan row (15:00) as a second card for the same booking; busy-slots still blocks it.
     const planTimes = bookableTimesFromPlan(
       planRows.length > 0 ? planRows : DEFAULT_PRACTICAL_SLOT_PLAN,
     ).map(padSlotTime);
+    const onPlanStarts = new Set(planTimes);
     for (const { instructorKey, branchId, cell, startM, endM } of cells) {
       if (!Number.isFinite(startM) || !Number.isFinite(endM) || endM <= startM) continue;
       const occurrenceStart = padSlotTime(cell.time);
+      if (!onPlanStarts.has(occurrenceStart)) continue;
       for (const planTime of planTimes) {
         const m = parseTimeToMinutes(planTime);
         if (!Number.isFinite(m) || m < startM || m >= endM) continue;
@@ -915,8 +945,8 @@ export default function AdminDrivingDayModal({
       <AdminDrivingFilters
         search={search}
         onSearchChange={setSearch}
-        branchId={branchFilterId}
-        onBranchIdChange={setBranchFilterId}
+        branchIds={branchFilterIds}
+        onBranchIdsChange={setBranchFilterIds}
         className="mb-3 shrink-0 px-1"
       />
 
@@ -1013,11 +1043,18 @@ export default function AdminDrivingDayModal({
                         <td className="sticky left-0 z-20 bg-card px-3 py-1.5 border-r border-b border-primary/15 text-muted-foreground font-medium tabular-nums shadow-[1px_0_0_0_hsl(var(--primary)/0.1)] text-xs">
                           {t("adminDrivingDayModalBreak")}
                         </td>
-                        {dayColumns.map((col) => (
+                        {dayColumns.map((col) => {
+                            const columnBookable = instructorServesBranchOnDate(
+                              col.instructor,
+                              col.bookingBranchId,
+                              day,
+                            );
+                            return (
                             <td
                               key={`break-${rowIdx}-${col.instructor.id}-${col.bookingBranchId}`}
                               className="p-0 border-r border-b border-border/30 last:border-r-0"
                             >
+                              {columnBookable ? (
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1033,8 +1070,12 @@ export default function AdminDrivingDayModal({
                               >
                                 +
                               </button>
+                              ) : (
+                                <div className="w-full min-h-14 bg-muted/70" aria-hidden />
+                              )}
                             </td>
-                          ))}
+                            );
+                          })}
                       </tr>
                     );
                   }
@@ -1067,6 +1108,7 @@ export default function AdminDrivingDayModal({
                       </td>
                       {dayColumns.map((col) => {
                           const ins = col.instructor;
+                          const columnBookable = instructorServesBranchOnDate(ins, col.bookingBranchId, day);
                           const booking = resolveCellBooking(ins, col.bookingBranchId, time);
                           const blockReason = !booking ? resolveBlockReason(ins.id, time) : null;
                           const blocked = blockReason != null;
@@ -1173,7 +1215,7 @@ export default function AdminDrivingDayModal({
                                     ) : null}
                                   </TooltipContent>
                                 </Tooltip>
-                              ) : blocked ? (
+                              ) : !columnBookable || blocked ? (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div

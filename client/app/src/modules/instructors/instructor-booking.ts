@@ -1,3 +1,6 @@
+import { yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
+import { branchIdsForUndatedPicker } from "src/modules/instructors/instructorTemporaryTransfer";
+
 export const PRACTICAL_LESSON_TYPES = ["exam", "city"] as const;
 
 export type PracticalLessonType = (typeof PRACTICAL_LESSON_TYPES)[number];
@@ -11,19 +14,24 @@ export type InstructorFilterInput = {
 
 type InstructorWithBranches = {
   availableBranchIds?: readonly string[];
+  temporaryTransfers?: readonly {
+    branchId: string;
+    startsOn: string;
+    endsOn: string;
+  }[];
 };
 
 type InstructorForPracticalBooking = InstructorWithBranches & {
   teachesPractical: boolean;
 };
 
-/** True when the instructor is linked to at least one of the given branch ids (N:N via `instructor_branches`). */
+/** True when the instructor can teach at one of the branches on some bookable day (permanent link or a transfer that has not ended). */
 export function instructorServesAnyBranch(
   instructor: InstructorWithBranches,
   branchIds: readonly string[],
 ): boolean {
   if (branchIds.length === 0) return true;
-  const served = new Set(instructor.availableBranchIds ?? []);
+  const served = new Set(branchIdsForUndatedPicker(instructor, yerevanTodayIso()));
   return branchIds.some((id) => served.has(id));
 }
 
@@ -88,7 +96,7 @@ export function filterInstructorsForPracticalBooking(
     if (branchesForCity.length === 0) return false;
 
     if (selectedBranchIds.size === 0) return false;
-    const instructorBranches = instructor.availableBranchIds ?? [];
+    const instructorBranches = branchIdsForUndatedPicker(instructor, yerevanTodayIso());
     return instructorBranches.some((id) => selectedBranchIds.has(id));
   });
 }

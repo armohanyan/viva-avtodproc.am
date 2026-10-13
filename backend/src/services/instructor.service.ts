@@ -4,6 +4,7 @@ import {
   FleetCar,
   FleetCarInstructor,
   InstructorBranch,
+  InstructorTemporaryBranchTransfer,
   InstructorProfile,
   InstructorScheduleRule,
   OAuthAccount,
@@ -12,7 +13,10 @@ import {
 } from '../models';
 import { Op } from 'sequelize';
 import FleetService from './fleet.service';
-import InstructorBranchService from './instructor-branch.service';
+import InstructorBranchService, {
+  type TemporaryBranchTransferInput,
+  type TemporaryBranchTransferRow,
+} from './instructor-branch.service';
 import InstructorStudentRatingService from './instructor-student-rating.service';
 import ErrorsUtil from '../utils/errors.util';
 import HttpStatusCodesUtil from '../utils/http-status-codes.util';
@@ -42,6 +46,8 @@ export type InstructorDto = {
   transmission: string;
   imageSrc: string;
   availableBranchIds: number[];
+  /** Inclusive ranges when the instructor works only at `branchId`. */
+  temporaryTransfers: TemporaryBranchTransferRow[];
   teachesPractical: boolean;
   teachesTheory: boolean;
   /** Fleet vehicles assigned to this instructor (`fleet_car_instructors`). */
@@ -61,6 +67,7 @@ function toDto(
   user: User,
   profile: InstructorProfile,
   branchIds: number[],
+  temporaryTransfers: TemporaryBranchTransferRow[],
   effectiveRating: number,
   studentRatingCount: number,
   fleetCarIds: number[],
@@ -83,6 +90,7 @@ function toDto(
     transmission: derived.transmission,
     imageSrc: profile.imageSrc,
     availableBranchIds: branchIds,
+    temporaryTransfers,
     teachesPractical: profile.teachesPractical,
     teachesTheory: profile.teachesTheory,
     fleetCarIds,
@@ -94,11 +102,7 @@ export default class InstructorService {
   static async list(includeInviteEligibility = false, branchId?: number): Promise<InstructorDto[]> {
     let branchInstructorUserIds: number[] | undefined;
     if (branchId !== undefined) {
-      const branchLinks = await InstructorBranch.findAll({
-        where: { branchId },
-        attributes: ['instructorUserId'],
-      });
-      branchInstructorUserIds = [...new Set(branchLinks.map((l) => l.instructorUserId))];
+      branchInstructorUserIds = await InstructorBranchService.instructorUserIdsForBranchList(branchId);
       if (branchInstructorUserIds.length === 0) return [];
     }
 
@@ -125,6 +129,9 @@ export default class InstructorService {
       list.push(l.branchId);
       byInstructor.set(l.instructorUserId, list);
     }
+    const transfersByInstructor = await InstructorBranchService.listTemporaryTransfersByInstructorIds(
+      profiles.map((p) => p.userId),
+    );
     const aggs = await InstructorStudentRatingService.aggregatesForInstructors(profiles.map((p) => p.userId));
     const fleetByInst = await FleetService.listCarIdsByInstructorIds(profiles.map((p) => p.userId));
 
@@ -146,6 +153,7 @@ export default class InstructorService {
         const studentRatingCount = agg?.count ?? 0;
         const effective = studentRatingCount > 0 ? (agg?.avg ?? p.rating) : 5;
         const bIds = byInstructor.get(p.userId) ?? [];
+        const transfers = transfersByInstructor.get(p.userId) ?? [];
         const fcIds = fleetByInst.get(p.userId) ?? [];
         const carsForInst = fcIds.map((id) => carById.get(id)).filter((c): c is FleetCar => c != null);
         const { car, transmission } = FleetService.derivePublicCarFields(carsForInst);
@@ -155,7 +163,7 @@ export default class InstructorService {
                 eligible: !u.passwordHash && !oauthUserIds.has(u.id),
               }
             : undefined;
-        return toDto(u, p, bIds, effective, studentRatingCount, fcIds, { car, transmission }, invite);
+        return toDto(u, p, bIds, transfers, effective, studentRatingCount, fcIds, { car, transmission }, invite);
       })
       .filter((row): row is InstructorDto => row != null);
   }
@@ -169,12 +177,14 @@ export default class InstructorService {
       | 'fleetCarIds'
       | 'car'
       | 'transmission'
+      | 'temporaryTransfers'
       | 'practicalSalaryPerLessonAmd'
       | 'theorySalaryPerLessonAmd'
     > & {
       fleetCarIds?: number[];
       practicalSalaryPerLessonAmd?: number;
       theorySalaryPerLessonAmd?: number;
+      temporaryTransfers?: TemporaryBranchTransferInput[];
     },
   ): Promise<InstructorDto> {
     const emailNorm = input.email.trim().toLowerCase();
@@ -211,6 +221,9 @@ export default class InstructorService {
       status: input.status,
     });
     await InstructorBranchService.syncBranches(user.id, input.availableBranchIds);
+    if (input.temporaryTransfers !== undefined) {
+      await InstructorBranchService.syncTemporaryTransfers(user.id, input.temporaryTransfers);
+    }
     await InstructorScheduleRule.create({
       instructorUserId: user.id,
       ruleKind: 'lunch',
@@ -247,9 +260,13 @@ export default class InstructorService {
   static async update(
     id: number,
     patch: Partial<
-      Omit<InstructorDto, 'id' | 'availableBranchIds' | 'studentRatingCount' | 'car' | 'transmission'>
+      Omit<
+        InstructorDto,
+        'id' | 'availableBranchIds' | 'temporaryTransfers' | 'studentRatingCount' | 'car' | 'transmission'
+      >
     > & {
       availableBranchIds?: number[];
+      temporaryTransfers?: TemporaryBranchTransferInput[];
       fleetCarIds?: number[];
     },
   ): Promise<InstructorDto | null> {
@@ -287,6 +304,9 @@ export default class InstructorService {
     if (patch.availableBranchIds !== undefined) {
       await InstructorBranchService.syncBranches(id, patch.availableBranchIds);
     }
+    if (patch.temporaryTransfers !== undefined) {
+      await InstructorBranchService.syncTemporaryTransfers(id, patch.temporaryTransfers);
+    }
     if (patch.fleetCarIds !== undefined) {
       await FleetService.syncInstructorCars(id, patch.fleetCarIds);
     }
@@ -323,6 +343,7 @@ export default class InstructorService {
     const studentRatingCount = agg?.count ?? 0;
     const effective = studentRatingCount > 0 ? (agg?.avg ?? profile.rating) : 5;
     const branchIds = links.map((l) => l.branchId);
+    const temporaryTransfers = await InstructorBranchService.listTemporaryTransfers(id);
     const fleetCarIds = await FleetService.listCarIdsForInstructor(id);
 
     const fleetCars =
@@ -331,7 +352,7 @@ export default class InstructorService {
         : await FleetCar.findAll({ where: { id: { [Op.in]: fleetCarIds } } });
     const { car, transmission } = FleetService.derivePublicCarFields(fleetCars);
 
-    return toDto(u, profile, branchIds, effective, studentRatingCount, fleetCarIds, {
+    return toDto(u, profile, branchIds, temporaryTransfers, effective, studentRatingCount, fleetCarIds, {
       car,
       transmission,
     });
@@ -345,6 +366,7 @@ export default class InstructorService {
     await InstructorScheduleRule.destroy({ where: { instructorUserId: id } });
     await FleetCarInstructor.destroy({ where: { instructorUserId: id } });
     await InstructorBranch.destroy({ where: { instructorUserId: id } });
+    await InstructorTemporaryBranchTransfer.destroy({ where: { instructorUserId: id } });
     const p = await InstructorProfile.destroy({ where: { userId: id } });
     const u = await User.destroy({ where: { id } });
     return p > 0 && u > 0;

@@ -4,9 +4,10 @@
  * Columns (header-aware aliases):
  *   date | time | instructor | student | phone | status | amount | [branch] | …
  *
- * Branch resolution:
- *   - non-empty Branch cell → match by id/code (1–4), address, or name (instructor must serve it)
- *   - empty / missing → instructor must have exactly one linked branch
+ * Branch resolution (uses the lesson date):
+ *   - non-empty Branch cell → match by id/code (1–4), address, or name (instructor must serve it that day)
+ *   - empty / missing → instructor must have exactly one effective branch that day
+ *   - a temporary transfer replaces permanent branches for dates it covers
  */
 import * as XLSX from 'xlsx';
 
@@ -16,7 +17,10 @@ import BookingBulkImportService, {
   type BulkImportResult,
   type BulkImportRowError,
 } from './booking-bulk-import.service';
-import InstructorBranchService from './instructor-branch.service';
+import InstructorBranchService, {
+  effectiveBranchIds,
+  type TemporaryBranchTransferRow,
+} from './instructor-branch.service';
 import { normalizeTimeHHMM } from '../utils/booking-slot.util';
 import { matchBranchFromExcelCell } from '../utils/excel-branch-codes.util';
 import { parseStudentPhones } from '../utils/student-phones.util';
@@ -101,6 +105,7 @@ type InstructorCache = {
   canonicalName: string;
   userId: number;
   branchIds: number[];
+  temporaryTransfers: TemporaryBranchTransferRow[];
 };
 
 type ResolvedRow = {
@@ -552,11 +557,13 @@ export default class PracticalFlatXlsxImportService {
       }
       if (matched.warning) result.resolveWarnings.push(matched.warning);
       const branchIds = await InstructorBranchService.listBranchIdsForInstructor(matched.user.id);
+      const temporaryTransfers = await InstructorBranchService.listTemporaryTransfers(matched.user.id);
       instructorCache.set(excelName, {
         excelName,
         canonicalName: matched.user.name.trim(),
         userId: matched.user.id,
         branchIds,
+        temporaryTransfers,
       });
     }
 
@@ -576,9 +583,10 @@ export default class PracticalFlatXlsxImportService {
       let branchId: number | null = null;
       let branchName: string | null = null;
       let resolveReason: string | null = null;
+      const servedBranchIds = effectiveBranchIds(cached.branchIds, cached.temporaryTransfers, row.dateIso);
 
       if (forcedBranch) {
-        if (!cached.branchIds.includes(forcedBranch.id)) {
+        if (!servedBranchIds.includes(forcedBranch.id)) {
           resolveReason = `Instructor "${cached.canonicalName}" does not serve forced branch "${forcedBranch.name}"`;
         } else {
           branchId = forcedBranch.id;
@@ -588,22 +596,22 @@ export default class PracticalFlatXlsxImportService {
         const matchedBranch = matchBranchByName(row.branchName, allBranches);
         if ('error' in matchedBranch) {
           resolveReason = matchedBranch.error;
-        } else if (!cached.branchIds.includes(matchedBranch.branch.id)) {
+        } else if (!servedBranchIds.includes(matchedBranch.branch.id)) {
           resolveReason = `Instructor "${cached.canonicalName}" does not serve branch "${matchedBranch.branch.name}"`;
         } else {
           branchId = matchedBranch.branch.id;
           branchName = matchedBranch.branch.name;
         }
-      } else if (cached.branchIds.length === 0) {
+      } else if (servedBranchIds.length === 0) {
         resolveReason = `Instructor "${cached.canonicalName}" has no linked branch (provide Branch column)`;
-      } else if (cached.branchIds.length > 1) {
+      } else if (servedBranchIds.length > 1) {
         const names = allBranches
-          .filter((b) => cached.branchIds.includes(b.id))
+          .filter((b) => servedBranchIds.includes(b.id))
           .map((b) => b.name)
           .join(', ');
         resolveReason = `Instructor "${cached.canonicalName}" serves multiple branches (${names}); Branch column required`;
       } else {
-        const onlyId = cached.branchIds[0]!;
+        const onlyId = servedBranchIds[0]!;
         const only = allBranches.find((b) => b.id === onlyId);
         if (!only) {
           resolveReason = `Instructor "${cached.canonicalName}" branch id ${onlyId} not found`;
