@@ -32,9 +32,13 @@ import { useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 import { usePackages } from "src/modules/packages/usePackages";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
+import {
+  heroBackgroundImageStyle,
+  useDeferredHeroBackground,
+} from "src/modules/marketing/useDeferredHeroBackground";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
-import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { cn } from "src/lib/utils";
 import PackagePromoImage from "src/components/PackagePromoImage";
 
 function telHrefFromListedPhone(phone: string): string {
@@ -49,7 +53,7 @@ export default function Home() {
   const { cities } = useCities();
   const { instructors } = useInstructors();
   const { packages: apiPackages, loading: packagesLoading } = usePackages();
-  const { data: mkt } = useMarketingPublic();
+  const { data: mkt, loading: marketingLoading } = useMarketingPublic();
   const displayPackages = useMemo(
     () => [...apiPackages].sort((a, b) => a.lessons - b.lessons),
     [apiPackages],
@@ -76,8 +80,13 @@ export default function Home() {
       rating: x.rating,
     }));
   }, [mkt, lang]);
-  const siteContent = mkt?.siteContent;
-  const heroBackgroundImage = sameOriginStaffUploadUrl(siteContent?.homeHeroBackgroundImage) ?? "/home-hero-2.svg";
+  const heroServerUrl = mkt
+    ? mkt.siteContent.homeHeroBackgroundImage
+    : marketingLoading
+      ? undefined
+      : null;
+  const heroBackground = useDeferredHeroBackground(heroServerUrl);
+  const heroBackgroundImage = heroBackground.src;
 
   const heroContact = useMemo(() => {
     const contactPhones = (mkt?.contact?.phones ?? []).map((p) => p.trim()).filter(Boolean);
@@ -219,8 +228,15 @@ export default function Home() {
 
       <section className="relative bg-hero text-hero-foreground overflow-hidden">
         <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
+          className={cn("absolute inset-0 bg-hero", heroBackground.pending && "animate-pulse")}
+          aria-hidden="true"
+        />
+        <div
+          className={cn(
+            "absolute inset-0 bg-cover bg-center transition-opacity duration-700 ease-out",
+            heroBackgroundImage ? "opacity-100" : "opacity-0",
+          )}
+          style={heroBackgroundImageStyle(heroBackgroundImage)}
           aria-hidden="true"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-hero/40 to-hero/90" />

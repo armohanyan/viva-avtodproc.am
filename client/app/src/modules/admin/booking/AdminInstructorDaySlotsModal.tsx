@@ -28,6 +28,8 @@ type Props = {
   slotSource?: InstructorDaySlotSource;
   /** Treat this booking's occupied times as selectable (editing the same booking). */
   ignoreBusyBookingId?: string;
+  /** When set, slots on a date that returns false cannot be selected (temporary branch transfer). */
+  isDateBookable?: (dateIso: string) => boolean;
   onConfirm: (entries: { dateIso: string; time: string }[]) => void;
   t: (k: TranslationKey) => string;
 };
@@ -44,6 +46,7 @@ export default function AdminInstructorDaySlotsModal({
   maxSelectableSlotsErrorKey = "adminBookingValPackagePracticalCount",
   slotSource = "branch",
   ignoreBusyBookingId = "",
+  isDateBookable,
   onConfirm,
   t,
 }: Props) {
@@ -79,6 +82,8 @@ export default function AdminInstructorDaySlotsModal({
     [sessionEntries, viewDay],
   );
 
+  const dayBookable = isDateBookable ? isDateBookable(viewDay) : true;
+
   const toggleSlot = (time: string) => {
     const key = slotEntryKey(viewDay, time);
     if (pickedKeys.has(key)) {
@@ -86,6 +91,7 @@ export default function AdminInstructorDaySlotsModal({
       setCapError(false);
       return;
     }
+    if (!dayBookable) return;
     const merged = mergeSlotEntries(sessionEntries, [
       { dateIso: viewDay, time: padSlotTime(time) },
     ]);
@@ -167,12 +173,14 @@ export default function AdminInstructorDaySlotsModal({
 
       {loading ? (
         <p className="text-sm text-muted-foreground py-4">{t("instructorAvailabilityCalendarLoading")}</p>
+      ) : !dayBookable ? (
+        <p className="text-sm text-muted-foreground py-4">{t("instructorTemporaryTransferDayUnavailable")}</p>
       ) : slots.length === 0 ? (
         <p className="text-sm text-muted-foreground py-4">{t("bookingNoSlotsInWeek")}</p>
       ) : (
         <div className="max-h-[min(60vh,420px)] overflow-y-auto space-y-2 pr-1">
           {slots.map((slot) => {
-            const isAvailable = slot.status === "available";
+            const isAvailable = dayBookable && slot.status === "available";
             const isSelected = pickedKeys.has(slotEntryKey(viewDay, slot.time));
             return (
               <button

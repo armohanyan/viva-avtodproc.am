@@ -649,6 +649,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                     <div className="space-y-2">
                       {current?.options.map((opt, i) => {
                         const hideImmediateFeedback = timedExam;
+                        const answerLocked = !hideImmediateFeedback && selected !== null;
                         const isSelectedOption = selected === i;
                         const isCorrectOption = i === q!.correctIndex;
                         const explanation = current.explanation;
@@ -658,8 +659,12 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                           <div key={i} className="rounded-xl border border-transparent">
                             <button
                               type="button"
-                              onClick={() => setSelected(i)}
-                              className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                              disabled={answerLocked}
+                              onClick={() => {
+                                if (answerLocked) return;
+                                setSelected(i);
+                              }}
+                              className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors disabled:cursor-default disabled:opacity-100 ${
                                 hideImmediateFeedback
                                   ? isSelectedOption
                                     ? "border-primary bg-primary/10 text-foreground"
@@ -749,6 +754,7 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                             <h2 className="text-lg font-semibold text-foreground mb-6 leading-snug">{loc.text}</h2>
                             <div className="space-y-2">
                               {loc.options.map((opt, optIdx) => {
+                                const answerLocked = !hideImmediateFeedback && sel !== null;
                                 const isSelectedOption = sel === optIdx;
                                 const isCorrectOption = optIdx === question.correctIndex;
                                 const explanation = loc.explanation;
@@ -758,11 +764,13 @@ function ExamQuizRunner({ mode, listPath }: RunnerProps) {
                                   <div key={optIdx} className="rounded-xl border border-transparent">
                                     <button
                                       type="button"
+                                      disabled={answerLocked}
                                       onClick={() => {
+                                        if (answerLocked) return;
                                         setAnswerAt(qIdx, optIdx);
                                         setIndex(qIdx);
                                       }}
-                                      className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors ${
+                                      className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-colors disabled:cursor-default disabled:opacity-100 ${
                                         hideImmediateFeedback
                                           ? isSelectedOption
                                             ? "border-primary bg-primary/10 text-foreground"

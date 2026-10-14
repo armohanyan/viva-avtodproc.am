@@ -16,14 +16,54 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
 
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    const lockedScrollers: { el: HTMLElement; overflow: string }[] = [];
+    document.querySelectorAll("body *").forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      const overflowY = window.getComputedStyle(node).overflowY;
+      if (overflowY !== "auto" && overflowY !== "scroll") return;
+      lockedScrollers.push({ el: node, overflow: node.style.overflow });
+      node.style.overflow = "hidden";
+    });
+
+    const preventBackgroundScroll = (event: Event) => {
+      event.preventDefault();
     };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      const fromDialogControl =
+        event.target instanceof Element && Boolean(event.target.closest("[role='dialog'] button, [role='dialog'] a"));
+      if (
+        !fromDialogControl &&
+        (event.key === " " ||
+          event.key === "ArrowUp" ||
+          event.key === "ArrowDown" ||
+          event.key === "PageUp" ||
+          event.key === "PageDown" ||
+          event.key === "Home" ||
+          event.key === "End")
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    document.addEventListener("wheel", preventBackgroundScroll, { capture: true, passive: false });
+    document.addEventListener("touchmove", preventBackgroundScroll, { capture: true, passive: false });
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      for (const scroller of lockedScrollers) scroller.el.style.overflow = scroller.overflow;
+      document.removeEventListener("wheel", preventBackgroundScroll, { capture: true });
+      document.removeEventListener("touchmove", preventBackgroundScroll, { capture: true });
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
@@ -51,7 +91,7 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
         <img
           src={url}
           alt={alt}
-          className="max-h-64 sm:max-h-80 max-w-full w-auto object-contain pointer-events-none"
+          className="max-h-[min(16rem,28dvh)] w-auto max-w-full object-contain pointer-events-none sm:max-h-[min(20rem,32dvh)]"
           loading="lazy"
           decoding="async"
           onError={() => setFailed(true)}
@@ -64,7 +104,7 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
               role="dialog"
               aria-modal="true"
               aria-labelledby={titleId}
-              className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-1 sm:p-2"
+              className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden overscroll-none bg-black/85 p-3 sm:p-4"
               onClick={() => setOpen(false)}
             >
               <span id={titleId} className="sr-only">
@@ -79,13 +119,13 @@ export default function ExamQuestionFigure({ url, alt }: { url: string; alt: str
                 <X className="h-5 w-5" />
               </button>
               <div
-                className="flex h-[98vh] w-[98vw] items-center justify-center"
+                className="flex h-full min-h-0 w-full min-w-0 items-center justify-center overflow-hidden"
                 onClick={(event) => event.stopPropagation()}
               >
                 <img
                   src={url}
                   alt={alt}
-                  className="h-full w-full max-h-full max-w-full object-contain rounded-md shadow-2xl"
+                  className="max-h-[calc(100dvh-1.5rem)] max-w-[calc(100dvw-1.5rem)] object-contain rounded-md shadow-2xl"
                   onError={() => {
                     setFailed(true);
                     setOpen(false);

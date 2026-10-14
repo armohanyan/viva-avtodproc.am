@@ -25,9 +25,13 @@ import { useBranches } from "src/modules/branches";
 import { cityNameById, useCities } from "src/modules/cities";
 import { usePackages } from "src/modules/packages/usePackages";
 import { useMarketingPublic } from "src/modules/marketing/useMarketingPublic";
+import {
+  heroBackgroundImageStyle,
+  useDeferredHeroBackground,
+} from "src/modules/marketing/useDeferredHeroBackground";
 import { MARKETING_STAT_LABEL_KEY } from "src/modules/marketing/statLabels";
 import type { TranslationKey } from "src/lib/i18n";
-import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
+import { cn } from "src/lib/utils";
 import { HomeServicesBlock } from "src/views/public/Services";
 import PackagePromoImage from "src/components/PackagePromoImage";
 
@@ -38,14 +42,19 @@ function telHrefFromListedPhone(phone: string): string {
   return compact ? `tel:${compact}` : "tel:";
 }
 
-export default function Home() {
+export default function Home({
+  initialHeroImage,
+}: {
+  /** Raw hero path from the server render. `undefined` means it is still unknown. */
+  initialHeroImage?: string | null;
+} = {}) {
   const { t } = useLang();
   const { MarketingLink, panelHref } = useAppNavigation();
   const { branches } = useBranches();
   const { cities } = useCities();
   const { instructors } = useInstructors();
   const { packages: apiPackages, loading: packagesLoading } = usePackages();
-  const { data: mkt } = useMarketingPublic();
+  const { data: mkt, loading: marketingLoading } = useMarketingPublic();
   const displayPackages = useMemo(
     () => [...apiPackages].sort((a, b) => a.lessons - b.lessons),
     [apiPackages],
@@ -61,8 +70,17 @@ export default function Home() {
     }));
   }, [mkt, t]);
 
-  const siteContent = mkt?.siteContent;
-  const heroBackgroundImage = sameOriginStaffUploadUrl(siteContent?.homeHeroBackgroundImage) ?? "/home-hero-2.svg";
+  const heroServerUrl =
+    mkt != null
+      ? mkt.siteContent.homeHeroBackgroundImage
+      : initialHeroImage !== undefined
+        ? initialHeroImage
+        : marketingLoading
+          ? undefined
+          : null;
+  const heroBackground = useDeferredHeroBackground(heroServerUrl);
+  const heroBackgroundImage = heroBackground.src;
+  const heroBackgroundStyle = heroBackgroundImageStyle(heroBackgroundImage);
 
   const heroContact = useMemo(() => {
     const contactPhones = (mkt?.contact?.phones ?? []).map((p) => p.trim()).filter(Boolean);
@@ -178,8 +196,18 @@ export default function Home() {
 
       <section className="relative flex flex-col min-h-[calc(100svh-4rem-1px)] bg-[#d5cbc3] sm:bg-hero text-hero-foreground overflow-hidden">
         <div
-          className="absolute inset-0 hidden sm:block bg-no-repeat bg-cover bg-center"
-          style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
+          className={cn(
+            "absolute inset-0 hidden bg-hero sm:block",
+            heroBackground.pending && "animate-pulse",
+          )}
+          aria-hidden="true"
+        />
+        <div
+          className={cn(
+            "absolute inset-0 hidden sm:block bg-no-repeat bg-cover bg-center transition-opacity duration-700 ease-out",
+            heroBackgroundImage ? "opacity-100" : "opacity-0",
+          )}
+          style={heroBackgroundStyle}
           aria-hidden="true"
         />
         <div className="absolute inset-0 opacity-10"
@@ -188,10 +216,17 @@ export default function Home() {
         <div className="relative flex-1 w-full max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 pb-6 sm:pt-16 sm:pb-10 lg:pt-24 lg:pb-14 flex flex-col">
           <h1 className="sr-only">{t("heroTitle")}</h1>
           <div
-            className="relative -mx-5 flex-1 min-h-[60vw] bg-no-repeat bg-cover bg-center sm:hidden"
-            style={{ backgroundImage: `url('${heroBackgroundImage}')` }}
+            className="relative -mx-5 flex-1 min-h-[60vw] overflow-hidden bg-[#d5cbc3] sm:hidden"
             aria-hidden="true"
           >
+            {heroBackground.pending ? <div className="absolute inset-0 animate-pulse bg-[#c4b8ae]" /> : null}
+            <div
+              className={cn(
+                "absolute inset-0 bg-no-repeat bg-cover bg-center transition-opacity duration-700 ease-out",
+                heroBackgroundImage ? "opacity-100" : "opacity-0",
+              )}
+              style={heroBackgroundStyle}
+            />
             <div className="absolute inset-x-0 bottom-0 h-1/4 bg-gradient-to-b from-transparent to-[#d5cbc3]" />
           </div>
           <div className="mt-auto pt-2 text-center sm:text-left sm:pt-12">

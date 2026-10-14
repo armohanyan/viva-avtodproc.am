@@ -4,9 +4,9 @@ import {
   PersonalTheoryLessonRequest,
   type PersonalTheoryLessonRequestStatus,
 } from '../models/personal-theory-lesson-request.model';
-import { InstructorBranch } from '../models/instructor-branch.model';
 import { InstructorProfile } from '../models/instructor-profile.model';
 import { User } from '../models/user.model';
+import InstructorBranchService from './instructor-branch.service';
 import { Booking } from '../models/booking.model';
 import { Notification } from '../models/notification.model';
 import BookingNotificationService from './booking-notification.service';
@@ -160,12 +160,7 @@ export default class PersonalTheoryLessonRequestService {
     if (!instructor) {
       throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.NOT_FOUND);
     }
-    const branchOk = await InstructorBranch.findOne({
-      where: { instructorUserId: input.instructorUserId, branchId: input.branchId },
-    });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
+    await InstructorBranchService.assertInstructorMayServeBranch(input.instructorUserId, input.branchId);
     const profile = await InstructorProfile.findOne({ where: { userId: input.instructorUserId } });
     assertInstructorTeachesTheoryPersonal(profile);
 

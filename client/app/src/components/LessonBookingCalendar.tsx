@@ -17,6 +17,7 @@ import {
   isSlotBlockedByAvailabilityRules,
   normalizeAvailabilityBlocksFromApi,
 } from "src/modules/instructors/instructorAvailability";
+import { instructorServesBranchOnDate } from "src/modules/instructors/instructorTemporaryTransfer";
 import {
   type BranchScheduleRule,
   branchScheduleBlockReason,
@@ -663,6 +664,14 @@ export default function LessonBookingCalendar({
   const resolveSlotCell = useCallback(
     (time: string, dateIso: string): SlotCellMeta => {
       const slot = padSlot(time);
+      const selectedInstructor = instructors.find((item) => item.id === selectedInstructorId) ?? null;
+      if (
+        branchId.trim() &&
+        selectedInstructor &&
+        !instructorServesBranchOnDate(selectedInstructor, branchId, dateIso)
+      ) {
+        return { status: "unavailable", reason: "unavailable", outsideBranchDayHours: true };
+      }
       const dayHours = branchHoursByDate.get(dateIso.slice(0, 10));
       const outsideBranchDayHours = dayHours != null && !dayHours.has(slot);
       if (outsideBranchDayHours) {
@@ -727,6 +736,9 @@ export default function LessonBookingCalendar({
       busyOccupiedKeys,
       availabilityBlocks,
       pendingBookingBlocksNew,
+      instructors,
+      selectedInstructorId,
+      branchId,
     ],
   );
 

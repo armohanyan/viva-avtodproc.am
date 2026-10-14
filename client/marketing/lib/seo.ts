@@ -326,10 +326,17 @@ export function baseLayoutMetadata(lang: SeoLang = CRAWL_SEO_LANG): Metadata {
     icons: {
       icon: [
         { url: "/favicon.ico", sizes: "any" },
-        { url: "/favicon.png", type: "image/png" },
+        { url: "/favicon.png", type: "image/png", sizes: "256x256" },
+        { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+        { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
       ],
       shortcut: ["/favicon.ico"],
       apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+    },
+    appleWebApp: {
+      capable: true,
+      title: "Viva",
+      statusBarStyle: "default",
     },
     title: {
       default: BRAND_TITLE[lang],

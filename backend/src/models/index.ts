@@ -24,6 +24,7 @@ import { FleetCar } from './fleet-car.model';
 import { FleetCarInstructor } from './fleet-car-instructor.model';
 import { InstructorScheduleRule } from './instructor-schedule-rule.model';
 import { InstructorBranch } from './instructor-branch.model';
+import { InstructorTemporaryBranchTransfer } from './instructor-temporary-branch-transfer.model';
 import { InstructorKmLog } from './instructor-km-log.model';
 import { InstructorPracticalSlotPlan } from './instructor-practical-slot-plan.model';
 import { InstructorProfile } from './instructor-profile.model';
@@ -114,6 +115,11 @@ Branch.belongsToMany(User, {
   otherKey: 'instructorUserId',
   as: 'instructors',
 });
+
+User.hasMany(InstructorTemporaryBranchTransfer, { foreignKey: 'instructorUserId', sourceKey: 'id' });
+InstructorTemporaryBranchTransfer.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
+Branch.hasMany(InstructorTemporaryBranchTransfer, { foreignKey: 'branchId', sourceKey: 'id' });
+InstructorTemporaryBranchTransfer.belongsTo(Branch, { foreignKey: 'branchId', targetKey: 'id' });
 
 User.hasMany(InstructorScheduleRule, { foreignKey: 'instructorUserId', sourceKey: 'id' });
 InstructorScheduleRule.belongsTo(User, { foreignKey: 'instructorUserId', targetKey: 'id' });
@@ -342,6 +348,7 @@ export {
   FleetCarInstructor,
   InstructorScheduleRule,
   InstructorBranch,
+  InstructorTemporaryBranchTransfer,
   InstructorKmLog,
   InstructorPracticalSlotPlan,
   InstructorProfile,

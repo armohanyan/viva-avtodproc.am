@@ -14,6 +14,7 @@ import {
   type OccupiedRange,
   type PersonalTheoryWindowAssessment,
 } from "./personalTheorySchedule";
+import { instructorServesBranchOnDate } from "src/modules/instructors/instructorTemporaryTransfer";
 
 export type PersonalTheoryScheduleStatus = {
   checking: boolean;
@@ -36,6 +37,8 @@ type Props = {
   endTime: string;
   onEndTime: (time: string) => void;
   excludeBookingId?: string;
+  /** When set, a date outside the instructor's effective branch is not bookable. */
+  branchId?: string;
   onStatus: (status: PersonalTheoryScheduleStatus) => void;
   t: (k: TranslationKey) => string;
 };
@@ -62,6 +65,7 @@ export default function PersonalTheoryScheduleFields({
   endTime,
   onEndTime,
   excludeBookingId = "",
+  branchId = "",
   onStatus,
   t,
 }: Props) {
@@ -132,20 +136,32 @@ export default function PersonalTheoryScheduleFields({
     [dateIso, startTime, endTime, ranges, blocks],
   );
 
+  const branchBlocked = useMemo(() => {
+    const branch = branchId.trim();
+    if (!branch || !instructorId || !dateIso.trim()) return false;
+    const instructor = instructors.find((item) => item.id === instructorId);
+    if (!instructor) return false;
+    return !instructorServesBranchOnDate(instructor, branch, dateIso);
+  }, [branchId, instructorId, dateIso, instructors]);
+
   const status = useMemo<PersonalTheoryScheduleStatus>(
     () => ({
       checking,
       checkFailed,
-      valid: assessment.valid,
-      unavailable: assessment.unavailable,
-      overlapLabel: assessment.overlap ? formatOccupiedRangeLabel(assessment.overlap) : null,
+      valid: assessment.valid && !branchBlocked,
+      unavailable: assessment.unavailable || branchBlocked,
+      overlapLabel: branchBlocked
+        ? null
+        : assessment.overlap
+          ? formatOccupiedRangeLabel(assessment.overlap)
+          : null,
       near: assessment.near.map((row) => ({
         label: formatOccupiedRangeLabel(row),
         gapMinutes: row.gapMinutes,
       })),
-      acknowledged: assessment.near.length === 0 || acknowledged,
+      acknowledged: branchBlocked || assessment.near.length === 0 || acknowledged,
     }),
-    [checking, checkFailed, assessment, acknowledged],
+    [checking, checkFailed, assessment, acknowledged, branchBlocked],
   );
 
   useEffect(() => {
@@ -184,6 +200,11 @@ export default function PersonalTheoryScheduleFields({
           onChange={(e) => onDateIso(e.target.value)}
           className="h-10"
         />
+        {branchBlocked ? (
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            {t("instructorTemporaryTransferDayUnavailable")}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

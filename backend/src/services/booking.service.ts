@@ -7,7 +7,6 @@ import {
   BookingSlot,
   Branch,
   FinanceTransaction,
-  InstructorBranch,
   InstructorProfile,
   Package,
   PackageLessonBalance,
@@ -27,6 +26,7 @@ import BookingSlotValidationService, {
   occupiedRangesMinutes,
 } from './booking-slot-validation.service';
 import PracticalSlotPlanService from './practical-slot-plan.service';
+import InstructorBranchService from './instructor-branch.service';
 import FinanceService from './finance.service';
 import BookingNotificationService from './booking-notification.service';
 import StudentPracticalCreditsService, { type PrepaidMeta } from './student-practical-credits.service';
@@ -1389,6 +1389,23 @@ async function replaceBookingSlotRows(
 const MAX_ADMIN_SLOT_ENTRIES = 64;
 
 type AdminSlotEntry = { dateIso: string; time: string };
+
+async function existingBookingDateIsos(bookingId: number, fallbackDateIso?: string | null): Promise<string[]> {
+  const slotRows = await BookingSlot.findAll({
+    where: { bookingId },
+    attributes: ['dateIso'],
+  });
+  const dates = [
+    ...new Set(
+      slotRows
+        .map((slot) => String(slot.dateIso).slice(0, 10))
+        .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day)),
+    ),
+  ];
+  const fallback = fallbackDateIso ? String(fallbackDateIso).slice(0, 10) : '';
+  if (dates.length === 0 && /^\d{4}-\d{2}-\d{2}$/.test(fallback)) dates.push(fallback);
+  return dates;
+}
 
 /** Exclusive end for an off-plan admin slot: next bookable start, otherwise +60 minutes. */
 function inferAdminCustomSlotEnd(start: string, bookableSorted: readonly string[]): string {
@@ -3563,12 +3580,11 @@ export default class BookingService {
       throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.NOT_FOUND);
     }
 
-    const branchOk = await InstructorBranch.findOne({
-      where: { instructorUserId: input.instructorUserId, branchId: input.branchId },
-    });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
+    await InstructorBranchService.assertInstructorServesBranchOnDates(
+      input.instructorUserId,
+      input.branchId,
+      [dateIso],
+    );
 
     const profile = await InstructorProfile.findOne({ where: { userId: input.instructorUserId } });
     assertInstructorTeachesLessonType(profile, 'practical');
@@ -3760,12 +3776,11 @@ export default class BookingService {
     if (!instructor) {
       throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.NOT_FOUND);
     }
-    const branchOk = await InstructorBranch.findOne({
-      where: { instructorUserId: input.instructorUserId, branchId: input.branchId },
-    });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
+    await InstructorBranchService.assertInstructorServesBranchOnDates(
+      input.instructorUserId,
+      input.branchId,
+      [dateIso],
+    );
     const profile = await InstructorProfile.findOne({ where: { userId: input.instructorUserId } });
     assertInstructorTeachesLessonType(profile, 'theory_personal');
     const hourly = Number(profile.hourlyPrice);
@@ -3892,12 +3907,11 @@ export default class BookingService {
           });
     if (!instructor) return null;
     const instructorUserId = instructor.id;
-    const branchOk = await InstructorBranch.findOne({
-      where: { instructorUserId, branchId: input.branchId },
-    });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
+    await InstructorBranchService.assertInstructorServesBranchOnDates(
+      instructorUserId,
+      input.branchId,
+      entries.map((entry) => entry.dateIso),
+    );
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, input.lessonType);
     const customTheoryEnd =
@@ -4536,13 +4550,11 @@ export default class BookingService {
             throw new InputValidationError('Instructor not found.', HttpStatusCodesUtil.BAD_REQUEST);
           }
           const instructorUserId = instructor.id;
-          const branchOk = await InstructorBranch.findOne({
-            where: { instructorUserId, branchId: input.branchId },
-            transaction,
-          });
-          if (!branchOk) {
-            throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-          }
+          await InstructorBranchService.assertInstructorServesBranchOnDates(
+            instructorUserId,
+            input.branchId,
+            practicalEntries.map((entry) => entry.dateIso),
+          );
           const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId }, transaction });
           assertInstructorTeachesLessonType(profile, 'practical');
           await BookingSlotValidationService.assertSlotEntriesBookable({
@@ -4791,12 +4803,7 @@ export default class BookingService {
 
     // Group theory cohorts may use a different branch than the instructor's practical branches.
     if (input.lessonType !== 'theory') {
-      const branchOk = await InstructorBranch.findOne({
-        where: { instructorUserId, branchId },
-      });
-      if (!branchOk) {
-        throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-      }
+      await InstructorBranchService.assertInstructorServesBranchOnDates(instructorUserId, branchId, [dateIso]);
     }
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
@@ -5084,12 +5091,16 @@ export default class BookingService {
 
     // Group theory cohorts may use a different branch than the instructor's practical branches.
     if (lessonType !== 'theory') {
-      const branchOk = await InstructorBranch.findOne({
-        where: { instructorUserId, branchId },
-      });
-      if (!branchOk) {
-        throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-      }
+      const keepExisting =
+        row.instructorUserId === instructorUserId && branchId === row.branchId
+          ? await existingBookingDateIsos(id, row.dateIso)
+          : [];
+      await InstructorBranchService.assertInstructorServesBranchOnDates(
+        instructorUserId,
+        branchId,
+        [dateIso],
+        keepExisting,
+      );
     }
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
@@ -5235,10 +5246,16 @@ export default class BookingService {
     }
 
     const branchId = patch.branchId !== undefined ? patch.branchId : row.branchId;
-    const branchOk = await InstructorBranch.findOne({ where: { instructorUserId, branchId } });
-    if (!branchOk) {
-      throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-    }
+    const keepExisting =
+      row.instructorUserId === instructorUserId && branchId === row.branchId
+        ? await existingBookingDateIsos(id, row.dateIso)
+        : [];
+    await InstructorBranchService.assertInstructorServesBranchOnDates(
+      instructorUserId,
+      branchId,
+      entries.map((entry) => entry.dateIso),
+      keepExisting,
+    );
 
     const profile = await InstructorProfile.findOne({ where: { userId: instructorUserId } });
     assertInstructorTeachesLessonType(profile, lessonType);
@@ -5423,12 +5440,17 @@ export default class BookingService {
       row.instructorUserId != null &&
       row.lessonType !== 'theory'
     ) {
-      const branchOk = await InstructorBranch.findOne({
-        where: { instructorUserId: row.instructorUserId, branchId: patch.branchId },
+      const slotRows = await BookingSlot.findAll({
+        where: { bookingId: id },
+        attributes: ['dateIso'],
       });
-      if (!branchOk) {
-        throw new InputValidationError('Instructor does not serve this branch.', HttpStatusCodesUtil.BAD_REQUEST);
-      }
+      const dates = [...new Set(slotRows.map((slot) => String(slot.dateIso).slice(0, 10)).filter(Boolean))];
+      if (dates.length === 0 && row.dateIso) dates.push(String(row.dateIso).slice(0, 10));
+      await InstructorBranchService.assertInstructorServesBranchOnDates(
+        row.instructorUserId,
+        patch.branchId,
+        dates,
+      );
     }
 
     AuditLogService.recordFireAndForget({

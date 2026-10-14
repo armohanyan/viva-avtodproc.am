@@ -1,3 +1,10 @@
+export type InstructorTemporaryTransfer = {
+  id: string;
+  branchId: string;
+  startsOn: string;
+  endsOn: string;
+};
+
 export type Instructor = {
   id: string;
   name: string;
@@ -16,6 +23,11 @@ export type Instructor = {
   imageSrc: string;
   /** Branch IDs (from branch directory) this instructor can teach at */
   availableBranchIds: string[];
+  /**
+   * Inclusive ranges when the instructor works only at `branchId`
+   * instead of `availableBranchIds`.
+   */
+  temporaryTransfers?: InstructorTemporaryTransfer[];
   /** Behind-the-wheel / practical driving lessons */
   teachesPractical: boolean;
   /** Classroom / online theory instruction */

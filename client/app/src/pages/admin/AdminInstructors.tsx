@@ -22,11 +22,14 @@ import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import { sameOriginStaffUploadUrl } from "src/lib/sameOriginStaffUploadUrl";
 import { BRAND_LOGO_FALLBACK_SRC } from "src/lib/brandLogo";
 import { uploadStaffImageFile } from "src/lib/staffImageUpload";
-import type { Branch } from "src/modules/branches";
 import { branchNameById, branchOptionLabel, useBranches } from "src/modules/branches";
 import { formatShortDateFromIso, localeForLang, todayIsoDate } from "src/lib/adminFormat";
 import { cityNameById, useCities } from "src/modules/cities";
 import { formatInstructorBranches } from "src/modules/instructors/instructorLabels";
+import InstructorTemporaryTransfersFields, {
+  temporaryTransferValidationKey,
+} from "src/modules/instructors/InstructorTemporaryTransfersFields";
+import { normalizeTemporaryTransfers } from "src/modules/instructors/instructorTemporaryTransfer";
 import type { ScheduleRuleKind } from "src/modules/instructors/instructorAvailability";
 import InstructorPracticalSlotsSection, {
   type InstructorPracticalSlotsSaveHandle,
@@ -234,6 +237,7 @@ export default function AdminInstructors() {
               studentRatingCount: typeof i.studentRatingCount === "number" ? i.studentRatingCount : 0,
               /** API uses numeric ids; branch options and validation use strings (see useBranches). */
               availableBranchIds: (i.availableBranchIds ?? []).map(String),
+              temporaryTransfers: normalizeTemporaryTransfers(i.temporaryTransfers),
               fleetCarIds: Array.isArray(i.fleetCarIds) ? i.fleetCarIds : [],
               ...(typeof i.inviteEligible === "boolean" ? { inviteEligible: i.inviteEligible } : {}),
             }))
@@ -534,6 +538,11 @@ export default function AdminInstructors() {
       showToast(error, "error");
       return;
     }
+    const transferError = temporaryTransferValidationKey(editIns.temporaryTransfers ?? []);
+    if (transferError) {
+      showToast(t(transferError), "error");
+      return;
+    }
 
     if (editIns.teachesPractical) {
       const slotsSaved = (await editPracticalSlotsSaveRef.current?.save()) ?? true;
@@ -555,6 +564,11 @@ export default function AdminInstructors() {
           teachesTheory: editIns.teachesTheory,
           fleetCarIds: editIns.fleetCarIds ?? [],
           availableBranchIds: editIns.availableBranchIds,
+          temporaryTransfers: (editIns.temporaryTransfers ?? []).map((row) => ({
+            branchId: Number(row.branchId),
+            startsOn: row.startsOn,
+            endsOn: row.endsOn,
+          })),
         },
       });
       setEditId(null);
@@ -986,6 +1000,15 @@ export default function AdminInstructors() {
                   />
                 </div>
               )}
+              {branches.length > 0 ? (
+                <InstructorTemporaryTransfersFields
+                  rows={editIns.temporaryTransfers ?? []}
+                  branches={branches}
+                  cities={cities}
+                  t={t}
+                  onChange={(next) => updateEdit(editIns.id, { temporaryTransfers: next })}
+                />
+              ) : null}
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">{t("status")}</label>
                 <select

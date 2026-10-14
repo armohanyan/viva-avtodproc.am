@@ -4,6 +4,7 @@ import { AppModal } from "src/components/AppModal";
 import RemarkConfirmDialog from "src/components/RemarkConfirmDialog";
 import AdminBookingPaymentSection from "src/components/admin/AdminBookingPaymentSection";
 import { Button } from "src/components/ui/button";
+import { branchIdsEffectiveOnEveryDate, instructorServesBranchOnDate } from "src/modules/instructors/instructorTemporaryTransfer";
 import type { Instructor } from "src/data/instructors";
 import { useLang, type TranslationKey } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
@@ -182,13 +183,22 @@ export default function PracticalBookingDetailModal({
   }, [booking, instructors]);
 
   const branchOptions = useMemo(() => {
-    const available = instructor?.availableBranchIds ?? [];
-    if (available.length === 0) return branches;
-    const allowed = new Set(available.map(String));
+    if (!instructor) return branches;
+    const dates = (
+      slotEntries.length > 0
+        ? slotEntries
+        : booking?.dateIso
+          ? [{ dateIso: booking.dateIso }]
+          : []
+    )
+      .map((entry) => String(entry.dateIso).slice(0, 10))
+      .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day));
+    const allowed = new Set(dates.length > 0 ? branchIdsEffectiveOnEveryDate(instructor, dates) : []);
     if (branchId) allowed.add(String(branchId));
+    if (allowed.size === 0) return branches;
     const filtered = branches.filter((b) => allowed.has(String(b.id)));
     return filtered.length > 0 ? filtered : branches;
-  }, [instructor, branches, branchId]);
+  }, [instructor, branches, branchId, slotEntries, booking?.dateIso]);
 
   const totalPriceAmd = useMemo(
     () => parseTotalPriceAmd(totalPriceStr, Number(booking?.totalPriceAmd) || 0),
@@ -601,6 +611,9 @@ export default function PracticalBookingDetailModal({
           dateIso={focusSlot?.dateIso?.slice(0, 10) || firstEntry?.dateIso || booking.dateIso}
           slotSource="practical"
           ignoreBusyBookingId={String(booking.id)}
+          isDateBookable={(dateIso) =>
+            instructorServesBranchOnDate(instructor, String(branchId || booking.branchId), dateIso)
+          }
           initialSelected={sortedEntries}
           t={t}
           onConfirm={(entries) => {

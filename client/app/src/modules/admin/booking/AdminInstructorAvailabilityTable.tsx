@@ -5,6 +5,7 @@ import type { Instructor } from "src/data/instructors";
 import type { TranslationKey } from "src/lib/i18n";
 import { vivaApiJson } from "src/lib/vivaApi";
 import { useBranches } from "src/modules/branches";
+import { instructorServesBranchOnDate } from "src/modules/instructors/instructorTemporaryTransfer";
 import { useAdminBranchFilter } from "src/modules/admin/AdminBranchFilterProvider";
 import { cn } from "src/lib/utils";
 import { yerevanAddCalendarMonths } from "src/lib/yerevanLessonCalendar";
@@ -65,8 +66,12 @@ type Props = {
   /**
    * When true, {@link bookingBranchId} alone filters columns (empty = all branches) and the
    * global admin header branch filter is ignored.
+   * When {@link branchIdsFilter} is also set, that list filters columns instead
+   * (empty list = all branches).
    */
   ignoreGlobalBranchFilter?: boolean;
+  /** Multi-branch column filter. Empty list shows every branch. */
+  branchIdsFilter?: readonly string[];
   /**
    * Grow to fill the parent height (no 720px cap). Parent should be a flex column with
    * `flex-1 min-h-0` so the matrix uses the remaining viewport.
@@ -91,15 +96,19 @@ export default function AdminInstructorAvailabilityTable({
   slotSource = "branch",
   reloadKey = 0,
   ignoreGlobalBranchFilter = false,
+  branchIdsFilter,
   fillViewport = false,
   t,
 }: Props) {
   const cellClickMode = Boolean(onCellClick);
   const { branches } = useBranches();
   const { branchId: adminBranchId, revision: branchFilterRevision } = useAdminBranchFilter();
-  const branchIdFilter = ignoreGlobalBranchFilter
-    ? bookingBranchId.trim()
-    : bookingBranchId.trim() || adminBranchId;
+  const branchIdFilter =
+    ignoreGlobalBranchFilter && branchIdsFilter !== undefined
+      ? branchIdsFilter
+      : ignoreGlobalBranchFilter
+        ? bookingBranchId.trim()
+        : bookingBranchId.trim() || adminBranchId;
   const [rangeStartIso, setRangeStartIso] = useState(defaultGridRangeStart);
   const [busyByInstructor, setBusyByInstructor] = useState<Map<string, InstructorBusySlotRow[]>>(new Map());
   const [gridLoading, setGridLoading] = useState(false);
@@ -118,9 +127,31 @@ export default function AdminInstructorAvailabilityTable({
   const dates = useMemo(() => gridDateRange(rangeStartIso), [rangeStartIso]);
   const rangeEndIso = dates[dates.length - 1] ?? rangeStartIso;
 
+  const bookedColumns = useMemo(() => {
+    const visible = new Set(dates);
+    const out: { instructorId: string; branchId: string }[] = [];
+    for (const [instructorId, rows] of busyByInstructor) {
+      for (const row of rows) {
+        const dateIso = String(row.dateIso ?? "").slice(0, 10);
+        const branchId = row.branchId != null ? String(row.branchId).trim() : "";
+        if (!branchId || !visible.has(dateIso)) continue;
+        if (slotSource === "practical") {
+          const lessonType = row.lessonType ?? (row.studentUserId === 0 ? "theory_group" : "practical");
+          if (lessonType !== "practical") continue;
+        }
+        out.push({ instructorId, branchId });
+      }
+    }
+    return out;
+  }, [busyByInstructor, dates, slotSource]);
+
   const instructorColumns = useMemo(
-    () => buildInstructorBranchColumns(branches, instructors, branchIdFilter),
-    [branches, instructors, branchIdFilter],
+    () =>
+      buildInstructorBranchColumns(branches, instructors, branchIdFilter, {
+        dateIsos: dates,
+        bookedColumns,
+      }),
+    [branches, instructors, branchIdFilter, dates, bookedColumns],
   );
 
   const instructorIds = useMemo(() => instructors.map((i) => i.id), [instructors]);
@@ -405,13 +436,15 @@ export default function AdminInstructorAvailabilityTable({
                           `${ins.id}|${branchId}|${dateIso.slice(0, 10)}`,
                         ) ||
                           selectedByInstructorDay.has(`${ins.id}|${dateIso.slice(0, 10)}`));
-                      const disabled = !cellClickMode && !studentName.trim();
+                      const bookable = instructorServesBranchOnDate(ins, branchId, dateIso);
+                      const disabled = (!cellClickMode && !studentName.trim()) || !bookable;
                       return (
                         <td key={`${dateIso}-${ins.id}-${branchId}`} className="p-0 border-r border-b border-border/30 last:border-r-0">
                           <button
                             type="button"
                             disabled={disabled}
                             onClick={() => {
+                              if (!bookable) return;
                               if (cellClickMode) {
                                 onCellClick?.({ instructor: ins, branchId, dateIso, busyCount });
                                 return;
@@ -433,10 +466,13 @@ export default function AdminInstructorAvailabilityTable({
                               pendingCount > 0 ? "text-[11px] leading-tight" : "text-sm",
                               "hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
                               hasPick && "ring-1 ring-inset ring-primary/60 bg-primary/10",
-                              disabled && "opacity-40 cursor-not-allowed",
+                              !bookable && "opacity-40 cursor-not-allowed bg-muted/40",
+                              disabled && bookable && "opacity-40 cursor-not-allowed",
                             )}
                             title={
-                              cellClickMode
+                              !bookable
+                                ? t("instructorTemporaryTransferDayUnavailable")
+                                : cellClickMode
                                 ? `${ins.name} · ${formatGridDateLabel(dateIso)} · ${busyCount} ${t("adminDrivingCellLessonsSuffix")}`
                                 : studentName.trim()
                                   ? pendingCount > 0
@@ -530,6 +566,9 @@ export default function AdminInstructorAvailabilityTable({
           maxSelectableSlots={maxSelectableSlots}
           maxSelectableSlotsErrorKey={maxSelectableSlotsErrorKey}
           slotSource={slotSource}
+          isDateBookable={(dateIso) =>
+            instructorServesBranchOnDate(slotModal.instructor, slotModal.branchId || bookingBranchId, dateIso)
+          }
           t={t}
           onConfirm={(entries) => {
             const instructorId = slotModal.instructor.id;

@@ -1,6 +1,7 @@
 import type { Instructor } from "src/data/instructors";
 import type { Branch } from "src/modules/branches";
 import { branchDisplayLabel, branchMinimalLabel } from "src/modules/branches";
+import { branchIdsEffectiveOnAnyDate } from "src/modules/instructors/instructorTemporaryTransfer";
 import { yerevanAddCalendarDays, yerevanAddCalendarMonths, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 
 /** Each grid page covers a calendar month — from `start` through the same day-of-month next month, inclusive. */
@@ -50,26 +51,61 @@ export function branchShortCode(name: string): string {
   return branchMinimalLabel(name);
 }
 
+export type InstructorBranchColumnOptions = {
+  /** When set, a column is included only if that branch is effective on at least one of these dates. */
+  dateIsos?: readonly string[];
+  /** Keep a column when a lesson is already booked there, even during a temporary transfer. */
+  bookedColumns?: readonly { instructorId: string; branchId: string }[];
+};
+
+/** Empty / missing filter means every branch. A string or a non-empty list limits columns. */
+export function branchIdFilterSet(
+  branchIdFilter?: string | readonly string[] | null,
+): Set<string> | null {
+  if (branchIdFilter == null) return null;
+  const raw = typeof branchIdFilter === "string" ? [branchIdFilter] : branchIdFilter;
+  const ids = [...raw].map((id) => String(id).trim()).filter(Boolean);
+  return ids.length > 0 ? new Set(ids) : null;
+}
+
 /**
  * Flat instructor columns: one column per instructor × served branch.
  * Multi-branch instructors are listed first (adjacent columns per branch), then single-branch.
  * Labels come from each branch’s `label` (else {@link branchMinimalLabel} on `name`).
- * When `branchIdFilter` is set, only that branch’s columns are included.
+ * When `branchIdFilter` is a branch id or a list of ids, only those columns are included.
+ * When `options.dateIsos` is set, membership follows temporary transfers for those dates.
  */
 export function buildInstructorBranchColumns(
   branches: readonly Branch[],
   instructors: readonly Instructor[],
-  branchIdFilter?: string | null,
+  branchIdFilter?: string | readonly string[] | null,
+  options?: InstructorBranchColumnOptions,
 ): DayGridInstructorColumn[] {
-  const filterId = branchIdFilter?.trim() || null;
+  const filterIds = branchIdFilterSet(branchIdFilter);
   const byId = new Map(branches.map((b) => [String(b.id), b]));
+  const dateIsos = (options?.dateIsos ?? []).map((day) => day.slice(0, 10)).filter(Boolean);
+  const bookedByInstructor = new Map<string, Set<string>>();
+  for (const booked of options?.bookedColumns ?? []) {
+    const instructorId = String(booked.instructorId);
+    const branchId = String(booked.branchId).trim();
+    if (!instructorId || !branchId) continue;
+    const set = bookedByInstructor.get(instructorId) ?? new Set<string>();
+    set.add(branchId);
+    bookedByInstructor.set(instructorId, set);
+  }
 
   const withServed = instructors.map((ins) => {
-    const allServed = (ins.availableBranchIds ?? [])
+    const servedIds = new Set(
+      dateIsos.length > 0
+        ? branchIdsEffectiveOnAnyDate(ins, dateIsos)
+        : (ins.availableBranchIds ?? []).map(String),
+    );
+    for (const branchId of bookedByInstructor.get(String(ins.id)) ?? []) servedIds.add(branchId);
+    const allServed = [...servedIds]
       .map((id) => byId.get(String(id)))
       .filter((b): b is Branch => Boolean(b))
       .sort((a, b) => a.name.localeCompare(b.name, "hy"));
-    const served = filterId ? allServed.filter((b) => String(b.id) === filterId) : allServed;
+    const served = filterIds ? allServed.filter((b) => filterIds.has(String(b.id))) : allServed;
     return { ins, allServed, served };
   });
 
