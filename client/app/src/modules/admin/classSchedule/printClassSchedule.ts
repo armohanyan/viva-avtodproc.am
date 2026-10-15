@@ -158,12 +158,13 @@ export function buildClassSchedulePrintHtml(
 <html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Armenian:wght@400;500;600;700&display=swap" />
   <title>${escapeHtml(labels.documentTitle)}</title>
   <style>
     ${pageCss}
     * { box-sizing: border-box; }
     body {
-      font-family: Arial, "Noto Sans Armenian", "Segoe UI", sans-serif;
+      font-family: "Noto Sans", "Noto Sans Armenian", Arial, "Segoe UI", sans-serif;
       font-size: 11pt;
       line-height: 1.3;
       color: #000;
@@ -318,13 +319,19 @@ export function printClassScheduleDocument(html: string): boolean {
 		doc.write(html);
 		doc.close();
 
-		let printed = false;
+		let started = false;
 		const runPrint = () => {
-			if (printed) return;
-			printed = true;
-			win.focus();
-			win.print();
-			window.setTimeout(() => iframe.remove(), 800);
+			if (started) return;
+			started = true;
+			const fontsReady = doc.fonts?.ready ?? Promise.resolve();
+			void Promise.race([
+				fontsReady,
+				new Promise((resolve) => window.setTimeout(resolve, 1200)),
+			]).then(() => {
+				win.focus();
+				win.print();
+				window.setTimeout(() => iframe.remove(), 800);
+			});
 		};
 
 		win.addEventListener("load", runPrint);

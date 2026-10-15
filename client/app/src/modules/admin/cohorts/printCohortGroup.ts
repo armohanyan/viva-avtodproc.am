@@ -147,12 +147,13 @@ export function buildCohortGroupPrintHtml(
 <html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Armenian:wght@400;500;600;700&display=swap" />
   <title>${escapeHtml(labels.documentTitle)}</title>
   <style>
     @page { size: A4 portrait; margin: 14mm 12mm; }
     * { box-sizing: border-box; }
     body {
-      font-family: Arial, "Noto Sans Armenian", "Segoe UI", sans-serif;
+      font-family: "Noto Sans", "Noto Sans Armenian", Arial, "Segoe UI", sans-serif;
       font-size: 11pt;
       line-height: 1.35;
       color: #000;

@@ -19,10 +19,19 @@ class App {
     this.app.set('trust proxy', 1);
     this.app.use(
       helmet({
-        // Default `same-origin` COOP severs Google's account chooser after confirm, so the modal spins forever.
-        crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
-        // Panel and marketing call the API cross-origin with credentials.
+        // Google's consent page (`/signin/oauth/id`) never finishes in Chrome when the hop
+        // into accounts.google.com is COOP-isolated or Referrer-Policy is no-referrer:
+        // their approval request fails XSRF and the progress bar loops.
+        crossOriginOpenerPolicy: { policy: 'unsafe-none' },
         crossOriginResourcePolicy: { policy: 'cross-origin' },
+        originAgentCluster: false,
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+        contentSecurityPolicy: {
+          directives: {
+            // Default `form-action 'self'` blocks the rest of a consent-form redirect chain.
+            formAction: ['https:', 'http:'],
+          },
+        },
       }),
     );
     this.app.use('/upload', express.static(path.join(process.cwd(), 'upload')));

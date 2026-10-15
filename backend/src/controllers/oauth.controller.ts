@@ -57,8 +57,13 @@ export default class OAuthController {
   }
 
   private static redirectToProvider(res: Response, url: string): void {
+    // These must win over Helmet. Otherwise Chrome keeps the user on Google's
+    // consent screen with the top progress bar running.
     res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.removeHeader('Origin-Agent-Cluster');
+    res.removeHeader('Content-Security-Policy');
     res.redirect(url);
   }
 
@@ -77,9 +82,16 @@ export default class OAuthController {
     res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    let formAction = "'self' https: http:";
+    try {
+      formAction = `'self' ${new URL(target).origin}`;
+    } catch {
+      /* keep the broad fallback */
+    }
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      `default-src 'none'; script-src 'unsafe-inline'; base-uri 'none'; form-action ${formAction}`,
     );
     res.status(200);
     res.type('html');

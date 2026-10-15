@@ -65,7 +65,8 @@ export function signOAuthState(
   returnOrigin?: string,
 ): string {
   const ro = sanitizeReturnOrigin(returnOrigin);
-  const nonce = provider === 'apple' ? crypto.randomBytes(16).toString('hex') : undefined;
+  const nonce =
+    provider === 'apple' || provider === 'google' ? crypto.randomBytes(16).toString('hex') : undefined;
   const payload: OAuthStatePayload = {
     t: 'oauth',
     v: 1,
