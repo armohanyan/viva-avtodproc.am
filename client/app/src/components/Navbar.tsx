@@ -22,8 +22,8 @@ type AdminNavEntry =
 
 export default function Navbar() {
   const { t } = useLang();
-  const { user } = useAccount();
-  const { pathname: location, navigate, MarketingLink, panelHref, marketingHref } = useAppNavigation();
+  const { user, signOut } = useAccount();
+  const { pathname: location, navigate, MarketingLink, panelHref } = useAppNavigation();
   const [open, setOpen] = useState(false);
 
   const shell = resolveAppShell(location);
@@ -288,11 +288,15 @@ export default function Navbar() {
                   <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-primary font-semibold text-sm">
                     A
                   </div>
-                  <a href={marketingHref("/")}>
-                    <Button variant="ghost" size="sm">
-                      {t("logout")}
-                    </Button>
-                  </a>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      void signOut();
+                    }}
+                  >
+                    {t("logout")}
+                  </Button>
                 </div>
               )}
             </div>

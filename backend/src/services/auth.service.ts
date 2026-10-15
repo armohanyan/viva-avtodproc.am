@@ -211,9 +211,25 @@ export default class AuthService {
     };
   }
 
-  static async logoutPlain(refreshPlain: string | undefined): Promise<void> {
-    if (refreshPlain) {
-      await RefreshTokenService.revokeByPlain(refreshPlain);
+  /**
+   * Ends every refresh session for the account that owns this cookie.
+   * Duplicate `viva_rt` cookies (two paths) must not leave another live token behind.
+   */
+  static async logoutPlain(refreshPlains: string | string[] | undefined): Promise<void> {
+    const plains = (Array.isArray(refreshPlains) ? refreshPlains : refreshPlains ? [refreshPlains] : []).filter(
+      (v) => v.length > 0,
+    );
+    const userIds = new Set<number>();
+    for (const plain of plains) {
+      const redeemed = await RefreshTokenService.redeem(plain);
+      if (redeemed.status === 'ok') {
+        userIds.add(redeemed.userId);
+      } else {
+        await RefreshTokenService.revokeByPlain(plain);
+      }
+    }
+    for (const userId of userIds) {
+      await RefreshTokenService.revokeAllForUser(userId);
     }
   }
 

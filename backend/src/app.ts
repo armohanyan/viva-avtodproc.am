@@ -17,7 +17,14 @@ class App {
     this.app = express();
     /** Behind nginx: forwarded headers are trusted for IP/rate-limit (express-rate-limit). */
     this.app.set('trust proxy', 1);
-    this.app.use(helmet());
+    this.app.use(
+      helmet({
+        // Default `same-origin` COOP severs Google's account chooser after confirm, so the modal spins forever.
+        crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+        // Panel and marketing call the API cross-origin with credentials.
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+      }),
+    );
     this.app.use('/upload', express.static(path.join(process.cwd(), 'upload')));
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "src/components/ui/button";
 import {
@@ -12,8 +12,6 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { tryRefreshAccessToken } from "src/lib/authSession";
 import { loadAccountSession } from "src/modules/accounts/account.session";
-import { absWouterHref } from "src/lib/wouterFullPath";
-
 type CallbackStatus = "loading" | "success" | "error";
 
 function resolveDest(
@@ -27,8 +25,13 @@ function resolveDest(
   return fallback;
 }
 
+/** Full navigation. Client-side routing was leaving this page on the spinner after Google returned. */
+function goToPanel(dest: string): void {
+  if (!dest.startsWith("/") || dest.startsWith("//") || dest.includes("://")) return;
+  window.location.replace(dest);
+}
+
 export default function AuthCallback() {
-  const [, setLocation] = useLocation();
   const { t } = useLang();
   const { showToast } = useToast();
   const { signIn } = useAccount();
@@ -92,7 +95,7 @@ export default function AuthCallback() {
         setStatus("success");
         showToast(t("socialAuthSuccess"), "success");
         const dest = resolveDest(session.accountType, safeRedirectCandidate);
-        window.setTimeout(() => setLocation(absWouterHref(dest)), 400);
+        window.setTimeout(() => goToPanel(dest), 400);
       })();
       return;
     }
@@ -111,14 +114,14 @@ export default function AuthCallback() {
       setStatus("success");
       showToast(t("socialAuthSuccess"), "success");
       const dest = resolveDest(accountType, safeRedirectCandidate);
-      window.setTimeout(() => setLocation(absWouterHref(dest)), 400);
+      window.setTimeout(() => goToPanel(dest), 400);
       return;
     }
 
     setStatus("error");
     setMessage(t("socialAuthMissingPayload"));
     showToast(t("socialAuthFailed"), "error");
-  }, [params, setLocation, showToast, signIn, t]);
+  }, [params, showToast, signIn, t]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
