@@ -6,7 +6,12 @@ import { Card } from "src/components/ui/card";
 import { Badge } from "src/components/ui/badge";
 import { CountUpText, Reveal } from "src/lib/motion";
 import InstructorCard from "src/components/InstructorCard";
+import InstructorLocationFilter from "src/components/InstructorLocationFilter";
 import { useInstructors } from "src/modules/instructors/useInstructors";
+import {
+  filterInstructorsByLocation,
+  instructorCityGroups,
+} from "src/modules/instructors/instructorLocationFilter";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppModal } from "src/components/AppModal";
@@ -58,9 +63,15 @@ export default function Home() {
     () => [...apiPackages].sort((a, b) => a.lessons - b.lessons),
     [apiPackages],
   );
-  const visibleInstructors = instructors.filter((ins) => ins.status === "active");
-  const homeInstructors = visibleInstructors.slice(0, 6);
-  const hasMoreInstructors = visibleInstructors.length > 6;
+  const [instructorCityKey, setInstructorCityKey] = useState("");
+  const [instructorRegionId, setInstructorRegionId] = useState("");
+  const instructorGroups = useMemo(() => instructorCityGroups(cities, branches), [cities, branches]);
+  const filteredInstructors = useMemo(
+    () => filterInstructorsByLocation(instructors, instructorGroups, instructorCityKey, instructorRegionId),
+    [instructors, instructorGroups, instructorCityKey, instructorRegionId],
+  );
+  const homeInstructors = filteredInstructors.slice(0, 6);
+  const hasMoreInstructors = filteredInstructors.length > 6;
   const [activeTestimonial, setActiveTestimonial] = useState(0);
 
   const stats = useMemo(() => {
@@ -425,25 +436,39 @@ export default function Home() {
         </section>
       )}
 
-      {homeInstructors.length > 0 ? (
+      {instructors.some((ins) => ins.status === "active") ? (
         <section className="py-20 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-14">
+            <div className="text-center mb-8">
               <p className="text-primary font-semibold text-sm uppercase tracking-wider mb-3">
                 {t("instructorsEyebrow")}
               </p>
-              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground">{t("instructorsTitle")}</h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {homeInstructors.map((ins, i) => (
+            <InstructorLocationFilter
+              groups={instructorGroups}
+              cityKey={instructorCityKey}
+              regionId={instructorRegionId}
+              onCityChange={(next) => {
+                setInstructorCityKey(next);
+                setInstructorRegionId("");
+              }}
+              onRegionChange={setInstructorRegionId}
+            />
+            {homeInstructors.length > 0 ? (
+            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+              {homeInstructors.map((ins) => (
                 <InstructorCard
-                  key={i}
+                  key={ins.id}
                   instructor={ins}
                   showBookButton={true}
                   imageObjectFit="cover"
                 />
               ))}
             </div>
+            ) : (
+              <p className="mt-8 text-center text-muted-foreground">{t("instructorFilterEmpty")}</p>
+            )}
             {hasMoreInstructors ? (
               <div className="text-center mt-10">
                 <MarketingLink href="/instructors">
