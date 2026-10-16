@@ -246,6 +246,96 @@ export function validateAdminPaymentInput(input: {
   return { paymentStatus: 'partial', paidAmountAmd: paid };
 }
 
+export const ADMIN_PAYMENT_METHODS = ['card', 'idram', 'cash', 'transfer'] as const;
+export type AdminPaymentMethod = (typeof ADMIN_PAYMENT_METHODS)[number];
+
+/** One collected payment the admin entered for a booking. */
+export type BookingPaymentInstallmentInput = {
+  id?: number;
+  amountAmd: number;
+  recordedAt: string;
+  method: AdminPaymentMethod;
+  note?: string | null;
+};
+
+export type ResolvedAdminPaymentInstallments = {
+  paymentStatus: AdminBookingPaymentStatus;
+  paidAmountAmd: number;
+  paymentNotes: string | null;
+  installments: BookingPaymentInstallmentInput[];
+};
+
+function isAdminPaymentMethod(value: unknown): value is AdminPaymentMethod {
+  return (ADMIN_PAYMENT_METHODS as readonly unknown[]).includes(value);
+}
+
+/**
+ * Status and paid total come from the installment sum.
+ * Zero-amount rows are dropped. Sum above the booking price is rejected.
+ */
+export function resolveAdminPaymentInstallments(
+  totalPriceAmd: number,
+  installments: readonly BookingPaymentInstallmentInput[],
+): ResolvedAdminPaymentInstallments {
+  const total = roundAmd(totalPriceAmd);
+  const kept: BookingPaymentInstallmentInput[] = [];
+  for (const raw of installments) {
+    if (!Number.isFinite(Number(raw.amountAmd))) {
+      throw new Error('Paid amount is required for partial payment.');
+    }
+    const amount = roundAmd(Number(raw.amountAmd));
+    if (amount < 0) {
+      throw new Error('Partial paid amount must be greater than zero.');
+    }
+    if (amount === 0) continue;
+    const recordedAt = new Date(raw.recordedAt);
+    if (Number.isNaN(recordedAt.getTime())) {
+      throw new Error('Invalid payment date.');
+    }
+    if (!isAdminPaymentMethod(raw.method)) {
+      throw new Error('Invalid payment method.');
+    }
+    const note = raw.note?.trim() ? raw.note.trim().slice(0, 2000) : null;
+    const id = raw.id != null ? Math.floor(Number(raw.id)) : 0;
+    kept.push({
+      ...(id > 0 ? { id } : {}),
+      amountAmd: amount,
+      recordedAt: recordedAt.toISOString(),
+      method: raw.method,
+      note,
+    });
+  }
+  const paid = kept.reduce((sum, row) => sum + row.amountAmd, 0);
+  if (total > 0 && paid > total) {
+    throw new Error('Partial paid amount must be less than the total booking price.');
+  }
+  if (total <= 0) {
+    return { paymentStatus: 'paid', paidAmountAmd: 0, paymentNotes: null, installments: [] };
+  }
+  if (paid <= 0) {
+    return { paymentStatus: 'unpaid', paidAmountAmd: 0, paymentNotes: null, installments: [] };
+  }
+  const notes = kept
+    .map((row) => row.note?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 2000);
+  if (paid >= total) {
+    return {
+      paymentStatus: 'paid',
+      paidAmountAmd: total,
+      paymentNotes: notes ? notes : null,
+      installments: kept,
+    };
+  }
+  return {
+    paymentStatus: 'partial',
+    paidAmountAmd: paid,
+    paymentNotes: notes ? notes : null,
+    installments: kept,
+  };
+}
+
 export type BookingPaymentStatusDb = AdminBookingPaymentStatus | 'pending' | 'failed';
 
 export function adminPaymentFieldsForDb(

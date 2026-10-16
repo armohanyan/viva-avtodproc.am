@@ -1,5 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
+import { z } from 'zod';
 import config from '../config';
+import { parseBody } from '../helpers';
 import { attachRefreshCookie } from '../helpers/auth-cookie.helper';
 import AuthService from '../services/auth.service';
 import {
@@ -9,8 +11,14 @@ import {
   exchangeAppleCode,
   exchangeFacebookCode,
   exchangeGoogleCode,
+  verifyGoogleIdToken,
 } from '../services/oauth-flow.service';
 import { verifyOAuthState } from '../services/oauth-state.service';
+import { SuccessHandlerUtil } from '../utils';
+import ErrorsUtil from '../utils/errors.util';
+import HttpStatusCodesUtil from '../utils/http-status-codes.util';
+
+const { InputValidationError } = ErrorsUtil;
 
 function pickQuery(q: Request['query'], key: string): string {
   const v = q[key];
@@ -22,7 +30,40 @@ function readOptionalQuery(q: Request['query'], key: string): string | undefined
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
 }
 
+const googleCredentialSchema = z.object({
+  credential: z.string().min(20),
+});
+
 export default class OAuthController {
+  /** Public client id for the Sign in with Google button. The secret stays on the server. */
+  static googleClient(_req: Request, res: Response, next: NextFunction): void {
+    const clientId = config.AUTH.OAUTH.google.clientId;
+    if (!clientId) {
+      next(new InputValidationError('Google sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST));
+      return;
+    }
+    SuccessHandlerUtil.handleGet(res, next, { clientId });
+  }
+
+  /**
+   * Sign in with Google (Identity Services). The browser never goes through
+   * accounts.google.com/signin/oauth/id, which was spinning forever.
+   */
+  static async googleCredential(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const body = parseBody(googleCredentialSchema, req.body);
+      const profile = await verifyGoogleIdToken(body.credential);
+      const tokens = await AuthService.findOrCreateOAuthUser(profile);
+      attachRefreshCookie(res, tokens.refreshPlain);
+      SuccessHandlerUtil.handleGet(res, next, {
+        accessToken: tokens.accessToken,
+        user: tokens.user,
+      });
+    } catch (e) {
+      next(e);
+    }
+  }
+
   static googleStart(req: Request, res: Response, next: NextFunction): void {
     try {
       const nextPath = readOptionalQuery(req.query, 'next');

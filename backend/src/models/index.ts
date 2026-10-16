@@ -753,6 +753,32 @@ async function ensureFinanceTransactionsRefundColumns(): Promise<void> {
 }
 
 /** Adds staff attribution on finance ledger rows when missing. */
+/** Per-payment office note. Null on rows recorded before installment sessions. */
+async function ensureFinanceTransactionsStaffNoteColumn(): Promise<void> {
+  if (sequelize.getDialect() !== 'mysql') {
+    return;
+  }
+  const tableRows = await sequelize.query<{ TABLE_NAME: string }>(
+    `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (tableRows.length === 0) {
+    return;
+  }
+  const colRows = await sequelize.query<{ COLUMN_NAME: string }>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'finance_transactions'
+       AND COLUMN_NAME = 'staff_note'`,
+    { type: QueryTypes.SELECT },
+  );
+  if (colRows.length === 0) {
+    await sequelize.query(
+      'ALTER TABLE `finance_transactions` ADD COLUMN `staff_note` TEXT NULL AFTER `created_by_user_id`',
+    );
+  }
+}
+
 async function ensureFinanceTransactionsCreatedByUserIdColumn(): Promise<void> {
   if (sequelize.getDialect() !== 'mysql') {
     return;
@@ -3389,6 +3415,7 @@ export async function syncModels(): Promise<void> {
   await ensureFinanceTransactionsRefundColumns();
   await ensureFinanceTransactionsBookingRefundExpenseKind();
   await ensureFinanceTransactionsCreatedByUserIdColumn();
+  await ensureFinanceTransactionsStaffNoteColumn();
   /**
    * Before `sync()`: EmployeeCompensationRule indexes/FK reference `staff_employee_id`.
    * Existing DBs created the rules table without that column — add it first or sync fails with

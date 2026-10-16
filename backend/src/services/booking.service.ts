@@ -52,7 +52,9 @@ import {
   isPackagePurchaseMeta,
   packageCreditPaymentFieldsForDb,
   PACKAGE_CREDIT_UNPAID_NOTE,
+  resolveAdminPaymentInstallments,
   resolveBookingPayment,
+  type BookingPaymentInstallmentInput,
   type AdminBookingPaymentStatus,
   type StudentPaymentSummaryDto,
 } from '../utils/booking-admin-payment.util';
@@ -243,6 +245,54 @@ function adminCollectedIncomeSyncOpts(patch: object):
   };
 }
 
+/** Installment array uses explicit rows. Callers that omit it keep the single-amount delta sync. */
+async function syncAdminBookingIncome(
+  bookingId: number,
+  patch: object,
+  transaction?: Transaction,
+): Promise<void> {
+  const installments = (patch as { paymentInstallments?: BookingPaymentInstallmentInput[] }).paymentInstallments;
+  if (Array.isArray(installments)) {
+    const staffRaw = (patch as { recordedByUserId?: unknown }).recordedByUserId;
+    const staffId = typeof staffRaw === 'number' ? staffRaw : Number(staffRaw);
+    const createdByRaw = (patch as { createdByUserId?: unknown }).createdByUserId;
+    const createdBy = typeof createdByRaw === 'number' ? createdByRaw : Number(createdByRaw);
+    const createdByUserId =
+      Number.isFinite(staffId) && staffId > 0
+        ? staffId
+        : Number.isFinite(createdBy) && createdBy > 0
+          ? createdBy
+          : null;
+    await FinanceService.syncBookingPaymentInstallments(bookingId, installments, transaction, {
+      createdByUserId,
+    });
+    return;
+  }
+  await FinanceService.syncBookingCollectedIncome(bookingId, transaction, adminCollectedIncomeSyncOpts(patch));
+}
+
+function applyInstallmentPaymentInput<T extends {
+  adminPaymentStatus?: AdminBookingPaymentStatus;
+  paidAmountAmd?: number;
+  paymentNotes?: string | null;
+  paymentInstallments?: BookingPaymentInstallmentInput[];
+}>(totalPriceAmd: number, input: T): T {
+  if (!Array.isArray(input.paymentInstallments)) return input;
+  try {
+    const resolved = resolveAdminPaymentInstallments(totalPriceAmd, input.paymentInstallments);
+    return {
+      ...input,
+      adminPaymentStatus: resolved.paymentStatus,
+      paidAmountAmd: resolved.paidAmountAmd,
+      paymentNotes: resolved.paymentNotes,
+      paymentInstallments: resolved.installments,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Invalid payment';
+    throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
+  }
+}
+
 function adminPaymentDbPatch(
   totalPriceAmd: number,
   input: { adminPaymentStatus?: AdminBookingPaymentStatus; paidAmountAmd?: number },
@@ -425,6 +475,9 @@ async function syncPackageCreditLessonPaymentsForOrder(
 type AdminPaymentPatchInput = AdminPaymentExtrasInput & {
   adminPaymentStatus?: AdminBookingPaymentStatus;
   paidAmountAmd?: number;
+  paymentInstallments?: BookingPaymentInstallmentInput[];
+  recordedByUserId?: number | null;
+  createdByUserId?: number | null;
 };
 
 function effectiveAdminPaymentStatus(
@@ -448,11 +501,18 @@ function mergeAdminPaymentRowPatch(
   patch: AdminPaymentPatchInput,
   nextTotalPriceAmd: number | null,
 ): Partial<Booking> {
-  const payUpdate = mergeAdminPaymentIntoRowUpdate(row, patch, nextTotalPriceAmd);
-  const status = effectiveAdminPaymentStatus(row, patch, payUpdate);
+  let effective = patch;
+  if (Array.isArray(patch.paymentInstallments)) {
+    const billable = isPackageCreditPrepaidMeta(row.prepaidMeta)
+      ? 0
+      : bookingTotalPriceAmd({ totalPriceAmd: nextTotalPriceAmd });
+    effective = applyInstallmentPaymentInput(billable, patch);
+  }
+  const payUpdate = mergeAdminPaymentIntoRowUpdate(row, effective, nextTotalPriceAmd);
+  const status = effectiveAdminPaymentStatus(row, effective, payUpdate);
   let extras: ReturnType<typeof mergeAdminPaymentExtrasPatch>;
   try {
-    extras = mergeAdminPaymentExtrasPatch(row, patch, status);
+    extras = mergeAdminPaymentExtrasPatch(row, effective, status);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Invalid payment reminder date';
     throw new InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
@@ -704,6 +764,8 @@ export type AdminBookingFinanceLinkDto = {
   method: string;
   createdAt: string;
   grossAmd: number;
+  staffNote?: string | null;
+  status?: string;
 };
 
 export type BookingAdminListItemDto = BookingAdminDto & {
@@ -713,6 +775,8 @@ export type BookingAdminListItemDto = BookingAdminDto & {
   studentPhone2: string;
   manualFinanceTx: AdminBookingFinanceLinkDto | null;
   systemFinanceTx: AdminBookingFinanceLinkDto | null;
+  /** Non-failed income rows, oldest first. */
+  paymentInstallments: AdminBookingFinanceLinkDto[];
 };
 
 export type AdminBookingListQuery = {
@@ -2698,6 +2762,8 @@ export default class BookingService {
       method: row.method,
       createdAt,
       grossAmd: row.grossAmd,
+      staffNote: row.staffNote?.trim() ? row.staffNote.trim() : null,
+      status: row.status,
     };
   }
 
@@ -2761,14 +2827,23 @@ export default class BookingService {
     }
     const manualByBooking = new Map<number, AdminBookingFinanceLinkDto>();
     const systemByBooking = new Map<number, AdminBookingFinanceLinkDto>();
+    const installmentsByBooking = new Map<number, AdminBookingFinanceLinkDto[]>();
     for (const tx of financeRows) {
       const bid = tx.bookingId;
       if (bid == null) continue;
+      if (tx.status === 'failed' || tx.status === 'refunded') continue;
+      const link = BookingService.mapFinanceLink(tx);
+      const list = installmentsByBooking.get(bid) ?? [];
+      list.push(link);
+      installmentsByBooking.set(bid, list);
       if (tx.source === 'manual' && !manualByBooking.has(bid)) {
-        manualByBooking.set(bid, BookingService.mapFinanceLink(tx));
+        manualByBooking.set(bid, link);
       } else if (tx.source === 'system' && !systemByBooking.has(bid)) {
-        systemByBooking.set(bid, BookingService.mapFinanceLink(tx));
+        systemByBooking.set(bid, link);
       }
+    }
+    for (const list of installmentsByBooking.values()) {
+      list.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id - b.id);
     }
     return items.map((dto) => {
       const se = slotByBooking.get(dto.id);
@@ -2797,6 +2872,7 @@ export default class BookingService {
         paidAmountAmd: dto.coveredByPackage ? 0 : dto.paidAmountAmd,
         manualFinanceTx: manualByBooking.get(dto.id) ?? null,
         systemFinanceTx: systemByBooking.get(dto.id) ?? null,
+        paymentInstallments: installmentsByBooking.get(dto.id) ?? [],
       };
     });
   }
@@ -2812,6 +2888,7 @@ export default class BookingService {
       studentPhone2: stu?.phone2?.trim() ?? '',
       manualFinanceTx: null,
       systemFinanceTx: null,
+      paymentInstallments: [],
     };
   }
 
@@ -2997,6 +3074,7 @@ export default class BookingService {
       packageOrderId: null,
       manualFinanceTx: null,
       systemFinanceTx: null,
+      paymentInstallments: [],
     };
   }
 
@@ -3887,6 +3965,7 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    paymentInstallments?: BookingPaymentInstallmentInput[];
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
@@ -3991,9 +4070,12 @@ export default class BookingService {
             ? await isPackageOrderPurchaseFullyPaid(packageOrderIdForPay, transaction)
             : true
           : undefined;
+        const payInput = fullPackagePrepaid
+          ? input
+          : applyInstallmentPaymentInput(billableTotal, input);
         const payPatch = adminPaymentDbPatch(
           billableTotal,
-          { adminPaymentStatus: input.adminPaymentStatus, paidAmountAmd: input.paidAmountAmd },
+          { adminPaymentStatus: payInput.adminPaymentStatus, paidAmountAmd: payInput.paidAmountAmd },
           fullPackagePrepaid ? prepaidMeta : null,
           packagePurchasePaid,
         );
@@ -4007,7 +4089,7 @@ export default class BookingService {
             ? payPatch.paymentStatus
             : 'unpaid';
         const paymentExtras = adminPaymentExtrasForCreateSafe(payStatus, {
-          paymentNotes: input.paymentNotes,
+          paymentNotes: payInput.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
         });
         if (fullPackagePrepaid && payStatus === 'unpaid') {
@@ -4052,6 +4134,14 @@ export default class BookingService {
           },
           transaction,
         );
+        if (!fullPackagePrepaid && Array.isArray(payInput.paymentInstallments)) {
+          await FinanceService.syncBookingPaymentInstallments(
+            newId,
+            payInput.paymentInstallments,
+            transaction,
+            { createdByUserId: input.createdByUserId ?? null },
+          );
+        }
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -4091,6 +4181,7 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    paymentInstallments?: BookingPaymentInstallmentInput[];
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
@@ -4136,6 +4227,7 @@ export default class BookingService {
           paidAmountAmd: input.paidAmountAmd,
           paymentNotes: input.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
+          paymentInstallments: input.paymentInstallments,
           totalPriceAmd: input.totalPriceAmd,
           createdByUserId: input.createdByUserId,
           allowHistoricalSlots: input.allowHistoricalSlots,
@@ -4209,6 +4301,7 @@ export default class BookingService {
         paidAmountAmd: input.paidAmountAmd,
         paymentNotes: input.paymentNotes,
         paymentReminderDate: input.paymentReminderDate,
+        paymentInstallments: input.paymentInstallments,
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
         allowHistoricalSlots: input.allowHistoricalSlots,
@@ -4252,6 +4345,7 @@ export default class BookingService {
           paidAmountAmd: input.paidAmountAmd,
           paymentNotes: input.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
+          paymentInstallments: input.paymentInstallments,
           totalPriceAmd: input.totalPriceAmd,
           createdByUserId: input.createdByUserId,
           allowHistoricalSlots: input.allowHistoricalSlots,
@@ -4283,6 +4377,7 @@ export default class BookingService {
         paidAmountAmd: input.paidAmountAmd,
         paymentNotes: input.paymentNotes,
         paymentReminderDate: input.paymentReminderDate,
+        paymentInstallments: input.paymentInstallments,
         totalPriceAmd: input.totalPriceAmd,
         createdByUserId: input.createdByUserId,
         allowHistoricalSlots: input.allowHistoricalSlots,
@@ -4331,16 +4426,17 @@ export default class BookingService {
     const gift = giftCreateFields(input);
     const totalPriceAmd = gift.isGift ? 0 : resolveAdminTotalPriceAmd(input.totalPriceAmd, computedTotal);
 
+    const payInputSingle = gift.isGift ? input : applyInstallmentPaymentInput(totalPriceAmd, input);
     const payPatch = adminPaymentDbPatch(totalPriceAmd, {
-      adminPaymentStatus: input.adminPaymentStatus,
-      paidAmountAmd: input.paidAmountAmd,
+      adminPaymentStatus: payInputSingle.adminPaymentStatus,
+      paidAmountAmd: payInputSingle.paidAmountAmd,
     });
     const payStatusSingle =
       payPatch.paymentStatus === 'paid' || payPatch.paymentStatus === 'partial' || payPatch.paymentStatus === 'unpaid'
         ? payPatch.paymentStatus
         : 'unpaid';
     const paymentExtrasSingle = adminPaymentExtrasForCreateSafe(payStatusSingle, {
-      paymentNotes: input.paymentNotes,
+      paymentNotes: payInputSingle.paymentNotes,
       paymentReminderDate: input.paymentReminderDate,
     });
 
@@ -4390,6 +4486,14 @@ export default class BookingService {
           },
           transaction,
         );
+        if (!gift.isGift && Array.isArray(payInputSingle.paymentInstallments)) {
+          await FinanceService.syncBookingPaymentInstallments(
+            newId,
+            payInputSingle.paymentInstallments,
+            transaction,
+            { createdByUserId: input.createdByUserId ?? null },
+          );
+        }
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -4439,6 +4543,7 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    paymentInstallments?: BookingPaymentInstallmentInput[];
     paymentMethod?: 'card' | 'idram' | 'cash' | 'transfer';
   }): Promise<AdminPackageAtomicCreateDto> {
     LoggerUtil.info(
@@ -4645,9 +4750,15 @@ export default class BookingService {
             input.totalPriceAmd != null && Number.isFinite(input.totalPriceAmd)
               ? Math.max(0, Math.round(input.totalPriceAmd))
               : catalogPrice;
-          const payPatch = adminPaymentDbPatch(totalPriceAmd, {
+          const payInput = applyInstallmentPaymentInput(totalPriceAmd, {
             adminPaymentStatus: input.adminPaymentStatus ?? (totalPriceAmd > 0 ? 'unpaid' : 'paid'),
             paidAmountAmd: input.paidAmountAmd,
+            paymentNotes: input.paymentNotes,
+            paymentInstallments: input.paymentInstallments,
+          });
+          const payPatch = adminPaymentDbPatch(totalPriceAmd, {
+            adminPaymentStatus: payInput.adminPaymentStatus,
+            paidAmountAmd: payInput.paidAmountAmd,
           });
           const payStatus =
             payPatch.paymentStatus === 'paid' ||
@@ -4656,7 +4767,7 @@ export default class BookingService {
               ? payPatch.paymentStatus
               : 'unpaid';
           const paymentExtras = adminPaymentExtrasForCreateSafe(payStatus, {
-            paymentNotes: input.paymentNotes,
+            paymentNotes: payInput.paymentNotes,
             paymentReminderDate: input.paymentReminderDate,
           });
           const created = await Booking.create(
@@ -4688,7 +4799,17 @@ export default class BookingService {
           );
           bookingIds.push(created.id);
 
-          if (payPatch.paidAmountAmd > 0) {
+          if (Array.isArray(payInput.paymentInstallments)) {
+            await FinanceService.syncBookingPaymentInstallments(
+              created.id,
+              payInput.paymentInstallments,
+              transaction,
+              {
+                createdByUserId: input.createdByUserId ?? null,
+                description: `Package: ${pkg.name}`,
+              },
+            );
+          } else if (payPatch.paidAmountAmd > 0) {
             const stu = await User.findByPk(input.studentId, {
               attributes: ['name', 'email'],
               transaction,
@@ -4743,6 +4864,7 @@ export default class BookingService {
     paidAmountAmd?: number;
     paymentNotes?: string | null;
     paymentReminderDate?: string | null;
+    paymentInstallments?: BookingPaymentInstallmentInput[];
     totalPriceAmd?: number;
     createdByUserId?: number | null;
     allowHistoricalSlots?: boolean;
@@ -4902,6 +5024,9 @@ export default class BookingService {
             ? await isPackageOrderPurchaseFullyPaid(packageOrderIdForPay, transaction)
             : true
           : undefined;
+        const payInputMulti = fullPackagePrepaid
+          ? input
+          : applyInstallmentPaymentInput(billableTotal, input);
         const payPatch = adminPaymentDbPatch(
           billableTotal,
           {
@@ -4909,8 +5034,8 @@ export default class BookingService {
               ? packagePurchasePaid
                 ? 'paid'
                 : 'unpaid'
-              : input.adminPaymentStatus,
-            paidAmountAmd: fullPackagePrepaid ? 0 : input.paidAmountAmd,
+              : payInputMulti.adminPaymentStatus,
+            paidAmountAmd: fullPackagePrepaid ? 0 : payInputMulti.paidAmountAmd,
           },
           fullPackagePrepaid ? prepaidMeta : null,
           packagePurchasePaid,
@@ -4923,7 +5048,7 @@ export default class BookingService {
             ? payPatch.paymentStatus
             : 'unpaid';
         const paymentExtrasMulti = adminPaymentExtrasForCreateSafe(payStatusMulti, {
-          paymentNotes: input.paymentNotes,
+          paymentNotes: payInputMulti.paymentNotes,
           paymentReminderDate: input.paymentReminderDate,
         });
         if (fullPackagePrepaid && payStatusMulti === 'unpaid') {
@@ -4982,6 +5107,14 @@ export default class BookingService {
         }
         if (input.lessonType === 'theory' && theoryCohort) {
           await TheoryCohortService.ensureEnrolledInTx(theoryCohort.id, input.studentId, transaction);
+        }
+        if (!fullPackagePrepaid && Array.isArray(payInputMulti.paymentInstallments)) {
+          await FinanceService.syncBookingPaymentInstallments(
+            newId,
+            payInputMulti.paymentInstallments,
+            transaction,
+            { createdByUserId: input.createdByUserId ?? null },
+          );
         }
       });
     } catch (e) {
@@ -5189,7 +5322,7 @@ export default class BookingService {
         if (lessonType === 'theory' && patch.theoryCohortId != null && Number.isFinite(patch.theoryCohortId)) {
           await TheoryCohortService.ensureEnrolledInTx(patch.theoryCohortId, nextStudentId, transaction);
         }
-        await FinanceService.syncBookingCollectedIncome(id, transaction, adminCollectedIncomeSyncOpts(patch));
+        await syncAdminBookingIncome(id, patch, transaction);
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -5393,7 +5526,7 @@ export default class BookingService {
           nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
-        await FinanceService.syncBookingCollectedIncome(id, transaction, adminCollectedIncomeSyncOpts(patch));
+        await syncAdminBookingIncome(id, patch, transaction);
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {
@@ -5510,7 +5643,7 @@ export default class BookingService {
         nextStatusRaw: lifecycleStatus ?? patch.status,
         transaction,
       });
-      await FinanceService.syncBookingCollectedIncome(id, transaction, adminCollectedIncomeSyncOpts(patch));
+      await syncAdminBookingIncome(id, patch, transaction);
 
       // When a package sale payment changes, credit lessons follow.
       if (isPackagePurchaseMeta(row.prepaidMeta) && payUpdate.paymentStatus !== undefined) {
@@ -5790,7 +5923,7 @@ export default class BookingService {
           nextStatusRaw: lifecycleStatus ?? patch.status,
           transaction,
         });
-        await FinanceService.syncBookingCollectedIncome(row.id, transaction, adminCollectedIncomeSyncOpts(patch));
+        await syncAdminBookingIncome(row.id, patch, transaction);
       });
     } catch (e) {
       if (isDuplicateSlotClaimError(e)) {

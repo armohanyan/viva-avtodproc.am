@@ -14,27 +14,304 @@ export function bookingStatusFromAdminPayment(
   return paymentStatus === "paid" ? "confirmed" : "pending";
 }
 
-export type AdminBookingPaymentState = {
-  status: AdminBookingPaymentStatus;
+export type AdminBookingPaymentSessionSource = "manual" | "system" | "legacy";
+
+/** One office or online payment toward a booking. */
+export type AdminBookingPaymentSession = {
+  key: string;
+  financeTxId: number | null;
+  source: AdminBookingPaymentSessionSource;
+  /** Online (vPOS) rows cannot be edited or removed. */
+  locked: boolean;
   paidStr: string;
-  method: TxMethod;
   datetimeLocal: string;
-  paymentNotes: string;
-  paymentReminderDate: string;
+  method: TxMethod;
+  note: string;
 };
 
-export function defaultAdminBookingPayment(status: AdminBookingPaymentStatus = "unpaid"): AdminBookingPaymentState {
+export type AdminBookingPaymentInstallmentPayload = {
+  id?: number;
+  amountAmd: number;
+  recordedAt: string;
+  method: TxMethod;
+  note: string | null;
+};
+
+export type AdminBookingPaymentState = {
+  status: AdminBookingPaymentStatus;
+  /** Sum of session amounts. Kept so older callers that read one paid field stay correct. */
+  paidStr: string;
+  /** Method of the first editable session. */
+  method: TxMethod;
+  /** Datetime of the first editable session. */
+  datetimeLocal: string;
+  /** Session notes joined with newlines. */
+  paymentNotes: string;
+  paymentReminderDate: string;
+  sessions?: AdminBookingPaymentSession[];
+};
+
+const TX_METHODS: readonly TxMethod[] = ["card", "idram", "cash", "transfer"];
+
+function isTxMethod(value: string): value is TxMethod {
+  return (TX_METHODS as readonly string[]).includes(value);
+}
+
+let paymentSessionSeq = 0;
+
+function newPaymentSessionKey(): string {
+  paymentSessionSeq += 1;
+  return `pay-${paymentSessionSeq}`;
+}
+
+export function emptyPaymentSession(
+  partial?: Partial<AdminBookingPaymentSession>,
+): AdminBookingPaymentSession {
   return {
-    status,
-    paidStr: "0",
-    method: "cash",
-    datetimeLocal: toDatetimeLocalValue(new Date()),
-    paymentNotes: "",
-    paymentReminderDate: "",
+    key: partial?.key ?? newPaymentSessionKey(),
+    financeTxId: partial?.financeTxId ?? null,
+    source: partial?.source ?? "manual",
+    locked: partial?.locked ?? false,
+    paidStr: partial?.paidStr ?? "0",
+    datetimeLocal: partial?.datetimeLocal ?? toDatetimeLocalValue(new Date()),
+    method: partial?.method ?? "cash",
+    note: partial?.note ?? "",
   };
 }
 
+export function sessionAmountAmd(session: AdminBookingPaymentSession): number {
+  const raw = parseAmdInput(session.paidStr);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.round(raw);
+}
+
+export function sessionsPaidSum(sessions: readonly AdminBookingPaymentSession[]): number {
+  return sessions.reduce((sum, session) => sum + sessionAmountAmd(session), 0);
+}
+
+function stateSessions(state: AdminBookingPaymentState): AdminBookingPaymentSession[] {
+  if (state.sessions && state.sessions.length > 0) return state.sessions;
+  return [
+    emptyPaymentSession({
+      paidStr: state.paidStr,
+      datetimeLocal: state.datetimeLocal,
+      method: state.method,
+      note: state.paymentNotes,
+      source: "legacy",
+    }),
+  ];
+}
+
+function joinedSessionNotes(sessions: readonly AdminBookingPaymentSession[]): string {
+  return sessions
+    .map((session) => session.note.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Recompute status, remaining inputs, and the legacy single-amount fields from sessions. */
+export function syncAdminPaymentFromSessions(
+  state: AdminBookingPaymentState,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  const sessions = stateSessions(state);
+  const paid = sessionsPaidSum(sessions);
+  const total = Math.max(0, Math.round(totalAmd));
+  const status = inferAdminPaymentStatusFromAmounts(total, paid);
+  const primary = sessions.find((session) => !session.locked) ?? sessions[0];
+  return {
+    ...state,
+    sessions,
+    status,
+    paidStr: String(paid),
+    method: primary?.method ?? state.method,
+    datetimeLocal: primary?.datetimeLocal ?? state.datetimeLocal,
+    paymentNotes: joinedSessionNotes(sessions),
+    ...(status === "paid" ? { paymentReminderDate: "" } : {}),
+  };
+}
+
+export function defaultAdminBookingPayment(status: AdminBookingPaymentStatus = "unpaid"): AdminBookingPaymentState {
+  const session = emptyPaymentSession({ paidStr: "0" });
+  return {
+    status,
+    paidStr: "0",
+    method: session.method,
+    datetimeLocal: session.datetimeLocal,
+    paymentNotes: "",
+    paymentReminderDate: "",
+    sessions: [session],
+  };
+}
+
+function paidTargetFromStr(paidStr: string): number {
+  if (paidStr.trim() === "") return 0;
+  const raw = parseAmdInput(paidStr);
+  return Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 0;
+}
+
+/**
+ * Set the collected total without collapsing several sessions into one row.
+ * A matching sum is left as-is. One session takes the new amount. Several sessions
+ * adjust only the last editable amount.
+ */
+export function withAdminBookingPaidStr(
+  state: AdminBookingPaymentState,
+  paidStr: string,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  const target = paidTargetFromStr(paidStr);
+  const sessions = stateSessions(state);
+  if (sessionsPaidSum(sessions) === target) {
+    return syncAdminPaymentFromSessions({ ...state, sessions }, totalAmd);
+  }
+  const locked = sessions.filter((session) => session.locked);
+  const lockedSum = sessionsPaidSum(locked);
+  if (target === 0) {
+    const first = sessions.find((session) => !session.locked) ?? sessions[0];
+    return syncAdminPaymentFromSessions(
+      {
+        ...state,
+        sessions: [
+          ...locked,
+          emptyPaymentSession({
+            method: first?.method ?? "cash",
+            datetimeLocal: first?.datetimeLocal ?? toDatetimeLocalValue(new Date()),
+            paidStr: "0",
+            note: "",
+          }),
+        ],
+      },
+      totalAmd,
+    );
+  }
+  const unlocked = sessions.filter((session) => !session.locked);
+  const unlockedTarget = Math.max(0, target - lockedSum);
+  if (unlocked.length <= 1) {
+    const current = unlocked[0];
+    const nextUnlocked = emptyPaymentSession({
+      ...(current ?? {}),
+      key: current?.key,
+      financeTxId: current?.financeTxId ?? null,
+      source: current?.source ?? "manual",
+      locked: false,
+      paidStr: String(unlockedTarget),
+      method: current?.method ?? "cash",
+      datetimeLocal: current?.datetimeLocal ?? toDatetimeLocalValue(new Date()),
+      note: current?.note ?? "",
+    });
+    return syncAdminPaymentFromSessions({ ...state, sessions: [...locked, nextUnlocked] }, totalAmd);
+  }
+  const head = unlocked.slice(0, -1);
+  const headSum = sessionsPaidSum(head);
+  const last = unlocked[unlocked.length - 1]!;
+  const nextLast = { ...last, paidStr: String(Math.max(0, unlockedTarget - headSum)) };
+  return syncAdminPaymentFromSessions(
+    { ...state, sessions: [...locked, ...head, nextLast] },
+    totalAmd,
+  );
+}
+
+export function updateAdminPaymentSession(
+  state: AdminBookingPaymentState,
+  key: string,
+  patch: Partial<Pick<AdminBookingPaymentSession, "paidStr" | "datetimeLocal" | "method" | "note">>,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  const sessions = stateSessions(state).map((session) => {
+    if (session.key !== key || session.locked) return session;
+    return { ...session, ...patch };
+  });
+  return syncAdminPaymentFromSessions({ ...state, sessions }, totalAmd);
+}
+
+export function addAdminPaymentSession(
+  state: AdminBookingPaymentState,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  return syncAdminPaymentFromSessions(
+    {
+      ...state,
+      sessions: [...stateSessions(state), emptyPaymentSession()],
+    },
+    totalAmd,
+  );
+}
+
+export function removeAdminPaymentSession(
+  state: AdminBookingPaymentState,
+  key: string,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  const sessions = stateSessions(state);
+  const target = sessions.find((session) => session.key === key);
+  if (!target || target.locked) return syncAdminPaymentFromSessions({ ...state, sessions }, totalAmd);
+  const next = sessions.filter((session) => session.key !== key);
+  return syncAdminPaymentFromSessions(
+    {
+      ...state,
+      sessions:
+        next.length > 0
+          ? next
+          : [
+              emptyPaymentSession({
+                method: target.method,
+                datetimeLocal: target.datetimeLocal,
+              }),
+            ],
+    },
+    totalAmd,
+  );
+}
+
+/** Paid adds the remainder onto the last editable session. Unpaid clears editable amounts. */
+export function adminPaymentStateForStatusChoice(
+  state: AdminBookingPaymentState,
+  status: AdminBookingPaymentStatus,
+  totalAmd: number,
+): AdminBookingPaymentState {
+  const total = Math.max(0, Math.round(totalAmd));
+  const sessions = stateSessions(state);
+  if (status === "unpaid") {
+    return withAdminBookingPaidStr({ ...state, sessions }, "0", total);
+  }
+  if (status === "paid") {
+    const paid = sessionsPaidSum(sessions);
+    const remainder = Math.max(0, total - paid);
+    if (remainder <= 0) return syncAdminPaymentFromSessions({ ...state, sessions }, total);
+    let idx = -1;
+    for (let i = sessions.length - 1; i >= 0; i -= 1) {
+      if (!sessions[i]!.locked) {
+        idx = i;
+        break;
+      }
+    }
+    const next = [...sessions];
+    if (idx < 0) {
+      next.push(emptyPaymentSession({ paidStr: String(remainder) }));
+    } else {
+      const current = next[idx]!;
+      next[idx] = { ...current, paidStr: String(sessionAmountAmd(current) + remainder) };
+    }
+    return syncAdminPaymentFromSessions({ ...state, sessions: next }, total);
+  }
+  return syncAdminPaymentFromSessions({ ...state, sessions }, total);
+}
+
+/** Show "Ստեղծել նոր վճարում" while the sum is a real partial payment and the last session has an amount. */
+export function canAddAdminPaymentSession(state: AdminBookingPaymentState, totalAmd: number): boolean {
+  const total = Math.max(0, Math.round(totalAmd));
+  if (total <= 0) return false;
+  const sessions = stateSessions(state);
+  const paid = sessionsPaidSum(sessions);
+  if (paid <= 0 || paid >= total) return false;
+  const last = sessions[sessions.length - 1];
+  if (!last || sessionAmountAmd(last) <= 0) return false;
+  return true;
+}
+
 export function paidAmountFromState(state: AdminBookingPaymentState): number {
+  if (state.sessions && state.sessions.length > 0) return sessionsPaidSum(state.sessions);
   const paid = parseAmdInput(state.paidStr);
   return Number.isFinite(paid) && paid > 0 ? Math.round(paid) : 0;
 }
@@ -52,22 +329,13 @@ export function inferAdminPaymentStatusFromAmounts(
   return "partial";
 }
 
-/** After editing paid amount, sync status (and reminder visibility) automatically. */
+/** After the booking price or a single paid amount changes, keep sessions and status aligned. */
 export function adminPaymentStateAfterPaidStrChange(
   state: AdminBookingPaymentState,
   paidStr: string,
   totalAmd: number,
 ): AdminBookingPaymentState {
-  const total = Math.max(0, Math.round(totalAmd));
-  const raw = parseAmdInput(paidStr);
-  const paid = Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0;
-  const status = inferAdminPaymentStatusFromAmounts(total, paid);
-  return {
-    ...state,
-    paidStr,
-    status,
-    ...(status === "paid" ? { paymentReminderDate: "" } : {}),
-  };
+  return withAdminBookingPaidStr(state, paidStr, totalAmd);
 }
 
 function datetimeLocalFromIsoCandidates(...candidates: Array<string | null | undefined>): string {
@@ -77,6 +345,54 @@ function datetimeLocalFromIsoCandidates(...candidates: Array<string | null | und
     if (!Number.isNaN(d.getTime())) return toDatetimeLocalValue(d);
   }
   return toDatetimeLocalValue(new Date());
+}
+
+export type AdminBookingPaymentInstallmentSource = {
+  id: number;
+  source: "manual" | "system";
+  method?: string | null;
+  createdAt?: string | null;
+  grossAmd?: number | null;
+  staffNote?: string | null;
+  status?: string | null;
+};
+
+function activeInstallmentRows(
+  rows: readonly AdminBookingPaymentInstallmentSource[] | null | undefined,
+): AdminBookingPaymentInstallmentSource[] {
+  return (rows ?? []).filter((row) => {
+    const status = String(row.status ?? "").trim().toLowerCase();
+    return status !== "failed" && status !== "refunded";
+  });
+}
+
+function sessionFromInstallment(
+  row: AdminBookingPaymentInstallmentSource,
+  bookingNotes: string,
+  onlyOne: boolean,
+): AdminBookingPaymentSession {
+  const method = isTxMethod(String(row.method ?? "")) ? (row.method as TxMethod) : "cash";
+  const staffNote = row.staffNote?.trim() ?? "";
+  const note = staffNote || (onlyOne ? bookingNotes : "");
+  return emptyPaymentSession({
+    financeTxId: row.id,
+    source: row.source === "system" ? "system" : "manual",
+    locked: row.source === "system",
+    paidStr: String(Math.max(0, Math.round(Number(row.grossAmd) || 0))),
+    datetimeLocal: datetimeLocalFromIsoCandidates(row.createdAt),
+    method,
+    note,
+  });
+}
+
+export function bookingPaymentIsSystemOnly(booking: {
+  paymentInstallments?: readonly AdminBookingPaymentInstallmentSource[] | null;
+  manualFinanceTx?: { id?: number; source?: string } | null;
+  systemFinanceTx?: { id?: number; source?: string } | null;
+}): boolean {
+  const rows = activeInstallmentRows(booking.paymentInstallments);
+  if (rows.length > 0) return rows.every((row) => row.source === "system");
+  return !booking.manualFinanceTx && Boolean(booking.systemFinanceTx);
 }
 
 export function adminPaymentFromBooking(
@@ -90,8 +406,11 @@ export function adminPaymentFromBooking(
     paidAtIso?: string | null;
     /** Fallback — when the booking itself was created. */
     createdAt?: string | null;
+    paymentInstallments?: readonly AdminBookingPaymentInstallmentSource[] | null;
+    manualFinanceTx?: AdminBookingPaymentInstallmentSource | null;
+    systemFinanceTx?: AdminBookingPaymentInstallmentSource | null;
   },
-  finance?: { method?: TxMethod; createdAt?: string } | null,
+  finance?: { method?: TxMethod; createdAt?: string; id?: number; source?: "manual" | "system"; grossAmd?: number } | null,
 ): AdminBookingPaymentState {
   const ps = String(booking.paymentStatus ?? "").trim().toLowerCase();
   const total = booking.totalPriceAmd ?? 0;
@@ -108,19 +427,65 @@ export function adminPaymentFromBooking(
     status = "partial";
     paidStr = String(paid);
   }
+  const bookingNotes = booking.paymentNotes?.trim() ?? "";
   const datetimeLocal = datetimeLocalFromIsoCandidates(
     finance?.createdAt,
     booking.paidAtIso,
     booking.createdAt,
   );
-  return {
-    status,
-    paidStr,
-    method: finance?.method ?? "cash",
-    datetimeLocal,
-    paymentNotes: booking.paymentNotes?.trim() ?? "",
-    paymentReminderDate: booking.paymentReminderDateIso?.slice(0, 10) ?? "",
-  };
+  const fromList = activeInstallmentRows(booking.paymentInstallments);
+  const fallbackLinks: AdminBookingPaymentInstallmentSource[] = [];
+  if (fromList.length === 0) {
+    if (booking.manualFinanceTx) fallbackLinks.push({ ...booking.manualFinanceTx, source: "manual" });
+    if (booking.systemFinanceTx) fallbackLinks.push({ ...booking.systemFinanceTx, source: "system" });
+    if (fallbackLinks.length === 0 && finance?.id) {
+      fallbackLinks.push({
+        id: finance.id,
+        source: finance.source ?? "manual",
+        method: finance.method,
+        createdAt: finance.createdAt,
+        grossAmd: finance.grossAmd,
+      });
+    }
+  }
+  const installmentRows = fromList.length > 0 ? fromList : fallbackLinks;
+  let sessions: AdminBookingPaymentSession[];
+  if (installmentRows.length > 0) {
+    sessions = installmentRows.map((row) =>
+      sessionFromInstallment(row, bookingNotes, installmentRows.length === 1),
+    );
+  } else if (paid > 0 || status === "paid") {
+    sessions = [
+      emptyPaymentSession({
+        source: "legacy",
+        paidStr,
+        datetimeLocal,
+        method: finance?.method ?? "cash",
+        note: bookingNotes,
+      }),
+    ];
+  } else {
+    sessions = [
+      emptyPaymentSession({
+        paidStr: "0",
+        datetimeLocal,
+        method: finance?.method ?? "cash",
+        note: "",
+      }),
+    ];
+  }
+  return syncAdminPaymentFromSessions(
+    {
+      status,
+      paidStr,
+      method: finance?.method ?? sessions[0]?.method ?? "cash",
+      datetimeLocal,
+      paymentNotes: bookingNotes,
+      paymentReminderDate: booking.paymentReminderDateIso?.slice(0, 10) ?? "",
+      sessions,
+    },
+    total,
+  );
 }
 
 export function bookingRemainingAmd(totalAmd: number, state: AdminBookingPaymentState): number {
@@ -134,22 +499,22 @@ export function validateAdminBookingPayment(
 ): TranslationKey | null {
   const total = Math.max(0, Math.round(totalAmd));
   if (total <= 0) return null;
-  if (state.status === "paid") return null;
-  const raw = parseAmdInput(state.paidStr);
-  // Empty paid field means 0 (unpaid); reject only non-numeric garbage.
-  const paid = Number.isFinite(raw) ? raw : state.paidStr.trim() === "" ? 0 : NaN;
-  if (!Number.isFinite(paid)) return "adminBookingPaymentPartialRequired";
-  if (paid < 0) return "adminBookingPaymentPartialPositive";
-  if (paid > total) return "adminBookingPaymentPartialLessThanTotal";
-  const status = inferAdminPaymentStatusFromAmounts(total, Math.round(paid));
-  if (status === "partial") {
-    if (paid <= 0) return "adminBookingPaymentPartialPositive";
-    if (paid >= total) return "adminBookingPaymentPartialLessThanTotal";
+  const sessions = stateSessions(state);
+  let sum = 0;
+  for (const session of sessions) {
+    const raw = parseAmdInput(session.paidStr);
+    const paid = Number.isFinite(raw) ? raw : session.paidStr.trim() === "" ? 0 : NaN;
+    if (!Number.isFinite(paid)) return "adminBookingPaymentPartialRequired";
+    if (paid < 0) return "adminBookingPaymentPartialPositive";
+    sum += Math.round(paid);
+    if (paid > 0 && !session.locked) {
+      const created = new Date(session.datetimeLocal);
+      if (Number.isNaN(created.getTime())) return "financeManualErrorDate";
+    }
   }
-  if (paid > 0) {
-    const created = new Date(state.datetimeLocal);
-    if (Number.isNaN(created.getTime())) return "financeManualErrorDate";
-  }
+  if (sum > total) return "adminBookingPaymentPartialLessThanTotal";
+  const status = inferAdminPaymentStatusFromAmounts(total, sum);
+  if (status === "partial" && sum <= 0) return "adminBookingPaymentPartialPositive";
   return null;
 }
 
@@ -157,6 +522,20 @@ function paymentRecordedAtIso(datetimeLocal: string): string | undefined {
   const created = new Date(datetimeLocal);
   if (Number.isNaN(created.getTime())) return undefined;
   return created.toISOString();
+}
+
+function paymentInstallmentsFromState(
+  state: AdminBookingPaymentState,
+): AdminBookingPaymentInstallmentPayload[] {
+  return stateSessions(state)
+    .filter((session) => sessionAmountAmd(session) > 0)
+    .map((session) => ({
+      ...(session.financeTxId != null ? { id: session.financeTxId } : {}),
+      amountAmd: sessionAmountAmd(session),
+      recordedAt: paymentRecordedAtIso(session.datetimeLocal) ?? new Date().toISOString(),
+      method: session.method,
+      note: session.note.trim() ? session.note.trim() : null,
+    }));
 }
 
 export function adminPaymentApiPayload(
@@ -169,23 +548,23 @@ export function adminPaymentApiPayload(
   paymentReminderDate?: string | null;
   paymentMethod: TxMethod;
   paymentRecordedAt?: string;
+  paymentInstallments: AdminBookingPaymentInstallmentPayload[];
 } {
   const total = Math.max(0, Math.round(totalAmd));
-  const paidFromField = Math.min(total, Math.max(0, paidAmountFromState(state)));
-  const notes = state.paymentNotes.trim() ? state.paymentNotes.trim() : null;
-  const status: AdminBookingPaymentStatus =
-    state.status === "paid" || state.status === "partial" || state.status === "unpaid"
-      ? state.status
-      : inferAdminPaymentStatusFromAmounts(total, paidFromField);
+  const normalized = withAdminBookingPaidStr(state, state.paidStr, total);
+  const paidFromField = Math.min(total, Math.max(0, paidAmountFromState(normalized)));
+  const notes = normalized.paymentNotes.trim() ? normalized.paymentNotes.trim() : null;
+  const status = inferAdminPaymentStatusFromAmounts(total, paidFromField);
   const reminderDate =
     status === "paid"
       ? null
-      : state.paymentReminderDate.trim()
-        ? state.paymentReminderDate.trim().slice(0, 10)
+      : normalized.paymentReminderDate.trim()
+        ? normalized.paymentReminderDate.trim().slice(0, 10)
         : null;
-  const paymentMethod = state.method;
-  const paymentRecordedAt = paymentRecordedAtIso(state.datetimeLocal);
+  const paymentMethod = normalized.method;
+  const paymentRecordedAt = paymentRecordedAtIso(normalized.datetimeLocal);
   const recorded = paymentRecordedAt ? { paymentRecordedAt } : {};
+  const paymentInstallments = status === "unpaid" ? [] : paymentInstallmentsFromState(normalized);
   if (status === "paid") {
     return {
       adminPaymentStatus: "paid",
@@ -193,6 +572,7 @@ export function adminPaymentApiPayload(
       paymentNotes: notes,
       paymentReminderDate: null,
       paymentMethod,
+      paymentInstallments,
       ...recorded,
     };
   }
@@ -203,6 +583,7 @@ export function adminPaymentApiPayload(
       paymentNotes: notes,
       paymentReminderDate: reminderDate,
       paymentMethod,
+      paymentInstallments,
       ...recorded,
     };
   }
@@ -212,6 +593,7 @@ export function adminPaymentApiPayload(
     paymentNotes: notes,
     paymentReminderDate: reminderDate,
     paymentMethod,
+    paymentInstallments,
     ...recorded,
   };
 }

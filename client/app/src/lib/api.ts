@@ -283,6 +283,7 @@ function shouldAttemptAuthRefreshRetry(path: string): boolean {
 		!p.endsWith("/auth/setup-password") &&
 		!p.endsWith("/auth/forgot-password") &&
 		!p.endsWith("/auth/reset-password") &&
+		!p.endsWith("/auth/oauth/google") &&
 		!p.includes("/auth/student-invitation") &&
 		!p.includes("/auth/password-reset")
 	);

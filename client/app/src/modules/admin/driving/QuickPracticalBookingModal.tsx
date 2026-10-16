@@ -34,6 +34,7 @@ import {
   defaultAdminBookingPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
+  withAdminBookingPaidStr,
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
 import {
@@ -239,7 +240,7 @@ export default function QuickPracticalBookingModal({
 
   useEffect(() => {
     if (!open || !creditsCoverPayment) return;
-    setBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
+    setBookingPayment((prev) => withAdminBookingPaidStr(prev, "0", 0));
     setStatus("confirmed");
     setIsGift(false);
   }, [open, creditsCoverPayment]);
@@ -251,7 +252,7 @@ export default function QuickPracticalBookingModal({
       if (prev.status !== "paid") return prev;
       const total = Math.max(0, Math.round(suggestedTotalAmd));
       if (total <= 0) return prev;
-      return { ...prev, paidStr: String(total) };
+      return withAdminBookingPaidStr(prev, String(total), total);
     });
   }, [open, suggestedTotalAmd]);
 
@@ -415,7 +416,8 @@ export default function QuickPracticalBookingModal({
       const created = await vivaApiJson<{ id: number }>("/bookings", { method: "POST", body });
       const bookingIdNum = Number(created.id);
 
-      if (paid > 0 && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
+      const serverRecordsInstallments = "paymentInstallments" in paymentBody;
+      if (paid > 0 && !serverRecordsInstallments && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
         const createdAtIso = new Date(bookingPayment.datetimeLocal).toISOString();
         const stu =
           selectedStudent && String(selectedStudent.id) === String(studentId)
@@ -721,7 +723,7 @@ export default function QuickPracticalBookingModal({
                     const on = e.target.checked;
                     setUsePackageCredits(on);
                     if (!on) {
-                      setBookingPayment((prev) => ({ ...prev, status: "unpaid", paidStr: "" }));
+                      setBookingPayment((prev) => withAdminBookingPaidStr(prev, "0", totalPriceAmd));
                       setStatus("pending");
                       setIsGift(false);
                     }

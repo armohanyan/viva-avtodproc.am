@@ -66,6 +66,19 @@ const createBodySchema = z.object({
   paymentMethod: z.enum(['card', 'idram', 'cash', 'transfer']).optional(),
   /** When the admin recorded the payment. Used for the first kassa row only. */
   paymentRecordedAt: z.string().optional(),
+  /** Separate payments toward this booking. When set, status and paid total come from the sum. */
+  paymentInstallments: z
+    .array(
+      z.object({
+        id: z.coerce.number().int().positive().optional(),
+        amountAmd: z.coerce.number().int().nonnegative(),
+        recordedAt: z.string().min(1),
+        method: z.enum(['card', 'idram', 'cash', 'transfer']),
+        note: z.string().max(2000).optional().nullable(),
+      }),
+    )
+    .max(50)
+    .optional(),
 });
 
 const createSchema = createBodySchema.superRefine((data, ctx) => {
@@ -196,6 +209,18 @@ const adminPackageAtomicSchema = z.object({
     .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(''), z.null()])
     .optional(),
   paymentMethod: z.enum(['card', 'idram', 'cash', 'transfer']).optional(),
+  paymentInstallments: z
+    .array(
+      z.object({
+        id: z.coerce.number().int().positive().optional(),
+        amountAmd: z.coerce.number().int().nonnegative(),
+        recordedAt: z.string().min(1),
+        method: z.enum(['card', 'idram', 'cash', 'transfer']),
+        note: z.string().max(2000).optional().nullable(),
+      }),
+    )
+    .max(50)
+    .optional(),
   /** @deprecated Prefer theoryCohortId; ignored by server. */
   theoryPersonal: z
     .object({
@@ -306,6 +331,7 @@ export default class BookingController {
         paymentNotes: body.paymentNotes,
         paymentReminderDate: body.paymentReminderDate,
         paymentMethod: body.paymentMethod,
+        paymentInstallments: body.paymentInstallments,
       });
       SuccessHandlerUtil.handleAdd(res, next, data);
     } catch (e) {
@@ -508,6 +534,7 @@ export default class BookingController {
             customSlotEndTime: body.customSlotEndTime,
             meetLink: body.meetLink,
             paidSlotEntries: body.paidSlotEntries,
+            paymentInstallments: body.paymentInstallments,
           });
           if (!row) {
             return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));
@@ -580,6 +607,7 @@ export default class BookingController {
         allowCustomPracticalTime: body.allowCustomPracticalTime,
         customSlotEndTime: body.customSlotEndTime,
         paidSlotEntries: body.paidSlotEntries,
+        paymentInstallments: body.paymentInstallments,
       });
       if (!row) {
         return next(new ResourceNotFoundError('Instructor not found', HttpStatusCodesUtil.NOT_FOUND));

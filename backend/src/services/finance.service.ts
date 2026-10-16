@@ -15,7 +15,9 @@ import ErrorsUtil from '../utils/errors.util';
 import { HttpStatusCodesUtil } from '../utils';
 import {
   isPackageCreditPrepaidMeta,
+  resolveAdminPaymentInstallments,
   resolveBookingPayment,
+  type BookingPaymentInstallmentInput,
 } from '../utils/booking-admin-payment.util';
 
 /** English line for manual/system finance rows tied to a booking (matches admin booking payment wording). */
@@ -302,6 +304,131 @@ export default class FinanceService {
           excess = 0;
         }
       }
+    }
+  }
+
+  /**
+   * Write the admin's payment sessions onto existing income rows.
+   * Rows are matched by id. New sessions are inserted. Removed manual rows are voided.
+   * System (vPOS) rows are never updated or voided.
+   */
+  static async syncBookingPaymentInstallments(
+    bookingId: number,
+    installments: readonly BookingPaymentInstallmentInput[],
+    transaction?: SequelizeTransaction,
+    opts?: { createdByUserId?: number | null; description?: string },
+  ): Promise<void> {
+    const id = Math.floor(Number(bookingId));
+    if (!Number.isFinite(id) || id <= 0) return;
+
+    const booking = await Booking.findByPk(id, { transaction });
+    if (!booking) return;
+    if (collectedIncomeTargetAmd(booking) == null) return;
+    const total = Math.max(0, Math.round(Number(booking.totalPriceAmd) || 0));
+    let resolved;
+    try {
+      resolved = resolveAdminPaymentInstallments(total, installments);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Invalid payment';
+      throw new ErrorsUtil.InputValidationError(msg, HttpStatusCodesUtil.BAD_REQUEST);
+    }
+
+    const rows = await FinanceTransaction.findAll({
+      where: {
+        bookingId: id,
+        entryType: 'income',
+        status: { [Op.notIn]: ['failed', 'refunded'] },
+      },
+      order: [['id', 'ASC']],
+      transaction,
+      lock: transaction ? Transaction.LOCK.UPDATE : undefined,
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const keptIds = new Set<number>();
+
+    const stu = await User.findByPk(booking.studentUserId, {
+      attributes: ['name', 'email'],
+      transaction,
+    });
+    const customer = stu?.name?.trim() || `Student #${booking.studentUserId}`;
+    const email = (stu?.email ?? '').trim();
+    const createdByUserIdRaw = opts?.createdByUserId != null ? Number(opts.createdByUserId) : null;
+    const createdByUserId =
+      createdByUserIdRaw != null && Number.isFinite(createdByUserIdRaw) && createdByUserIdRaw > 0
+        ? createdByUserIdRaw
+        : null;
+
+    for (let index = 0; index < resolved.installments.length; index += 1) {
+      const item = resolved.installments[index]!;
+      const createdAt = new Date(item.recordedAt);
+      const note = item.note?.trim() ? item.note.trim().slice(0, 2000) : null;
+      if (item.id != null) {
+        const row = byId.get(item.id);
+        if (!row || Number(row.bookingId) !== id) {
+          throw new ErrorsUtil.InputValidationError('Unknown payment installment.', HttpStatusCodesUtil.BAD_REQUEST);
+        }
+        keptIds.add(row.id);
+        if (row.source === 'system') continue;
+        const rowCreated = new Date((row as unknown as { createdAt?: Date | string }).createdAt ?? 0);
+        const sameMinute =
+          Number.isFinite(rowCreated.getTime()) &&
+          Math.floor(rowCreated.getTime() / 60000) === Math.floor(createdAt.getTime() / 60000);
+        const sameAmount = Math.round(Number(row.grossAmd) || 0) === item.amountAmd;
+        const sameMethod = row.method === item.method;
+        const sameNote = (row.staffNote ?? null) === note;
+        if (sameAmount && sameMethod && sameNote && sameMinute && row.status === 'completed') continue;
+        await row.update(
+          {
+            grossAmd: item.amountAmd,
+            method: item.method,
+            staffNote: note,
+            status: 'completed',
+          },
+          { transaction, silent: true },
+        );
+        if (!sameMinute) {
+          await sequelize.query(
+            'UPDATE `finance_transactions` SET `created_at` = :createdAt WHERE `id` = :id',
+            { replacements: { createdAt, id: row.id }, transaction },
+          );
+        }
+        continue;
+      }
+
+      await FinanceTransaction.create(
+        {
+          customer,
+          email,
+          description: opts?.description?.trim() || financeDescriptionForBooking(booking),
+          branchId: booking.branchId,
+          channel: 'office',
+          method: item.method,
+          grossAmd: item.amountAmd,
+          feeAmd: 0,
+          status: 'completed',
+          providerRef: `booking-installment:${id}:${Date.now()}:${index}`,
+          source: 'manual',
+          entryType: 'income',
+          expenseKind: null,
+          employeeName: null,
+          units: null,
+          unitRateAmd: null,
+          createdAt: Number.isNaN(createdAt.getTime()) ? new Date() : createdAt,
+          bookingId: id,
+          relatedPaymentTransactionId: null,
+          createdByUserId,
+          staffNote: note,
+        } as never,
+        { transaction },
+      );
+    }
+
+    for (const row of rows) {
+      if (keptIds.has(row.id) || row.source !== 'manual') continue;
+      const desc = String(row.description ?? '').trim();
+      const suffix = ' · adjusted to booking paid total';
+      const nextDesc = desc.includes('adjusted to booking paid total') ? desc : `${desc || 'Payment'}${suffix}`;
+      await row.update({ status: 'failed', description: nextDesc.slice(0, 512) }, { transaction });
     }
   }
 

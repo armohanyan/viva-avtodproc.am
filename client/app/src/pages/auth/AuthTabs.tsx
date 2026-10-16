@@ -10,7 +10,7 @@ import { useLang } from "src/lib/i18n";
 import { useToast } from "src/lib/toast";
 import { getApiErrorMessage, vivaApiJson } from "src/lib/vivaApi";
 import type { AccountType } from "src/modules/accounts";
-import { buildSocialAuthUrl } from "src/lib/socialAuth";
+import GoogleSignInButton from "src/components/auth/GoogleSignInButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "src/components/ui/tabs";
 import { Button } from "src/components/ui/button";
 import { Input } from "src/components/ui/input";
@@ -21,29 +21,6 @@ import { joinAppPath } from "src/lib/navigation/crossApp";
 import { resolvedViteMarketingOrigin } from "src/lib/navigation/viteMarketingOrigin";
 import { legalDoc } from "src/lib/legalDocsContent";
 import BrandLogo from "src/components/BrandLogo";
-
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="w-4 h-4">
-      <path
-        fill="#EA4335"
-        d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.3-1.9 3.1l3.1 2.4c1.8-1.7 2.9-4.2 2.9-7.1 0-.7-.1-1.4-.2-2H12z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 21c2.6 0 4.8-.9 6.4-2.4l-3.1-2.4c-.9.6-2 .9-3.3.9-2.5 0-4.6-1.7-5.3-4H3.5v2.5C5.1 18.8 8.3 21 12 21z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M6.7 13.1c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9V6.8H3.5A9 9 0 0 0 2.6 11c0 1.5.3 2.9.9 4.2l3.2-2.1z"
-      />
-      <path
-        fill="#4285F4"
-        d="M12 5.1c1.4 0 2.6.5 3.6 1.4l2.7-2.7C16.8 2.4 14.6 1.5 12 1.5c-3.7 0-6.9 2.1-8.5 5.3l3.2 2.5c.7-2.3 2.8-4.2 5.3-4.2z"
-      />
-    </svg>
-  );
-}
 
 type AuthTabKey = "login" | "register";
 
@@ -123,7 +100,8 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [loginGoogleRedirecting, setLoginGoogleRedirecting] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,9 +160,38 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     }
   };
 
-  const startGoogleLogin = () => {
-    setLoginGoogleRedirecting(true);
-    window.location.assign(buildSocialAuthUrl("google", "/auth/callback"));
+  const finishGoogle = async (credential: string) => {
+    if (activeTab === "register" && !agreed) {
+      showToast(t("pleaseAgreeTermsError"), "error");
+      return;
+    }
+    setGoogleLoading(true);
+    try {
+      const data = await vivaApiJson<{
+        accessToken: string;
+        user: {
+          id: string | number;
+          email: string;
+          name: string;
+          accountType: AccountType;
+          hasPassword?: boolean;
+        };
+      }>("/auth/oauth/google", { method: "POST", body: { credential } });
+      signIn({
+        email: data.user.email,
+        name: data.user.name,
+        accountType: data.user.accountType,
+        accessToken: data.accessToken,
+        id: data.user.id,
+        ...(typeof data.user.hasPassword === "boolean" ? { hasPassword: data.user.hasPassword } : {}),
+      });
+      showToast(t("socialAuthSuccess"), "success");
+      setLocation(absWouterHref(resolvePostAuthPanelPath(data.user.accountType, window.location.search)));
+    } catch (e) {
+      showToast(getApiErrorMessage(e), "error");
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   // --- Register state/handlers ---
@@ -195,9 +202,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     phone: "",
     password: "",
   });
-  const [agreed, setAgreed] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
-  const [registerGoogleRedirecting, setRegisterGoogleRedirecting] = useState(false);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -257,11 +262,6 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
     } finally {
       setRegisterLoading(false);
     }
-  };
-
-  const startGoogleRegister = () => {
-    setRegisterGoogleRedirecting(true);
-    window.location.assign(buildSocialAuthUrl("google", "/auth/callback"));
   };
 
   return (
@@ -427,7 +427,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
                     <Button
                       type="submit"
-                      disabled={loginLoading || loginGoogleRedirecting}
+                      disabled={loginLoading || googleLoading}
                       className="h-11 w-full font-semibold disabled:opacity-70"
                     >
                       {loginLoading ? t("authSubmittingLogin") : t("signIn")}
@@ -436,16 +436,13 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
                   <AuthDivider label={t("orContinueWith")} />
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 w-full gap-2 border-border bg-background font-medium"
-                    disabled={loginLoading || loginGoogleRedirecting}
-                    onClick={startGoogleLogin}
-                  >
-                    <GoogleIcon />
-                    {loginGoogleRedirecting ? t("redirecting") : t("continueWithGoogle")}
-                  </Button>
+                  <GoogleSignInButton
+                    active={activeTab === "login"}
+                    lang={lang}
+                    disabled={loginLoading || googleLoading}
+                    unavailableLabel={t("socialAuthFailed")}
+                    onCredential={(credential) => void finishGoogle(credential)}
+                  />
                 </div>
               </TabsContent>
 
@@ -553,7 +550,7 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
                     <Button
                       type="submit"
-                      disabled={registerLoading || registerGoogleRedirecting}
+                      disabled={registerLoading || googleLoading}
                       className="h-11 w-full font-semibold disabled:opacity-70"
                     >
                       {registerLoading ? t("authSubmittingRegister") : t("createAccount")}
@@ -562,16 +559,13 @@ export default function AuthTabs({ initialTab }: { initialTab: AuthTabKey }) {
 
                   <AuthDivider label={t("orContinueWith")} />
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 w-full gap-2 border-border bg-background font-medium"
-                    disabled={registerLoading || registerGoogleRedirecting}
-                    onClick={startGoogleRegister}
-                  >
-                    <GoogleIcon />
-                    {registerGoogleRedirecting ? t("redirecting") : t("continueWithGoogle")}
-                  </Button>
+                  <GoogleSignInButton
+                    active={activeTab === "register"}
+                    lang={lang}
+                    disabled={registerLoading || googleLoading}
+                    unavailableLabel={t("socialAuthFailed")}
+                    onCredential={(credential) => void finishGoogle(credential)}
+                  />
                 </div>
               </TabsContent>
             </CardContent>

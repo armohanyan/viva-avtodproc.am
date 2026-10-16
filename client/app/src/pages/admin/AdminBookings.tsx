@@ -45,6 +45,7 @@ import {
   adminPaymentApiPayload,
   adminPaymentFromBooking,
   adminPaymentStateAfterPaidStrChange,
+  bookingPaymentIsSystemOnly,
   BOOKING_LIST_PAYMENT_BADGE_CLASS,
   bookingListPaymentLabelKey,
   bookingListPaymentRow,
@@ -52,6 +53,7 @@ import {
   defaultAdminBookingPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
+  withAdminBookingPaidStr,
   type AdminBookingPaymentState,
   type BookingPaymentFilter,
 } from "src/modules/admin/booking/adminBookingPayment";
@@ -1490,7 +1492,7 @@ export default function AdminBookings() {
 
   useEffect(() => {
     if (!practicalCreditsApply) return;
-    setAddBookingPayment((prev) => ({ ...prev, status: "paid", paidStr: "0" }));
+    setAddBookingPayment((prev) => withAdminBookingPaidStr(prev, "0", 0));
     setDraft((d) => (d ? { ...d, status: "confirmed" } : d));
     setAddIsGift(false);
   }, [practicalCreditsApply]);
@@ -1501,7 +1503,7 @@ export default function AdminBookings() {
       if (prev.status !== "paid") return prev;
       const paid = Number(prev.paidStr);
       if (Number.isFinite(paid) && paid > 0) return prev;
-      return { ...prev, status: "unpaid", paidStr: "0" };
+      return withAdminBookingPaidStr(prev, "0", addEffectiveTotalAmd);
     });
   }, [practicalPartialCredits]);
 
@@ -1607,28 +1609,13 @@ export default function AdminBookings() {
       setEditSystemPayment(null);
       return;
     }
-    const manual = source.manualFinanceTx;
-    const system = source.systemFinanceTx;
-    if (manual) {
-      setEditSystemPayment(null);
-      setEditBookingPayment(
-        adminPaymentFromBooking(source, {
-          method: manual.method as TxMethod,
-          createdAt: manual.createdAt,
-        }),
-      );
-    } else if (system) {
-      setEditSystemPayment(system);
-      setEditBookingPayment(
-        adminPaymentFromBooking(source, {
-          method: system.method as TxMethod,
-          createdAt: system.createdAt,
-        }),
-      );
-    } else {
-      setEditSystemPayment(null);
-      setEditBookingPayment(adminPaymentFromBooking(source));
-    }
+    const systemOnly = bookingPaymentIsSystemOnly(source);
+    const systemRow =
+      source.systemFinanceTx ??
+      source.paymentInstallments?.find((row) => row.source === "system") ??
+      null;
+    setEditSystemPayment(systemOnly ? systemRow : null);
+    setEditBookingPayment(adminPaymentFromBooking(source));
     setEditPaymentErrorKey(null);
   }, [editBooking?.id]);
 
@@ -2093,7 +2080,8 @@ export default function AdminBookings() {
           body,
         });
         const bookingIdNum = Number(created.id);
-        if (addPaid > 0 && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
+        const serverRecordsInstallments = "paymentInstallments" in paymentBody;
+        if (addPaid > 0 && !serverRecordsInstallments && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
           await postManualFinance(bookingPaymentToFinanceFields(addBookingPayment), {
             studentId: draft.studentId,
             branchId: draft.branchId,
@@ -3239,7 +3227,7 @@ export default function AdminBookings() {
                                 const on = e.target.checked;
                                 setUsePracticalPackageCredits(on);
                                 if (!on) {
-                                  setAddBookingPayment((prev) => ({ ...prev, status: "unpaid", paidStr: "" }));
+                                  setAddBookingPayment((prev) => withAdminBookingPaidStr(prev, "0", addEffectiveTotalAmd));
                                   setDraft((d) => (d ? { ...d, status: "pending" } : d));
                                   setAddIsGift(false);
                                 }

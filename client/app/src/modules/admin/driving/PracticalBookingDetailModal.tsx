@@ -145,15 +145,7 @@ export default function PracticalBookingDetailModal({
           ? String(Math.round(Number(row.totalPriceAmd)))
           : "",
       );
-      const finance = row.manualFinanceTx ?? row.systemFinanceTx;
-      setBookingPayment(
-        adminPaymentFromBooking(row, finance
-          ? {
-              method: (finance.method as AdminBookingPaymentState["method"]) || "cash",
-              createdAt: finance.createdAt,
-            }
-          : null),
-      );
+      setBookingPayment(adminPaymentFromBooking(row));
       setSlotEntries(slotsFromBooking(row));
       setPaidSlotKeys(paidKeysFromBooking(row));
       setPaymentErrorKey(null);

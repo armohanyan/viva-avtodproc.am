@@ -10,6 +10,13 @@ export type AdminBookingFinanceLink = {
   method: string;
   createdAt: string;
   grossAmd: number;
+  staffNote?: string | null;
+  status?: string | null;
+};
+
+export type AdminBookingPaymentInstallment = AdminBookingFinanceLink & {
+  staffNote: string | null;
+  status: string;
 };
 
 export type BookingCreatedByType = "student" | "admin" | "unknown";
@@ -58,6 +65,8 @@ export type AdminBookingListItem = {
   packageOrderId?: number | null;
   manualFinanceTx: AdminBookingFinanceLink | null;
   systemFinanceTx: AdminBookingFinanceLink | null;
+  /** Office and online income rows for this booking, oldest first. Failed and refunded rows are omitted. */
+  paymentInstallments?: AdminBookingPaymentInstallment[];
 };
 
 export type AdminBookingListResponse = PaginatedList<AdminBookingListItem> & {

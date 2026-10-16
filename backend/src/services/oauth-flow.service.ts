@@ -33,12 +33,8 @@ export function buildGoogleAuthorizeUrl(nextPath: string | undefined, returnOrig
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('scope', 'openid email profile');
   u.searchParams.set('state', state);
-  // Sign-in only. `access_type=offline` asks for a Google refresh token and leaves
-  // the consent progress bar spinning on accounts.google.com/signin/oauth/id.
-  u.searchParams.set('access_type', 'online');
-  u.searchParams.set('prompt', 'select_account');
-  u.searchParams.set('include_granted_scopes', 'true');
-
+  // Do not send `prompt` or `access_type=offline`. Both leave
+  // accounts.google.com/signin/oauth/id spinning on its progress bar.
   const nonce = peekNonceFromState(state);
   if (nonce) {
     u.searchParams.set('nonce', nonce);
@@ -129,6 +125,44 @@ export async function exchangeGoogleCode(code: string, state: string): Promise<{
     providerUserId: p.sub,
     email: p.email.trim().toLowerCase(),
     name: (p.name || p.email.split('@')[0] || 'User').trim(),
+  };
+}
+
+/** Sign in with Google button: verify the ID token from Google Identity Services. */
+export async function verifyGoogleIdToken(idToken: string): Promise<{
+  provider: 'google';
+  providerUserId: string;
+  email: string;
+  name: string;
+}> {
+  const { clientId } = config.AUTH.OAUTH.google;
+  if (!clientId) {
+    throw new InputValidationError('Google sign-in is not configured', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+
+  const client = new OAuth2Client(clientId);
+  let ticket;
+  try {
+    ticket = await client.verifyIdToken({ idToken, audience: clientId });
+  } catch {
+    throw new InputValidationError('Google sign-in could not be verified', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  const p = ticket.getPayload();
+
+  if (!p?.sub || !p.email) {
+    throw new InputValidationError('Google profile is missing email', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+  if (p.email_verified === false) {
+    throw new InputValidationError('Google email is not verified', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+
+  const name = (p.name || [p.given_name, p.family_name].filter(Boolean).join(' ') || p.email.split('@')[0] || 'User').trim();
+
+  return {
+    provider: 'google',
+    providerUserId: p.sub,
+    email: p.email.trim().toLowerCase(),
+    name,
   };
 }
 

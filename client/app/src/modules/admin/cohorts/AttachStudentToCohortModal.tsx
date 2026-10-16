@@ -13,6 +13,7 @@ import {
   defaultAdminBookingPayment,
   paidAmountFromState,
   validateAdminBookingPayment,
+  withAdminBookingPaidStr,
   type AdminBookingPaymentState,
 } from "src/modules/admin/booking/adminBookingPayment";
 import { theoryGroupSlotPlanFromCohort } from "src/modules/admin/booking/theoryGroupSlotPlan";
@@ -156,11 +157,7 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
         });
         setPackageTheoryCovered(covered);
         if (covered) {
-          setPayment((prev) => ({
-            ...prev,
-            status: "paid",
-            paidStr: "0",
-          }));
+          setPayment((prev) => withAdminBookingPaidStr(prev, "0", 0));
           setStatus("confirmed");
         }
       } catch {
@@ -225,7 +222,8 @@ export default function AttachStudentToCohortModal({ cohort, open, onOpenChange,
         },
       });
       const bookingIdNum = Number(created.id);
-      if (paid > 0 && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
+      const serverRecordsInstallments = "paymentInstallments" in paymentBody;
+      if (paid > 0 && !serverRecordsInstallments && Number.isFinite(bookingIdNum) && bookingIdNum > 0) {
         const stu =
           selectedStudent && String(selectedStudent.id) === String(studentId)
             ? selectedStudent

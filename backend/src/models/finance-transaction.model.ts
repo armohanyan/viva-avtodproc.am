@@ -48,6 +48,8 @@ export class FinanceTransaction extends Model<
   declare relatedPaymentTransactionId: CreationOptional<number | null>;
   /** Staff user who recorded this transaction (admin panel / office). */
   declare createdByUserId: CreationOptional<number | null>;
+  /** Office note for this payment. Separate from the lesson title in `description`. */
+  declare staffNote: CreationOptional<string | null>;
 }
 
 FinanceTransaction.init(
@@ -109,6 +111,7 @@ FinanceTransaction.init(
     },
     relatedPaymentTransactionId: fkUnsignedIntNullable(),
     createdByUserId: fkUnsignedIntNullable(),
+    staffNote: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
   },
   {
     sequelize,
