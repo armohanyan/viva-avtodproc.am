@@ -36,7 +36,7 @@ const PRINT_STYLES = `
   @page { size: A4; margin: 12mm 14mm; }
   * { box-sizing: border-box; }
   body {
-    font-family: "Segoe UI", system-ui, Arial, sans-serif;
+    font-family: "Noto Sans", "Noto Sans Armenian", Arial, "Segoe UI", sans-serif;
     font-size: 10pt;
     line-height: 1.35;
     color: #000;
@@ -147,6 +147,7 @@ function openPrintWindow(title: string, body: string): void {
 <html lang="hy">
 <head>
   <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Armenian:wght@400;500;600;700&display=swap" />
   <title>${escapeHtml(title)}</title>
   <style>${PRINT_STYLES}</style>
 </head>
@@ -171,13 +172,19 @@ function openPrintWindow(title: string, body: string): void {
     doc.write(html);
     doc.close();
 
-    let printed = false;
+    let started = false;
     const runPrint = () => {
-      if (printed) return;
-      printed = true;
-      win.focus();
-      win.print();
-      window.setTimeout(() => iframe.remove(), 800);
+      if (started) return;
+      started = true;
+      const fontsReady = doc.fonts?.ready ?? Promise.resolve();
+      void Promise.race([
+        fontsReady,
+        new Promise((resolve) => window.setTimeout(resolve, 1200)),
+      ]).then(() => {
+        win.focus();
+        win.print();
+        window.setTimeout(() => iframe.remove(), 800);
+      });
     };
 
     win.addEventListener("load", runPrint);

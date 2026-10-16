@@ -17,7 +17,23 @@ class App {
     this.app = express();
     /** Behind nginx: forwarded headers are trusted for IP/rate-limit (express-rate-limit). */
     this.app.set('trust proxy', 1);
-    this.app.use(helmet());
+    this.app.use(
+      helmet({
+        // Google's consent page (`/signin/oauth/id`) never finishes in Chrome when the hop
+        // into accounts.google.com is COOP-isolated or Referrer-Policy is no-referrer:
+        // their approval request fails XSRF and the progress bar loops.
+        crossOriginOpenerPolicy: { policy: 'unsafe-none' },
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+        originAgentCluster: false,
+        referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+        contentSecurityPolicy: {
+          directives: {
+            // Default `form-action 'self'` blocks the rest of a consent-form redirect chain.
+            formAction: ['https:', 'http:'],
+          },
+        },
+      }),
+    );
     this.app.use('/upload', express.static(path.join(process.cwd(), 'upload')));
   }
 

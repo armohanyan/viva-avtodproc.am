@@ -64,8 +64,31 @@ const resetPasswordSchema = z.object({
 });
 
 function readRefreshCookie(req: Request): string | undefined {
-  const c = req.cookies?.[REFRESH_COOKIE_NAME];
-  return typeof c === 'string' && c ? c : undefined;
+  const all = readAllRefreshCookies(req);
+  return all[0];
+}
+
+/** Same cookie name is set on more than one path, so the header can contain several values. */
+function readAllRefreshCookies(req: Request): string[] {
+  const header = req.headers.cookie;
+  if (!header) {
+    const c = req.cookies?.[REFRESH_COOKIE_NAME];
+    return typeof c === 'string' && c ? [c] : [];
+  }
+  const values: string[] = [];
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== REFRESH_COOKIE_NAME) continue;
+    const raw = part.slice(eq + 1).trim();
+    if (!raw) continue;
+    try {
+      values.push(decodeURIComponent(raw));
+    } catch {
+      values.push(raw);
+    }
+  }
+  return [...new Set(values)];
 }
 
 export default class AuthController {
@@ -217,8 +240,7 @@ export default class AuthController {
   static async logout(req: Request, res: Response, next: NextFunction) {
     try {
       assertCookieAuthBrowserOrigin(req);
-      const rt = readRefreshCookie(req);
-      await AuthService.logoutPlain(rt);
+      await AuthService.logoutPlain(readAllRefreshCookies(req));
       clearRefreshCookie(res);
       res.sendStatus(HttpStatusCodesUtil.NO_CONTENT);
     } catch (e) {

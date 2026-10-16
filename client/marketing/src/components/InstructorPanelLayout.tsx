@@ -1,6 +1,5 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { absWouterHref } from "src/lib/wouterFullPath";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
 import {
@@ -37,7 +36,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 	const { t } = useLang();
 	const { showToast } = useToast();
 	const { user, signOut } = useAccount();
-	const [location, setLocation] = useLocation();
+	const [location] = useLocation();
 
 	const iconByPath = {
 		"/instructor/dashboard": LayoutDashboard,
@@ -55,8 +54,7 @@ export default function InstructorPanelLayout({ children }: Props) {
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
-		setLocation(absWouterHref("/"));
-		signOut();
+		void signOut();
 	};
 
 	const headerTitle = pathHasPrefix(location, "/instructor/notifications")

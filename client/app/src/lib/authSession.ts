@@ -19,17 +19,51 @@ function authRefreshUrl(): string {
 	return authV1Url("/auth/refresh");
 }
 
+const SKIP_SESSION_REFRESH_KEY = "viva-skip-session-refresh";
+
+/** Set just before leaving the panel so the next /login load does not restore the old account. */
+export function armSkipSessionRefreshOnce(): void {
+	if (typeof window === "undefined") return;
+	try {
+		sessionStorage.setItem(SKIP_SESSION_REFRESH_KEY, "1");
+	} catch {
+		/* private mode */
+	}
+}
+
 /**
- * Clears the httpOnly refresh cookie on the server (best-effort). Use after local session is cleared
- * so the browser does not keep a valid refresh token without a matching client session.
+ * /login and /register only. Other pages must not consume the flag, or the real login
+ * visit would refresh the cookie we just tried to drop.
+ */
+export function consumeSkipSessionRefreshOnAuthEntry(): boolean {
+	if (typeof window === "undefined") return false;
+	const path = window.location.pathname.replace(/\/+$/, "") || "/";
+	if (path !== "/login" && path !== "/register") return false;
+	try {
+		if (sessionStorage.getItem(SKIP_SESSION_REFRESH_KEY) !== "1") return false;
+		sessionStorage.removeItem(SKIP_SESSION_REFRESH_KEY);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Revokes the httpOnly refresh cookie. `keepalive` so a following navigation cannot cancel it.
+ * Waits up to 8s, then continues; the request is left running.
  */
 export async function clearRefreshCookieAwait(): Promise<void> {
 	if (typeof window === "undefined") return;
-	try {
-		await fetch(authV1Url("/auth/logout"), { method: "POST", credentials: "include" });
-	} catch {
-		/* ignore */
-	}
+	const logout = fetch(authV1Url("/auth/logout"), {
+		method: "POST",
+		credentials: "include",
+		keepalive: true,
+		cache: "no-store",
+	}).then(
+		() => undefined,
+		() => undefined,
+	);
+	await Promise.race([logout, new Promise<void>((r) => setTimeout(r, 8000))]);
 }
 
 export function clearRefreshCookieBestEffort(): void {

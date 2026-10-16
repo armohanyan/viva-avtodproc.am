@@ -33,8 +33,16 @@ export function buildGoogleAuthorizeUrl(nextPath: string | undefined, returnOrig
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('scope', 'openid email profile');
   u.searchParams.set('state', state);
-  u.searchParams.set('access_type', 'offline');
+  // Sign-in only. `access_type=offline` asks for a Google refresh token and leaves
+  // the consent progress bar spinning on accounts.google.com/signin/oauth/id.
+  u.searchParams.set('access_type', 'online');
   u.searchParams.set('prompt', 'select_account');
+  u.searchParams.set('include_granted_scopes', 'true');
+
+  const nonce = peekNonceFromState(state);
+  if (nonce) {
+    u.searchParams.set('nonce', nonce);
+  }
 
   return u.toString();
 }
@@ -90,7 +98,7 @@ export async function exchangeGoogleCode(code: string, state: string): Promise<{
   email: string;
   name: string;
 }> {
-  verifyOAuthState(state);
+  const st = verifyOAuthState(state);
 
   const { clientId, clientSecret} = config.AUTH.OAUTH.google;
   if (!clientId || !clientSecret) {
@@ -110,6 +118,10 @@ export async function exchangeGoogleCode(code: string, state: string): Promise<{
 
   if (!p?.sub || !p.email) {
     throw new InputValidationError('Google profile is missing email', HttpStatusCodesUtil.BAD_REQUEST);
+  }
+
+  if (st.nonce && p.nonce !== st.nonce) {
+    throw new InputValidationError('Google sign-in could not be verified', HttpStatusCodesUtil.BAD_REQUEST);
   }
 
   return {

@@ -1,6 +1,5 @@
 import { ReactNode, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { absWouterHref } from "src/lib/wouterFullPath";
 import { cn } from "src/lib/utils";
 import { useLang } from "../lib/i18n";
 import { useToast } from "../lib/toast";
@@ -71,7 +70,7 @@ export default function AdminLayout({ children }: Props) {
 	const { t } = useLang();
 	const { showToast } = useToast();
 	const { user, signOut } = useAccount();
-	const [location, setLocation] = useLocation();
+	const [location] = useLocation();
 
 	/**
 	 * Manual open/close overrides for collapsible sidebar groups.
@@ -271,8 +270,7 @@ export default function AdminLayout({ children }: Props) {
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
-		setLocation(absWouterHref("/"));
-		signOut();
+		void signOut();
 	};
 
 	const isDirectorMode = isDirectorRoute(location);

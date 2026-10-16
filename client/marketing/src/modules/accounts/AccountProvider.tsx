@@ -9,7 +9,12 @@ import {
   type ReactNode,
 } from "react";
 import { setAccessTokenInMemory } from "src/lib/accessTokenMemory";
-import { clearRefreshCookieBestEffort, tryRefreshAccessToken } from "src/lib/authSession";
+import {
+	armSkipSessionRefreshOnce,
+	clearRefreshCookieAwait,
+	consumeSkipSessionRefreshOnAuthEntry,
+	tryRefreshAccessToken,
+} from "src/lib/authSession";
 import type { AccountSessionUser, AccountType } from "./account.types";
 import {
 	ACCOUNT_SESSION_STORAGE_KEY,
@@ -32,7 +37,7 @@ export interface AccountContextValue {
     id?: string | number;
     hasPassword?: boolean;
   }) => void;
-  readonly signOut: () => void;
+  readonly signOut: () => Promise<void>;
   readonly defaultHomePath: string;
 }
 
@@ -52,6 +57,14 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (consumeSkipSessionRefreshOnAuthEntry()) {
+        clearAccountSession();
+        if (!cancelled) {
+          setUser(null);
+          setHydrated(true);
+        }
+        return;
+      }
       let u = loadAccountSession();
       if (!u || !u.accessToken) {
         const refreshOutcome = await tryRefreshAccessToken();
@@ -122,10 +135,12 @@ export function AccountProvider({ children }: PropsWithChildren): ReactNode {
     [],
   );
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
+    await clearRefreshCookieAwait();
     clearAccountSession();
     setUser(null);
-    clearRefreshCookieBestEffort();
+    armSkipSessionRefreshOnce();
+    window.location.replace("/");
   }, []);
 
   const defaultHomePath = user ? defaultHomePathForAccountType(user.accountType) : "/dashboard";

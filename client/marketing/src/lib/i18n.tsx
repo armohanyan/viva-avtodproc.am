@@ -1545,6 +1545,11 @@ const en = {
   sendingResetLink: "Sending…",
   placeholderMapEmbedUrl: "https://maps.google.com/…",
   adminTableRowDoubleClickEdit: "Double-click to edit",
+  notFoundCode: "404",
+  notFoundTitle: "Page not found",
+  notFoundDescription: "This page does not exist or the link is no longer valid.",
+  notFoundGoHome: "Go to home page",
+  notFoundSignIn: "Sign in",
 };
 
 // ─── Russian ─────────────────────────────────────────────────────────────────
@@ -3075,6 +3080,11 @@ const ru: typeof en = {
   sendingResetLink: "Отправка…",
   placeholderMapEmbedUrl: "https://maps.google.com/…",
   adminTableRowDoubleClickEdit: "Двойной щелчок - редактировать",
+  notFoundCode: "404",
+  notFoundTitle: "Страница не найдена",
+  notFoundDescription: "Такой страницы нет или ссылка больше не действует.",
+  notFoundGoHome: "На главную",
+  notFoundSignIn: "Войти",
 };
 
 // ─── Armenian ─────────────────────────────────────────────────────────────────
@@ -4606,6 +4616,11 @@ const am: typeof en = {
   sendingResetLink: "Ուղարկում…",
   placeholderMapEmbedUrl: "https://maps.google.com/…",
   adminTableRowDoubleClickEdit: "Կրկնակի սեղմեք խմբագրելու համար",
+  notFoundCode: "404",
+  notFoundTitle: "Էջը չի գտնվել",
+  notFoundDescription: "Այս էջը գոյություն չունի կամ հղումն այլևս վավեր չէ։",
+  notFoundGoHome: "Գնալ գլխավոր էջ",
+  notFoundSignIn: "Մուտք գործել",
 };
 
 // ─── Type & Context ───────────────────────────────────────────────────────────

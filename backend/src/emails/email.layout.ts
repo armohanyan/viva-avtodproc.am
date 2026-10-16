@@ -45,7 +45,7 @@ export function renderEmailLayout(innerHtml: string, options?: { preheader?: str
     }
   </style>
 </head>
-<body style="margin:0;padding:0;width:100%;background-color:${pageBg};font-family:Inter,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.55;color:${text};-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;width:100%;background-color:${pageBg};font-family:'Noto Sans','Noto Sans Armenian',system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.55;color:${text};-webkit-font-smoothing:antialiased;">
   ${preheaderBlock}
   <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color:${pageBg};">
     <tr>

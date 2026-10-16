@@ -45,7 +45,7 @@ export default function DashboardLayout({ children }: Props) {
 	const { showToast } = useToast();
 	const { user, signOut } = useAccount();
 	const router = useRouter();
-	const [locRelative, setLocation] = useLocation();
+	const [locRelative] = useLocation();
 	const location = useMemo(() => fullBrowserPathFromRouter(router, locRelative), [router, locRelative]);
 
 	const iconByPath = {
@@ -132,9 +132,7 @@ export default function DashboardLayout({ children }: Props) {
 
 	const handleLogout = () => {
 		showToast(t("logoutSuccess"), "info");
-		// Leave protected routes before clearing session so `ProtectedRoute` does not send guests to `/login`.
-		setLocation(absWouterHref("/"));
-		signOut();
+		void signOut();
 	};
 
 	return (
