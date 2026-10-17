@@ -3,8 +3,7 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
-import { Car, BookOpen, CheckCircle2, ChevronDown } from "lucide-react";
-import { Button } from "src/components/ui/button";
+import { Car, Users, UserRound, CheckCircle2, ChevronDown } from "lucide-react";
 import { Reveal } from "src/lib/motion";
 import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 import { useMemo, useState } from "react";
@@ -40,9 +39,9 @@ function useMarketingServices(): ServiceItem[] {
         ],
       },
       {
-        icon: BookOpen,
+        icon: Users,
         title: t("theoryGroupCourses"),
-        desc: t("theoryDesc"),
+        desc: t("theoryGroupDesc"),
         color: "text-primary",
         bg: "bg-primary/10",
         border: "border-primary/20",
@@ -54,17 +53,17 @@ function useMarketingServices(): ServiceItem[] {
         ],
       },
       {
-        icon: BookOpen,
+        icon: UserRound,
         title: t("theoryIndividualCourses"),
-        desc: t("theoryDesc"),
+        desc: t("theoryIndividualDesc"),
         color: "text-primary",
         bg: "bg-primary/10",
         border: "border-primary/20",
         details: [
-          t("servicesCardTheoryDetail1"),
-          t("servicesCardTheoryDetail2"),
-          t("servicesCardTheoryDetail3"),
-          t("servicesCardTheoryDetail4"),
+          t("servicesCardTheoryIndividualDetail1"),
+          t("servicesCardTheoryIndividualDetail2"),
+          t("servicesCardTheoryIndividualDetail3"),
+          t("servicesCardTheoryIndividualDetail4"),
         ],
       },
     ],
@@ -82,7 +81,6 @@ function ServiceCardBody({
   density: "comfortable" | "compact";
 }) {
   const { t } = useLang();
-  const { MarketingLink } = useAppNavigation();
   const TitleTag = heading;
   const padding = density === "comfortable" ? "p-6 sm:p-8 md:p-10" : "p-5 sm:p-6 md:p-8";
   const titleClass =
@@ -118,16 +116,6 @@ function ServiceCardBody({
                 </li>
               ))}
             </ul>
-            <div className="mt-6">
-              <MarketingLink href="/packages">
-                <Button
-                  className={`w-full sm:w-auto ${s.bg} ${s.color} border border-current/50 hover:opacity-80`}
-                  variant="outline"
-                >
-                  {t("servicesViewPackagesCta")}
-                </Button>
-              </MarketingLink>
-            </div>
           </div>
         </div>
       </div>
@@ -167,7 +155,7 @@ export function HomeServicesBlock() {
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
                   <h3 className="font-semibold text-foreground leading-snug">{s.title}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground leading-snug line-clamp-2">{s.desc}</p>
+                  <p className="mt-1 text-sm text-muted-foreground leading-snug">{s.desc}</p>
                 </div>
                 <ChevronDown
                   className={cn(
@@ -180,7 +168,7 @@ export function HomeServicesBlock() {
               {open ? (
                 <div className="border-t border-border/70 px-4 pb-4 pt-1">
                   <div className={cn("rounded-xl p-4", s.bg)}>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/90">
+                    <p className="mb-3 text-sm font-semibold text-foreground">
                       {t("servicesIncludedTitle")}
                     </p>
                     <ul className="space-y-2.5">
@@ -191,22 +179,6 @@ export function HomeServicesBlock() {
                         </li>
                       ))}
                     </ul>
-                    <div className="mt-4">
-                      <MarketingLink href="/packages" className="block">
-                        <Button
-                          className={cn(
-                            "w-full min-h-11 touch-manipulation",
-                            s.bg,
-                            s.color,
-                            "border border-current/50 hover:opacity-90",
-                          )}
-                          variant="outline"
-                          size="sm"
-                        >
-                          {t("servicesViewPackagesCta")}
-                        </Button>
-                      </MarketingLink>
-                    </div>
                   </div>
                 </div>
               ) : null}
@@ -224,35 +196,21 @@ export function HomeServicesBlock() {
               s.border,
             )}
           >
-            <div className={cn("mb-4 flex h-12 w-12 items-center justify-center rounded-xl", s.bg)}>
-              <s.icon className={cn("h-6 w-6", s.color)} />
+            <div className="flex items-start gap-3">
+              <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl", s.bg)}>
+                <s.icon className={cn("h-5 w-5", s.color)} />
+              </div>
+              <h3 className="pt-2 font-semibold text-foreground leading-snug">{s.title}</h3>
             </div>
-            <h3 className="font-semibold text-foreground leading-snug">{s.title}</h3>
-            <p className="mt-2 flex-1 text-sm text-muted-foreground leading-relaxed line-clamp-4">{s.desc}</p>
+            <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{s.desc}</p>
             <ul className="mt-4 space-y-2 border-t border-border/60 pt-4">
               {s.details.map((d, j) => (
-                <li key={j} className="flex gap-2 text-xs text-muted-foreground leading-snug">
-                  <CheckCircle2 className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", s.color)} />
+                <li key={j} className="flex gap-2 text-sm text-muted-foreground leading-snug">
+                  <CheckCircle2 className={cn("mt-0.5 h-4 w-4 shrink-0", s.color)} />
                   <span>{d}</span>
                 </li>
               ))}
             </ul>
-            <div className="mt-5">
-              <MarketingLink href="/packages" className="block">
-                <Button
-                  className={cn(
-                    "w-full min-h-10 text-xs sm:text-sm",
-                    s.bg,
-                    s.color,
-                    "border border-current/50 hover:opacity-90",
-                  )}
-                  variant="outline"
-                  size="sm"
-                >
-                  {t("servicesViewPackagesCta")}
-                </Button>
-              </MarketingLink>
-            </div>
           </div>
         ))}
       </div>

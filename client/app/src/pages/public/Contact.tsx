@@ -147,16 +147,16 @@ export default function Contact() {
                   <Input type="tel" value={form.phone} onChange={set("phone")} placeholder="+374 99 123 456" className="h-11" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Subject</label>
-                  <Input value={form.subject} onChange={set("subject")} placeholder="How can we help?" className="h-11" />
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("subject")}</label>
+                  <Input value={form.subject} onChange={set("subject")} placeholder={t("contactSubjectPlaceholder")} className="h-11" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Message *</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">{t("message")} *</label>
                   <textarea
                     rows={5}
                     value={form.message}
                     onChange={set("message")}
-                    placeholder="Write your message here..."
+                    placeholder={t("contactMessagePlaceholder")}
                     className="w-full rounded-lg border border-border px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
                   />
                 </div>
@@ -165,7 +165,7 @@ export default function Contact() {
                   disabled={loading}
                   className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-base disabled:opacity-70"
                 >
-                  {loading ? "Sending..." : t("sendMessage")}
+                  {loading ? t("sending") : t("sendMessage")}
                 </Button>
               </form>
             </Reveal>

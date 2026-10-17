@@ -5,7 +5,12 @@ import { Button } from "src/components/ui/button";
 import { Badge } from "src/components/ui/badge";
 import { CountUpText, Reveal } from "src/lib/motion";
 import InstructorCard from "src/components/InstructorCard";
+import InstructorLocationFilter from "src/components/InstructorLocationFilter";
 import { useInstructors } from "src/modules/instructors/useInstructors";
+import {
+  filterInstructorsByLocation,
+  instructorCityGroups,
+} from "src/modules/instructors/instructorLocationFilter";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppModal } from "src/components/AppModal";
@@ -59,9 +64,22 @@ export default function Home({
     () => [...apiPackages].sort((a, b) => a.lessons - b.lessons),
     [apiPackages],
   );
-  const visibleInstructors = instructors.filter((ins) => ins.status === "active");
-  const homeInstructors = visibleInstructors.slice(0, HOME_INSTRUCTORS_LIMIT);
-  const hasMoreInstructors = visibleInstructors.length > HOME_INSTRUCTORS_LIMIT;
+  const [instructorCityKey, setInstructorCityKey] = useState("");
+  const [instructorRegionId, setInstructorRegionId] = useState("");
+  const instructorGroups = useMemo(() => instructorCityGroups(cities, branches), [cities, branches]);
+  const filteredInstructors = useMemo(
+    () => filterInstructorsByLocation(instructors, instructorGroups, instructorCityKey, instructorRegionId),
+    [instructors, instructorGroups, instructorCityKey, instructorRegionId],
+  );
+  const homeInstructors = filteredInstructors.slice(0, HOME_INSTRUCTORS_LIMIT);
+  const hasMoreInstructors = filteredInstructors.length > HOME_INSTRUCTORS_LIMIT;
+  const instructorsHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (instructorCityKey) params.set("city", instructorCityKey);
+    if (instructorRegionId) params.set("region", instructorRegionId);
+    const query = params.toString();
+    return query ? `/instructors?${query}` : "/instructors";
+  }, [instructorCityKey, instructorRegionId]);
   const stats = useMemo(() => {
     const rows = mkt?.stats ?? [];
     return rows.map((s) => ({
@@ -377,25 +395,39 @@ export default function Home({
         </section>
       )}
 
-      {homeInstructors.length > 0 ? (
+      {instructors.some((ins) => ins.status === "active") ? (
         <section className="py-14 sm:py-20 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-14">
-              <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">{t("instructorsTitle")}</h2>
+            <div className="text-center mb-8">
+              <h2 className="text-3xl sm:text-4xl font-bold text-foreground">{t("instructorsTitle")}</h2>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
-              {homeInstructors.map((ins, i) => (
-                <InstructorCard
-                  key={i}
-                  instructor={ins}
-                  showBookButton={true}
-                  imageObjectFit="cover"
-                />
-              ))}
-            </div>
+            <InstructorLocationFilter
+              groups={instructorGroups}
+              cityKey={instructorCityKey}
+              regionId={instructorRegionId}
+              onCityChange={(next) => {
+                setInstructorCityKey(next);
+                setInstructorRegionId("");
+              }}
+              onRegionChange={setInstructorRegionId}
+            />
+            {homeInstructors.length > 0 ? (
+              <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+                {homeInstructors.map((ins) => (
+                  <InstructorCard
+                    key={ins.id}
+                    instructor={ins}
+                    showBookButton={true}
+                    imageObjectFit="cover"
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-8 text-center text-muted-foreground">{t("instructorFilterEmpty")}</p>
+            )}
             {hasMoreInstructors ? (
               <div className="text-center mt-10">
-                <MarketingLink href="/instructors">
+                <MarketingLink href={instructorsHref}>
                   <Button variant="outline" className="border-border">
                     {t("viewAll")} <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>

@@ -3,14 +3,11 @@
 import Navbar from "src/components/Navbar";
 import Footer from "src/components/Footer";
 import { useLang } from "src/lib/i18n";
-import { Car, BookOpen, CheckCircle2 } from "lucide-react";
-import { Button } from "src/components/ui/button";
+import { Car, Users, UserRound, CheckCircle2 } from "lucide-react";
 import { Reveal } from "src/lib/motion";
-import { useAppNavigation } from "src/lib/navigation/AppNavigationContext";
 
 export default function Services() {
   const { t } = useLang();
-  const { MarketingLink } = useAppNavigation();
 
   const services = [
     {
@@ -28,9 +25,9 @@ export default function Services() {
       ],
     },
     {
-      icon: BookOpen,
+      icon: Users,
       title: t("theoryGroupCourses"),
-      desc: t("theoryDesc"),
+      desc: t("theoryGroupDesc"),
       color: "text-primary",
       bg: "bg-primary/10",
       border: "border-primary/20",
@@ -42,17 +39,17 @@ export default function Services() {
       ],
     },
     {
-      icon: BookOpen,
+      icon: UserRound,
       title: t("theoryIndividualCourses"),
-      desc: t("theoryDesc"),
+      desc: t("theoryIndividualDesc"),
       color: "text-primary",
       bg: "bg-primary/10",
       border: "border-primary/20",
       details: [
-        t("servicesCardTheoryDetail1"),
-        t("servicesCardTheoryDetail2"),
-        t("servicesCardTheoryDetail3"),
-        t("servicesCardTheoryDetail4"),
+        t("servicesCardTheoryIndividualDetail1"),
+        t("servicesCardTheoryIndividualDetail2"),
+        t("servicesCardTheoryIndividualDetail3"),
+        t("servicesCardTheoryIndividualDetail4"),
       ],
     },
   ];
@@ -102,16 +99,6 @@ export default function Services() {
                             </li>
                           ))}
                         </ul>
-                        <div className="mt-6">
-                          <MarketingLink href="/packages">
-                            <Button
-                              className={`${s.bg} ${s.color} border border-current/50 hover:opacity-80`}
-                              variant="outline"
-                            >
-                              {t("servicesViewPackagesCta")}
-                            </Button>
-                          </MarketingLink>
-                        </div>
                       </div>
                     </div>
                   </div>
