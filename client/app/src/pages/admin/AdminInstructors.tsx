@@ -847,7 +847,7 @@ export default function AdminInstructors() {
         open={editId !== null}
         onOpenChange={(o) => !o && setEditId(null)}
         title={t("instructorDialogEditTitle")}
-        contentClassName="max-w-lg max-h-[min(90vh,720px)]"
+        contentClassName="w-full max-w-[min(96vw,56rem)] sm:max-w-[min(96vw,56rem)] max-h-[min(92vh,920px)]"
         footer={
           editIns ? (
             <div className="flex gap-3">

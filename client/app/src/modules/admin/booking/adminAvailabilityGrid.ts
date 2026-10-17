@@ -1,7 +1,10 @@
 import type { Instructor } from "src/data/instructors";
 import type { Branch } from "src/modules/branches";
 import { branchDisplayLabel, branchMinimalLabel } from "src/modules/branches";
-import { branchIdsEffectiveOnAnyDate } from "src/modules/instructors/instructorTemporaryTransfer";
+import {
+  branchIdsEffectiveOnAnyDate,
+  type BranchMembershipInstructor,
+} from "src/modules/instructors/instructorTemporaryTransfer";
 import { yerevanAddCalendarDays, yerevanAddCalendarMonths, yerevanTodayIso } from "src/lib/yerevanLessonCalendar";
 
 /** Each grid page covers a calendar month — from `start` through the same day-of-month next month, inclusive. */
@@ -54,9 +57,18 @@ export function branchShortCode(name: string): string {
 export type InstructorBranchColumnOptions = {
   /** When set, a column is included only if that branch is effective on at least one of these dates. */
   dateIsos?: readonly string[];
-  /** Keep a column when a lesson is already booked there, even during a temporary transfer. */
+  /**
+   * Keep a column when a lesson is already booked on a branch this instructor is
+   * attached to, even if a temporary transfer moved them off it for these dates.
+   * Bookings on any other branch do not add a column.
+   */
   bookedColumns?: readonly { instructorId: string; branchId: string }[];
 };
+
+/** Permanent branch links only. A booking elsewhere must not look like an attachment. */
+function linkedBranchIds(instructor: BranchMembershipInstructor): Set<string> {
+  return new Set((instructor.availableBranchIds ?? []).map((id) => String(id).trim()).filter(Boolean));
+}
 
 /** Empty / missing filter means every branch. A string or a non-empty list limits columns. */
 export function branchIdFilterSet(
@@ -100,7 +112,10 @@ export function buildInstructorBranchColumns(
         ? branchIdsEffectiveOnAnyDate(ins, dateIsos)
         : (ins.availableBranchIds ?? []).map(String),
     );
-    for (const branchId of bookedByInstructor.get(String(ins.id)) ?? []) servedIds.add(branchId);
+    const linked = linkedBranchIds(ins);
+    for (const branchId of bookedByInstructor.get(String(ins.id)) ?? []) {
+      if (linked.has(branchId)) servedIds.add(branchId);
+    }
     const allServed = [...servedIds]
       .map((id) => byId.get(String(id)))
       .filter((b): b is Branch => Boolean(b))

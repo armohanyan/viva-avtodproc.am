@@ -41,7 +41,7 @@ export default function InstructorTemporaryTransfersFields({ rows, branches, cit
         <p className="text-xs text-muted-foreground mt-0.5">{t("instructorTemporaryTransferHint")}</p>
       </div>
       {rows.map((row) => (
-        <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+        <div key={row.id} className="grid grid-cols-1 gap-2 items-end md:grid-cols-[minmax(0,1.5fr)_11rem_11rem_auto]">
           <label className="block min-w-0">
             <span className="block text-xs font-medium text-muted-foreground mb-1">
               {t("instructorTemporaryTransferBranch")}
@@ -59,7 +59,7 @@ export default function InstructorTemporaryTransfersFields({ rows, branches, cit
               ))}
             </select>
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="block text-xs font-medium text-muted-foreground mb-1">
               {t("instructorTemporaryTransferStart")}
             </span>
@@ -67,10 +67,10 @@ export default function InstructorTemporaryTransfersFields({ rows, branches, cit
               type="date"
               value={row.startsOn}
               onChange={(e) => updateRow(row.id, { startsOn: e.target.value })}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </label>
-          <label className="block">
+          <label className="block min-w-0">
             <span className="block text-xs font-medium text-muted-foreground mb-1">
               {t("instructorTemporaryTransferEnd")}
             </span>
@@ -78,7 +78,7 @@ export default function InstructorTemporaryTransfersFields({ rows, branches, cit
               type="date"
               value={row.endsOn}
               onChange={(e) => updateRow(row.id, { endsOn: e.target.value })}
-              className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </label>
           <Button
