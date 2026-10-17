@@ -567,7 +567,7 @@ export default function AdminInstructors() {
           temporaryTransfers: (editIns.temporaryTransfers ?? []).map((row) => ({
             branchId: Number(row.branchId),
             startsOn: row.startsOn,
-            endsOn: row.endsOn,
+            endsOn: row.temporary ? row.endsOn : null,
           })),
         },
       });

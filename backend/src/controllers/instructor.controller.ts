@@ -31,7 +31,10 @@ const createSchema = z.object({
         id: z.coerce.number().int().positive().optional(),
         branchId: z.coerce.number().int().positive(),
         startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endsOn: z.preprocess(
+          (value) => (value == null || value === '' ? null : value),
+          z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+        ),
       }),
     )
     .optional(),

@@ -5,9 +5,12 @@ export type BranchMembershipInstructor = {
   temporaryTransfers?: readonly {
     branchId: string;
     startsOn: string;
-    endsOn: string;
+    endsOn?: string | null;
+    temporary?: boolean;
   }[];
 };
+
+const OPEN_ENDED = "9999-12-31";
 
 function dayIso(value: string): string {
   return String(value ?? "").slice(0, 10);
@@ -19,36 +22,49 @@ export function normalizeTemporaryTransfers(raw: unknown): InstructorTemporaryTr
     if (!row || typeof row !== "object") return [];
     const item = row as Partial<InstructorTemporaryTransfer> & { id?: string | number; branchId?: string | number };
     const startsOn = dayIso(String(item.startsOn ?? ""));
-    const endsOn = dayIso(String(item.endsOn ?? ""));
+    const rawEnd = item.endsOn == null || item.endsOn === "" ? "" : dayIso(String(item.endsOn));
+    const endsOn = /^\d{4}-\d{2}-\d{2}$/.test(rawEnd) ? rawEnd : null;
     const branchId = item.branchId == null ? "" : String(item.branchId);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startsOn) || !/^\d{4}-\d{2}-\d{2}$/.test(endsOn) || !branchId) {
-      return [];
-    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startsOn) || !branchId) return [];
+    const temporary = typeof item.temporary === "boolean" ? item.temporary : endsOn != null;
     return [
       {
-        id: item.id == null ? `${branchId}-${startsOn}-${endsOn}` : String(item.id),
+        id: item.id == null ? `${branchId}-${startsOn}-${endsOn ?? "open"}` : String(item.id),
         branchId,
         startsOn,
-        endsOn,
+        endsOn: temporary ? endsOn ?? "" : null,
+        temporary,
       },
     ];
   });
 }
 
+function isOpenEndedMove(transfer: { endsOn?: string | null; temporary?: boolean }): boolean {
+  if (transfer.temporary === true) return false;
+  if (transfer.temporary === false) return true;
+  return transfer.endsOn == null || transfer.endsOn === "";
+}
+
 export function transferCoversDate(
-  transfer: { startsOn: string; endsOn: string },
+  transfer: { startsOn: string; endsOn?: string | null; temporary?: boolean },
   dateIso: string,
 ): boolean {
   const day = dayIso(dateIso);
-  return day >= dayIso(transfer.startsOn) && day <= dayIso(transfer.endsOn);
+  const start = dayIso(transfer.startsOn);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{4}-\d{2}-\d{2}$/.test(start) || day < start) return false;
+  if (isOpenEndedMove(transfer)) return true;
+  const end = transfer.endsOn == null ? "" : dayIso(transfer.endsOn);
+  return /^\d{4}-\d{2}-\d{2}$/.test(end) && day <= end;
 }
 
-/** Permanent branches, unless a transfer covers the date — then only that branch. */
+/** Home branches, unless a move covers the date — then only that branch. */
 export function effectiveBranchIdsForDate(
   instructor: BranchMembershipInstructor,
   dateIso: string,
 ): string[] {
-  const active = (instructor.temporaryTransfers ?? []).find((transfer) => transferCoversDate(transfer, dateIso));
+  const active = (instructor.temporaryTransfers ?? [])
+    .filter((transfer) => transferCoversDate(transfer, dateIso))
+    .sort((a, b) => dayIso(b.startsOn).localeCompare(dayIso(a.startsOn)))[0];
   if (active) return [String(active.branchId)];
   return (instructor.availableBranchIds ?? []).map(String);
 }
@@ -98,27 +114,43 @@ export function branchIdsEffectiveOnEveryDate(
 }
 
 /**
- * Undated picker: permanent branches, plus transfer targets that have not ended.
- * Home branches stay listed so days outside the window can still be booked.
+ * Branches that still have a bookable day from today on.
+ * A move with no end date that has already started replaces the home branches.
  */
 export function branchIdsForUndatedPicker(
   instructor: BranchMembershipInstructor,
   todayIso: string,
 ): string[] {
-  const ids = new Set((instructor.availableBranchIds ?? []).map(String));
   const today = dayIso(todayIso);
-  for (const transfer of instructor.temporaryTransfers ?? []) {
-    if (dayIso(transfer.endsOn) >= today) ids.add(String(transfer.branchId));
+  const transfers = instructor.temporaryTransfers ?? [];
+  const startedOpen = transfers
+    .filter((transfer) => isOpenEndedMove(transfer) && dayIso(transfer.startsOn) <= today)
+    .sort((a, b) => dayIso(b.startsOn).localeCompare(dayIso(a.startsOn)))[0];
+  if (startedOpen) return [String(startedOpen.branchId)];
+  const ids = new Set((instructor.availableBranchIds ?? []).map(String));
+  for (const transfer of transfers) {
+    if (isOpenEndedMove(transfer)) {
+      ids.add(String(transfer.branchId));
+      continue;
+    }
+    const end = transfer.endsOn == null ? "" : dayIso(transfer.endsOn);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(end) && end >= today) ids.add(String(transfer.branchId));
   }
-  return [...ids];
+  return Array.from(ids);
 }
 
 export function temporaryTransfersOverlap(rows: readonly InstructorTemporaryTransfer[]): boolean {
-  const sorted = [...rows].sort((a, b) => a.startsOn.localeCompare(b.startsOn) || a.endsOn.localeCompare(b.endsOn));
+  const ready = rows.filter(
+    (row) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(row.startsOn) &&
+      (!row.temporary || /^\d{4}-\d{2}-\d{2}$/.test(row.endsOn ?? "")),
+  );
+  const endKey = (row: InstructorTemporaryTransfer) => (row.temporary ? dayIso(row.endsOn ?? "") : OPEN_ENDED);
+  const sorted = [...ready].sort((a, b) => a.startsOn.localeCompare(b.startsOn) || endKey(a).localeCompare(endKey(b)));
   for (let i = 1; i < sorted.length; i += 1) {
     const prev = sorted[i - 1]!;
     const next = sorted[i]!;
-    if (prev.startsOn <= next.endsOn && next.startsOn <= prev.endsOn) return true;
+    if (prev.startsOn <= endKey(next) && next.startsOn <= endKey(prev)) return true;
   }
   return false;
 }

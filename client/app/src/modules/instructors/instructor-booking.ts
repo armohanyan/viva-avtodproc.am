@@ -17,7 +17,8 @@ type InstructorWithBranches = {
   temporaryTransfers?: readonly {
     branchId: string;
     startsOn: string;
-    endsOn: string;
+    endsOn: string | null;
+    temporary?: boolean;
   }[];
 };
 

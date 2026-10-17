@@ -11,15 +11,18 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export type TemporaryBranchTransferInput = {
   branchId: number;
   startsOn: string;
-  endsOn: string;
+  /** Null means the instructor stays at this branch from `startsOn` on. */
+  endsOn: string | null;
 };
 
 export type TemporaryBranchTransferRow = {
   id: number;
   branchId: number;
   startsOn: string;
-  endsOn: string;
+  endsOn: string | null;
 };
+
+const OPEN_ENDED = '9999-12-31';
 
 export function asDateIso(value: unknown): string {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -31,27 +34,69 @@ export function asDateIso(value: unknown): string {
   return String(value ?? '').slice(0, 10);
 }
 
+function normalizeEndIso(value: unknown): string | null {
+  if (value == null || value === '') return null;
+  const iso = asDateIso(value);
+  return DATE_RE.test(iso) ? iso : iso;
+}
+
+function endSortKey(endsOn: string | null): string {
+  return endsOn && DATE_RE.test(endsOn) ? endsOn : OPEN_ENDED;
+}
+
 export function temporaryTransferCoversDate(
-  transfer: { startsOn: string; endsOn: string },
+  transfer: { startsOn: string; endsOn: string | null },
   dateIso: string,
 ): boolean {
   const day = asDateIso(dateIso);
-  return day >= asDateIso(transfer.startsOn) && day <= asDateIso(transfer.endsOn);
+  const start = asDateIso(transfer.startsOn);
+  if (!DATE_RE.test(day) || !DATE_RE.test(start) || day < start) return false;
+  const end = normalizeEndIso(transfer.endsOn);
+  return end == null || day <= end;
 }
 
-/** Permanent branches, unless a transfer covers `dateIso` — then only that branch. */
+/** Home branches, unless a move covers `dateIso` — then only that branch. */
 export function effectiveBranchIds(
   permanentBranchIds: readonly number[],
-  transfers: readonly { branchId: number; startsOn: string; endsOn: string }[],
+  transfers: readonly { branchId: number; startsOn: string; endsOn: string | null }[],
   dateIso: string,
 ): number[] {
-  const active = transfers.find((transfer) => temporaryTransferCoversDate(transfer, dateIso));
+  const active = transfers
+    .filter((transfer) => temporaryTransferCoversDate(transfer, dateIso))
+    .sort((a, b) => asDateIso(b.startsOn).localeCompare(asDateIso(a.startsOn)))[0];
   if (active) return [active.branchId];
   return [...permanentBranchIds];
 }
 
-function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
-  return aStart <= bEnd && bStart <= aEnd;
+/**
+ * Branches that still have a bookable day on or after `fromDateIso`.
+ * A move with no end date that has already started replaces the home branches.
+ */
+export function branchIdsRelevantFromDate(
+  permanentBranchIds: readonly number[],
+  transfers: readonly { branchId: number; startsOn: string; endsOn: string | null }[],
+  fromDateIso: string,
+): number[] {
+  const from = asDateIso(fromDateIso);
+  const startedOpen = transfers
+    .filter((transfer) => normalizeEndIso(transfer.endsOn) == null && asDateIso(transfer.startsOn) <= from)
+    .sort((a, b) => asDateIso(b.startsOn).localeCompare(asDateIso(a.startsOn)))[0];
+  if (startedOpen) return [startedOpen.branchId];
+  const ids = new Set(permanentBranchIds);
+  for (const transfer of transfers) {
+    const end = normalizeEndIso(transfer.endsOn);
+    if (end == null || end >= from) ids.add(transfer.branchId);
+  }
+  return [...ids];
+}
+
+function rangesOverlap(
+  aStart: string,
+  aEnd: string | null,
+  bStart: string,
+  bEnd: string | null,
+): boolean {
+  return aStart <= endSortKey(bEnd) && bStart <= endSortKey(aEnd);
 }
 
 function toTransferRow(row: InstructorTemporaryBranchTransfer): TemporaryBranchTransferRow {
@@ -59,7 +104,7 @@ function toTransferRow(row: InstructorTemporaryBranchTransfer): TemporaryBranchT
     id: row.id,
     branchId: row.branchId,
     startsOn: asDateIso(row.startsOn),
-    endsOn: asDateIso(row.endsOn),
+    endsOn: normalizeEndIso(row.endsOn),
   };
 }
 
@@ -111,12 +156,12 @@ export default class InstructorBranchService {
     const normalized = rows.map((row) => ({
       branchId: row.branchId,
       startsOn: asDateIso(row.startsOn),
-      endsOn: asDateIso(row.endsOn),
+      endsOn: normalizeEndIso(row.endsOn),
     }));
     for (const row of normalized) {
-      if (!DATE_RE.test(row.startsOn) || !DATE_RE.test(row.endsOn) || row.endsOn < row.startsOn) {
+      if (!DATE_RE.test(row.startsOn) || (row.endsOn != null && (!DATE_RE.test(row.endsOn) || row.endsOn < row.startsOn))) {
         throw new InputValidationError(
-          'Temporary transfer end date must be on or after the start date.',
+          'Branch move needs a start date, and an end date on or after the start when the move is temporary.',
           HttpStatusCodesUtil.BAD_REQUEST,
         );
       }
@@ -128,7 +173,7 @@ export default class InstructorBranchService {
       }
     }
     const sorted = [...normalized].sort(
-      (a, b) => a.startsOn.localeCompare(b.startsOn) || a.endsOn.localeCompare(b.endsOn),
+      (a, b) => a.startsOn.localeCompare(b.startsOn) || endSortKey(a.endsOn).localeCompare(endSortKey(b.endsOn)),
     );
     for (let i = 1; i < sorted.length; i += 1) {
       const prev = sorted[i - 1]!;
@@ -216,19 +261,11 @@ export default class InstructorBranchService {
    * or a transfer to this branch that has not ended yet.
    */
   static async instructorMayServeBranch(instructorUserId: number, branchId: number): Promise<boolean> {
-    if (await this.instructorServesBranch(instructorUserId, branchId)) return true;
     if (!Number.isFinite(instructorUserId) || instructorUserId <= 0) return false;
     if (!Number.isFinite(branchId) || branchId <= 0) return false;
-    const today = yerevanTodayIso();
-    const transfer = await InstructorTemporaryBranchTransfer.findOne({
-      where: {
-        instructorUserId,
-        branchId,
-        endsOn: { [Op.gte]: today },
-      },
-      attributes: ['id'],
-    });
-    return transfer != null;
+    const permanent = await this.listBranchIdsForInstructor(instructorUserId);
+    const transfers = await this.listTemporaryTransfers(instructorUserId);
+    return branchIdsRelevantFromDate(permanent, transfers, yerevanTodayIso()).includes(branchId);
   }
 
   static async assertInstructorMayServeBranch(instructorUserId: number, branchId: number): Promise<void> {
@@ -279,7 +316,10 @@ export default class InstructorBranchService {
         attributes: ['instructorUserId'],
       }),
       InstructorTemporaryBranchTransfer.findAll({
-        where: { branchId, endsOn: { [Op.gte]: today } },
+        where: {
+          branchId,
+          [Op.or]: [{ endsOn: null }, { endsOn: { [Op.gte]: today } }],
+        },
         attributes: ['instructorUserId'],
       }),
     ]);

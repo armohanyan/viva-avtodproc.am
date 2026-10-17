@@ -20,7 +20,8 @@ export class InstructorTemporaryBranchTransfer extends Model<
   declare instructorUserId: number;
   declare branchId: number;
   declare startsOn: string;
-  declare endsOn: string;
+  /** Inclusive end. Null means the move stays in effect from `startsOn` on. */
+  declare endsOn: CreationOptional<string | null>;
 }
 
 InstructorTemporaryBranchTransfer.init(
@@ -29,7 +30,7 @@ InstructorTemporaryBranchTransfer.init(
     instructorUserId: fkUnsignedInt(),
     branchId: fkUnsignedInt(),
     startsOn: { type: DataTypes.DATEONLY, allowNull: false },
-    endsOn: { type: DataTypes.DATEONLY, allowNull: false },
+    endsOn: { type: DataTypes.DATEONLY, allowNull: true, defaultValue: null },
   },
   {
     sequelize,

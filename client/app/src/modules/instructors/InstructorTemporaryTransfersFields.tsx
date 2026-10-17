@@ -13,7 +13,8 @@ export function temporaryTransferValidationKey(
   rows: readonly InstructorTemporaryTransfer[],
 ): TranslationKey | null {
   for (const row of rows) {
-    if (!row.branchId || !DATE_RE.test(row.startsOn) || !DATE_RE.test(row.endsOn) || row.endsOn < row.startsOn) {
+    if (!row.branchId || !DATE_RE.test(row.startsOn)) return "instructorTemporaryTransferInvalid";
+    if (row.temporary && (!DATE_RE.test(row.endsOn ?? "") || (row.endsOn ?? "") < row.startsOn)) {
       return "instructorTemporaryTransferInvalid";
     }
   }
@@ -41,54 +42,75 @@ export default function InstructorTemporaryTransfersFields({ rows, branches, cit
         <p className="text-xs text-muted-foreground mt-0.5">{t("instructorTemporaryTransferHint")}</p>
       </div>
       {rows.map((row) => (
-        <div key={row.id} className="grid grid-cols-1 gap-2 items-end md:grid-cols-[minmax(0,1.5fr)_11rem_11rem_auto]">
-          <label className="block min-w-0">
-            <span className="block text-xs font-medium text-muted-foreground mb-1">
-              {t("instructorTemporaryTransferBranch")}
-            </span>
-            <select
-              value={row.branchId}
-              onChange={(e) => updateRow(row.id, { branchId: e.target.value })}
-              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">{t("instructorTemporaryTransferBranch")}</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branchOptionLabel(branch, cityNameById(cities, branch.cityId))}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block min-w-0">
-            <span className="block text-xs font-medium text-muted-foreground mb-1">
-              {t("instructorTemporaryTransferStart")}
-            </span>
+        <div key={row.id} className="space-y-2 rounded-md border border-border/70 p-2">
+          <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
             <input
-              type="date"
-              value={row.startsOn}
-              onChange={(e) => updateRow(row.id, { startsOn: e.target.value })}
-              className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              type="checkbox"
+              checked={row.temporary}
+              onChange={(e) =>
+                updateRow(row.id, e.target.checked ? { temporary: true, endsOn: row.endsOn ?? "" } : { temporary: false, endsOn: null })
+              }
+              className="h-4 w-4 rounded border-input accent-primary"
             />
+            {t("instructorTemporaryTransferTemporary")}
           </label>
-          <label className="block min-w-0">
-            <span className="block text-xs font-medium text-muted-foreground mb-1">
-              {t("instructorTemporaryTransferEnd")}
-            </span>
-            <input
-              type="date"
-              value={row.endsOn}
-              onChange={(e) => updateRow(row.id, { endsOn: e.target.value })}
-              className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </label>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10"
-            onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
+          <div
+            className={
+              row.temporary
+                ? "grid grid-cols-1 gap-2 items-end md:grid-cols-[minmax(0,1.5fr)_11rem_11rem_auto]"
+                : "grid grid-cols-1 gap-2 items-end md:grid-cols-[minmax(0,1.5fr)_11rem_auto]"
+            }
           >
-            {t("instructorTemporaryTransferRemove")}
-          </Button>
+            <label className="block min-w-0">
+              <span className="block text-xs font-medium text-muted-foreground mb-1">
+                {t("instructorTemporaryTransferBranch")}
+              </span>
+              <select
+                value={row.branchId}
+                onChange={(e) => updateRow(row.id, { branchId: e.target.value })}
+                className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">{t("instructorTemporaryTransferBranch")}</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branchOptionLabel(branch, cityNameById(cities, branch.cityId))}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="block text-xs font-medium text-muted-foreground mb-1">
+                {t("instructorTemporaryTransferStart")}
+              </span>
+              <input
+                type="date"
+                value={row.startsOn}
+                onChange={(e) => updateRow(row.id, { startsOn: e.target.value })}
+                className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </label>
+            {row.temporary ? (
+              <label className="block min-w-0">
+                <span className="block text-xs font-medium text-muted-foreground mb-1">
+                  {t("instructorTemporaryTransferEnd")}
+                </span>
+                <input
+                  type="date"
+                  value={row.endsOn ?? ""}
+                  onChange={(e) => updateRow(row.id, { endsOn: e.target.value })}
+                  className="h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </label>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10"
+              onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
+            >
+              {t("instructorTemporaryTransferRemove")}
+            </Button>
+          </div>
         </div>
       ))}
       <Button
@@ -103,6 +125,7 @@ export default function InstructorTemporaryTransfersFields({ rows, branches, cit
               branchId: "",
               startsOn: "",
               endsOn: "",
+              temporary: true,
             },
           ])
         }

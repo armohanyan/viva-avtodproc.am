@@ -3404,6 +3404,24 @@ async function ensureDirectorCashEntriesShiftIdColumn(): Promise<void> {
   `);
 }
 
+/** Open-ended branch moves store a null end date. Tables created earlier had `ends_on` NOT NULL. */
+async function ensureInstructorTemporaryTransferEndNullable(): Promise<void> {
+  const cols = await sequelize.query<{ IS_NULLABLE: string }>(
+    `SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'instructor_temporary_branch_transfers'
+       AND COLUMN_NAME = 'ends_on'`,
+    { type: QueryTypes.SELECT },
+  );
+  const nullable = cols[0]?.IS_NULLABLE;
+  if (!nullable || nullable === 'YES') return;
+  // eslint-disable-next-line no-console
+  console.info('[migrate] Allowing null instructor_temporary_branch_transfers.ends_on …');
+  await sequelize.query(
+    'ALTER TABLE `instructor_temporary_branch_transfers` MODIFY `ends_on` DATE NULL',
+  );
+}
+
 export async function syncModels(): Promise<void> {
   await assertMysqlCoreIdsAreInteger();
   /** Run before `sync()` so alter/migrate does not hit legacy varchar token ids on `refresh_tokens.id`. */
@@ -3427,6 +3445,7 @@ export async function syncModels(): Promise<void> {
   await ensureCashShiftsTable();
   await ensureDirectorCashEntriesShiftIdColumn();
   await sequelize.sync({ alter: config.MYSQL.SYNC_ALTER });
+  await ensureInstructorTemporaryTransferEndNullable();
   await ensureDirectorTablesNullableFkColumns();
   await ensureBookingsInstructorUserIdOnDeleteSetNull();
   await ensureBookingSlotsInstructorUserIdNullable();

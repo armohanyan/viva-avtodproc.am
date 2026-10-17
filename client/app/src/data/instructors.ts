@@ -2,7 +2,10 @@ export type InstructorTemporaryTransfer = {
   id: string;
   branchId: string;
   startsOn: string;
-  endsOn: string;
+  /** Set when the move is temporary. Null means the instructor stays at this branch from `startsOn` on. */
+  endsOn: string | null;
+  /** When true, `endsOn` is required. When false, the move has no end date. */
+  temporary: boolean;
 };
 
 export type Instructor = {
@@ -24,8 +27,8 @@ export type Instructor = {
   /** Branch IDs (from branch directory) this instructor can teach at */
   availableBranchIds: string[];
   /**
-   * Inclusive ranges when the instructor works only at `branchId`
-   * instead of `availableBranchIds`.
+   * Moves that place the instructor only at `branchId`.
+   * A temporary move includes an end date. A complete move starts on `startsOn` and does not end.
    */
   temporaryTransfers?: InstructorTemporaryTransfer[];
   /** Behind-the-wheel / practical driving lessons */
